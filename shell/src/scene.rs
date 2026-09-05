@@ -311,7 +311,7 @@ impl Scene {
             last_input: 0.0,
             idle_secs,
             rng: 0x2545_f491,
-            pad: PadKind::Generic,
+            pad: PadKind::Keyboard,
             bt: Bluetooth::new(),
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
@@ -1270,7 +1270,7 @@ impl Scene {
 
     /// Remember which pad family is connected, for on-screen button labels.
     pub fn set_pad(&mut self, name: Option<&str>) {
-        self.pad = name.map(PadKind::from_name).unwrap_or(PadKind::Generic);
+        self.pad = name.map(PadKind::from_name).unwrap_or(PadKind::Keyboard);
     }
 
     fn hint(&self, parts: &[(&str, &str)]) -> String {

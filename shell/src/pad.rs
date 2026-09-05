@@ -10,6 +10,8 @@ pub enum PadKind {
     PlayStation,
     Nintendo,
     Generic,
+    /// No pad connected: hints name the keys instead.
+    Keyboard,
 }
 
 /// Labels of the four actions the shell uses, in the pad's own vocabulary.
@@ -62,6 +64,11 @@ impl PadKind {
                 accept: "X",
                 back: "O",
                 fav: "^",
+            },
+            PadKind::Keyboard => Labels {
+                accept: "Enter",
+                back: "Esc",
+                fav: "F",
             },
             _ => Labels {
                 accept: "A",
