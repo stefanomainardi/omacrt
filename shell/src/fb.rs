@@ -187,26 +187,6 @@ impl Framebuffer {
         }
     }
 
-    /// Shift the picture by (dx, dy), filling the exposed edge with `bg`.
-    pub fn shift(&mut self, dx: i32, dy: i32, bg: Color) {
-        if dx == 0 && dy == 0 {
-            return;
-        }
-        let src = self.px.clone();
-        let (w, h) = (self.w as i32, self.h as i32);
-        for y in 0..h {
-            for x in 0..w {
-                let (sx, sy) = (x - dx, y - dy);
-                let c = if sx >= 0 && sy >= 0 && sx < w && sy < h {
-                    src[sy as usize * self.w + sx as usize]
-                } else {
-                    bg
-                };
-                self.px[y as usize * self.w + x as usize] = c;
-            }
-        }
-    }
-
     /// Bytes for an SDL ARGB8888 streaming texture (little endian: B G R A).
     pub fn to_bgra(&self, out: &mut Vec<u8>) {
         out.clear();

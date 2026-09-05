@@ -30,10 +30,38 @@ pub struct Grid {
     pub cells: Vec<Cell>,
 }
 
+/// Turn 1-bit pixel art (`#` = on) into block-character text: every pair of
+/// pixel rows becomes one text row made of `█`, `▀`, `▄` and spaces.
+pub fn art_to_blocks(rows: &[&str]) -> String {
+    let w = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+    let mut out = String::new();
+    for pair in rows.chunks(2) {
+        let up = pair[0].as_bytes();
+        let down = pair.get(1).map(|r| r.as_bytes()).unwrap_or(&[]);
+        for x in 0..w {
+            let u = up.get(x) == Some(&b'#');
+            let d = down.get(x) == Some(&b'#');
+            out.push(match (u, d) {
+                (true, true) => '█',
+                (true, false) => '▀',
+                (false, true) => '▄',
+                _ => ' ',
+            });
+        }
+        out.push('\n');
+    }
+    out
+}
+
 impl Grid {
     /// `stops` runs bottom to top.
     pub fn wordmark(stops: [Color; 3]) -> Self {
-        let lines: Vec<Vec<char>> = WORDMARK_TXT.lines().map(|l| l.chars().collect()).collect();
+        Self::from_text(WORDMARK_TXT, stops)
+    }
+
+    /// Decode block-character text; `stops` runs bottom to top.
+    pub fn from_text(text: &str, stops: [Color; 3]) -> Self {
+        let lines: Vec<Vec<char>> = text.lines().map(|l| l.chars().collect()).collect();
         let rows = lines.len() as i32;
         let cols = lines.iter().map(|l| l.len()).max().unwrap_or(0) as i32;
         let mut cells = Vec::new();
@@ -142,9 +170,10 @@ pub enum Kind {
     Decrypt,
     Expand,
     Unstable,
+    VhsTape,
 }
 
-pub const ALL: [Kind; 8] = [
+pub const ALL: [Kind; 9] = [
     Kind::LaserEtch,
     Kind::Rain,
     Kind::Beams,
@@ -153,6 +182,7 @@ pub const ALL: [Kind; 8] = [
     Kind::Decrypt,
     Kind::Expand,
     Kind::Unstable,
+    Kind::VhsTape,
 ];
 
 impl Kind {
@@ -166,6 +196,7 @@ impl Kind {
             Kind::Decrypt => "decrypt",
             Kind::Expand => "expand",
             Kind::Unstable => "unstable",
+            Kind::VhsTape => "vhstape",
         }
     }
 }
@@ -181,6 +212,11 @@ pub struct Palette {
 
 pub enum Effect {
     Etch(LaserEtch),
+    Vhs {
+        grid: Grid,
+        seed: u32,
+        total: f32,
+    },
     Planned {
         kind: Kind,
         grid: Grid,
@@ -194,6 +230,13 @@ impl Effect {
     pub fn new(kind: Kind, seed: u32, stops: [Color; 3], palette: Palette) -> Self {
         if kind == Kind::LaserEtch {
             return Effect::Etch(LaserEtch::new(seed, stops));
+        }
+        if kind == Kind::VhsTape {
+            return Effect::Vhs {
+                grid: Grid::wordmark(stops),
+                seed,
+                total: 2.8,
+            };
         }
         let grid = Grid::wordmark(stops);
         let mut rng = Rng(seed | 1);
@@ -270,7 +313,7 @@ impl Effect {
                     from: palette.red,
                     seed: rng.next(),
                 },
-                Kind::LaserEtch => unreachable!(),
+                Kind::LaserEtch | Kind::VhsTape => unreachable!(),
             };
             plans.push(plan);
         }
@@ -294,6 +337,7 @@ impl Effect {
     pub fn length(&self) -> f32 {
         match self {
             Effect::Etch(e) => e.total_cells() as f32 / 60.0 + 0.6,
+            Effect::Vhs { total, .. } => *total,
             Effect::Planned { length, .. } => *length,
         }
     }
@@ -301,6 +345,9 @@ impl Effect {
     pub fn draw(&self, fb: &mut Framebuffer, x: i32, y: i32, s: i32, t: f32, fade: f32) {
         match self {
             Effect::Etch(e) => e.draw(fb, x, y, s, fade),
+            Effect::Vhs { grid, seed, total } => {
+                draw_vhs(fb, grid, x, y, s, t, *total, *seed, fade)
+            }
             Effect::Planned {
                 kind,
                 grid,
@@ -372,6 +419,121 @@ impl Effect {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+fn hash(a: u32, b: u32, c: u32) -> u32 {
+    let mut h =
+        a.wrapping_mul(0x9E37_79B9) ^ b.wrapping_mul(0x85EB_CA6B) ^ c.wrapping_mul(0xC2B2_AE35);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x2C1B_3C6D);
+    h ^= h >> 12;
+    h
+}
+
+fn unit(h: u32) -> f32 {
+    (h >> 8) as f32 / (1u32 << 24) as f32
+}
+
+/// VHS tape, after TTE's `vhstape`: lines tear sideways in glitch colors, a
+/// tracking wave rolls through, the picture dissolves into snow, then it is
+/// redrawn row by row through white into the final gradient.
+pub fn draw_vhs(
+    fb: &mut Framebuffer,
+    grid: &Grid,
+    x: i32,
+    y: i32,
+    s: i32,
+    t: f32,
+    total: f32,
+    seed: u32,
+    fade: f32,
+) {
+    const GLITCH: [Color; 5] = [0xffffff, 0xff0000, 0x00ff00, 0x0000ff, 0xffffff];
+    const SNOW: [Color; 6] = [0x101010, 0x404040, 0x707070, 0xa0a0a0, 0xd0d0d0, 0xffffff];
+    let p = (t / total).clamp(0.0, 1.0);
+    let slot = (t * 12.5) as u32; // glitch decisions change every 80 ms
+    let frame = (t * 60.0) as u32;
+    let rows = grid.rows;
+    let ch = 2 * s;
+
+    // Phase boundaries.
+    let (glitch_end, snow_end) = (0.62, 0.78);
+
+    // Tracking wave: a band of three rows drifting up and down.
+    let wave_top = {
+        let mut top = rows / 4;
+        for k in 0..slot.min(400) {
+            let h = hash(seed, 77, k);
+            if unit(h) < 0.3 {
+                top += if h & 1 == 0 { 1 } else { -1 };
+            }
+        }
+        top.rem_euclid(rows.max(1))
+    };
+
+    for cell in &grid.cells {
+        let r = cell.row;
+        let (mut dx, mut color, mut visible) = (0i32, cell.final_color, true);
+        if p < glitch_end {
+            // Random glitch lines: up to a few rows shift sideways per slot.
+            let h = hash(seed, r as u32 + 1, slot);
+            let glitching = unit(h) < 0.22;
+            let in_wave = r >= wave_top && r < wave_top + 3;
+            if glitching || in_wave {
+                let amp = if in_wave {
+                    3 + (r - wave_top) * 3
+                } else {
+                    4 + (h >> 20) as i32 % 12
+                };
+                let dir = if (h >> 3) & 1 == 0 { 1 } else { -1 };
+                dx = dir * amp * s / 2;
+                color = GLITCH[((frame / 3) as usize + r as usize) % GLITCH.len()];
+            }
+            // Dropout: a row disappears now and then.
+            if unit(hash(seed, r as u32 + 500, slot)) < 0.06 {
+                visible = false;
+            }
+        } else if p < snow_end {
+            let h = hash(seed, (cell.col as u32) << 8 | r as u32, frame);
+            color = SNOW[(h % SNOW.len() as u32) as usize];
+            visible = unit(h >> 4) < 0.85;
+        } else {
+            // Redraw top to bottom; each row is white for a moment, then final.
+            let q = (p - snow_end) / (1.0 - snow_end);
+            let restored = (q * (rows as f32 + 2.0)) as i32;
+            if r > restored {
+                let h = hash(seed, (cell.col as u32) << 8 | r as u32, frame);
+                color = SNOW[(h % SNOW.len() as u32) as usize];
+                visible = unit(h >> 4) < 0.6;
+            } else if r == restored || r == restored - 1 {
+                color = 0xffffff;
+            }
+        }
+        if visible {
+            let c = scale(color, fade);
+            let moved = Cell {
+                col: 0,
+                row: 0,
+                ..*cell
+            };
+            draw_cell(fb, x + cell.col * s + dx, y + r * ch, s, &moved, c);
+        }
+    }
+
+    // Tracking noise bar across the whole width during the glitch phase.
+    if p < glitch_end {
+        let bar_y = y + wave_top * ch + ch;
+        let w = grid.cols * s;
+        for i in 0..w {
+            let h = hash(seed, i as u32, frame);
+            if unit(h) < 0.55 {
+                fb.put(x + i, bar_y, scale(SNOW[(h % 6) as usize], fade));
+            }
+            if unit(h >> 7) < 0.3 {
+                fb.put(x + i, bar_y + 1, scale(SNOW[((h >> 3) % 6) as usize], fade));
             }
         }
     }

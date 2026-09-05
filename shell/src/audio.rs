@@ -13,7 +13,8 @@ pub enum Sound {
     Chime,
     Move,
     Select,
-    Thud,
+    Vhs,
+    Lock,
 }
 
 struct Voice {
@@ -77,7 +78,8 @@ impl Audio {
             (Sound::Chime, Arc::new(synth_chime())),
             (Sound::Move, Arc::new(synth_beep(880.0, 0.025, 0.035))),
             (Sound::Select, Arc::new(synth_beep(1320.0, 0.06, 0.04))),
-            (Sound::Thud, Arc::new(synth_thud())),
+            (Sound::Vhs, Arc::new(synth_vhs())),
+            (Sound::Lock, Arc::new(synth_beep(2200.0, 0.02, 0.05))),
         ];
         Ok(Self {
             _device: Some(device),
@@ -242,17 +244,32 @@ fn synth_beep(freq: f32, dur: f32, gain: f32) -> Vec<f32> {
     out
 }
 
-/// Arcade title-card thud: a low sine drop with a touch of noise.
-fn synth_thud() -> Vec<f32> {
-    let n = seconds(0.25);
+/// Tape hunting for sync: mains buzz, head-switching ticks and hiss, dying out.
+fn synth_vhs() -> Vec<f32> {
+    let n = seconds(1.8);
     let mut out = vec![0.0; n];
-    let mut rng = Lcg(11);
+    let mut rng = Lcg(19);
+    let tau = 2.0 * std::f32::consts::PI;
     for (i, s) in out.iter_mut().enumerate() {
         let t = i as f32 / RATE as f32;
-        let f = 140.0 - 90.0 * (t / 0.25).min(1.0);
-        let body = (2.0 * std::f32::consts::PI * f * t).sin() * (-t * 14.0).exp();
-        let snap = rng.next() * (-t * 90.0).exp() * 0.3;
-        *s = (body * 0.8 + snap) * 0.4;
+        let env = if t < 1.1 {
+            1.0
+        } else {
+            (-(t - 1.1) * 6.0).exp()
+        };
+        let saw = 2.0 * ((t * 50.0).fract()) - 1.0;
+        let buzz = saw * 0.25 + (tau * 100.0 * t).sin() * 0.08;
+        let tick = if (t * 60.0).fract() < 0.004 {
+            rng.next() * 0.9
+        } else {
+            0.0
+        };
+        let hiss = rng.next() * 0.12 * (0.6 + 0.4 * (tau * 7.0 * t).sin());
+        *s = (buzz + tick + hiss) * env;
+    }
+    lowpass(&mut out[..], 3500.0);
+    for s in out.iter_mut() {
+        *s *= 0.22;
     }
     out
 }

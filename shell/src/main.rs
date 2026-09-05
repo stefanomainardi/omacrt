@@ -166,8 +166,6 @@ fn run_headless(args: &Args) -> Result<(), String> {
     while t <= end {
         scene.draw(&mut fb, t);
         fb.roll(scene.roll(), t as f32);
-        let (sx, sy) = scene.shake();
-        fb.shift(sx, sy, 0);
         fb.apply_gain(scene.power());
         while next < dumps.len() && t + dt / 2.0 >= dumps[next] {
             let path = args.dump_dir.join(format!("frame_{:.2}.ppm", dumps[next]));
@@ -317,8 +315,6 @@ fn run(args: &Args) -> Result<(), String> {
         let t = now();
         scene.draw(&mut fb, t);
         fb.roll(scene.roll(), t as f32);
-        let (sx, sy) = scene.shake();
-        fb.shift(sx, sy, 0);
         fb.apply_gain(scene.power());
         for s in scene.take_sounds() {
             audio.play(s);

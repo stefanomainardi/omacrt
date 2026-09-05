@@ -73,7 +73,41 @@ impl SysInfo {
 /// Wordmark pixel size and geometry shared by boot and screensaver.
 const MARK_SCALE: i32 = 3;
 const ETCH_START: f32 = 4.15;
-const CRT_LETTERS: [(char, f32); 3] = [('C', 7.7), ('R', 8.0), ('T', 8.3)];
+const TAG_SCALE: i32 = 2;
+const TAG_START: f32 = 6.9;
+const TAG_TOTAL: f32 = 1.4;
+
+/// "CRT" in a 5x7 pixel font, each letter one pixel row lower than the last:
+/// a stair-step diagonal, the 8-bit way to slant a title.
+fn crt_tag_art() -> String {
+    const C: [&str; 7] = [
+        ".###.", "#...#", "#....", "#....", "#....", "#...#", ".###.",
+    ];
+    const R: [&str; 7] = [
+        "####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#",
+    ];
+    const T: [&str; 7] = [
+        "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#..",
+    ];
+    let letters = [C, R, T];
+    let (w, h) = (17usize, 9usize);
+    let mut canvas = vec![vec![b'.'; w]; h];
+    for (i, glyph) in letters.iter().enumerate() {
+        for (ry, row) in glyph.iter().enumerate() {
+            for (rx, ch) in row.bytes().enumerate() {
+                if ch == b'#' {
+                    canvas[ry + i][i * 6 + rx] = b'#';
+                }
+            }
+        }
+    }
+    let rows: Vec<String> = canvas
+        .into_iter()
+        .map(|r| String::from_utf8(r).unwrap())
+        .collect();
+    let refs: Vec<&str> = rows.iter().map(|r| r.as_str()).collect();
+    effects::art_to_blocks(&refs)
+}
 
 struct Saver {
     effect: Effect,
@@ -99,8 +133,9 @@ pub struct Scene {
     message: Option<(String, f64)>,
     pending: Vec<Sound>,
     etch: Option<LaserEtch>,
-    crt_landed: [bool; 3],
-    shake_until: f64,
+    tag: effects::Grid,
+    tag_seed: u32,
+    tag_sounds: [bool; 2],
     saver: Option<Saver>,
     last_input: f64,
     idle_secs: f32,
@@ -109,7 +144,9 @@ pub struct Scene {
 
 impl Scene {
     pub fn new(theme: Theme, info: SysInfo, items: Vec<Item>, idle_secs: f32) -> Self {
-        let grid = effects::Grid::wordmark([theme.magenta, theme.cyan, theme.paper]);
+        let stops = [theme.magenta, theme.cyan, theme.paper];
+        let grid = effects::Grid::wordmark(stops);
+        let tag = effects::Grid::from_text(&crt_tag_art(), stops);
         Self {
             theme,
             info,
@@ -128,8 +165,9 @@ impl Scene {
             message: None,
             pending: Vec::new(),
             etch: None,
-            crt_landed: [false; 3],
-            shake_until: 0.0,
+            tag,
+            tag_seed: 0x1234_5678,
+            tag_sounds: [false; 2],
             saver: None,
             last_input: 0.0,
             idle_secs,
@@ -295,7 +333,7 @@ impl Scene {
         Action::None
     }
 
-    // -- power, roll, shake -------------------------------------------------
+    // -- power and roll ------------------------------------------------------
 
     pub fn power(&self) -> f32 {
         if self.saver.is_some() {
@@ -329,15 +367,6 @@ impl Scene {
         }
     }
 
-    /// Screen shake offset in pixels for the current frame.
-    pub fn shake(&mut self) -> (i32, i32) {
-        if self.now >= self.shake_until {
-            return (0, 0);
-        }
-        let r = self.rand();
-        (((r & 3) as i32) - 1, (((r >> 2) & 3) as i32) - 1)
-    }
-
     // -- drawing -------------------------------------------------------------
 
     pub fn draw(&mut self, fb: &mut Framebuffer, now: f64) {
@@ -355,7 +384,7 @@ impl Scene {
         self.draw_post(fb, t);
         self.draw_logo(fb, t);
         self.draw_etch(fb, t);
-        self.draw_crt_badge(fb, t);
+        self.draw_crt_tag(fb, t);
         self.draw_listing(fb, t);
         if t >= 4.0 && !self.chime_played {
             self.chime_played = true;
@@ -545,50 +574,49 @@ impl Scene {
         }
     }
 
-    /// "CRT" cartridge label, top right: letters drop in one by one with a
-    /// thud and a screen shake, then a highlight sweeps across the label.
-    fn draw_crt_badge(&mut self, fb: &mut Framebuffer, t: f32) {
-        let first = CRT_LETTERS[0].1;
-        if t < first {
+    fn tag_geometry(&self, fb: &Framebuffer) -> (i32, i32, i32, i32) {
+        // Right-aligned under the wordmark's last letters.
+        let mw = self.mark_cols * MARK_SCALE;
+        let mark_x = (fb.w as i32 - mw) / 2;
+        let mark_bottom = self.mark_final_y(fb) + self.mark_rows * 2 * MARK_SCALE;
+        let tw = self.tag.cols * TAG_SCALE;
+        let th = self.tag.rows * 2 * TAG_SCALE;
+        (mark_x + mw - tw - 2, mark_bottom + 2, tw, th)
+    }
+
+    /// "CRT" appears like a tape hunting for sync (TTE `vhstape`): torn lines,
+    /// a tracking wave, snow, then a clean redraw with a lock click.
+    fn draw_crt_tag(&mut self, fb: &mut Framebuffer, t: f32) {
+        if t < TAG_START {
             return;
         }
-        let w = fb.w as i32;
-        let (_, ly, lsize) = self.logo_final(fb);
-        let scale_px = 2;
-        let letter_w = 8 * scale_px;
-        let pad = 4;
-        let bw = 3 * letter_w + 2 * pad;
-        let bh = 8 * scale_px + 2 * pad;
-        let bx = w - 10 - bw;
-        let by = ly + (lsize - bh) / 2;
-        // Label body grows from a line when the first letter is on its way.
-        let grow = ease(clamp((t - first) / 0.15, 0.0, 1.0));
-        let gh = ((bh as f32) * grow).round().max(1.0) as i32;
-        fb.rect(bx, by + (bh - gh) / 2, bw, gh, self.theme.red);
-        for (i, (ch, at)) in CRT_LETTERS.iter().enumerate() {
-            if t < *at {
-                continue;
-            }
-            let drop = clamp((t - at) / 0.18, 0.0, 1.0);
-            let eased = drop * drop; // gravity
-            let ty = lerp(-24.0, (by + pad) as f32, eased).round() as i32;
-            let tx = bx + pad + i as i32 * letter_w;
-            fb.glyph(tx, ty, *ch, self.theme.bg, scale_px);
-            if drop >= 1.0 && !self.crt_landed[i] {
-                self.crt_landed[i] = true;
-                self.shake_until = self.now + 0.12;
-                self.pending.push(Sound::Thud);
-            }
+        let local = t - TAG_START;
+        let (x, y, _, _) = self.tag_geometry(fb);
+        if !self.tag_sounds[0] {
+            self.tag_sounds[0] = true;
+            self.pending.push(Sound::Vhs);
         }
-        // Highlight sweep after the last letter landed.
-        let sweep = (t - (CRT_LETTERS[2].1 + 0.5)) / 0.5;
-        if (0.0..1.0).contains(&sweep) {
-            let sx = bx + (sweep * (bw + bh) as f32) as i32;
-            for k in 0..bh {
-                fb.put(sx - k, by + k, scale(self.theme.paper, 0.9));
-                fb.put(sx - k + 1, by + k, scale(self.theme.paper, 0.4));
+        if local >= TAG_TOTAL {
+            if !self.tag_sounds[1] {
+                self.tag_sounds[1] = true;
+                self.pending.push(Sound::Lock);
             }
+            for cell in &self.tag.cells {
+                effects::draw_cell(fb, x, y, TAG_SCALE, cell, cell.final_color);
+            }
+            return;
         }
+        effects::draw_vhs(
+            fb,
+            &self.tag,
+            x,
+            y,
+            TAG_SCALE,
+            local,
+            TAG_TOTAL,
+            self.tag_seed,
+            1.0,
+        );
     }
 
     fn draw_listing(&mut self, fb: &mut Framebuffer, t: f32) {
@@ -598,12 +626,12 @@ impl Scene {
         }
         let w = fb.w as i32;
         let h = fb.h as i32;
-        let mark_bottom = self.mark_final_y(fb) + self.mark_rows * 2 * MARK_SCALE;
         let left = (w as f32 * 0.05) as i32;
         let max_cols = ((w - 2 * left) / 8) as usize;
         let cut = |s: &str| -> String { s.chars().take(max_cols).collect() };
 
-        let mut y = mark_bottom + 8;
+        let (_, tag_y, _, tag_h) = self.tag_geometry(fb);
+        let mut y = tag_y + tag_h + 6;
         fb.text(
             left,
             y,
