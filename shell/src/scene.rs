@@ -1110,7 +1110,7 @@ impl Scene {
             self.chime_played = true;
             self.pending.push(Sound::Chime);
         }
-        if t > 6.9 && !self.menu_live {
+        if t > 9.6 && !self.menu_live {
             self.menu_live = true;
             self.last_input = now;
         }
@@ -1317,11 +1317,19 @@ impl Scene {
             self.tag_sound_played = true;
             self.pending.push(Sound::TagReveal);
         }
-        crate::crt_tag::draw(fb, x, y, TAG_SCALE, local, self.stops(), self.theme.cyan);
+        let look = crate::crt_tag::Look {
+            stops: self.stops(),
+            bg: self.theme.bg,
+            floor_light: self.theme.dim,
+            floor_dark: self.theme.fg_dark_floor(),
+            orange: self.theme.orange,
+            yellow: self.theme.yellow,
+        };
+        crate::crt_tag::draw(fb, x, y, TAG_SCALE, local, &look);
     }
 
     fn draw_listing(&mut self, fb: &mut Framebuffer, t: f32) {
-        let fade = ease(clamp((t - 6.95) / 0.45, 0.0, 1.0));
+        let fade = ease(clamp((t - 9.65) / 0.45, 0.0, 1.0));
         if fade <= 0.0 {
             return;
         }
@@ -1343,7 +1351,7 @@ impl Scene {
         y += 12;
         // The prompt is typed out, one character every 40 ms, then the listing follows.
         let prompt = "omarchy $ ls";
-        let typed = (((t - 7.1) / 0.04).floor().max(0.0) as usize).min(prompt.len());
+        let typed = (((t - 9.8) / 0.04).floor().max(0.0) as usize).min(prompt.len());
         fb.text(left, y, &prompt[..typed], scale(self.theme.dim, fade), 1);
         if typed < prompt.len() {
             if (self.now * 4.0).floor() as i64 % 2 == 0 {

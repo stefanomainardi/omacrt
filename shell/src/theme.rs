@@ -23,6 +23,11 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// A step above the background, for the dark squares of the Mode 7 floor.
+    pub fn fg_dark_floor(&self) -> Color {
+        crate::fb::lerp_color(self.bg, self.dim, 0.28)
+    }
+
     pub fn tokyo_night() -> Self {
         Self {
             name: "tokyo-night".into(),

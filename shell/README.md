@@ -93,15 +93,16 @@ navigation. `--dump-audio DIR` writes them all as WAV files.
 
 Seconds after START:
 
-| Time         | Event                                                   |
-| ------------ | ------------------------------------------------------- |
-| 0.0 to 0.55  | power surge, vertical roll                              |
-| 0.45         | POST lines, one every 0.18 s, memory count to 65536K    |
-| 1.75 to 2.03 | POST fades, second roll at 1.92                         |
-| 2.2 to 3.65  | logo revealed in bands with a scanning beam             |
-| 4.0          | chime, logo moves up                                    |
-| 4.2 to 6.6   | wordmark etched left to right with sparks               |
-| 6.9 to 7.45  | everything settles, listing fades in, menu becomes live |
+| Time         | Event                                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| 0.0 to 0.55  | power surge, vertical roll                                                                          |
+| 0.45         | POST lines, one every 0.18 s, memory count to 65536K                                                |
+| 1.75 to 2.03 | POST fades, second roll at 1.92                                                                     |
+| 2.2 to 3.65  | logo revealed in bands with a scanning beam                                                         |
+| 4.0          | chime, logo moves up                                                                                |
+| 4.2 to 6.6   | wordmark etched left to right with sparks                                                           |
+| 6.9 to 9.7   | icon and wordmark settle; Mode 7 show: floor, spinning letters, slam at 8.3, flight, landing at 9.5 |
+| 9.6 to 10.1  | listing fades in, prompt is typed, menu becomes live                                                |
 
 ## Credits
 

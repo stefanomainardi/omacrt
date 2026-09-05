@@ -74,11 +74,11 @@ scanlines or curvature. The tube provides those.
   random walk decides the etch order, cells flash and cool from yellow to their
   final gradient color, sparks fly along Bezier arcs and pile up on the
   baseline.
-- **CRT tag.** A stair-stepped pixel "CRT" under the wordmark, drawn the way a
-  vector monitor would: an electron dot traces the strokes while a whine
-  follows its height, each finished letter flashes and rings a note of a
-  rising arpeggio, a bass stamp locks the word, a glint sweeps across it and
-  returns every few seconds.
+- **CRT tag.** Introduced SNES title screen style: a Mode 7 checkerboard
+  floor rushes toward the viewer, giant CRT letters rise from the horizon
+  spinning in fake 3D, slam into the foreground with a shake, a copper bar and
+  a burst of dust, then shrink and fly to their spot under the wordmark. Riser,
+  slam, chord stab and landing bells come from the same timeline.
 - **Menu.** An `ls` listing driven by `~/.config/omarchy-crt/menu.toml`, with
   keyboard, `hjkl` and game controller navigation.
 - **Game browser.** `games/` lists the systems from `systems.toml`, then the
