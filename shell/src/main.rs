@@ -192,8 +192,14 @@ fn build_scene(args: &Args) -> Scene {
         .and_then(|p| theme::Theme::load(&p))
         .unwrap_or_else(theme::Theme::tokyo_night);
     let info = SysInfo::probe(args.w, args.h, args.hz);
-    let library =
-        library::Library::load(&args.systems.clone().unwrap_or_else(library::default_path));
+    let systems_path = args
+        .systems
+        .clone()
+        .unwrap_or_else(|| match &args.config_dir {
+            Some(d) => d.join("systems.toml"),
+            None => library::default_path(),
+        });
+    let library = library::Library::load(&systems_path);
     Scene::new(theme, info, args.idle, library)
 }
 
