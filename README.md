@@ -144,5 +144,8 @@ SDL2; `cargo build --release` in `shell/` is all it takes.
   Antonio Giner and the GroovyArcade community.
 - Hardware research: the Batocera CRT Script wiki by ZFEbHVUE and the
   RetroRGB, shmups and arcadecontrols communities.
+- Launcher flow (systems, then games, RetroArch without its menu): inspired
+  by the GPL frontend of RGB-Pi OS by rtomasa; the display mode policy is our
+  own on top of upstream RetroArch CRT SwitchRes.
 
 License: MIT.
