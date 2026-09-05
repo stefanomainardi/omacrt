@@ -557,7 +557,6 @@ fn run(args: &Args) -> Result<(), String> {
         for data in scene.take_samples() {
             audio.play_samples(data);
         }
-        audio.ambient(scene.wants_ambient());
 
         if scene.boot_started() && next_dump < dumps.len() {
             let bt = scene_time(&scene, t);

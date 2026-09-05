@@ -111,27 +111,6 @@ impl Audio {
         });
     }
 
-    /// Start (or keep) the ambient loop, fading in.
-    pub fn ambient(&self, on: bool) {
-        if self._device.is_none() {
-            return;
-        }
-        let mut voices = self.voices.lock().unwrap();
-        if let Some(v) = voices.iter_mut().find(|v| v.looping) {
-            v.target = if on { 1.0 } else { 0.0 };
-            return;
-        }
-        if on {
-            voices.push(Voice {
-                data: Arc::new(synth_ambient()),
-                pos: 0,
-                looping: true,
-                gain: 0.0,
-                target: 1.0,
-            });
-        }
-    }
-
     pub fn play(&self, s: Sound) {
         if let Some((_, data)) = self.bank.iter().find(|(k, _)| *k == s) {
             self.voices.lock().unwrap().push(Voice {
@@ -386,39 +365,5 @@ fn synth_click() -> Vec<f32> {
         let t = i as f32 / RATE as f32;
         *s = rng.next() * (-t * 900.0).exp() * 0.12;
     }
-    out
-}
-
-/// Ambient pad for the menus: three soft detuned tones with a slow filter
-/// sweep, eight seconds, seamless loop, very quiet.
-fn synth_ambient() -> Vec<f32> {
-    let len = 8.0;
-    let n = seconds(len);
-    let mut out = vec![0.0; n];
-    let tau = 2.0 * std::f32::consts::PI;
-    let notes = [82.41f32, 123.47, 207.65, 164.81]; // E2 B2 G#3 E3
-    let mut lp = 0.0f32;
-    for (i, s) in out.iter_mut().enumerate() {
-        let t = i as f32 / RATE as f32;
-        let mut v = 0.0;
-        for (k, f) in notes.iter().enumerate() {
-            let det = 1.0 + 0.002 * ((t * (0.11 + k as f32 * 0.07) * tau).sin());
-            let ph = tau * f * det * t;
-            v += (ph.sin() + 0.25 * (2.0 * ph).sin())
-                * (0.5 + 0.5 * (t * 0.3 * tau + k as f32).sin() * 0.3);
-        }
-        let cut = 500.0 + 300.0 * (t / len * tau).sin();
-        let a = 1.0 / (1.0 + RATE as f32 / (tau * cut));
-        lp += a * (v - lp);
-        *s = lp * 0.028;
-    }
-    // Crossfade the last 0.5 s into the first so the loop point is silent.
-    let x = seconds(0.5);
-    for i in 0..x {
-        let w = i as f32 / x as f32;
-        let tail = out[n - x + i];
-        out[i] = out[i] * w + tail * (1.0 - w);
-    }
-    out.truncate(n - x);
     out
 }

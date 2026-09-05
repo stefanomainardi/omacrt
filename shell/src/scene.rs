@@ -481,11 +481,6 @@ impl Scene {
         }
     }
 
-    /// Ambient pad plays in the menus, not during boot, games or the screensaver.
-    pub fn wants_ambient(&self) -> bool {
-        self.menu_live && self.running.is_none() && self.launching.is_none() && self.saver.is_none()
-    }
-
     /// The RetroArch command once the launch animation has run its course.
     pub fn take_launch(&mut self) -> Option<(std::process::Command, String)> {
         let l = self.launching.as_mut()?;

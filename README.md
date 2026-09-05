@@ -93,9 +93,9 @@ scanlines or curvature. The tube provides those.
   spins a disc up for CD systems) with a scrape and a click, then the picture
   collapses to a line and the emulator takes over. System logos in the Games
   list carry each console's signature color.
-- **Sound everywhere.** A quiet ambient pad in the menus, clicks under the
-  BIOS typewriter, whooshes on submenus, crackle under the laser etch, all
-  synthesized at startup.
+- **Sound everywhere.** Clicks under the BIOS typewriter, whooshes on
+  submenus, crackle under the laser etch, a scrape and a click when a cartridge
+  goes in, all synthesized at startup. No background music.
 - **Game browser.** `games/` lists the systems from `systems.toml`, then the
   ROMs of a system as a paged list. A game starts in RetroArch with a dedicated
   config: no RetroArch menu, no notifications, save state on exit and resume on
