@@ -545,10 +545,13 @@ impl Library {
     ) -> std::io::Result<std::process::Command> {
         if system.is_video() {
             std::fs::create_dir_all(&self.config_dir)?;
+            let input_conf = self.config_dir.join("mpv-input.conf");
+            std::fs::write(&input_conf, crate::player::INPUT_CONF)?;
             return Ok(crate::player::command(
                 "mpv",
                 &game.path,
                 &self.mpv_socket(),
+                &input_conf,
             ));
         }
         let cfg = self.retroarch_config()?;
