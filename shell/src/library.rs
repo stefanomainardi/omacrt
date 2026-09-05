@@ -1,9 +1,13 @@
-//! Game library: systems and ROM folders, RGB-Pi style. Each system maps a
-//! directory of ROMs to a libretro core and a preferred 15 kHz video mode.
-//! Configured in `~/.config/omarchy-crt/systems.toml`; RetroArch runs with a
-//! dedicated config so its own menu never shows up.
+//! Game library: systems, ROM folders and per system launch policy.
+//!
+//! `~/.config/omarchy-crt/systems.toml` maps a directory of ROMs to a libretro
+//! core plus everything that makes a game "right" on first launch: the video
+//! policy, libretro core options, RetroArch input device types, run-ahead and
+//! rewind. RetroArch runs with a dedicated base config and a per launch
+//! override so its own menu never shows up.
 
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -21,6 +25,39 @@ pub struct System {
     /// `native` (exact core resolution), or a pinned frame such as `512x224`.
     #[serde(default)]
     pub video: String,
+    /// libretro core options written to `cores.cfg` before launch.
+    #[serde(default)]
+    pub options: BTreeMap<String, String>,
+    /// RetroArch input device types per port, `--device=PORT:TYPE` pairs
+    /// such as `"1:1"` (joypad) or `"2:260"`.
+    #[serde(default)]
+    pub devices: Vec<String>,
+    /// Run-ahead frames (0 = off). Only worth it on systems the CPU handles easily.
+    #[serde(default)]
+    pub runahead: u32,
+    /// Allow rewind (costs CPU and memory; off for 3D systems).
+    #[serde(default)]
+    pub rewind: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct File {
+    #[serde(default)]
+    system: Vec<System>,
+    #[serde(default)]
+    retroarch: Option<String>,
+    #[serde(default)]
+    core_dir: Option<String>,
+    /// Enable mode switching in RetroArch (CRT SwitchRes). Off until the
+    /// 15 kHz stack is in place; pinned frames work regardless.
+    #[serde(default)]
+    switching: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct Game {
+    pub title: String,
+    pub path: PathBuf,
 }
 
 /// How the display mode follows the game.
@@ -98,26 +135,6 @@ impl VideoPolicy {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct File {
-    #[serde(default)]
-    system: Vec<System>,
-    #[serde(default)]
-    retroarch: Option<String>,
-    #[serde(default)]
-    core_dir: Option<String>,
-    /// Enable mode switching in RetroArch (CRT SwitchRes). Off until the
-    /// 15 kHz stack is in place; pinned frames work regardless.
-    #[serde(default)]
-    switching: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct Game {
-    pub title: String,
-    pub path: PathBuf,
-}
-
 pub struct Library {
     pub systems: Vec<System>,
     pub retroarch: String,
@@ -146,37 +163,187 @@ pub fn default_path() -> PathBuf {
     home().join(".config/omarchy-crt/systems.toml")
 }
 
+fn opts(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+/// Built-in systems, tuned for a first launch that looks and plays right on
+/// a 15 kHz CRT with the cores Arch ships. Users override any of it in
+/// `systems.toml`. Run-ahead only where the CPU has headroom (8 and 16 bit),
+/// rewind off on 3D systems.
 fn default_systems() -> Vec<System> {
-    let sys = |name: &str, dir: &str, core: &str, ext: &[&str], video: &str| System {
+    let sys = |name: &str,
+               core: &str,
+               ext: &[&str],
+               video: &str,
+               runahead: u32,
+               rewind: bool,
+               options: BTreeMap<String, String>| System {
         name: name.into(),
-        dir: dir.into(),
+        dir: format!("~/Games/roms/{name}"),
         core: core.into(),
         extensions: ext.iter().map(|e| e.to_string()).collect(),
         video: video.into(),
+        options,
+        devices: Vec::new(),
+        runahead,
+        rewind,
     };
     vec![
-        sys("nes", "~/Games/roms/nes", "mesen", &["nes", "zip"], "super"),
+        sys(
+            "nes",
+            "mesen",
+            &["nes", "fds", "unf", "zip"],
+            "super",
+            1,
+            true,
+            opts(&[
+                ("mesen_aspect_ratio", "No Stretching"),
+                ("mesen_overclock", "None"),
+            ]),
+        ),
         sys(
             "snes",
-            "~/Games/roms/snes",
             "snes9x",
             &["sfc", "smc", "zip"],
-            "super",
+            "512x224",
+            1,
+            true,
+            opts(&[
+                ("snes9x_overclock_cycles", "disabled"),
+                ("snes9x_overclock_superfx", "100%"),
+                ("snes9x_superscope_crosshair", "0"),
+                ("snes9x_hires_blend", "disabled"),
+            ]),
         ),
         sys(
             "megadrive",
-            "~/Games/roms/megadrive",
             "genesis_plus_gx",
-            &["md", "bin", "gen", "zip"],
+            &["md", "bin", "gen", "smd", "zip"],
             "super",
+            1,
+            true,
+            opts(&[
+                ("genesis_plus_gx_overclock", "100%"),
+                ("genesis_plus_gx_overscan", "disabled"),
+                ("genesis_plus_gx_blargg_ntsc_filter", "disabled"),
+                ("genesis_plus_gx_ym2413", "auto"),
+            ]),
         ),
-        sys("arcade", "~/Games/roms/arcade", "fbneo", &["zip"], "super"),
+        sys(
+            "mastersystem",
+            "genesis_plus_gx",
+            &["sms", "zip"],
+            "super",
+            1,
+            true,
+            opts(&[
+                ("genesis_plus_gx_overscan", "disabled"),
+                ("genesis_plus_gx_ym2413", "enabled"),
+            ]),
+        ),
+        sys(
+            "pcengine",
+            "mednafen_pce_fast",
+            &["pce", "cue", "chd", "zip"],
+            "super",
+            1,
+            true,
+            BTreeMap::new(),
+        ),
+        sys(
+            "gb",
+            "mgba",
+            &["gb", "gbc", "zip"],
+            "super",
+            1,
+            true,
+            opts(&[
+                ("mgba_gb_model", "Autodetect"),
+                ("mgba_gb_colors", "DMG Green"),
+            ]),
+        ),
+        sys(
+            "gba",
+            "mgba",
+            &["gba", "zip"],
+            "super",
+            1,
+            true,
+            BTreeMap::new(),
+        ),
+        sys(
+            "neogeo",
+            "fbneo",
+            &["zip", "7z"],
+            "super",
+            1,
+            false,
+            opts(&[
+                ("fbneo-neogeo-mode", "MVS_EUR"),
+                ("fbneo-force-60hz", "disabled"),
+                ("fbneo-allow-patched-romsets", "disabled"),
+            ]),
+        ),
+        sys(
+            "arcade",
+            "fbneo",
+            &["zip", "7z"],
+            "super",
+            0,
+            false,
+            opts(&[
+                ("fbneo-force-60hz", "disabled"),
+                ("fbneo-cpu-speed-adjust", "100%"),
+                ("fbneo-allow-patched-romsets", "disabled"),
+            ]),
+        ),
         sys(
             "psx",
-            "~/Games/roms/psx",
-            "swanstation",
-            &["cue", "chd", "pbp"],
+            "mednafen_psx_hw",
+            &["cue", "chd", "pbp", "m3u"],
             "super",
+            0,
+            false,
+            opts(&[
+                ("beetle_psx_hw_internal_resolution", "1x(native)"),
+                ("beetle_psx_hw_crop_overscan", "disabled"),
+                ("beetle_psx_hw_dither_mode", "1x(native)"),
+                ("beetle_psx_hw_analog_toggle", "enabled"),
+            ]),
+        ),
+        sys(
+            "n64",
+            "mupen64plus_next",
+            &["n64", "z64", "v64", "zip"],
+            "super",
+            0,
+            false,
+            // Authentic look: native resolution and hardware-style dithering.
+            opts(&[
+                ("mupen64plus-43screensize", "320x240"),
+                ("mupen64plus-EnableNativeResFactor", "1"),
+                ("mupen64plus-DitheringPattern", "True"),
+                ("mupen64plus-DitheringQuantization", "True"),
+                ("mupen64plus-RDRAMImageDitheringMode", "False"),
+                ("mupen64plus-BilinearMode", "3point"),
+            ]),
+        ),
+        sys(
+            "dreamcast",
+            "flycast",
+            &["gdi", "chd", "cdi", "cue", "m3u"],
+            "native",
+            0,
+            false,
+            opts(&[
+                ("reicast_internal_resolution", "640x480"),
+                ("reicast_screen_rotation", "horizontal"),
+                ("reicast_widescreen_hack", "disabled"),
+            ]),
         ),
     ]
 }
@@ -219,39 +386,74 @@ impl Library {
         }
     }
 
-    /// ROMs of a system, sorted by title. Missing directories yield an empty list.
+    /// ROMs of a system, sorted by title. Missing directories yield an empty
+    /// list. When a folder holds `.m3u` playlists, the disc images they
+    /// reference are hidden so a multi disc game shows up once.
     pub fn games(&self, system: &System) -> Vec<Game> {
         let dir = expand(&system.dir);
         let Ok(entries) = std::fs::read_dir(&dir) else {
             return Vec::new();
         };
-        let mut games: Vec<Game> = entries
+        let files: Vec<PathBuf> = entries
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .filter(|p| p.is_file())
-            .filter(|p| {
-                if system.extensions.is_empty() {
-                    return true;
+            .collect();
+        let mut hidden: Vec<PathBuf> = Vec::new();
+        for m3u in files.iter().filter(|p| has_ext(p, "m3u")) {
+            if let Ok(text) = std::fs::read_to_string(m3u) {
+                for line in text
+                    .lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                {
+                    hidden.push(dir.join(line));
                 }
-                p.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| system.extensions.iter().any(|x| x.eq_ignore_ascii_case(e)))
-                    .unwrap_or(false)
-            })
+            }
+        }
+        let accepted = |p: &Path| -> bool {
+            if system.extensions.is_empty() {
+                return true;
+            }
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| system.extensions.iter().any(|x| x.eq_ignore_ascii_case(e)))
+                .unwrap_or(false)
+        };
+        let mut games: Vec<Game> = files
+            .into_iter()
+            .filter(|p| accepted(p) && !hidden.contains(p))
             .map(|path| Game {
                 title: clean_title(&path),
                 path,
             })
             .collect();
+        // Two files that clean to the same title (regional variants) keep
+        // their first bracketed tag so they stay distinguishable.
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for g in &games {
+            *counts.entry(g.title.to_lowercase()).or_default() += 1;
+        }
+        for g in games.iter_mut() {
+            if counts[&g.title.to_lowercase()] > 1 {
+                if let Some(tag) = first_tag(&g.path) {
+                    g.title = format!("{} ({tag})", g.title);
+                }
+            }
+        }
         games.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
         games
     }
 
     pub fn core_path(&self, system: &System) -> PathBuf {
-        if system.core.contains('/') || system.core.ends_with(".so") {
-            expand(&system.core)
+        self.resolve_core(&system.core)
+    }
+
+    pub fn resolve_core(&self, core: &str) -> PathBuf {
+        if core.contains('/') || core.ends_with(".so") {
+            expand(core)
         } else {
-            self.core_dir.join(format!("{}_libretro.so", system.core))
+            self.core_dir.join(format!("{core}_libretro.so"))
         }
     }
 
@@ -265,21 +467,57 @@ impl Library {
         Ok(path)
     }
 
-    /// Build the RetroArch command for one game. The shell keeps running and
-    /// waits for the process; RetroArch's menu is never shown.
-    pub fn command(&self, system: &System, game: &Game) -> std::io::Result<std::process::Command> {
+    /// Per launch overrides: video policy, geometry, run-ahead, rewind, core options.
+    fn launch_keys(&self, system: &System, cores_cfg: &Path, extra: &str) -> String {
+        let mut out = VideoPolicy::parse(&system.video).retroarch_keys(self.switching);
+        {
+            let mut kv = |k: &str, v: &str| out.push_str(&format!("{k} = \"{v}\"\n"));
+            if system.runahead > 0 {
+                kv("run_ahead_enabled", "true");
+                kv("run_ahead_frames", &system.runahead.to_string());
+                kv("run_ahead_secondary_instance", "true");
+            } else {
+                kv("run_ahead_enabled", "false");
+            }
+            kv(
+                "rewind_enable",
+                if system.rewind { "true" } else { "false" },
+            );
+            kv("global_core_options", "true");
+            kv("core_options_path", &cores_cfg.display().to_string());
+        }
+        out.push_str(extra);
+        out
+    }
+
+    /// Build the RetroArch command for one game. `extra` holds additional
+    /// config keys (TV profile geometry). The shell keeps running and waits
+    /// for the process; RetroArch's menu is never shown.
+    pub fn command(
+        &self,
+        system: &System,
+        game: &Game,
+        extra: &str,
+    ) -> std::io::Result<std::process::Command> {
         let cfg = self.retroarch_config()?;
-        // Per launch overrides: the video policy of this system.
-        let policy = VideoPolicy::parse(&system.video);
+        let cores_cfg = self.config_dir.join("cores.cfg");
+        let mut options = String::new();
+        for (k, v) in &system.options {
+            options.push_str(&format!("{k} = \"{v}\"\n"));
+        }
+        std::fs::write(&cores_cfg, options)?;
         let launch_cfg = self.config_dir.join("launch.cfg");
-        std::fs::write(&launch_cfg, policy.retroarch_keys(self.switching))?;
+        std::fs::write(&launch_cfg, self.launch_keys(system, &cores_cfg, extra))?;
         let mut cmd = std::process::Command::new(&self.retroarch);
         cmd.arg("--config")
             .arg(cfg)
             .arg("--appendconfig")
             .arg(launch_cfg)
-            .arg("--fullscreen")
-            .arg("-L")
+            .arg("--fullscreen");
+        for d in &system.devices {
+            cmd.arg(format!("--device={d}"));
+        }
+        cmd.arg("-L")
             .arg(self.core_path(system))
             .arg(&game.path)
             .stdin(std::process::Stdio::null())
@@ -287,6 +525,22 @@ impl Library {
             .stderr(std::process::Stdio::null());
         Ok(cmd)
     }
+}
+
+fn has_ext(p: &Path, ext: &str) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case(ext))
+        .unwrap_or(false)
+}
+
+/// First bracketed tag of a file name: `Game (PAL) [!].sfc` -> `PAL`.
+fn first_tag(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    let start = stem.find(['(', '['])? + 1;
+    let end = stem[start..].find([')', ']'])? + start;
+    let tag = stem[start..end].trim();
+    (!tag.is_empty()).then(|| tag.to_string())
 }
 
 /// `Super Metroid (USA).sfc` -> `Super Metroid`.
@@ -311,7 +565,8 @@ pub fn clean_title(path: &Path) -> String {
 }
 
 /// RetroArch settings for a console-like experience: no menu, no on-screen
-/// text, fullscreen, hotkeys to leave, save state on exit and resume on start.
+/// text, fullscreen, hotkeys to leave, save state on exit and resume on start,
+/// automatic frame delay for latency.
 pub const DEFAULT_RETROARCH_CFG: &str = r#"# Written by omarchy-crt-shell. Edit freely; it is only created when missing.
 video_fullscreen = "true"
 video_windowed_fullscreen = "true"
@@ -332,4 +587,8 @@ input_quit_gamepad_combo = "4"
 savestate_auto_save = "true"
 savestate_auto_load = "true"
 video_smooth = "false"
+video_crop_overscan = "false"
+video_frame_delay_auto = "true"
+audio_resampler_quality = "3"
+config_save_on_exit = "false"
 "#;

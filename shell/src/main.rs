@@ -12,6 +12,7 @@ mod fb;
 mod font8x8;
 mod library;
 mod menu;
+mod profile;
 mod scene;
 mod theme;
 
@@ -296,6 +297,7 @@ fn run(args: &Args) -> Result<(), String> {
             let mut start = false;
             let mut nav = None;
             let mut fire = false;
+            let mut fav = false;
             match ev {
                 Event::Quit { .. } => break 'main,
                 Event::KeyDown {
@@ -313,6 +315,7 @@ fn run(args: &Args) -> Result<(), String> {
                     Keycode::Down | Keycode::J => nav = Some(Nav::Down),
                     Keycode::Left | Keycode::H => nav = Some(Nav::Left),
                     Keycode::Right | Keycode::L => nav = Some(Nav::Right),
+                    Keycode::F => fav = true,
                     _ => {}
                 },
                 Event::MouseButtonDown { .. } => start = true,
@@ -331,11 +334,12 @@ fn run(args: &Args) -> Result<(), String> {
                     Button::DPadLeft => nav = Some(Nav::Left),
                     Button::DPadRight => nav = Some(Nav::Right),
                     Button::B | Button::Back => nav = Some(Nav::Back),
+                    Button::Y => fav = true,
                     _ => {}
                 },
                 _ => {}
             }
-            let is_input = start || nav.is_some() || fire;
+            let is_input = start || nav.is_some() || fire || fav;
             if scene.is_running() {
                 continue;
             }
@@ -348,6 +352,9 @@ fn run(args: &Args) -> Result<(), String> {
             }
             if let Some(n) = nav {
                 scene.navigate(n);
+            }
+            if fav {
+                scene.toggle_favorite();
             }
             if fire {
                 match scene.activate() {

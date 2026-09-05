@@ -13,7 +13,9 @@ use crate::etch::LaserEtch;
 use crate::fb::{Color, Framebuffer, scale};
 use crate::library::{Game, Library};
 use crate::menu::Item;
+use crate::profile::{PRESETS, Profile};
 use crate::theme::Theme;
+use std::path::PathBuf;
 
 fn clamp(v: f32, a: f32, b: f32) -> f32 {
     v.max(a).min(b)
@@ -36,8 +38,25 @@ pub enum Action {
 /// Which screen the menu is on after boot.
 enum Screen {
     Menu,
-    Systems { sel: usize },
-    Games { sys: usize, sel: usize, top: usize },
+    Systems {
+        sel: usize,
+    },
+    /// `sys` is None for the virtual lists (recent, favorites).
+    Games {
+        sys: Option<usize>,
+        sel: usize,
+        top: usize,
+    },
+    Profile {
+        sel: usize,
+    },
+}
+
+/// One row of a game list: the game and the system that runs it.
+#[derive(Clone)]
+struct Entry {
+    game: Game,
+    sys: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -153,9 +172,12 @@ pub struct Scene {
     rng: u32,
     library: Library,
     screen: Screen,
-    games: Vec<Game>,
+    games: Vec<Entry>,
     running: Option<(String, String)>,
     mark_small: effects::Grid,
+    profile: Profile,
+    recent: Vec<(usize, PathBuf)>,
+    favorites: Vec<(usize, PathBuf)>,
 }
 
 impl Scene {
@@ -195,6 +217,9 @@ impl Scene {
             last_input: 0.0,
             idle_secs,
             rng: 0x2545_f491,
+            profile: Profile::load(&library.config_dir),
+            recent: load_list(&library.config_dir.join("recent.txt"), &library),
+            favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
             library,
             screen: Screen::Menu,
             games: Vec::new(),
@@ -360,7 +385,10 @@ impl Scene {
                 env!("CARGO_PKG_VERSION"),
                 self.info.kernel
             ),
-            "tv-profile" => "tv profile: ntsc 60Hz (coming soon)".to_string(),
+            "tv-profile" => {
+                self.screen = Screen::Profile { sel: 0 };
+                return Action::None;
+            }
             "screensaver" => {
                 let now = self.now;
                 self.start_screensaver(now, None);
@@ -380,13 +408,23 @@ impl Scene {
         Action::None
     }
 
-    // -- game browser (RGB-Pi style: systems, then games) --------------------
+    // -- game browser (systems, then games; recent and favorites on top) -----
 
     const ROWS_PER_PAGE: usize = 13;
+    const VIRTUAL: usize = 2; // recent/, favorites/
 
-    fn open_games(&mut self, sys: usize) {
-        let system = self.library.systems[sys].clone();
-        self.games = self.library.games(&system);
+    fn open_games(&mut self, sys: Option<usize>) {
+        self.games = match sys {
+            Some(i) => {
+                let system = self.library.systems[i].clone();
+                self.library
+                    .games(&system)
+                    .into_iter()
+                    .map(|game| Entry { game, sys: i })
+                    .collect()
+            }
+            None => Vec::new(),
+        };
         self.screen = Screen::Games {
             sys,
             sel: 0,
@@ -394,15 +432,40 @@ impl Scene {
         };
     }
 
+    fn open_virtual(&mut self, list: &[(usize, PathBuf)]) {
+        self.games = list
+            .iter()
+            .filter(|(i, p)| *i < self.library.systems.len() && p.exists())
+            .map(|(i, p)| Entry {
+                game: Game {
+                    title: crate::library::clean_title(p),
+                    path: p.clone(),
+                },
+                sys: *i,
+            })
+            .collect();
+        self.screen = Screen::Games {
+            sys: None,
+            sel: 0,
+            top: 0,
+        };
+    }
+
+    /// Rows of the systems screen: recent/, favorites/, then every system.
+    fn system_rows(&self) -> usize {
+        Self::VIRTUAL + self.library.systems.len()
+    }
+
     fn navigate_browser(&mut self, nav: Nav) {
         let mut moved = false;
+        let system_rows = self.system_rows();
         match &mut self.screen {
             Screen::Systems { sel } => match nav {
                 Nav::Up if *sel > 0 => {
                     *sel -= 1;
                     moved = true;
                 }
-                Nav::Down if *sel + 1 < self.library.systems.len() => {
+                Nav::Down if *sel + 1 < system_rows => {
                     *sel += 1;
                     moved = true;
                 }
@@ -412,7 +475,7 @@ impl Scene {
                 }
                 _ => {}
             },
-            Screen::Games { sys, sel, top } => {
+            Screen::Games { sel, top, .. } => {
                 let n = self.games.len();
                 let page = Self::ROWS_PER_PAGE;
                 match nav {
@@ -433,8 +496,11 @@ impl Scene {
                         moved = true;
                     }
                     Nav::Back => {
-                        let s = *sys;
-                        self.screen = Screen::Systems { sel: s };
+                        let row = match self.screen {
+                            Screen::Games { sys: Some(i), .. } => i + Self::VIRTUAL,
+                            _ => 0,
+                        };
+                        self.screen = Screen::Systems { sel: row };
                         self.pending.push(Sound::Move);
                         return;
                     }
@@ -446,6 +512,34 @@ impl Scene {
                     *top = *sel + 1 - page;
                 }
             }
+            Screen::Profile { sel } => {
+                let rows = 7;
+                match nav {
+                    Nav::Up if *sel > 0 => {
+                        *sel -= 1;
+                        moved = true;
+                    }
+                    Nav::Down if *sel + 1 < rows => {
+                        *sel += 1;
+                        moved = true;
+                    }
+                    Nav::Left | Nav::Right => {
+                        let dir = if nav == Nav::Right { 1 } else { -1 };
+                        let row = *sel;
+                        self.adjust_profile(row, dir);
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        if let Err(e) = self.profile.save(&self.library.config_dir) {
+                            eprintln!("profile: {e}");
+                        }
+                        self.screen = Screen::Menu;
+                        self.pending.push(Sound::Lock);
+                        return;
+                    }
+                    _ => {}
+                }
+            }
             Screen::Menu => {}
         }
         if moved {
@@ -453,32 +547,131 @@ impl Scene {
         }
     }
 
+    fn adjust_profile(&mut self, row: usize, dir: i32) {
+        match row {
+            0 => self.profile.cycle_preset(dir),
+            1 => self.profile.h_shift = (self.profile.h_shift + dir).clamp(-16, 16),
+            2 => self.profile.v_shift = (self.profile.v_shift + dir).clamp(-16, 16),
+            3 => self.profile.h_size = (self.profile.h_size + dir as f32 * 0.01).clamp(0.8, 1.2),
+            4 => self.profile.invert_sync = !self.profile.invert_sync,
+            _ => {}
+        }
+    }
+
     fn activate_browser(&mut self) -> Action {
         match self.screen {
             Screen::Systems { sel } => {
                 self.pending.push(Sound::Select);
-                self.open_games(sel);
+                match sel {
+                    0 => {
+                        let list = self.recent.clone();
+                        self.open_virtual(&list);
+                    }
+                    1 => {
+                        let list = self.favorites.clone();
+                        self.open_virtual(&list);
+                    }
+                    i => self.open_games(Some(i - Self::VIRTUAL)),
+                }
                 Action::None
             }
-            Screen::Games { sys, sel, .. } => {
-                let Some(game) = self.games.get(sel).cloned() else {
+            Screen::Games { sel, .. } => {
+                let Some(entry) = self.games.get(sel).cloned() else {
                     return Action::None;
                 };
-                let system = self.library.systems[sys].clone();
-                match self.library.command(&system, &game) {
-                    Ok(cmd) => {
-                        self.pending.push(Sound::Select);
-                        self.running = Some((game.title.clone(), system.name.clone()));
-                        Action::Run(cmd, game.title)
-                    }
-                    Err(e) => {
-                        self.message = Some((format!("cannot launch: {e}"), self.now + 4.0));
-                        Action::None
-                    }
-                }
+                self.run_entry(&entry)
             }
+            Screen::Profile { sel } => match sel {
+                5 => self.run_test_pattern(),
+                6 => {
+                    if let Err(e) = self.profile.save(&self.library.config_dir) {
+                        eprintln!("profile: {e}");
+                    }
+                    self.pending.push(Sound::Lock);
+                    self.message = Some(("profile saved".into(), self.now + 3.0));
+                    Action::None
+                }
+                _ => Action::None,
+            },
             Screen::Menu => Action::None,
         }
+    }
+
+    fn run_entry(&mut self, entry: &Entry) -> Action {
+        let system = self.library.systems[entry.sys].clone();
+        match self
+            .library
+            .command(&system, &entry.game, &self.profile.retroarch_keys())
+        {
+            Ok(cmd) => {
+                self.pending.push(Sound::Select);
+                self.running = Some((entry.game.title.clone(), system.name.clone()));
+                self.remember(entry);
+                Action::Run(cmd, entry.game.title.clone())
+            }
+            Err(e) => {
+                self.message = Some((format!("cannot launch: {e}"), self.now + 4.0));
+                Action::None
+            }
+        }
+    }
+
+    /// Any ROM whose title mentions 240p (the 240p Test Suite) doubles as a
+    /// geometry test pattern.
+    fn run_test_pattern(&mut self) -> Action {
+        for (i, system) in self.library.systems.clone().iter().enumerate() {
+            if let Some(game) = self
+                .library
+                .games(system)
+                .into_iter()
+                .find(|g| g.title.to_lowercase().contains("240p"))
+            {
+                return self.run_entry(&Entry { game, sys: i });
+            }
+        }
+        self.message = Some(("no 240p test suite rom found".into(), self.now + 4.0));
+        Action::None
+    }
+
+    fn remember(&mut self, entry: &Entry) {
+        self.recent.retain(|(_, p)| *p != entry.game.path);
+        self.recent.insert(0, (entry.sys, entry.game.path.clone()));
+        self.recent.truncate(20);
+        save_list(
+            &self.library.config_dir.join("recent.txt"),
+            &self.recent,
+            &self.library,
+        );
+    }
+
+    /// Toggle the selected game in the favorites list.
+    pub fn toggle_favorite(&mut self) {
+        let Screen::Games { sel, .. } = self.screen else {
+            return;
+        };
+        let Some(entry) = self.games.get(sel).cloned() else {
+            return;
+        };
+        let key = (entry.sys, entry.game.path.clone());
+        if let Some(pos) = self.favorites.iter().position(|k| *k == key) {
+            self.favorites.remove(pos);
+            self.message = Some((format!("removed {}", entry.game.title), self.now + 2.0));
+        } else {
+            self.favorites.push(key);
+            self.message = Some((format!("favorite: {}", entry.game.title), self.now + 2.0));
+        }
+        self.pending.push(Sound::Select);
+        save_list(
+            &self.library.config_dir.join("favorites.txt"),
+            &self.favorites,
+            &self.library,
+        );
+    }
+
+    fn is_favorite(&self, entry: &Entry) -> bool {
+        self.favorites
+            .iter()
+            .any(|(i, p)| *i == entry.sys && *p == entry.game.path)
     }
 
     /// The game process ended; back to the list, cursor where it was.
@@ -496,8 +689,12 @@ impl Scene {
     pub fn debug_browse(&mut self, system: Option<&str>) {
         self.menu_live = true;
         self.chime_played = true;
-        match system.and_then(|n| self.library.systems.iter().position(|s| s.name == n)) {
-            Some(i) => self.open_games(i),
+        match system {
+            Some("profile") => self.screen = Screen::Profile { sel: 0 },
+            Some(n) => match self.library.systems.iter().position(|s| s.name == n) {
+                Some(i) => self.open_games(Some(i)),
+                None => self.screen = Screen::Systems { sel: 0 },
+            },
             None => self.screen = Screen::Systems { sel: 0 },
         }
     }
@@ -519,6 +716,48 @@ impl Scene {
         52
     }
 
+    fn draw_row(
+        &self,
+        fb: &mut Framebuffer,
+        y: i32,
+        label: &str,
+        right: &str,
+        on: bool,
+        color: Color,
+    ) {
+        let w = fb.w as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let max_cols = ((w - 2 * left) / 8) as usize;
+        if on {
+            fb.rect(
+                left - 4,
+                y - 2,
+                w - 2 * left + 8,
+                12,
+                scale(self.theme.green, 0.12),
+            );
+        }
+        let room = max_cols.saturating_sub(right.chars().count() + 1);
+        let text: String = format!("{}{}", if on { "> " } else { "  " }, label)
+            .chars()
+            .take(room)
+            .collect();
+        fb.text(
+            left,
+            y,
+            &text,
+            if on { self.theme.bright_green } else { color },
+            1,
+        );
+        fb.text(
+            w - left - Framebuffer::text_width(right, 1),
+            y,
+            right,
+            self.theme.dim,
+            1,
+        );
+    }
+
     fn draw_browser(&mut self, fb: &mut Framebuffer) {
         let w = fb.w as i32;
         let h = fb.h as i32;
@@ -529,63 +768,62 @@ impl Scene {
         match self.screen {
             Screen::Systems { sel } => {
                 let y0 = self.draw_header(fb, "omarchy $ ls games/");
+                self.draw_row(
+                    fb,
+                    y0,
+                    "recent/",
+                    &format!("{:>4}", self.recent.len()),
+                    sel == 0,
+                    self.theme.cyan,
+                );
+                self.draw_row(
+                    fb,
+                    y0 + row_h,
+                    "favorites/",
+                    &format!("{:>4}", self.favorites.len()),
+                    sel == 1,
+                    self.theme.cyan,
+                );
                 let systems = self.library.systems.clone();
                 for (i, sys) in systems.iter().enumerate() {
-                    let y = y0 + i as i32 * row_h;
+                    let y = y0 + (i + Self::VIRTUAL) as i32 * row_h;
                     let count = self.library.games(sys).len();
-                    let on = i == sel;
-                    let label = format!("{}{}/", if on { "> " } else { "  " }, sys.name);
-                    if on {
-                        fb.rect(
-                            left - 4,
-                            y - 2,
-                            w - 2 * left + 8,
-                            row_h,
-                            scale(self.theme.green, 0.12),
-                        );
-                    }
-                    fb.text(
-                        left,
-                        y,
-                        &cut(&label, max_cols - 10),
-                        if on {
-                            self.theme.bright_green
-                        } else {
-                            self.theme.green
-                        },
-                        1,
-                    );
                     let right = format!(
                         "{count:>4}  {}",
                         crate::library::VideoPolicy::parse(&sys.video).label()
                     );
-                    fb.text(
-                        w - left - Framebuffer::text_width(&right, 1),
+                    self.draw_row(
+                        fb,
                         y,
+                        &format!("{}/", sys.name),
                         &right,
-                        self.theme.dim,
-                        1,
+                        sel == i + Self::VIRTUAL,
+                        self.theme.green,
                     );
                 }
-                if let Some(sys) = systems.get(sel) {
-                    let core = self.library.core_path(sys);
-                    let core_ok = core.exists();
-                    let info = format!(
-                        "core {}{}",
-                        sys.core,
-                        if core_ok { "" } else { " (missing)" }
-                    );
-                    fb.text(
-                        left,
-                        h - 28,
-                        &cut(&info, max_cols),
-                        if core_ok {
-                            self.theme.dim
-                        } else {
-                            self.theme.red
-                        },
-                        1,
-                    );
+                if sel >= Self::VIRTUAL {
+                    if let Some(sys) = systems.get(sel - Self::VIRTUAL) {
+                        let core = self.library.core_path(sys);
+                        let core_ok = core.exists();
+                        let info = format!(
+                            "core {}{}  runahead {}  rewind {}",
+                            sys.core,
+                            if core_ok { "" } else { " (missing)" },
+                            sys.runahead,
+                            if sys.rewind { "on" } else { "off" }
+                        );
+                        fb.text(
+                            left,
+                            h - 28,
+                            &cut(&info, max_cols),
+                            if core_ok {
+                                self.theme.dim
+                            } else {
+                                self.theme.red
+                            },
+                            1,
+                        );
+                    }
                 }
                 fb.text(
                     left,
@@ -596,46 +834,40 @@ impl Scene {
                 );
             }
             Screen::Games { sys, sel, top } => {
-                let system = self.library.systems[sys].clone();
+                let prompt = match sys {
+                    Some(i) => format!("omarchy $ ls games/{}/", self.library.systems[i].name),
+                    None => "omarchy $ ls games/*".to_string(),
+                };
                 let n = self.games.len();
-                let y0 = self.draw_header(fb, &format!("omarchy $ ls games/{}/", system.name));
+                let y0 = self.draw_header(fb, &prompt);
                 if n == 0 {
-                    let dir = crate::library::expand(&system.dir);
-                    fb.text(left, y0, "no games found in", self.theme.dim, 1);
-                    fb.text(
-                        left,
-                        y0 + 12,
-                        &cut(&dir.display().to_string(), max_cols),
-                        self.theme.paper,
-                        1,
-                    );
+                    match sys {
+                        Some(i) => {
+                            let dir = crate::library::expand(&self.library.systems[i].dir);
+                            fb.text(left, y0, "no games found in", self.theme.dim, 1);
+                            fb.text(
+                                left,
+                                y0 + 12,
+                                &cut(&dir.display().to_string(), max_cols),
+                                self.theme.paper,
+                                1,
+                            );
+                        }
+                        None => fb.text(left, y0, "nothing here yet", self.theme.dim, 1),
+                    }
                 } else {
                     let end = (top + Self::ROWS_PER_PAGE).min(n);
                     for (row, i) in (top..end).enumerate() {
                         let y = y0 + row as i32 * row_h;
-                        let on = i == sel;
-                        if on {
-                            fb.rect(
-                                left - 4,
-                                y - 2,
-                                w - 2 * left + 8,
-                                row_h,
-                                scale(self.theme.green, 0.12),
-                            );
+                        let entry = self.games[i].clone();
+                        let mut right = String::new();
+                        if sys.is_none() {
+                            right.push_str(&self.library.systems[entry.sys].name);
                         }
-                        let label =
-                            format!("{}{}", if on { "> " } else { "  " }, self.games[i].title);
-                        fb.text(
-                            left,
-                            y,
-                            &cut(&label, max_cols),
-                            if on {
-                                self.theme.bright_green
-                            } else {
-                                self.theme.paper
-                            },
-                            1,
-                        );
+                        if self.is_favorite(&entry) {
+                            right.push_str(" *");
+                        }
+                        self.draw_row(fb, y, &entry.game.title, &right, i == sel, self.theme.paper);
                     }
                     let pos = format!("{}/{}", sel + 1, n);
                     fb.text(
@@ -649,7 +881,52 @@ impl Scene {
                 fb.text(
                     left,
                     h - 16,
-                    "A run   B back   <> page",
+                    "A run  B back  Y fav  <> page",
+                    scale(self.theme.dim, 0.7),
+                    1,
+                );
+            }
+            Screen::Profile { sel } => {
+                let y0 = self.draw_header(fb, "omarchy $ tv-profile");
+                let p = self.profile.clone();
+                let rows: [(&str, String); 7] = [
+                    ("monitor", p.monitor.clone()),
+                    ("h shift", format!("{:+}", p.h_shift)),
+                    ("v shift", format!("{:+}", p.v_shift)),
+                    ("h size", format!("{:.2}", p.h_size)),
+                    (
+                        "invert sync",
+                        if p.invert_sync {
+                            "on".into()
+                        } else {
+                            "off".into()
+                        },
+                    ),
+                    ("test pattern", "240p suite".into()),
+                    ("save", String::new()),
+                ];
+                for (i, (label, value)) in rows.iter().enumerate() {
+                    let y = y0 + i as i32 * row_h;
+                    let right = if i < 5 {
+                        format!("< {value} >")
+                    } else {
+                        value.clone()
+                    };
+                    self.draw_row(fb, y, label, &right, i == sel, self.theme.paper);
+                }
+                let idx = format!("preset {}/{}", p.preset_index() + 1, PRESETS.len());
+                fb.text(left, h - 40, &idx, scale(self.theme.dim, 0.7), 1);
+                fb.text(
+                    left,
+                    h - 28,
+                    &cut("saved to profile.toml + switchres.ini", max_cols),
+                    scale(self.theme.dim, 0.7),
+                    1,
+                );
+                fb.text(
+                    left,
+                    h - 16,
+                    "<> change  A select  B back saves",
                     scale(self.theme.dim, 0.7),
                     1,
                 );
@@ -657,7 +934,7 @@ impl Scene {
             Screen::Menu => {}
         }
         if let Some((msg, _)) = &self.message {
-            fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.red, 1);
+            fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.cyan, 1);
         }
     }
 
@@ -1114,5 +1391,32 @@ impl Scene {
         if restart {
             self.start_screensaver(now, None);
         }
+    }
+}
+
+/// Lists of `system_name<TAB>path` lines; system names survive reordering.
+fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|l| {
+            let (name, p) = l.split_once('\t')?;
+            let i = lib.systems.iter().position(|s| s.name == name)?;
+            Some((i, PathBuf::from(p)))
+        })
+        .collect()
+}
+
+fn save_list(path: &std::path::Path, list: &[(usize, PathBuf)], lib: &Library) {
+    let text: String = list
+        .iter()
+        .filter_map(|(i, p)| Some(format!("{}\t{}\n", lib.systems.get(*i)?.name, p.display())))
+        .collect();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Err(e) = std::fs::write(path, text) {
+        eprintln!("cannot write {}: {e}", path.display());
     }
 }

@@ -86,6 +86,17 @@ scanlines or curvature. The tube provides those.
   game: `super` (wide frame, height and refresh follow the core), `native`, or
   a pinned frame such as `512x224`. See
   [`docs/video-policy.md`](docs/video-policy.md).
+- **Right on first launch.** Per system libretro core options, input device
+  types, run-ahead and rewind whitelists, written into RetroArch's config at
+  every launch. Built-in defaults cover the cores Arch ships. See
+  [`docs/systems.md`](docs/systems.md).
+- **Recent and favorites.** Two virtual folders on top of the systems list;
+  `F` or the `Y` button stars a game. Multi disc games appear once through
+  `.m3u` playlists.
+- **TV profile.** Monitor preset (`generic_15`, `ntsc`, `pal`, arcade
+  chassis), centering, horizontal size and sync polarity, saved as
+  `switchres.ini` plus RetroArch centering keys, with the 240p Test Suite one
+  press away as a test pattern.
 - **Screensaver.** After an idle period the wordmark cycles through text
   effects (laser etch, rain, beams, burn, slide, decrypt, expand, unstable),
   like Omarchy's own screensaver does in the terminal.
@@ -106,7 +117,8 @@ and the timeline.
 
 ## Repository layout
 
-- **`docs/`** research and decisions: the 15 kHz study and the video policy.
+- **`docs/`** research and decisions: the 15 kHz study, the video policy, the
+  systems file and TV profile.
 - **`scripts/crt-probe.sh`** read-only probe of a DRM connector: status, EDID,
   kernel mode list, Hyprland view. Used to test DACs.
 - **`shell/`** the native launcher.

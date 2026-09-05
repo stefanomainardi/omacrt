@@ -39,8 +39,8 @@ Options:
 | `--headless --dump 1.0,4.5 --dump-dir DIR` | render frames to PPM without a window                                         |
 
 Controls: arrows or `hjkl` move, `Enter` or `Space` select, `Esc` or
-`Backspace` go back, `q` quits. Game controllers work through SDL: d-pad moves,
-`A` or `Start` selects, `B` goes back.
+`Backspace` go back, `F` stars a game, `q` quits. Game controllers work through
+SDL: d-pad moves, `A` or `Start` selects, `B` goes back, `Y` stars a game.
 
 ## Menu
 
@@ -72,7 +72,9 @@ Items without a command show a message; `quit = true` exits the shell.
 core, extensions and a video policy (`super`, `native` or a pinned `WxH`). The
 shell writes `retroarch.cfg` once (menu and notifications off, save state on
 exit, resume on start) and a `launch.cfg` per game with the policy keys, then
-runs `retroarch --config ... --appendconfig ... -L core rom` and waits. See
+runs `retroarch --config ... --appendconfig ... -L core rom` and waits. Core
+options go to `cores.cfg`, the TV profile to `profile.toml` and
+`switchres.ini`. See [`../docs/systems.md`](../docs/systems.md) and
 [`../docs/video-policy.md`](../docs/video-policy.md).
 
 ## Sound
