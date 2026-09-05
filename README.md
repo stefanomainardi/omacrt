@@ -79,8 +79,13 @@ scanlines or curvature. The tube provides those.
   spinning in fake 3D, slam into the foreground with a shake, a copper bar and
   a burst of dust, then shrink and fly to their spot under the wordmark. Riser,
   slam, chord stab and landing bells come from the same timeline.
-- **Menu.** An `ls` listing driven by `~/.config/omarchy-crt/menu.toml`, with
-  keyboard, `hjkl` and game controller navigation.
+- **Menu.** Omarchy style: a vertical list with pixel icons, a selection band
+  in the theme's `selection` color, accent colored text, chevrons for
+  submenus and slide-in transitions. Home: Games, Favorites, Recent,
+  Settings, About, Power. Settings holds the TV profile, pads, the
+  screensaver (on/off, idle time, effect) and a diagnostics page; About
+  explains the goals and credits; Power goes back to the desktop or powers
+  off after a confirming second press.
 - **Game browser.** `games/` lists the systems from `systems.toml`, then the
   ROMs of a system as a paged list. A game starts in RetroArch with a dedicated
   config: no RetroArch menu, no notifications, save state on exit and resume on
@@ -106,8 +111,10 @@ scanlines or curvature. The tube provides those.
   `switchres.ini` plus RetroArch centering keys, with the 240p Test Suite one
   press away as a test pattern.
 - **Screensaver.** After an idle period the wordmark cycles through text
-  effects (laser etch, rain, beams, burn, slide, decrypt, expand, unstable),
-  like Omarchy's own screensaver does in the terminal.
+  effects (laser etch, rain, beams, burn, slide, decrypt, expand, unstable,
+  vhstape), like Omarchy's own screensaver does in the terminal. Nine of the
+  TerminalTextEffects catalog so far; effect and idle time are configurable
+  from Settings and saved in `settings.toml`.
 - **Theme aware.** Colors come from `~/.config/omarchy/current/colors.toml`.
   Icon and wordmark are Omarchy's own assets.
 

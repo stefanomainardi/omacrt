@@ -12,10 +12,11 @@ use crate::bt::Bluetooth;
 use crate::effects::{self, Effect, Kind, Palette};
 use crate::etch::LaserEtch;
 use crate::fb::{Color, Framebuffer, scale};
+use crate::icons;
 use crate::library::{Game, Library};
-use crate::menu::Item;
 use crate::pad::PadKind;
 use crate::profile::{PRESETS, Profile};
+use crate::settings::Settings;
 use crate::theme::Theme;
 use std::path::PathBuf;
 
@@ -42,6 +43,7 @@ enum Screen {
     Menu,
     Systems {
         sel: usize,
+        top: usize,
     },
     /// `sys` is None for the virtual lists (recent, favorites).
     Games {
@@ -54,6 +56,21 @@ enum Screen {
     },
     Pair {
         sel: usize,
+    },
+    Settings {
+        sel: usize,
+    },
+    Power {
+        sel: usize,
+    },
+    Saver {
+        sel: usize,
+    },
+    Diag {
+        top: usize,
+    },
+    About {
+        top: usize,
     },
 }
 
@@ -108,6 +125,65 @@ impl SysInfo {
 /// Wordmark pixel size and geometry shared by boot and screensaver.
 const MARK_SCALE: i32 = 3;
 const ETCH_START: f32 = 4.15;
+/// Home menu entries: icon, label, opens a submenu.
+const HOME: [(icons::Icon, &str, bool); 6] = [
+    (icons::GAMEPAD, "Games", true),
+    (icons::STAR, "Favorites", true),
+    (icons::CLOCK, "Recent", true),
+    (icons::GEAR, "Settings", true),
+    (icons::INFO, "About", true),
+    (icons::POWER, "Power", true),
+];
+
+/// Settings submenu entries.
+const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 4] = [
+    (icons::TV, "TV profile", true),
+    (icons::PAD, "Pads", true),
+    (icons::SAVER, "Screensaver", true),
+    (icons::PULSE, "Diagnostics", true),
+];
+
+/// Power submenu entries.
+const POWER_ITEMS: [(icons::Icon, &str, bool); 2] = [
+    (icons::DESKTOP, "Back to desktop", false),
+    (icons::POWER, "Power off", false),
+];
+
+/// Rows per page in the systems list.
+const SYS_PAGE: usize = 11;
+
+/// About page, wrapped for 36 columns.
+const ABOUT: &[&str] = &[
+    "OMARCHY CRT",
+    "",
+    "Retro gaming on a real 15 kHz tube,",
+    "from your everyday Omarchy machine.",
+    "",
+    "Goals",
+    "- native resolutions and refresh",
+    "  rates for every game, 480i too",
+    "- no scaler, no fake scanlines:",
+    "  the CRT does the work",
+    "- games right on first launch:",
+    "  cores, options, pads, latency",
+    "- one boot entry, the desktop",
+    "  stays untouched",
+    "- fully open, from kernel to shell",
+    "",
+    "Made by Stefano Mainardi",
+    "",
+    "Built on Omarchy by DHH and the",
+    "Omacom Foundation (MIT).",
+    "Effects after TerminalTextEffects",
+    "by ChrisBuilds. Switchres by",
+    "Calamity. 15 kHz kernel patches",
+    "by D0023R. font8x8 by Daniel",
+    "Hepper. RetroArch and the libretro",
+    "cores by their authors.",
+    "",
+    "MIT license.",
+];
+
 const TAG_SCALE: i32 = 2;
 const TAG_START: f32 = 6.9;
 
@@ -120,7 +196,10 @@ struct Saver {
 pub struct Scene {
     theme: Theme,
     info: SysInfo,
-    items: Vec<Item>,
+    band_y: f32,
+    screen_since: f64,
+    settings: Settings,
+    diag: Vec<(String, String)>,
     mark_cols: i32,
     mark_rows: i32,
     boot_started: bool,
@@ -157,20 +236,17 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new(
-        theme: Theme,
-        info: SysInfo,
-        items: Vec<Item>,
-        idle_secs: f32,
-        library: Library,
-    ) -> Self {
+    pub fn new(theme: Theme, info: SysInfo, idle_secs: f32, library: Library) -> Self {
         let stops = [theme.magenta, theme.cyan, theme.paper];
         let grid = effects::Grid::wordmark(stops);
         let (mark_cols, mark_rows) = (grid.cols, grid.rows);
         Self {
             theme,
             info,
-            items,
+            band_y: -1.0,
+            screen_since: 0.0,
+            settings: Settings::load(&library.config_dir),
+            diag: Vec::new(),
             mark_cols,
             mark_rows,
             boot_started: false,
@@ -297,48 +373,43 @@ impl Scene {
             self.navigate_browser(nav);
             return;
         }
-        if self.items.is_empty() || nav == Nav::Back {
-            return;
-        }
-        let n = self.items.len();
-        let rows = n.div_ceil(2);
-        let (col, row) = (self.sel / rows, self.sel % rows);
+        let n = HOME.len();
         let next = match nav {
-            Nav::Up => {
-                if row == 0 {
-                    self.sel
-                } else {
-                    self.sel - 1
-                }
-            }
-            Nav::Down => {
-                if row + 1 >= rows || self.sel + 1 >= n {
-                    self.sel
-                } else {
-                    self.sel + 1
-                }
-            }
-            Nav::Left => {
-                if col == 0 {
-                    self.sel
-                } else {
-                    self.sel - rows
-                }
-            }
-            Nav::Right => {
-                if col + 1 >= 2 {
-                    self.sel
-                } else {
-                    (self.sel + rows).min(n - 1)
-                }
-            }
-            Nav::Back => self.sel,
+            Nav::Up if self.sel > 0 => self.sel - 1,
+            Nav::Down if self.sel + 1 < n => self.sel + 1,
+            _ => self.sel,
         };
         if next != self.sel {
             self.sel = next;
             self.armed = None;
             self.pending.push(Sound::Move);
         }
+    }
+
+    /// Idle seconds before the screensaver, from settings (0 disables).
+    fn idle_limit(&self) -> f32 {
+        if !self.settings.screensaver.enabled {
+            return 0.0;
+        }
+        if self.idle_secs > 0.0 && self.settings.screensaver.idle_secs == 60 {
+            // Command line override while the setting is at its default.
+            return self.idle_secs;
+        }
+        self.settings.screensaver.idle_secs as f32
+    }
+
+    fn chosen_effect(&self) -> Option<Kind> {
+        effects::ALL
+            .iter()
+            .copied()
+            .find(|k| k.name() == self.settings.screensaver.effect)
+    }
+
+    /// Switch screen and restart the slide-in transition.
+    fn go(&mut self, screen: Screen) {
+        self.screen = screen;
+        self.screen_since = self.now;
+        self.band_y = -1.0;
     }
 
     pub fn activate(&mut self) -> Action {
@@ -348,72 +419,183 @@ impl Scene {
         if !matches!(self.screen, Screen::Menu) {
             return self.activate_browser();
         }
-        let Some(item) = self.items.get(self.sel).cloned() else {
-            return Action::None;
-        };
         self.pending.push(Sound::Select);
-        if item.quit {
-            return Action::Quit;
-        }
-        if item.confirm && !item.command.trim().is_empty() {
-            let still_armed =
-                matches!(self.armed, Some((i, until)) if i == self.sel && self.now < until);
-            if !still_armed {
-                self.armed = Some((self.sel, self.now + 3.0));
-                self.message = Some((
-                    format!("press again to {}", item.name.trim_end_matches('/')),
-                    self.now + 3.0,
-                ));
-                return Action::None;
-            }
-            self.armed = None;
-        }
-        if !item.command.trim().is_empty() {
-            self.message = Some((
-                format!("launching {}", item.name.trim_end_matches('/')),
-                self.now + 4.0,
-            ));
-            return Action::Launch(item.command);
-        }
-        let name = item.name.trim_end_matches('/');
-        let text = match name {
-            "about" => format!(
-                "omarchy-crt {} on {}",
-                env!("CARGO_PKG_VERSION"),
-                self.info.kernel
-            ),
-            "tv-profile" => {
-                self.screen = Screen::Profile { sel: 0 };
-                return Action::None;
-            }
-            "pair-pad" => {
-                if !Bluetooth::available() {
-                    "bluetoothctl not found".to_string()
+        match self.sel {
+            0 => {
+                if self.library.systems.is_empty() {
+                    self.message = Some(("no systems in systems.toml".into(), self.now + 4.0));
                 } else {
-                    self.screen = Screen::Pair { sel: 0 };
+                    self.go(Screen::Systems { sel: 0, top: 0 });
+                }
+            }
+            1 => {
+                let list = self.favorites.clone();
+                self.open_virtual(&list);
+            }
+            2 => {
+                let list = self.recent.clone();
+                self.open_virtual(&list);
+            }
+            3 => self.go(Screen::Settings { sel: 0 }),
+            4 => self.go(Screen::About { top: 0 }),
+            _ => self.go(Screen::Power { sel: 0 }),
+        }
+        Action::None
+    }
+
+    fn activate_settings(&mut self, sel: usize) -> Action {
+        self.pending.push(Sound::Select);
+        match sel {
+            0 => self.go(Screen::Profile { sel: 0 }),
+            1 => {
+                if Bluetooth::available() {
+                    self.go(Screen::Pair { sel: 0 });
                     if self.bt.devices.is_empty() {
                         self.bt.start_scan();
                     }
-                    return Action::None;
-                }
-            }
-            "screensaver" => {
-                let now = self.now;
-                self.start_screensaver(now, None);
-                return Action::None;
-            }
-            "games" | "retroarch" => {
-                if self.library.systems.is_empty() {
-                    "no systems configured in systems.toml".to_string()
                 } else {
-                    self.screen = Screen::Systems { sel: 0 };
-                    return Action::None;
+                    self.message = Some(("bluetoothctl not found".into(), self.now + 4.0));
                 }
             }
-            other => format!("{other}: nothing to do yet"),
-        };
-        self.message = Some((text, self.now + 4.0));
+            2 => self.go(Screen::Saver { sel: 0 }),
+            _ => {
+                self.diag = self.gather_diagnostics();
+                self.go(Screen::Diag { top: 0 });
+            }
+        }
         Action::None
+    }
+
+    /// The Power submenu: back to the desktop, power off with confirmation.
+    fn activate_power(&mut self, sel: usize) -> Action {
+        self.pending.push(Sound::Select);
+        match sel {
+            0 => Action::Quit,
+            _ => {
+                let still_armed =
+                    matches!(self.armed, Some((i, until)) if i == sel && self.now < until);
+                if !still_armed {
+                    self.armed = Some((sel, self.now + 3.0));
+                    self.message = Some(("press again to power off".into(), self.now + 3.0));
+                    return Action::None;
+                }
+                self.armed = None;
+                Action::Launch("systemctl poweroff".into())
+            }
+        }
+    }
+
+    /// Screensaver settings rows: enabled, idle time, effect, preview.
+    fn adjust_saver(&mut self, row: usize, dir: i32) {
+        let sv = &mut self.settings.screensaver;
+        match row {
+            0 => sv.enabled = !sv.enabled,
+            1 => {
+                let v = sv.idle_secs as i32 + dir * 30;
+                sv.idle_secs = v.clamp(30, 900) as u32;
+            }
+            2 => {
+                let names: Vec<&str> = std::iter::once("random")
+                    .chain(effects::ALL.iter().map(|k| k.name()))
+                    .collect();
+                let i = names.iter().position(|n| *n == sv.effect).unwrap_or(0) as i32;
+                let next = (i + dir).rem_euclid(names.len() as i32) as usize;
+                sv.effect = names[next].to_string();
+            }
+            _ => {}
+        }
+    }
+
+    fn save_settings(&mut self) {
+        if let Err(e) = self.settings.save(&self.library.config_dir) {
+            eprintln!("settings: {e}");
+        }
+    }
+
+    /// Facts about the machine and the setup, for the Diagnostics screen.
+    fn gather_diagnostics(&self) -> Vec<(String, String)> {
+        let read = |p: &str| {
+            std::fs::read_to_string(p)
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        };
+        let mut out = vec![
+            ("shell".into(), env!("CARGO_PKG_VERSION").to_string()),
+            ("kernel".into(), self.info.kernel.clone()),
+            ("host".into(), self.info.host.clone()),
+            ("mode".into(), self.info.mode.clone()),
+            ("theme".into(), self.theme.name.clone()),
+        ];
+        // GPU driver of the first card.
+        let uevent = read("/sys/class/drm/card0/device/uevent");
+        let driver = uevent
+            .lines()
+            .find_map(|l| l.strip_prefix("DRIVER="))
+            .unwrap_or("?")
+            .to_string();
+        let pci = uevent
+            .lines()
+            .find_map(|l| l.strip_prefix("PCI_ID="))
+            .unwrap_or("")
+            .to_string();
+        out.push(("gpu".into(), format!("{driver} {pci}").trim().to_string()));
+        // Connectors and their status.
+        if let Ok(rd) = std::fs::read_dir("/sys/class/drm") {
+            let mut conns: Vec<String> = rd
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    let status = read(&format!("/sys/class/drm/{name}/status"));
+                    (name.contains('-') && !name.contains("Writeback") && !status.is_empty())
+                        .then(|| format!("{} {}", name.trim_start_matches("card"), &status[..1]))
+                })
+                .collect();
+            conns.sort();
+            for c in conns {
+                out.push(("output".into(), c));
+            }
+        }
+        // RetroArch and cores.
+        let ra = std::process::Command::new(&self.library.retroarch)
+            .arg("--version")
+            .output()
+            .ok()
+            .and_then(|o| {
+                let text = String::from_utf8_lossy(&o.stdout).to_string();
+                text.lines()
+                    .find(|l| l.contains("RetroArch"))
+                    .map(|l| l.split_whitespace().take(2).collect::<Vec<_>>().join(" "))
+            })
+            .unwrap_or_else(|| "not found".into());
+        out.push(("retroarch".into(), ra));
+        let cores = std::fs::read_dir(&self.library.core_dir)
+            .map(|rd| rd.filter_map(|e| e.ok()).count())
+            .unwrap_or(0);
+        out.push((
+            "cores".into(),
+            format!("{cores} in {}", self.library.core_dir.display()),
+        ));
+        out.push(("systems".into(), self.library.systems.len().to_string()));
+        out.push((
+            "switching".into(),
+            if self.library.switching {
+                "on".into()
+            } else {
+                "off".into()
+            },
+        ));
+        out.push(("monitor".into(), self.profile.monitor.clone()));
+        out.push(("pad".into(), format!("{:?}", self.pad).to_lowercase()));
+        out.push((
+            "bluetooth".into(),
+            if Bluetooth::available() {
+                "available".into()
+            } else {
+                "missing".into()
+            },
+        ));
+        out
     }
 
     // -- game browser (systems, then games; recent and favorites on top) -----
@@ -468,21 +650,30 @@ impl Scene {
         let mut moved = false;
         let system_rows = self.system_rows();
         match &mut self.screen {
-            Screen::Systems { sel } => match nav {
-                Nav::Up if *sel > 0 => {
-                    *sel -= 1;
-                    moved = true;
+            Screen::Systems { sel, top } => {
+                let mut back = false;
+                match nav {
+                    Nav::Up if *sel > 0 => {
+                        *sel -= 1;
+                        moved = true;
+                    }
+                    Nav::Down if *sel + 1 < system_rows => {
+                        *sel += 1;
+                        moved = true;
+                    }
+                    Nav::Back | Nav::Left => back = true,
+                    _ => {}
                 }
-                Nav::Down if *sel + 1 < system_rows => {
-                    *sel += 1;
-                    moved = true;
+                if *sel < *top {
+                    *top = *sel;
+                } else if *sel >= *top + SYS_PAGE {
+                    *top = *sel + 1 - SYS_PAGE;
                 }
-                Nav::Back | Nav::Left => {
+                if back {
                     self.screen = Screen::Menu;
                     moved = true;
                 }
-                _ => {}
-            },
+            }
             Screen::Games { sel, top, .. } => {
                 let n = self.games.len();
                 let page = Self::ROWS_PER_PAGE;
@@ -508,7 +699,10 @@ impl Scene {
                             Screen::Games { sys: Some(i), .. } => i + Self::VIRTUAL,
                             _ => 0,
                         };
-                        self.screen = Screen::Systems { sel: row };
+                        self.screen = Screen::Systems {
+                            sel: row,
+                            top: row.saturating_sub(SYS_PAGE - 1),
+                        };
                         self.pending.push(Sound::Move);
                         return;
                     }
@@ -558,6 +752,92 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
+                    self.screen = Screen::Settings { sel: 1 };
+                    moved = true;
+                }
+                _ => {}
+            },
+            Screen::Settings { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < SETTINGS_ITEMS.len() => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.screen = Screen::Menu;
+                    moved = true;
+                }
+                _ => {}
+            },
+            Screen::Power { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    self.armed = None;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < POWER_ITEMS.len() => {
+                    *sel += 1;
+                    self.armed = None;
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.armed = None;
+                    self.screen = Screen::Menu;
+                    moved = true;
+                }
+                _ => {}
+            },
+            Screen::Saver { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < 4 => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    let row = *sel;
+                    let dir = if nav == Nav::Right { 1 } else { -1 };
+                    self.adjust_saver(row, dir);
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.save_settings();
+                    self.screen = Screen::Settings { sel: 2 };
+                    self.pending.push(Sound::Lock);
+                    return;
+                }
+                _ => {}
+            },
+            Screen::Diag { top } => match nav {
+                Nav::Up if *top > 0 => {
+                    *top -= 1;
+                    moved = true;
+                }
+                Nav::Down if *top + 12 < self.diag.len() => {
+                    *top += 1;
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.screen = Screen::Settings { sel: 3 };
+                    moved = true;
+                }
+                _ => {}
+            },
+            Screen::About { top } => match nav {
+                Nav::Up if *top > 0 => {
+                    *top -= 1;
+                    moved = true;
+                }
+                Nav::Down if *top + 14 < ABOUT.len() => {
+                    *top += 1;
+                    moved = true;
+                }
+                Nav::Back => {
                     self.screen = Screen::Menu;
                     moved = true;
                 }
@@ -583,7 +863,7 @@ impl Scene {
 
     fn activate_browser(&mut self) -> Action {
         match self.screen {
-            Screen::Systems { sel } => {
+            Screen::Systems { sel, .. } => {
                 self.pending.push(Sound::Select);
                 match sel {
                     0 => {
@@ -625,6 +905,21 @@ impl Scene {
                 }
                 Action::None
             }
+            Screen::Settings { sel } => self.activate_settings(sel),
+            Screen::Power { sel } => self.activate_power(sel),
+            Screen::Saver { sel } => {
+                if sel == 3 {
+                    self.pending.push(Sound::Select);
+                    let kind = self.chosen_effect();
+                    let now = self.now;
+                    self.start_screensaver(now, kind);
+                } else {
+                    self.adjust_saver(sel, 1);
+                    self.pending.push(Sound::Move);
+                }
+                Action::None
+            }
+            Screen::Diag { .. } | Screen::About { .. } => Action::None,
             Screen::Menu => Action::None,
         }
     }
@@ -724,11 +1019,19 @@ impl Scene {
         match system {
             Some("profile") => self.screen = Screen::Profile { sel: 0 },
             Some("pair") => self.screen = Screen::Pair { sel: 0 },
+            Some("settings") => self.screen = Screen::Settings { sel: 0 },
+            Some("about") => self.screen = Screen::About { top: 0 },
+            Some("saver") => self.screen = Screen::Saver { sel: 0 },
+            Some("diag") => {
+                self.diag = self.gather_diagnostics();
+                self.screen = Screen::Diag { top: 0 };
+            }
+            Some("power") => self.screen = Screen::Power { sel: 0 },
             Some(n) => match self.library.systems.iter().position(|s| s.name == n) {
                 Some(i) => self.open_games(Some(i)),
-                None => self.screen = Screen::Systems { sel: 0 },
+                None => self.screen = Screen::Systems { sel: 0, top: 0 },
             },
-            None => self.screen = Screen::Systems { sel: 0 },
+            None => self.screen = Screen::Systems { sel: 0, top: 0 },
         }
     }
 
@@ -761,7 +1064,7 @@ impl Scene {
     /// Compact header used by the browser and the running screen: small icon,
     /// the wordmark at 1 px per cell, a prompt line underneath.
     fn draw_header(&self, fb: &mut Framebuffer, prompt: &str) -> i32 {
-        let left = (fb.w as f32 * 0.05) as i32;
+        let left = (fb.w as f32 * 0.05) as i32 + self.slide();
         fb.bitmap(left, 8, &ICON_24, self.theme.green, 1, 24);
         let mx = fb.w as i32 - left - self.mark_small.cols;
         for cell in &self.mark_small.cells {
@@ -821,47 +1124,61 @@ impl Scene {
         let cut = |s: &str, n: usize| -> String { s.chars().take(n).collect() };
         let row_h = 12;
         match self.screen {
-            Screen::Systems { sel } => {
-                let y0 = self.draw_header(fb, "omarchy $ ls games/");
-                self.draw_row(
-                    fb,
-                    y0,
-                    "recent/",
-                    &format!("{:>4}", self.recent.len()),
-                    sel == 0,
-                    self.theme.cyan,
-                );
-                self.draw_row(
-                    fb,
-                    y0 + row_h,
-                    "favorites/",
-                    &format!("{:>4}", self.favorites.len()),
-                    sel == 1,
-                    self.theme.cyan,
-                );
+            Screen::Systems { sel, top } => {
+                let y0 = self.draw_header(fb, "Games");
+                let ox = self.slide();
                 let systems = self.library.systems.clone();
-                for (i, sys) in systems.iter().enumerate() {
-                    let y = y0 + (i + Self::VIRTUAL) as i32 * row_h;
-                    let count = self.library.games(sys).len();
-                    let right = format!(
-                        "{count:>4}  {}",
-                        crate::library::VideoPolicy::parse(&sys.video).label()
-                    );
-                    self.draw_row(
-                        fb,
-                        y,
-                        &format!("{}/", sys.name),
-                        &right,
-                        sel == i + Self::VIRTUAL,
-                        self.theme.green,
-                    );
+                let total = Self::VIRTUAL + systems.len();
+                let end = (top + SYS_PAGE).min(total);
+                for (row, i) in (top..end).enumerate() {
+                    let y = y0 + row as i32 * row_h;
+                    let on = i == sel;
+                    let icon_c = if on {
+                        self.theme.accent
+                    } else {
+                        self.theme.dim
+                    };
+                    match i {
+                        0 => {
+                            self.draw_row(
+                                fb,
+                                y,
+                                "Recent",
+                                &format!("{:>4}", self.recent.len()),
+                                on,
+                                self.theme.paper,
+                            );
+                            fb.bitmap(left + ox + 4, y + 1, &icons::CLOCK, icon_c, 1, 8);
+                        }
+                        1 => {
+                            self.draw_row(
+                                fb,
+                                y,
+                                "Favorites",
+                                &format!("{:>4}", self.favorites.len()),
+                                on,
+                                self.theme.paper,
+                            );
+                            fb.bitmap(left + ox + 4, y + 1, &icons::STAR, icon_c, 1, 8);
+                        }
+                        _ => {
+                            let sys = &systems[i - Self::VIRTUAL];
+                            let count = self.library.games(sys).len();
+                            let right = format!(
+                                "{count:>4}  {}",
+                                crate::library::VideoPolicy::parse(&sys.video).label()
+                            );
+                            self.draw_row(fb, y, &sys.name, &right, on, self.theme.green);
+                            fb.bitmap(left + ox + 4, y + 1, &icons::CONSOLE, icon_c, 1, 8);
+                        }
+                    }
                 }
                 if sel >= Self::VIRTUAL {
                     if let Some(sys) = systems.get(sel - Self::VIRTUAL) {
                         let core = self.library.core_path(sys);
                         let core_ok = core.exists();
                         let info = format!(
-                            "core {}{}  runahead {}  rewind {}",
+                            "{}{}  runahead {}  rewind {}",
                             sys.core,
                             if core_ok { "" } else { " (missing)" },
                             sys.runahead,
@@ -880,18 +1197,23 @@ impl Scene {
                         );
                     }
                 }
-                fb.text(
-                    left,
-                    h - 16,
-                    "A open   B back",
-                    scale(self.theme.dim, 0.7),
-                    1,
-                );
+                if total > SYS_PAGE {
+                    let pos = format!("{}/{}", sel + 1, total);
+                    fb.text(
+                        w - left - Framebuffer::text_width(&pos, 1),
+                        h - 28,
+                        &pos,
+                        self.theme.dim,
+                        1,
+                    );
+                }
+                let hint = self.hint(&[("A", "open"), ("B", "back")]);
+                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
             Screen::Games { sys, sel, top } => {
                 let prompt = match sys {
-                    Some(i) => format!("omarchy $ ls games/{}/", self.library.systems[i].name),
-                    None => "omarchy $ ls games/*".to_string(),
+                    Some(i) => self.library.systems[i].name.clone(),
+                    None => "Recent and favorites".to_string(),
                 };
                 let n = self.games.len();
                 let y0 = self.draw_header(fb, &prompt);
@@ -919,10 +1241,18 @@ impl Scene {
                         if sys.is_none() {
                             right.push_str(&self.library.systems[entry.sys].name);
                         }
-                        if self.is_favorite(&entry) {
-                            right.push_str(" *");
-                        }
+                        let fav = self.is_favorite(&entry);
                         self.draw_row(fb, y, &entry.game.title, &right, i == sel, self.theme.paper);
+                        if fav {
+                            fb.bitmap(
+                                left + self.slide() + 4,
+                                y + 1,
+                                &icons::STAR,
+                                self.theme.yellow,
+                                1,
+                                8,
+                            );
+                        }
                     }
                     let pos = format!("{}/{}", sel + 1, n);
                     fb.text(
@@ -942,7 +1272,7 @@ impl Scene {
                 );
             }
             Screen::Profile { sel } => {
-                let y0 = self.draw_header(fb, "omarchy $ tv-profile");
+                let y0 = self.draw_header(fb, "TV");
                 let p = self.profile.clone();
                 let rows: [(&str, String); 7] = [
                     ("monitor", p.monitor.clone()),
@@ -987,7 +1317,7 @@ impl Scene {
                 );
             }
             Screen::Pair { sel } => {
-                let y0 = self.draw_header(fb, "omarchy $ pair-pad");
+                let y0 = self.draw_header(fb, "Pads");
                 let devices = self.bt.devices.clone();
                 if devices.is_empty() {
                     fb.text(left, y0, "no devices yet", self.theme.dim, 1);
@@ -1006,6 +1336,26 @@ impl Scene {
                 let hint = self.hint(&[("A", "pair/scan"), ("B", "back")]);
                 fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
+            Screen::Settings { sel } => {
+                self.draw_menu_screen(fb, "Settings", &SETTINGS_ITEMS, sel);
+                return;
+            }
+            Screen::Power { sel } => {
+                self.draw_menu_screen(fb, "Power", &POWER_ITEMS, sel);
+                return;
+            }
+            Screen::Saver { sel } => {
+                self.draw_saver_settings(fb, sel);
+                return;
+            }
+            Screen::Diag { top } => {
+                self.draw_diag(fb, top);
+                return;
+            }
+            Screen::About { top } => {
+                self.draw_about(fb, top);
+                return;
+            }
             Screen::Menu => {}
         }
         if let Some((msg, _)) = &self.message {
@@ -1022,7 +1372,7 @@ impl Scene {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32;
-        let y0 = self.draw_header(fb, &format!("omarchy $ play {system}/"));
+        let y0 = self.draw_header(fb, &format!("Playing {system}"));
         let max_cols = ((w - 2 * left) / 8) as usize;
         let title: String = title.chars().take(max_cols).collect();
         fb.text(left, y0 + 8, &title, self.theme.bright_green, 1);
@@ -1105,8 +1455,10 @@ impl Scene {
                     self.message = None;
                 }
             }
-            if self.idle_secs > 0.0 && (now - self.last_input) as f32 > self.idle_secs {
-                self.start_screensaver(now, None);
+            let limit = self.idle_limit();
+            if limit > 0.0 && (now - self.last_input) as f32 > limit {
+                let kind = self.chosen_effect();
+                self.start_screensaver(now, kind);
             }
             return;
         }
@@ -1114,7 +1466,7 @@ impl Scene {
         self.draw_logo(fb, t);
         self.draw_etch(fb, t);
         self.draw_crt_tag(fb, t);
-        self.draw_listing(fb, t);
+        self.draw_home(fb, t);
         if t >= 4.0 && !self.chime_played {
             self.chime_played = true;
             self.pending.push(Sound::Chime);
@@ -1128,9 +1480,10 @@ impl Scene {
                 self.message = None;
             }
         }
-        if self.menu_live && self.idle_secs > 0.0 && (now - self.last_input) as f32 > self.idle_secs
-        {
-            self.start_screensaver(now, None);
+        let limit = self.idle_limit();
+        if self.menu_live && limit > 0.0 && (now - self.last_input) as f32 > limit {
+            let kind = self.chosen_effect();
+            self.start_screensaver(now, kind);
         }
     }
 
@@ -1341,7 +1694,60 @@ impl Scene {
         crate::crt_tag::draw(fb, x, y, TAG_SCALE, local, &look);
     }
 
-    fn draw_listing(&mut self, fb: &mut Framebuffer, t: f32) {
+    /// Horizontal slide-in offset for a screen that just opened.
+    fn slide(&self) -> i32 {
+        let p = ((self.now - self.screen_since) / 0.12).clamp(0.0, 1.0) as f32;
+        ((1.0 - ease(p)) * 40.0) as i32
+    }
+
+    /// One Omarchy style menu row: icon, label, chevron; the selected row sits
+    /// on a band in the theme's selection color with accent colored text.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_menu_row(
+        &self,
+        fb: &mut Framebuffer,
+        x: i32,
+        y: i32,
+        width: i32,
+        icon: &icons::Icon,
+        label: &str,
+        submenu: bool,
+        on: bool,
+        fade: f32,
+    ) {
+        let (icon_c, text_c, chev_c) = if on {
+            (self.theme.accent, self.theme.accent, self.theme.accent)
+        } else {
+            (self.theme.dim, self.theme.paper, self.theme.dim)
+        };
+        fb.bitmap(x + 4, y + 2, icon, scale(icon_c, fade), 1, 8);
+        fb.text(x + 18, y + 2, label, scale(text_c, fade), 1);
+        if submenu {
+            let cx = x + width - 8;
+            for i in 0..3 {
+                fb.put(cx + i, y + 3 + i, scale(chev_c, fade));
+                fb.put(cx + i, y + 9 - i, scale(chev_c, fade));
+            }
+        }
+    }
+
+    /// Animate the selection band toward `target_y`; returns the band's y.
+    fn band(&mut self, target_y: i32) -> i32 {
+        let target = target_y as f32;
+        if self.band_y < 0.0 {
+            self.band_y = target;
+        } else {
+            let k = 0.35;
+            self.band_y += (target - self.band_y) * k;
+            if (self.band_y - target).abs() < 0.5 {
+                self.band_y = target;
+            }
+        }
+        self.band_y.round() as i32
+    }
+
+    /// Home menu under the logo: Play..., six entries, footer.
+    fn draw_home(&mut self, fb: &mut Framebuffer, t: f32) {
         let fade = ease(clamp((t - 9.65) / 0.45, 0.0, 1.0));
         if fade <= 0.0 {
             return;
@@ -1349,93 +1755,198 @@ impl Scene {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32;
-        let max_cols = ((w - 2 * left) / 8) as usize;
-        let cut = |s: &str| -> String { s.chars().take(max_cols).collect() };
-
+        let width = w - 2 * left;
         let (_, tag_y, _, tag_h) = self.tag_geometry(fb);
-        let mut y = tag_y + tag_h + 6;
-        fb.text(
-            left,
-            y,
-            &cut("Beautiful, Fun & Opinionated Linux"),
-            scale(self.theme.paper, fade),
-            1,
-        );
-        y += 12;
-        // The prompt is typed out, one character every 40 ms, then the listing follows.
-        let prompt = "omarchy $ ls";
-        let typed = (((t - 9.8) / 0.04).floor().max(0.0) as usize).min(prompt.len());
-        fb.text(left, y, &prompt[..typed], scale(self.theme.dim, fade), 1);
-        if typed < prompt.len() {
-            if (self.now * 4.0).floor() as i64 % 2 == 0 {
-                fb.rect(
-                    left + Framebuffer::text_width(&prompt[..typed], 1),
-                    y,
-                    6,
-                    8,
-                    scale(self.theme.dim, fade),
-                );
-            }
-            return;
+        let y0 = tag_y + tag_h + 4;
+        fb.text(left + 4, y0, "Play...", scale(self.theme.dim, fade), 1);
+        let rows_y = y0 + 12;
+        let row_h = 14;
+        let band_y = self.band(rows_y + self.sel as i32 * row_h);
+        if self.menu_live {
+            fb.rect(
+                left,
+                band_y,
+                width,
+                row_h - 1,
+                scale(self.theme.selection, fade),
+            );
         }
-        y += 14;
-
-        let n = self.items.len();
-        let rows = n.div_ceil(2);
-        let col_w = (w - 2 * left) / 2;
-        let row_h = 12;
-        for (i, item) in self.items.iter().enumerate() {
-            let col = (i / rows) as i32;
-            let row = (i % rows) as i32;
-            let ix = left + col * col_w;
-            let iy = y + row * row_h;
-            let on = self.menu_live && i == self.sel;
-            if on {
-                fb.rect(
-                    ix - 4,
-                    iy - 2,
-                    col_w - 8,
-                    row_h,
-                    scale(self.theme.green, 0.12 * fade),
-                );
-                fb.text(
-                    ix,
-                    iy,
-                    &format!("> {}", item.name),
-                    scale(self.theme.bright_green, fade),
-                    1,
-                );
-            } else {
-                fb.text(
-                    ix,
-                    iy,
-                    &format!("  {}", item.name),
-                    scale(self.theme.green, fade),
-                    1,
-                );
-            }
+        for (i, (icon, label, submenu)) in HOME.iter().enumerate() {
+            let y = rows_y + i as i32 * row_h;
+            self.draw_menu_row(
+                fb,
+                left,
+                y,
+                width,
+                icon,
+                label,
+                *submenu,
+                self.menu_live && i == self.sel,
+                fade,
+            );
         }
-
+        let max_cols = (width / 8) as usize;
+        let cut = |s: &str| -> String { s.chars().take(max_cols).collect() };
         if let Some((msg, _)) = &self.message {
-            let my = h - 32;
-            fb.text(left, my, &cut(msg), scale(self.theme.cyan, fade), 1);
-            let cursor_x = left + Framebuffer::text_width(&cut(msg), 1) + 3;
-            if (self.now * 2.0).floor() as i64 % 2 == 0 {
-                fb.rect(cursor_x, my, 6, 8, scale(self.theme.cyan, fade));
-            }
+            fb.text(left, h - 28, &cut(msg), scale(self.theme.cyan, fade), 1);
         }
-
         let footer = format!(
             "{} {} {}",
             self.info.kernel, self.info.mode, self.theme.name
         );
         fb.text(
             left,
-            h - 16,
+            h - 14,
             &cut(&footer),
             scale(self.theme.dim, 0.7 * fade),
             1,
         );
+    }
+
+    /// A submenu drawn like the home rows under the compact header.
+    fn draw_menu_screen(
+        &mut self,
+        fb: &mut Framebuffer,
+        title: &str,
+        items: &[(icons::Icon, &str, bool)],
+        sel: usize,
+    ) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, title);
+        let row_h = 14;
+        let band_y = self.band(y0 + sel as i32 * row_h);
+        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        for (i, (icon, label, sub)) in items.iter().enumerate() {
+            let y = y0 + i as i32 * row_h;
+            self.draw_menu_row(fb, left, y, width, icon, label, *sub, i == sel, 1.0);
+        }
+        let max_cols = (width / 8) as usize;
+        if let Some((msg, _)) = &self.message {
+            let m: String = msg.chars().take(max_cols).collect();
+            fb.text(left, h - 28, &m, self.theme.cyan, 1);
+        }
+        let hint = self.hint(&[("A", "select"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// Screensaver settings: enabled, idle time, effect, preview.
+    fn draw_saver_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, "Screensaver");
+        let sv = self.settings.screensaver.clone();
+        let rows: [(&str, String); 4] = [
+            (
+                "enabled",
+                if sv.enabled {
+                    "on".into()
+                } else {
+                    "off".into()
+                },
+            ),
+            ("after", format!("{} s", sv.idle_secs)),
+            ("effect", sv.effect.clone()),
+            ("preview", String::new()),
+        ];
+        let row_h = 14;
+        let band_y = self.band(y0 + sel as i32 * row_h);
+        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        for (i, (label, value)) in rows.iter().enumerate() {
+            let y = y0 + i as i32 * row_h;
+            let on = i == sel;
+            let c = if on {
+                self.theme.accent
+            } else {
+                self.theme.paper
+            };
+            fb.text(left + 18, y + 2, label, c, 1);
+            let right = if i < 3 {
+                format!("< {value} >")
+            } else {
+                value.clone()
+            };
+            fb.text(
+                left + width - 8 - Framebuffer::text_width(&right, 1),
+                y + 2,
+                &right,
+                if on {
+                    self.theme.accent
+                } else {
+                    self.theme.dim
+                },
+                1,
+            );
+        }
+        let n = effects::ALL.len();
+        let note = format!("{n} effects ported so far, random picks one");
+        let max_cols = (width / 8) as usize;
+        fb.text(
+            left,
+            h - 28,
+            &note.chars().take(max_cols).collect::<String>(),
+            scale(self.theme.dim, 0.7),
+            1,
+        );
+        let hint = self.hint(&[("<>", "change"), ("A", "preview"), ("B", "back saves")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// Diagnostics: key and value rows, scrollable.
+    fn draw_diag(&mut self, fb: &mut Framebuffer, top: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, "Diagnostics");
+        let row_h = 12;
+        let max_cols = (width / 8) as usize;
+        let rows = self.diag.clone();
+        for (i, (k, v)) in rows.iter().enumerate().skip(top).take(12) {
+            let y = y0 + (i - top) as i32 * row_h;
+            fb.text(left, y, k, self.theme.dim, 1);
+            let room = max_cols.saturating_sub(11);
+            let v: String = v.chars().take(room).collect();
+            fb.text(left + 11 * 8, y, &v, self.theme.paper, 1);
+        }
+        if rows.len() > 12 {
+            let pos = format!("{}-{}/{}", top + 1, (top + 12).min(rows.len()), rows.len());
+            fb.text(
+                w - left - Framebuffer::text_width(&pos, 1),
+                h - 28,
+                &pos,
+                self.theme.dim,
+                1,
+            );
+        }
+        let hint = self.hint(&[("^v", "scroll"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// About: goals and credits, scrollable text.
+    fn draw_about(&mut self, fb: &mut Framebuffer, top: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let y0 = self.draw_header(fb, "About");
+        let row_h = 11;
+        for (i, line) in ABOUT.iter().enumerate().skip(top).take(15) {
+            let y = y0 + (i - top) as i32 * row_h;
+            let c = if i == 0 {
+                self.theme.accent
+            } else if line.ends_with("Goals") || line.starts_with("Made by") {
+                self.theme.paper
+            } else {
+                self.theme.fg
+            };
+            fb.text(left, y, line, c, 1);
+        }
+        let hint = self.hint(&[("^v", "scroll"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
     fn draw_saver(&mut self, fb: &mut Framebuffer) {

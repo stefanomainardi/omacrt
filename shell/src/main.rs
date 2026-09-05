@@ -12,11 +12,13 @@ mod effects;
 mod etch;
 mod fb;
 mod font8x8;
+mod icons;
 mod library;
 mod menu;
 mod pad;
 mod profile;
 mod scene;
+mod settings;
 mod theme;
 
 use audio::Audio;
@@ -41,7 +43,6 @@ struct Args {
     auto_boot: bool,
     headless: bool,
     theme: Option<PathBuf>,
-    menu: Option<PathBuf>,
     systems: Option<PathBuf>,
     browse: Option<Option<String>>,
     dump: Vec<f64>,
@@ -63,9 +64,8 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --no-audio        skip audio
   --auto-boot       skip the PRESS START gate
   --theme PATH      Omarchy colors.toml (default ~/.config/omarchy/current/colors.toml)
-  --menu PATH       menu.toml (default ~/.config/omarchy-crt/menu.toml)
   --systems PATH    systems.toml (default ~/.config/omarchy-crt/systems.toml)
-  --browse [SYSTEM] boot straight into the game browser
+  --browse [SYSTEM] boot straight into the game browser (or settings, saver, diag, about, power, profile, pair)
   --headless        render without a window; use with --dump
   --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
   --dump-dir DIR    where dumps go (default .)
@@ -103,7 +103,6 @@ fn parse_args() -> Result<Args, String> {
         auto_boot: false,
         headless: false,
         theme: None,
-        menu: None,
         systems: None,
         browse: None,
         dump: Vec::new(),
@@ -132,7 +131,6 @@ fn parse_args() -> Result<Args, String> {
             "--auto-boot" => a.auto_boot = true,
             "--headless" => a.headless = true,
             "--theme" => a.theme = Some(PathBuf::from(take(&mut it, &arg)?)),
-            "--menu" => a.menu = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--systems" => a.systems = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--browse" => a.browse = Some(optional(&mut it)),
             "--dump" => {
@@ -189,14 +187,10 @@ fn build_scene(args: &Args) -> Scene {
     let theme = theme_path
         .and_then(|p| theme::Theme::load(&p))
         .unwrap_or_else(theme::Theme::tokyo_night);
-    let menu_path = args.menu.clone().or_else(menu::default_path);
-    let items = menu_path
-        .map(|p| menu::load(&p))
-        .unwrap_or_else(menu::default_items);
     let info = SysInfo::probe(args.w, args.h, args.hz);
     let library =
         library::Library::load(&args.systems.clone().unwrap_or_else(library::default_path));
-    Scene::new(theme, info, items, args.idle, library)
+    Scene::new(theme, info, args.idle, library)
 }
 
 fn run_headless(args: &Args) -> Result<(), String> {

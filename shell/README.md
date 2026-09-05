@@ -47,29 +47,18 @@ stars a game. Extra pad mappings load from
 
 ## Menu
 
-`~/.config/omarchy-crt/menu.toml`:
+Home: Games, Favorites, Recent, Settings, About, Power. Settings opens the TV
+profile, pad pairing, screensaver options and a diagnostics page (kernel, GPU,
+connectors, RetroArch version, cores, switching flag, pad). Power off needs a
+second press within three seconds. Screensaver options live in
+`~/.config/omarchy-crt/settings.toml`:
 
 ```toml
-[[item]]
-name = "retroarch/"
-command = "retroarch"
-
-[[item]]
-name = "mame/"
-command = "groovymame"
-
-[[item]]
-name = "desktop/"
-quit = true
-
-[[item]]
-name = "poweroff"
-command = "systemctl poweroff"
+[screensaver]
+enabled = true
+idle_secs = 60
+effect = "random" # or laseretch, rain, beams, burn, slide, decrypt, expand, unstable, vhstape
 ```
-
-Items without a command show a message; `quit = true` exits the shell;
-`confirm = true` asks for a second press within three seconds before running
-the command (the default `poweroff` entry uses it).
 
 ## Games
 
