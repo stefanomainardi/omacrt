@@ -34,8 +34,6 @@ pub enum Action {
     None,
     Quit,
     Launch(String),
-    /// Run a game: the shell waits for the process and shows a "now playing" screen.
-    Run(std::process::Command, String),
 }
 
 /// Which screen the menu is on after boot.
@@ -71,6 +69,9 @@ enum Screen {
     },
     About {
         top: usize,
+    },
+    Style {
+        sel: usize,
     },
 }
 
@@ -136,12 +137,26 @@ const HOME: [(icons::Icon, &str, bool); 6] = [
 ];
 
 /// Settings submenu entries.
-const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 4] = [
+const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 5] = [
     (icons::TV, "TV profile", true),
     (icons::PAD, "Pads", true),
     (icons::SAVER, "Screensaver", true),
+    (icons::BRUSH, "Style", true),
     (icons::PULSE, "Diagnostics", true),
 ];
+
+/// A game being launched: the media animation plays, then RetroArch starts.
+struct Launch {
+    cmd: std::process::Command,
+    title: String,
+    system: String,
+    disc: bool,
+    color: Color,
+    started: f64,
+    spawned: bool,
+}
+
+const LAUNCH_SECS: f32 = 1.15;
 
 /// Power submenu entries.
 const POWER_ITEMS: [(icons::Icon, &str, bool); 2] = [
@@ -202,6 +217,11 @@ pub struct Scene {
     diag: Vec<(String, String)>,
     /// A game list opened from the home menu goes back to it, not to Games.
     list_from_home: bool,
+    themes: Vec<(String, PathBuf)>,
+    /// Theme transition: (from, to, start time).
+    theme_blend: Option<(Theme, Theme, f64)>,
+    launching: Option<Launch>,
+    post_clicks: usize,
     mark_cols: i32,
     mark_rows: i32,
     boot_started: bool,
@@ -239,6 +259,17 @@ pub struct Scene {
 
 impl Scene {
     pub fn new(theme: Theme, info: SysInfo, idle_secs: f32, library: Library) -> Self {
+        // A theme chosen in Settings overrides the system theme.
+        let settings = Settings::load(&library.config_dir);
+        let theme = if settings.theme != "system" {
+            Theme::installed()
+                .into_iter()
+                .find(|(n, _)| *n == settings.theme)
+                .and_then(|(n, p)| Theme::load_named(&p, &n))
+                .unwrap_or(theme)
+        } else {
+            theme
+        };
         let stops = [theme.magenta, theme.cyan, theme.paper];
         let grid = effects::Grid::wordmark(stops);
         let (mark_cols, mark_rows) = (grid.cols, grid.rows);
@@ -250,6 +281,10 @@ impl Scene {
             settings: Settings::load(&library.config_dir),
             diag: Vec::new(),
             list_from_home: false,
+            themes: Theme::installed(),
+            theme_blend: None,
+            launching: None,
+            post_clicks: 0,
             mark_cols,
             mark_rows,
             boot_started: false,
@@ -413,6 +448,53 @@ impl Scene {
         self.screen = screen;
         self.screen_since = self.now;
         self.band_y = -1.0;
+        self.pending.push(Sound::Whoosh);
+    }
+
+    /// Switch theme with a short blend; `name` is a theme directory name or `system`.
+    fn apply_theme(&mut self, name: &str) {
+        let target = if name == "system" {
+            Theme::default_path()
+                .and_then(|p| Theme::load(&p))
+                .unwrap_or_else(Theme::tokyo_night)
+        } else {
+            match self.themes.iter().find(|(n, _)| n == name) {
+                Some((n, p)) => Theme::load_named(p, n).unwrap_or_else(Theme::tokyo_night),
+                None => return,
+            }
+        };
+        self.theme_blend = Some((self.theme.clone(), target, self.now));
+    }
+
+    /// Advance the theme blend; rebuilds the small wordmark on every step.
+    fn tick_theme(&mut self) {
+        let Some((from, to, start)) = self.theme_blend.clone() else {
+            return;
+        };
+        let t = ((self.now - start) / 0.35).clamp(0.0, 1.0) as f32;
+        self.theme = Theme::blend(&from, &to, ease(t));
+        self.mark_small = effects::Grid::wordmark(self.stops());
+        if t >= 1.0 {
+            self.theme = to;
+            self.mark_small = effects::Grid::wordmark(self.stops());
+            self.theme_blend = None;
+        }
+    }
+
+    /// Ambient pad plays in the menus, not during boot, games or the screensaver.
+    pub fn wants_ambient(&self) -> bool {
+        self.menu_live && self.running.is_none() && self.launching.is_none() && self.saver.is_none()
+    }
+
+    /// The RetroArch command once the launch animation has run its course.
+    pub fn take_launch(&mut self) -> Option<(std::process::Command, String)> {
+        let l = self.launching.as_mut()?;
+        if l.spawned || ((self.now - l.started) as f32) < LAUNCH_SECS - 0.2 {
+            return None;
+        }
+        l.spawned = true;
+        let cmd = std::mem::replace(&mut l.cmd, std::process::Command::new("true"));
+        Some((cmd, l.title.clone()))
     }
 
     pub fn activate(&mut self) -> Action {
@@ -463,6 +545,19 @@ impl Scene {
                 }
             }
             2 => self.go(Screen::Saver { sel: 0 }),
+            3 => {
+                let cur = self.settings.theme.clone();
+                let sel = if cur == "system" {
+                    0
+                } else {
+                    self.themes
+                        .iter()
+                        .position(|(n, _)| *n == cur)
+                        .map(|i| i + 1)
+                        .unwrap_or(0)
+                };
+                self.go(Screen::Style { sel });
+            }
             _ => {
                 self.diag = self.gather_diagnostics();
                 self.go(Screen::Diag { top: 0 });
@@ -833,11 +928,42 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
-                    self.screen = Screen::Settings { sel: 3 };
+                    self.screen = Screen::Settings { sel: 4 };
                     moved = true;
                 }
                 _ => {}
             },
+            Screen::Style { sel } => {
+                let n = self.themes.len() + 1;
+                let mut changed = false;
+                match nav {
+                    Nav::Up if *sel > 0 => {
+                        *sel -= 1;
+                        changed = true;
+                    }
+                    Nav::Down if *sel + 1 < n => {
+                        *sel += 1;
+                        changed = true;
+                    }
+                    Nav::Back => {
+                        self.save_settings();
+                        self.screen = Screen::Settings { sel: 3 };
+                        self.pending.push(Sound::Lock);
+                        return;
+                    }
+                    _ => {}
+                }
+                if changed {
+                    let name = if *sel == 0 {
+                        "system".to_string()
+                    } else {
+                        self.themes[*sel - 1].0.clone()
+                    };
+                    self.settings.theme = name.clone();
+                    self.apply_theme(&name);
+                    moved = true;
+                }
+            }
             Screen::About { top } => match nav {
                 Nav::Up if *top > 0 => {
                     *top -= 1;
@@ -930,6 +1056,15 @@ impl Scene {
                 }
                 Action::None
             }
+            Screen::Style { .. } => {
+                self.save_settings();
+                self.pending.push(Sound::Lock);
+                self.message = Some((
+                    format!("theme {} saved", self.settings.theme),
+                    self.now + 3.0,
+                ));
+                Action::None
+            }
             Screen::Diag { .. } | Screen::About { .. } => Action::None,
             Screen::Menu => Action::None,
         }
@@ -942,10 +1077,27 @@ impl Scene {
             .command(&system, &entry.game, &self.profile.retroarch_keys())
         {
             Ok(cmd) => {
-                self.pending.push(Sound::Select);
+                let disc = matches!(
+                    system.name.as_str(),
+                    "psx" | "dreamcast" | "segacd" | "saturn" | "pcenginecd" | "neocd" | "3do"
+                );
+                let color = icons::system_logo(&system.name)
+                    .map(|(_, c)| c)
+                    .unwrap_or(self.theme.accent);
+                self.pending
+                    .push(if disc { Sound::Whoosh } else { Sound::Insert });
+                self.launching = Some(Launch {
+                    cmd,
+                    title: entry.game.title.clone(),
+                    system: system.name.clone(),
+                    disc,
+                    color,
+                    started: self.now,
+                    spawned: false,
+                });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
                 self.remember(entry);
-                Action::Run(cmd, entry.game.title.clone())
+                Action::None
             }
             Err(e) => {
                 self.message = Some((format!("cannot launch: {e}"), self.now + 4.0));
@@ -1015,6 +1167,7 @@ impl Scene {
     /// The game process ended; back to the list, cursor where it was.
     pub fn game_finished(&mut self, ok: bool) {
         self.running = None;
+        self.launching = None;
         self.last_input = self.now;
         self.pending
             .push(if ok { Sound::Lock } else { Sound::Crunch });
@@ -1038,6 +1191,7 @@ impl Scene {
                 self.screen = Screen::Diag { top: 0 };
             }
             Some("power") => self.screen = Screen::Power { sel: 0 },
+            Some("style") => self.screen = Screen::Style { sel: 0 },
             Some(n) => match self.library.systems.iter().position(|s| s.name == n) {
                 Some(i) => self.open_games(Some(i)),
                 None => self.screen = Screen::Systems { sel: 0, top: 0 },
@@ -1082,6 +1236,14 @@ impl Scene {
             effects::draw_cell(fb, mx, 10, 1, cell, cell.final_color);
         }
         fb.text(left, 40, prompt, self.theme.dim, 1);
+        let clock = chrono::Local::now().format("%H:%M").to_string();
+        fb.text(
+            fb.w as i32 - left - Framebuffer::text_width(&clock, 1),
+            40,
+            &clock,
+            scale(self.theme.dim, 0.7),
+            1,
+        );
         52
     }
 
@@ -1102,7 +1264,19 @@ impl Scene {
             fb.rect(left, y - 2, w - 2 * margin, 12, self.theme.selection);
         }
         let room = max_cols.saturating_sub(right.chars().count() + 1);
-        let text: String = format!("  {label}").chars().take(room).collect();
+        let full = format!("  {label}");
+        let count = full.chars().count();
+        let text: String = if on && count > room {
+            // Marquee: pause, scroll left, pause, from the start again.
+            let span = (count - room + 2) as f64;
+            let cycle = span * 0.28 + 1.6;
+            let t = (self.now % cycle) - 0.9;
+            let off = (t / 0.28).clamp(0.0, span).floor() as usize;
+            let padded = format!("{full}   ");
+            padded.chars().cycle().skip(off).take(room).collect()
+        } else {
+            full.chars().take(room).collect()
+        };
         fb.text(
             left,
             y,
@@ -1175,8 +1349,20 @@ impl Scene {
                                 "{count:>4}  {}",
                                 crate::library::VideoPolicy::parse(&sys.video).label()
                             );
-                            self.draw_row(fb, y, &sys.name, &right, on, self.theme.green);
-                            fb.bitmap(left + ox + 4, y + 1, &icons::CONSOLE, icon_c, 1, 8);
+                            self.draw_row(fb, y, &sys.name, &right, on, self.theme.paper);
+                            match icons::system_logo(&sys.name) {
+                                Some((logo, c)) => fb.bitmap(
+                                    left + ox + 2,
+                                    y - 1,
+                                    logo,
+                                    if on { c } else { scale(c, 0.75) },
+                                    1,
+                                    10,
+                                ),
+                                None => {
+                                    fb.bitmap(left + ox + 4, y + 1, &icons::CONSOLE, icon_c, 1, 8)
+                                }
+                            }
                         }
                     }
                 }
@@ -1363,6 +1549,10 @@ impl Scene {
                 self.draw_about(fb, top);
                 return;
             }
+            Screen::Style { sel } => {
+                self.draw_style(fb, sel);
+                return;
+            }
             Screen::Menu => {}
         }
         if let Some((msg, _)) = &self.message {
@@ -1438,6 +1628,7 @@ impl Scene {
 
     pub fn draw(&mut self, fb: &mut Framebuffer, now: f64) {
         self.now = now;
+        self.tick_theme();
         fb.clear(self.theme.bg);
         if self.saver.is_some() {
             self.draw_saver(fb);
@@ -1449,7 +1640,13 @@ impl Scene {
         }
         let t = self.t();
         if self.running.is_some() {
-            self.draw_running(fb);
+            if self.launching.is_some()
+                && ((now - self.launching.as_ref().unwrap().started) as f32) < LAUNCH_SECS
+            {
+                self.draw_launching(fb);
+            } else {
+                self.draw_running(fb);
+            }
             return;
         }
         if self.menu_live && !matches!(self.screen, Screen::Menu) {
@@ -1574,7 +1771,8 @@ impl Scene {
         let row_h = 11;
         let max_cols = (fb.w as i32 - 2 * x) / 8;
         let mut last_end = (x, y);
-        for (text, color, is_mem) in lines.iter().take(shown as usize) {
+        let mut clicks_due = 0usize;
+        for (i, (text, color, is_mem)) in lines.iter().take(shown as usize).enumerate() {
             let mut s = text.clone();
             if *is_mem {
                 s = if self.mem >= 65_536 {
@@ -1583,10 +1781,21 @@ impl Scene {
                     format!("MEM  {:05}K", self.mem)
                 };
             }
-            let s: String = s.chars().take(max_cols as usize).collect();
+            // Typewriter: the newest line is revealed over its 0.18 s slot.
+            let line_start = start + i as f32 * 0.18;
+            let progress = ((t - line_start) / 0.16).clamp(0.0, 1.0);
+            let visible = (s.chars().count() as f32 * progress).ceil() as usize;
+            clicks_due += visible / 4;
+            let s: String = s.chars().take(visible.min(max_cols as usize)).collect();
             fb.text(x, y, &s, scale(*color, fade), 1);
             last_end = (x + Framebuffer::text_width(&s, 1) + 4, y);
             y += row_h;
+        }
+        while self.post_clicks < clicks_due {
+            self.post_clicks += 1;
+            if self.post_clicks % 2 == 0 {
+                self.pending.push(Sound::Click);
+            }
         }
         // Block cursor after the last POST line, blinking fast like a BIOS.
         if shown > 0 && (self.now * 6.0).floor() as i64 % 2 == 0 {
@@ -1932,6 +2141,167 @@ impl Scene {
         }
         let hint = self.hint(&[("^v", "scroll"), ("B", "back")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// Style: pick one of the installed Omarchy themes, previewed live.
+    fn draw_style(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, "Style");
+        let row_h = 12;
+        let page = 12usize;
+        let names: Vec<String> = std::iter::once("system (follow Omarchy)".to_string())
+            .chain(self.themes.iter().map(|(n, _)| n.clone()))
+            .collect();
+        let top = sel
+            .saturating_sub(page - 1)
+            .min(names.len().saturating_sub(page));
+        let band_y = self.band(y0 + (sel - top) as i32 * row_h - 2);
+        fb.rect(left, band_y, width, row_h, self.theme.selection);
+        for (row, i) in (top..(top + page).min(names.len())).enumerate() {
+            let y = y0 + row as i32 * row_h;
+            let on = i == sel;
+            fb.text(
+                left + 18,
+                y,
+                &names[i],
+                if on {
+                    self.theme.accent
+                } else {
+                    self.theme.paper
+                },
+                1,
+            );
+            // Swatch: the theme's accent and green, read from disk once per frame for the visible rows.
+            if i > 0 {
+                if let Some(t) = Theme::load_named(&self.themes[i - 1].1, &self.themes[i - 1].0) {
+                    fb.rect(left + 4, y + 1, 4, 6, t.accent);
+                    fb.rect(left + 9, y + 1, 4, 6, t.green);
+                }
+            } else {
+                fb.rect(left + 4, y + 1, 4, 6, self.theme.accent);
+                fb.rect(left + 9, y + 1, 4, 6, self.theme.green);
+            }
+        }
+        let pos = format!("{}/{}", sel + 1, names.len());
+        fb.text(
+            w - left - Framebuffer::text_width(&pos, 1),
+            h - 28,
+            &pos,
+            self.theme.dim,
+            1,
+        );
+        let hint = self.hint(&[("^v", "preview"), ("A", "keep"), ("B", "back saves")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// Launch animation: a cartridge slides into its slot (or a disc spins
+    /// up), a click, then the picture cuts to black for the emulator.
+    fn draw_launching(&mut self, fb: &mut Framebuffer) {
+        let Some(l) = self.launching.as_ref() else {
+            return;
+        };
+        let (w, h) = (fb.w as i32, fb.h as i32);
+        let u = (self.now - l.started) as f32;
+        let color = l.color;
+        let title = l.title.clone();
+        let system = l.system.clone();
+        let disc = l.disc;
+        let left = (w as f32 * 0.05) as i32;
+        // Fade to black in the last 0.2 s.
+        let fade = 1.0 - ((u - (LAUNCH_SECS - 0.2)) / 0.2).clamp(0.0, 1.0);
+        fb.text(
+            left,
+            h - 28,
+            &title.chars().take(36).collect::<String>(),
+            scale(self.theme.paper, fade),
+            1,
+        );
+        fb.text(
+            left,
+            h - 14,
+            &format!("{system}  loading"),
+            scale(self.theme.dim, fade),
+            1,
+        );
+        let cx = w / 2;
+        let cy = h / 2 - 10;
+        if disc {
+            // Disc: spinning hub and spokes, speeding up.
+            let spin = u * u * 9.0;
+            let r = 30;
+            for a in 0..360 {
+                let rad = (a as f32).to_radians();
+                let (sx, sy) = (rad.cos(), rad.sin());
+                let stripe = ((rad * 6.0 + spin).sin() > 0.4) as i32;
+                let c = if stripe == 1 {
+                    color
+                } else {
+                    scale(color, 0.35)
+                };
+                for rr in 8..r {
+                    let px = cx + (sx * rr as f32) as i32;
+                    let py = cy + (sy * rr as f32 * 0.55) as i32;
+                    fb.put(px, py, scale(c, fade));
+                }
+            }
+            fb.rect(cx - 4, cy - 2, 8, 4, scale(self.theme.bg, fade));
+        } else {
+            // Slot: a dark bay with a lip; the cartridge drops in with ease-in.
+            let slot_w = 64;
+            let slot_y = cy + 10;
+            fb.rect(
+                cx - slot_w / 2 - 6,
+                slot_y,
+                slot_w + 12,
+                22,
+                scale(self.theme.selection, fade),
+            );
+            fb.rect(
+                cx - slot_w / 2 - 2,
+                slot_y + 2,
+                slot_w + 4,
+                4,
+                scale(self.theme.bg, fade),
+            );
+            let p = (u / 0.42).clamp(0.0, 1.0);
+            let drop = p * p;
+            let cart_h = 28;
+            let y = (cy - 60) as f32 + ((slot_y - cy + 60 - 6) as f32) * drop;
+            let y = y.round() as i32;
+            let visible_h = (slot_y + 2 - y).clamp(0, cart_h);
+            let cw = 48;
+            fb.rect(cx - cw / 2, y, cw, visible_h, scale(color, fade));
+            fb.rect(
+                cx - cw / 2 + 4,
+                y + 4,
+                cw - 8,
+                (visible_h - 8).max(0),
+                scale(self.theme.bg, 0.6 * fade),
+            );
+            if visible_h > 12 {
+                let label: String = system.to_uppercase().chars().take(5).collect();
+                fb.text_centered(cx, y + 6, &label, scale(color, fade), 1);
+            }
+            // Settle jolt right after the click.
+            if (0.42..0.5).contains(&u) {
+                fb.rect(
+                    cx - slot_w / 2 - 6,
+                    slot_y + 1,
+                    slot_w + 12,
+                    1,
+                    scale(0xffffff, 0.5 * fade),
+                );
+            }
+        }
+        if u >= LAUNCH_SECS - 0.2 {
+            // Power on: a bright horizontal line collapsing, then black.
+            let k = ((u - (LAUNCH_SECS - 0.2)) / 0.2).clamp(0.0, 1.0);
+            let lw = ((1.0 - k) * w as f32) as i32;
+            fb.rect(cx - lw / 2, cy, lw, 1, 0xffffff);
+        }
     }
 
     /// About: goals and credits, scrollable text.

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = "0.4"
 sdl2 = "0.38"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"

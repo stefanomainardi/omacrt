@@ -15,11 +15,18 @@ pub enum Sound {
     Select,
     TagReveal,
     Lock,
+    Whoosh,
+    Insert,
+    Click,
 }
 
 struct Voice {
     data: Arc<Vec<f32>>,
     pos: usize,
+    looping: bool,
+    gain: f32,
+    /// Target gain; the mixer ramps toward it (fade in and out).
+    target: f32,
 }
 
 pub struct Mixer {
@@ -34,13 +41,20 @@ impl AudioCallback for Mixer {
         for v in voices.iter_mut() {
             for sample in out.iter_mut() {
                 if v.pos >= v.data.len() {
-                    break;
+                    if v.looping && !v.data.is_empty() {
+                        v.pos = 0;
+                    } else {
+                        break;
+                    }
                 }
-                *sample += v.data[v.pos];
+                v.gain += (v.target - v.gain) * 0.0004;
+                *sample += v.data[v.pos] * v.gain;
                 v.pos += 1;
             }
         }
-        voices.retain(|v| v.pos < v.data.len());
+        voices.retain(|v| {
+            (v.pos < v.data.len() || v.looping) && !(v.target == 0.0 && v.gain < 0.002)
+        });
         for s in out.iter_mut() {
             *s = s.clamp(-1.0, 1.0);
         }
@@ -91,7 +105,31 @@ impl Audio {
         self.voices.lock().unwrap().push(Voice {
             data: Arc::new(data),
             pos: 0,
+            looping: false,
+            gain: 1.0,
+            target: 1.0,
         });
+    }
+
+    /// Start (or keep) the ambient loop, fading in.
+    pub fn ambient(&self, on: bool) {
+        if self._device.is_none() {
+            return;
+        }
+        let mut voices = self.voices.lock().unwrap();
+        if let Some(v) = voices.iter_mut().find(|v| v.looping) {
+            v.target = if on { 1.0 } else { 0.0 };
+            return;
+        }
+        if on {
+            voices.push(Voice {
+                data: Arc::new(synth_ambient()),
+                pos: 0,
+                looping: true,
+                gain: 0.0,
+                target: 1.0,
+            });
+        }
     }
 
     pub fn play(&self, s: Sound) {
@@ -99,6 +137,9 @@ impl Audio {
             self.voices.lock().unwrap().push(Voice {
                 data: data.clone(),
                 pos: 0,
+                looping: false,
+                gain: 1.0,
+                target: 1.0,
             });
         }
     }
@@ -114,6 +155,9 @@ pub fn render_bank() -> Vec<(Sound, Vec<f32>)> {
         (Sound::Select, synth_beep(1320.0, 0.06, 0.04)),
         (Sound::TagReveal, crate::crt_tag::synth(RATE)),
         (Sound::Lock, synth_beep(2200.0, 0.02, 0.05)),
+        (Sound::Whoosh, synth_whoosh()),
+        (Sound::Insert, synth_insert()),
+        (Sound::Click, synth_click()),
     ]
 }
 
@@ -282,5 +326,99 @@ fn synth_beep(freq: f32, dur: f32, gain: f32) -> Vec<f32> {
         let env = (-(t / dur) * 5.0).exp();
         *s = square * env * gain;
     }
+    out
+}
+
+/// Short filtered noise sweep for a submenu opening.
+fn synth_whoosh() -> Vec<f32> {
+    let n = seconds(0.14);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(21);
+    let mut lp = 0.0f32;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let p = t / 0.14;
+        let cut = 600.0 + 3400.0 * (1.0 - p);
+        let a = 1.0 / (1.0 + RATE as f32 / (2.0 * std::f32::consts::PI * cut));
+        lp += a * (rng.next() - lp);
+        let env = (p * std::f32::consts::PI).sin();
+        *s = lp * env * 0.12;
+    }
+    out
+}
+
+/// A cartridge sliding home: plastic scrape, then a firm click.
+fn synth_insert() -> Vec<f32> {
+    let n = seconds(0.55);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(33);
+    let mut lp = 0.0f32;
+    let tau = 2.0 * std::f32::consts::PI;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        // Scrape while sliding (0 to 0.4 s), band-limited noise with a slow swell.
+        let a = 1.0 / (1.0 + RATE as f32 / (tau * 1400.0));
+        lp += a * (rng.next() - lp);
+        let slide = if t < 0.4 {
+            (t / 0.4 * std::f32::consts::PI).sin() * 0.05
+        } else {
+            0.0
+        };
+        let mut v = lp * slide;
+        // Click at 0.42 s: two short resonances.
+        let d = t - 0.42;
+        if d >= 0.0 {
+            v += (tau * 900.0 * d).sin() * (-d * 90.0).exp() * 0.35;
+            v += (tau * 2400.0 * d).sin() * (-d * 140.0).exp() * 0.2;
+            v += rng.next() * (-d * 300.0).exp() * 0.2;
+        }
+        *s = v;
+    }
+    out
+}
+
+/// Tiny mechanical click for typewriter text.
+fn synth_click() -> Vec<f32> {
+    let n = seconds(0.008);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(5);
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        *s = rng.next() * (-t * 900.0).exp() * 0.12;
+    }
+    out
+}
+
+/// Ambient pad for the menus: three soft detuned tones with a slow filter
+/// sweep, eight seconds, seamless loop, very quiet.
+fn synth_ambient() -> Vec<f32> {
+    let len = 8.0;
+    let n = seconds(len);
+    let mut out = vec![0.0; n];
+    let tau = 2.0 * std::f32::consts::PI;
+    let notes = [82.41f32, 123.47, 207.65, 164.81]; // E2 B2 G#3 E3
+    let mut lp = 0.0f32;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let mut v = 0.0;
+        for (k, f) in notes.iter().enumerate() {
+            let det = 1.0 + 0.002 * ((t * (0.11 + k as f32 * 0.07) * tau).sin());
+            let ph = tau * f * det * t;
+            v += (ph.sin() + 0.25 * (2.0 * ph).sin())
+                * (0.5 + 0.5 * (t * 0.3 * tau + k as f32).sin() * 0.3);
+        }
+        let cut = 500.0 + 300.0 * (t / len * tau).sin();
+        let a = 1.0 / (1.0 + RATE as f32 / (tau * cut));
+        lp += a * (v - lp);
+        *s = lp * 0.028;
+    }
+    // Crossfade the last 0.5 s into the first so the loop point is silent.
+    let x = seconds(0.5);
+    for i in 0..x {
+        let w = i as f32 / x as f32;
+        let tail = out[n - x + i];
+        out[i] = out[i] * w + tail * (1.0 - w);
+    }
+    out.truncate(n - x);
     out
 }

@@ -44,6 +44,7 @@ struct Args {
     headless: bool,
     theme: Option<PathBuf>,
     systems: Option<PathBuf>,
+    config_dir: Option<PathBuf>,
     browse: Option<Option<String>>,
     dump: Vec<f64>,
     dump_dir: PathBuf,
@@ -65,6 +66,7 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --auto-boot       skip the PRESS START gate
   --theme PATH      Omarchy colors.toml (default ~/.config/omarchy/current/colors.toml)
   --systems PATH    systems.toml (default ~/.config/omarchy-crt/systems.toml)
+  --config-dir DIR  where settings, profile, recent and RetroArch configs live
   --browse [SYSTEM] boot straight into the game browser (or settings, saver, diag, about, power, profile, pair)
   --headless        render without a window; use with --dump
   --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
@@ -104,6 +106,7 @@ fn parse_args() -> Result<Args, String> {
         headless: false,
         theme: None,
         systems: None,
+        config_dir: None,
         browse: None,
         dump: Vec::new(),
         dump_dir: PathBuf::from("."),
@@ -132,6 +135,7 @@ fn parse_args() -> Result<Args, String> {
             "--headless" => a.headless = true,
             "--theme" => a.theme = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--systems" => a.systems = Some(PathBuf::from(take(&mut it, &arg)?)),
+            "--config-dir" => a.config_dir = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--browse" => a.browse = Some(optional(&mut it)),
             "--dump" => {
                 a.dump = take(&mut it, &arg)?
@@ -257,6 +261,10 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
     } else {
         script.push((0.5, "start".into(), None));
     }
+    if let Some(b) = &args.browse {
+        scene.start_boot(0.0);
+        scene.debug_browse(b.as_deref());
+    }
     let dt = 1.0 / 60.0;
     let mut next = 0;
     let mut frame = 0usize;
@@ -284,18 +292,18 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
                             "fav" => scene.toggle_favorite(),
                             "fire" => match scene.activate() {
                                 Action::Quit => break,
-                                Action::Run(_, title) => {
-                                    eprintln!("script: not launching {title} while recording");
-                                    scene.game_finished(true);
-                                }
                                 _ => {}
                             },
+                            "finish" => scene.game_finished(true),
                             _ => return Err(format!("unknown script action {other}")),
                         }
                     }
                 }
             }
             next += 1;
+        }
+        if let Some((_, title)) = scene.take_launch() {
+            eprintln!("script: not launching {title} while recording");
         }
         scene.draw(&mut fb, t as f64);
         fb.roll(scene.roll(), t);
@@ -510,21 +518,23 @@ fn run(args: &Args) -> Result<(), String> {
                             eprintln!("launch failed: {e}");
                         }
                     }
-                    Action::Run(mut cmd, title) => match cmd.spawn() {
-                        Ok(c) => {
-                            eprintln!("running {title}");
-                            child = Some(c);
-                        }
-                        Err(e) => {
-                            eprintln!("cannot start retroarch: {e}");
-                            scene.game_finished(false);
-                        }
-                    },
                     Action::None => {}
                 }
             }
         }
 
+        if let Some((mut cmd, title)) = scene.take_launch() {
+            match cmd.spawn() {
+                Ok(c) => {
+                    eprintln!("running {title}");
+                    child = Some(c);
+                }
+                Err(e) => {
+                    eprintln!("cannot start retroarch: {e}");
+                    scene.game_finished(false);
+                }
+            }
+        }
         if let Some(n) = stick.poll(now()) {
             if !scene.is_running() && !scene.touch(now()) {
                 scene.navigate(n);
@@ -541,6 +551,7 @@ fn run(args: &Args) -> Result<(), String> {
         for data in scene.take_samples() {
             audio.play_samples(data);
         }
+        audio.ambient(scene.wants_ambient());
 
         if scene.boot_started() && next_dump < dumps.len() {
             let bt = scene_time(&scene, t);

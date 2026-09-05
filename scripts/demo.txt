@@ -1,6 +1,6 @@
 # Demo script for scripts/demo-video.sh: <seconds> <action> [arg]
-# Actions: start, up, down, left, right, back, fire, fav, saver [effect]
-0.8   start          # power on from the PRESS START gate; the show runs to ~9.6
+# Actions: start, up, down, left, right, back, fire, fav, saver [effect], finish
+0.8   start          # power on; boot show runs to ~9.6
 11.0  down           # a look at the home menu
 11.6  down
 12.2  up
@@ -10,51 +10,64 @@
 15.5  down
 16.0  down           # snes
 16.8  fire           # game list
-18.2  fav            # star the first entry
-19.6  back
-20.4  back           # home
-21.2  down           # Favorites
-21.9  fire
-23.6  back
-24.4  down           # Recent
-25.0  down           # Settings
-25.8  fire
-27.0  fire           # TV profile
-28.2  right          # next monitor preset
-28.9  right
-29.7  down           # h shift
-30.3  right
-30.8  right
-31.6  back           # saves, back to Settings
-32.6  down           # Pads (skip)
-33.2  down           # Screensaver
-33.9  fire
-35.0  down           # after
-35.6  left           # 30 s
-36.3  down           # effect
-36.9  right          # laseretch
-37.5  right          # rain
-38.3  down           # preview
-39.0  fire           # screensaver preview: rain
-45.5  fire           # wake up
-46.6  back           # back to Settings
-47.4  down           # Diagnostics
-48.0  fire
-49.6  down
-50.2  down
-50.8  down
-52.4  back
-53.2  back           # home
-54.0  down           # About
-54.7  fire
-56.4  down
-56.9  down
-57.4  down
-57.9  down
-58.4  down
-58.9  down
-61.0  back
-61.8  down           # Power
-62.5  fire
-64.5  back
-65.5  saver vhstape  # closing shot
+18.0  fav            # star it
+19.2  fire           # launch: cartridge goes in
+21.4  finish         # (the emulator would run here) back to the list
+22.6  back
+23.4  back           # home
+24.2  down           # Favorites
+24.9  fire
+26.4  back
+27.2  down           # Recent
+27.8  down           # Settings
+28.6  fire
+29.8  fire           # TV profile
+31.0  right          # next monitor preset
+31.7  right
+32.5  down           # h shift
+33.1  right
+33.6  right
+34.4  back           # saves, back to Settings
+35.4  down           # Pads
+36.0  down           # Screensaver
+36.7  fire
+37.8  down           # after
+38.4  left           # 30 s
+39.1  down           # effect
+39.7  right          # laseretch
+40.3  right          # rain
+41.1  down           # preview
+41.8  fire           # screensaver preview: rain
+47.5  fire           # wake up
+48.6  back           # back to Settings
+49.4  down           # Style
+50.0  fire
+51.2  down           # catppuccin
+52.4  down           # catppuccin-latte
+53.6  down           # ethereal
+54.8  down           # everforest
+56.0  down           # flexoki-light
+57.2  down           # gruvbox
+58.4  down           # hackerman
+59.6  down           # kanagawa
+61.4  back           # keep it
+62.2  down           # Diagnostics
+62.8  fire
+64.4  down
+65.0  down
+65.6  down
+67.0  back
+67.8  back           # home
+68.6  down           # About
+69.3  fire
+71.0  down
+71.5  down
+72.0  down
+72.5  down
+73.0  down
+73.5  down
+75.4  back
+76.2  down           # Power
+76.9  fire
+78.6  back
+79.6  saver vhstape  # closing shot

@@ -58,6 +58,9 @@ second press within three seconds. Screensaver options live in
 enabled = true
 idle_secs = 60
 effect = "random" # or laseretch, rain, beams, burn, slide, decrypt, expand, unstable, vhstape
+
+# Theme directory name from ~/.local/share/omarchy/themes, or "system".
+theme = "system"
 ```
 
 ## Games

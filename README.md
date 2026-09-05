@@ -81,11 +81,21 @@ scanlines or curvature. The tube provides those.
   slam, chord stab and landing bells come from the same timeline.
 - **Menu.** Omarchy style: a vertical list with pixel icons, a selection band
   in the theme's `selection` color, accent colored text, chevrons for
-  submenus and slide-in transitions. Home: Games, Favorites, Recent,
+  submenus, slide-in transitions and a whoosh. Home: Games, Favorites, Recent,
   Settings, About, Power. Settings holds the TV profile, pads, the
-  screensaver (on/off, idle time, effect) and a diagnostics page; About
-  explains the goals and credits; Power goes back to the desktop or powers
-  off after a confirming second press.
+  screensaver (on/off, idle time, effect), Style and a diagnostics page;
+  About explains the goals and credits; Power goes back to the desktop or
+  powers off after a confirming second press.
+- **Style.** Every installed Omarchy theme, previewed live as the cursor
+  moves: icon, wordmark, bands and text blend to the new palette in a third of
+  a second. `system` follows the desktop theme.
+- **Launch ritual.** Selecting a game slides a cartridge into its slot (or
+  spins a disc up for CD systems) with a scrape and a click, then the picture
+  collapses to a line and the emulator takes over. System logos in the Games
+  list carry each console's signature color.
+- **Sound everywhere.** A quiet ambient pad in the menus, clicks under the
+  BIOS typewriter, whooshes on submenus, crackle under the laser etch, all
+  synthesized at startup.
 - **Game browser.** `games/` lists the systems from `systems.toml`, then the
   ROMs of a system as a paged list. A game starts in RetroArch with a dedicated
   config: no RetroArch menu, no notifications, save state on exit and resume on

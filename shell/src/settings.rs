@@ -15,6 +15,13 @@ pub struct Screensaver {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
     pub screensaver: Screensaver,
+    /// Theme name from ~/.local/share/omarchy/themes, or `system` to follow Omarchy.
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_theme() -> String {
+    "system".into()
 }
 
 impl Default for Settings {
@@ -25,6 +32,7 @@ impl Default for Settings {
                 idle_secs: 60,
                 effect: "random".into(),
             },
+            theme: "system".into(),
         }
     }
 }

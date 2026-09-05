@@ -54,6 +54,64 @@ impl Theme {
         Some(Path::new(&home).join(".config/omarchy/current/colors.toml"))
     }
 
+    /// Every installed Omarchy theme: (name, colors.toml path), sorted.
+    pub fn installed() -> Vec<(String, PathBuf)> {
+        let home = match std::env::var_os("HOME") {
+            Some(h) => PathBuf::from(h),
+            None => return Vec::new(),
+        };
+        let dir = home.join(".local/share/omarchy/themes");
+        let mut out: Vec<(String, PathBuf)> = std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .filter(|p| p.join("colors.toml").exists())
+                    .map(|p| {
+                        (
+                            p.file_name().unwrap().to_string_lossy().into_owned(),
+                            p.join("colors.toml"),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.sort();
+        out
+    }
+
+    /// Load a specific theme directory's colors under its own name.
+    pub fn load_named(path: &Path, name: &str) -> Option<Self> {
+        let mut t = Self::load(path)?;
+        t.name = name.to_string();
+        Some(t)
+    }
+
+    /// Linear blend between two themes, for live switching.
+    pub fn blend(a: &Self, b: &Self, t: f32) -> Self {
+        let l = |x: Color, y: Color| crate::fb::lerp_color(x, y, t);
+        Self {
+            name: if t < 0.5 {
+                a.name.clone()
+            } else {
+                b.name.clone()
+            },
+            bg: l(a.bg, b.bg),
+            fg: l(a.fg, b.fg),
+            dim: l(a.dim, b.dim),
+            paper: l(a.paper, b.paper),
+            accent: l(a.accent, b.accent),
+            selection: l(a.selection, b.selection),
+            green: l(a.green, b.green),
+            bright_green: l(a.bright_green, b.bright_green),
+            cyan: l(a.cyan, b.cyan),
+            blue: l(a.blue, b.blue),
+            magenta: l(a.magenta, b.magenta),
+            yellow: l(a.yellow, b.yellow),
+            orange: l(a.orange, b.orange),
+            red: l(a.red, b.red),
+        }
+    }
+
     pub fn load(path: &Path) -> Option<Self> {
         let text = std::fs::read_to_string(path).ok()?;
         let table: toml::Table = text.parse().ok()?;
