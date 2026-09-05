@@ -10,6 +10,7 @@ mod effects;
 mod etch;
 mod fb;
 mod font8x8;
+mod library;
 mod menu;
 mod scene;
 mod theme;
@@ -36,6 +37,8 @@ struct Args {
     headless: bool,
     theme: Option<PathBuf>,
     menu: Option<PathBuf>,
+    systems: Option<PathBuf>,
+    browse: Option<Option<String>>,
     dump: Vec<f64>,
     dump_dir: PathBuf,
     idle: f32,
@@ -52,11 +55,27 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --auto-boot       skip the PRESS START gate
   --theme PATH      Omarchy colors.toml (default ~/.config/omarchy/current/colors.toml)
   --menu PATH       menu.toml (default ~/.config/omarchy-crt/menu.toml)
+  --systems PATH    systems.toml (default ~/.config/omarchy-crt/systems.toml)
+  --browse [SYSTEM] boot straight into the game browser
   --headless        render without a window; use with --dump
   --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
   --dump-dir DIR    where dumps go (default .)
   --idle SECONDS    start the screensaver after this much idle time (default 60, 0 = never)
   --screensaver [NAME]  start directly in the screensaver; NAME picks an effect";
+
+type ArgIter = std::iter::Peekable<std::iter::Skip<std::env::Args>>;
+
+fn take(it: &mut ArgIter, arg: &str) -> Result<String, String> {
+    it.next().ok_or_else(|| format!("{arg} needs a value"))
+}
+
+/// An optional value: consumed only when the next word is not another flag.
+fn optional(it: &mut ArgIter) -> Option<String> {
+    match it.peek() {
+        Some(next) if !next.starts_with("--") => it.next(),
+        _ => None,
+    }
+}
 
 fn parse_args() -> Result<Args, String> {
     let mut a = Args {
@@ -71,40 +90,43 @@ fn parse_args() -> Result<Args, String> {
         headless: false,
         theme: None,
         menu: None,
+        systems: None,
+        browse: None,
         dump: Vec::new(),
         dump_dir: PathBuf::from("."),
         idle: 60.0,
         screensaver: None,
     };
-    let mut it = std::env::args().skip(1);
+    let mut it = std::env::args().skip(1).peekable();
     while let Some(arg) = it.next() {
-        let mut val = || it.next().ok_or_else(|| format!("{arg} needs a value"));
         match arg.as_str() {
             "--size" => {
-                let v = val()?;
+                let v = take(&mut it, &arg)?;
                 let (w, h) = v.split_once('x').ok_or("size must be WxH")?;
                 a.w = w.parse().map_err(|_| "bad width")?;
                 a.h = h.parse().map_err(|_| "bad height")?;
             }
-            "--hz" => a.hz = val()?.parse().map_err(|_| "bad hz")?,
-            "--scale" => a.scale = val()?.parse().map_err(|_| "bad scale")?,
+            "--hz" => a.hz = take(&mut it, &arg)?.parse().map_err(|_| "bad hz")?,
+            "--scale" => a.scale = take(&mut it, &arg)?.parse().map_err(|_| "bad scale")?,
             "--fullscreen" => a.fullscreen = true,
             "--stretch" => a.stretch = true,
             "--no-audio" => a.no_audio = true,
             "--auto-boot" => a.auto_boot = true,
             "--headless" => a.headless = true,
-            "--theme" => a.theme = Some(PathBuf::from(val()?)),
-            "--menu" => a.menu = Some(PathBuf::from(val()?)),
+            "--theme" => a.theme = Some(PathBuf::from(take(&mut it, &arg)?)),
+            "--menu" => a.menu = Some(PathBuf::from(take(&mut it, &arg)?)),
+            "--systems" => a.systems = Some(PathBuf::from(take(&mut it, &arg)?)),
+            "--browse" => a.browse = Some(optional(&mut it)),
             "--dump" => {
-                a.dump = val()?
+                a.dump = take(&mut it, &arg)?
                     .split(',')
                     .filter_map(|s| s.trim().parse().ok())
                     .collect();
             }
-            "--dump-dir" => a.dump_dir = PathBuf::from(val()?),
-            "--idle" => a.idle = val()?.parse().map_err(|_| "bad idle")?,
+            "--dump-dir" => a.dump_dir = PathBuf::from(take(&mut it, &arg)?),
+            "--idle" => a.idle = take(&mut it, &arg)?.parse().map_err(|_| "bad idle")?,
             "--screensaver" => {
-                let name = it.next();
+                let name = optional(&mut it);
                 let kind = match name.as_deref() {
                     None => None,
                     Some(n) => Some(
@@ -146,7 +168,9 @@ fn build_scene(args: &Args) -> Scene {
         .map(|p| menu::load(&p))
         .unwrap_or_else(menu::default_items);
     let info = SysInfo::probe(args.w, args.h, args.hz);
-    Scene::new(theme, info, items, args.idle)
+    let library =
+        library::Library::load(&args.systems.clone().unwrap_or_else(library::default_path));
+    Scene::new(theme, info, items, args.idle, library)
 }
 
 fn run_headless(args: &Args) -> Result<(), String> {
@@ -154,6 +178,9 @@ fn run_headless(args: &Args) -> Result<(), String> {
     let mut fb = Framebuffer::new(args.w, args.h);
     std::fs::create_dir_all(&args.dump_dir).map_err(|e| e.to_string())?;
     scene.start_boot(0.0);
+    if let Some(b) = &args.browse {
+        scene.debug_browse(b.as_deref());
+    }
     if let Some(kind) = args.screensaver {
         scene.start_screensaver(0.0, kind);
     }
@@ -231,8 +258,11 @@ fn run(args: &Args) -> Result<(), String> {
     let mut bytes = Vec::with_capacity(args.w * args.h * 4);
     let clock = Instant::now();
     let now = || clock.elapsed().as_secs_f64();
-    if args.auto_boot || args.screensaver.is_some() {
+    if args.auto_boot || args.screensaver.is_some() || args.browse.is_some() {
         scene.start_boot(now());
+    }
+    if let Some(b) = &args.browse {
+        scene.debug_browse(b.as_deref());
     }
     if let Some(kind) = args.screensaver {
         scene.start_screensaver(now(), kind);
@@ -246,7 +276,22 @@ fn run(args: &Args) -> Result<(), String> {
     }
 
     let mut pump = sdl.event_pump()?;
+    let mut child: Option<std::process::Child> = None;
     'main: loop {
+        if let Some(c) = child.as_mut() {
+            match c.try_wait() {
+                Ok(Some(status)) => {
+                    child = None;
+                    scene.game_finished(status.success());
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("wait failed: {e}");
+                    child = None;
+                    scene.game_finished(false);
+                }
+            }
+        }
         for ev in pump.poll_iter() {
             let mut start = false;
             let mut nav = None;
@@ -258,7 +303,8 @@ fn run(args: &Args) -> Result<(), String> {
                     repeat: false,
                     ..
                 } => match k {
-                    Keycode::Escape | Keycode::Q => break 'main,
+                    Keycode::Q => break 'main,
+                    Keycode::Escape | Keycode::Backspace => nav = Some(Nav::Back),
                     Keycode::Space | Keycode::Return => {
                         start = true;
                         fire = true;
@@ -284,11 +330,15 @@ fn run(args: &Args) -> Result<(), String> {
                     Button::DPadDown => nav = Some(Nav::Down),
                     Button::DPadLeft => nav = Some(Nav::Left),
                     Button::DPadRight => nav = Some(Nav::Right),
+                    Button::B | Button::Back => nav = Some(Nav::Back),
                     _ => {}
                 },
                 _ => {}
             }
             let is_input = start || nav.is_some() || fire;
+            if scene.is_running() {
+                continue;
+            }
             if is_input && scene.touch(now()) {
                 continue;
             }
@@ -307,6 +357,16 @@ fn run(args: &Args) -> Result<(), String> {
                             eprintln!("launch failed: {e}");
                         }
                     }
+                    Action::Run(mut cmd, title) => match cmd.spawn() {
+                        Ok(c) => {
+                            eprintln!("running {title}");
+                            child = Some(c);
+                        }
+                        Err(e) => {
+                            eprintln!("cannot start retroarch: {e}");
+                            scene.game_finished(false);
+                        }
+                    },
                     Action::None => {}
                 }
             }

@@ -11,6 +11,7 @@ use crate::audio::Sound;
 use crate::effects::{self, Effect, Kind, Palette};
 use crate::etch::LaserEtch;
 use crate::fb::{Color, Framebuffer, scale};
+use crate::library::{Game, Library};
 use crate::menu::Item;
 use crate::theme::Theme;
 
@@ -28,6 +29,15 @@ pub enum Action {
     None,
     Quit,
     Launch(String),
+    /// Run a game: the shell waits for the process and shows a "now playing" screen.
+    Run(std::process::Command, String),
+}
+
+/// Which screen the menu is on after boot.
+enum Screen {
+    Menu,
+    Systems { sel: usize },
+    Games { sys: usize, sel: usize, top: usize },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -36,6 +46,7 @@ pub enum Nav {
     Down,
     Left,
     Right,
+    Back,
 }
 
 pub struct SysInfo {
@@ -140,19 +151,31 @@ pub struct Scene {
     last_input: f64,
     idle_secs: f32,
     rng: u32,
+    library: Library,
+    screen: Screen,
+    games: Vec<Game>,
+    running: Option<(String, String)>,
+    mark_small: effects::Grid,
 }
 
 impl Scene {
-    pub fn new(theme: Theme, info: SysInfo, items: Vec<Item>, idle_secs: f32) -> Self {
+    pub fn new(
+        theme: Theme,
+        info: SysInfo,
+        items: Vec<Item>,
+        idle_secs: f32,
+        library: Library,
+    ) -> Self {
         let stops = [theme.magenta, theme.cyan, theme.paper];
         let grid = effects::Grid::wordmark(stops);
+        let (mark_cols, mark_rows) = (grid.cols, grid.rows);
         let tag = effects::Grid::from_text(&crt_tag_art(), stops);
         Self {
             theme,
             info,
             items,
-            mark_cols: grid.cols,
-            mark_rows: grid.rows,
+            mark_cols,
+            mark_rows,
             boot_started: false,
             t0: 0.0,
             now: 0.0,
@@ -172,6 +195,11 @@ impl Scene {
             last_input: 0.0,
             idle_secs,
             rng: 0x2545_f491,
+            library,
+            screen: Screen::Menu,
+            games: Vec::new(),
+            running: None,
+            mark_small: grid,
         }
     }
 
@@ -254,7 +282,14 @@ impl Scene {
     }
 
     pub fn navigate(&mut self, nav: Nav) {
-        if !self.menu_live || self.items.is_empty() {
+        if !self.menu_live || self.running.is_some() {
+            return;
+        }
+        if !matches!(self.screen, Screen::Menu) {
+            self.navigate_browser(nav);
+            return;
+        }
+        if self.items.is_empty() || nav == Nav::Back {
             return;
         }
         let n = self.items.len();
@@ -289,6 +324,7 @@ impl Scene {
                     (self.sel + rows).min(n - 1)
                 }
             }
+            Nav::Back => self.sel,
         };
         if next != self.sel {
             self.sel = next;
@@ -297,8 +333,11 @@ impl Scene {
     }
 
     pub fn activate(&mut self) -> Action {
-        if !self.menu_live {
+        if !self.menu_live || self.running.is_some() {
             return Action::None;
+        }
+        if !matches!(self.screen, Screen::Menu) {
+            return self.activate_browser();
         }
         let Some(item) = self.items.get(self.sel).cloned() else {
             return Action::None;
@@ -327,10 +366,324 @@ impl Scene {
                 self.start_screensaver(now, None);
                 return Action::None;
             }
+            "games" | "retroarch" => {
+                if self.library.systems.is_empty() {
+                    "no systems configured in systems.toml".to_string()
+                } else {
+                    self.screen = Screen::Systems { sel: 0 };
+                    return Action::None;
+                }
+            }
             other => format!("{other}: nothing to do yet"),
         };
         self.message = Some((text, self.now + 4.0));
         Action::None
+    }
+
+    // -- game browser (RGB-Pi style: systems, then games) --------------------
+
+    const ROWS_PER_PAGE: usize = 13;
+
+    fn open_games(&mut self, sys: usize) {
+        let system = self.library.systems[sys].clone();
+        self.games = self.library.games(&system);
+        self.screen = Screen::Games {
+            sys,
+            sel: 0,
+            top: 0,
+        };
+    }
+
+    fn navigate_browser(&mut self, nav: Nav) {
+        let mut moved = false;
+        match &mut self.screen {
+            Screen::Systems { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < self.library.systems.len() => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Back | Nav::Left => {
+                    self.screen = Screen::Menu;
+                    moved = true;
+                }
+                _ => {}
+            },
+            Screen::Games { sys, sel, top } => {
+                let n = self.games.len();
+                let page = Self::ROWS_PER_PAGE;
+                match nav {
+                    Nav::Up if *sel > 0 => {
+                        *sel -= 1;
+                        moved = true;
+                    }
+                    Nav::Down if *sel + 1 < n => {
+                        *sel += 1;
+                        moved = true;
+                    }
+                    Nav::Right if n > 0 => {
+                        *sel = (*sel + page).min(n - 1);
+                        moved = true;
+                    }
+                    Nav::Left if n > 0 && *sel > 0 => {
+                        *sel = sel.saturating_sub(page);
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        let s = *sys;
+                        self.screen = Screen::Systems { sel: s };
+                        self.pending.push(Sound::Move);
+                        return;
+                    }
+                    _ => {}
+                }
+                if *sel < *top {
+                    *top = *sel;
+                } else if *sel >= *top + page {
+                    *top = *sel + 1 - page;
+                }
+            }
+            Screen::Menu => {}
+        }
+        if moved {
+            self.pending.push(Sound::Move);
+        }
+    }
+
+    fn activate_browser(&mut self) -> Action {
+        match self.screen {
+            Screen::Systems { sel } => {
+                self.pending.push(Sound::Select);
+                self.open_games(sel);
+                Action::None
+            }
+            Screen::Games { sys, sel, .. } => {
+                let Some(game) = self.games.get(sel).cloned() else {
+                    return Action::None;
+                };
+                let system = self.library.systems[sys].clone();
+                match self.library.command(&system, &game) {
+                    Ok(cmd) => {
+                        self.pending.push(Sound::Select);
+                        self.running = Some((game.title.clone(), system.name.clone()));
+                        Action::Run(cmd, game.title)
+                    }
+                    Err(e) => {
+                        self.message = Some((format!("cannot launch: {e}"), self.now + 4.0));
+                        Action::None
+                    }
+                }
+            }
+            Screen::Menu => Action::None,
+        }
+    }
+
+    /// The game process ended; back to the list, cursor where it was.
+    pub fn game_finished(&mut self, ok: bool) {
+        self.running = None;
+        self.last_input = self.now;
+        self.pending
+            .push(if ok { Sound::Lock } else { Sound::Crunch });
+        if !ok {
+            self.message = Some(("retroarch exited with an error".into(), self.now + 4.0));
+        }
+    }
+
+    /// Jump straight to the browser (for testing and frame dumps).
+    pub fn debug_browse(&mut self, system: Option<&str>) {
+        self.menu_live = true;
+        self.chime_played = true;
+        match system.and_then(|n| self.library.systems.iter().position(|s| s.name == n)) {
+            Some(i) => self.open_games(i),
+            None => self.screen = Screen::Systems { sel: 0 },
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running.is_some()
+    }
+
+    /// Compact header used by the browser and the running screen: small icon,
+    /// the wordmark at 1 px per cell, a prompt line underneath.
+    fn draw_header(&self, fb: &mut Framebuffer, prompt: &str) -> i32 {
+        let left = (fb.w as f32 * 0.05) as i32;
+        fb.bitmap(left, 8, &ICON_24, self.theme.green, 1, 24);
+        let mx = fb.w as i32 - left - self.mark_small.cols;
+        for cell in &self.mark_small.cells {
+            effects::draw_cell(fb, mx, 10, 1, cell, cell.final_color);
+        }
+        fb.text(left, 40, prompt, self.theme.dim, 1);
+        52
+    }
+
+    fn draw_browser(&mut self, fb: &mut Framebuffer) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let max_cols = ((w - 2 * left) / 8) as usize;
+        let cut = |s: &str, n: usize| -> String { s.chars().take(n).collect() };
+        let row_h = 12;
+        match self.screen {
+            Screen::Systems { sel } => {
+                let y0 = self.draw_header(fb, "omarchy $ ls games/");
+                let systems = self.library.systems.clone();
+                for (i, sys) in systems.iter().enumerate() {
+                    let y = y0 + i as i32 * row_h;
+                    let count = self.library.games(sys).len();
+                    let on = i == sel;
+                    let label = format!("{}{}/", if on { "> " } else { "  " }, sys.name);
+                    if on {
+                        fb.rect(
+                            left - 4,
+                            y - 2,
+                            w - 2 * left + 8,
+                            row_h,
+                            scale(self.theme.green, 0.12),
+                        );
+                    }
+                    fb.text(
+                        left,
+                        y,
+                        &cut(&label, max_cols - 10),
+                        if on {
+                            self.theme.bright_green
+                        } else {
+                            self.theme.green
+                        },
+                        1,
+                    );
+                    let right = format!("{count:>4}  {}", sys.video);
+                    fb.text(
+                        w - left - Framebuffer::text_width(&right, 1),
+                        y,
+                        &right,
+                        self.theme.dim,
+                        1,
+                    );
+                }
+                if let Some(sys) = systems.get(sel) {
+                    let core = self.library.core_path(sys);
+                    let core_ok = core.exists();
+                    let info = format!(
+                        "core {}{}",
+                        sys.core,
+                        if core_ok { "" } else { " (missing)" }
+                    );
+                    fb.text(
+                        left,
+                        h - 28,
+                        &cut(&info, max_cols),
+                        if core_ok {
+                            self.theme.dim
+                        } else {
+                            self.theme.red
+                        },
+                        1,
+                    );
+                }
+                fb.text(
+                    left,
+                    h - 16,
+                    "A open   B back",
+                    scale(self.theme.dim, 0.7),
+                    1,
+                );
+            }
+            Screen::Games { sys, sel, top } => {
+                let system = self.library.systems[sys].clone();
+                let n = self.games.len();
+                let y0 = self.draw_header(fb, &format!("omarchy $ ls games/{}/", system.name));
+                if n == 0 {
+                    let dir = crate::library::expand(&system.dir);
+                    fb.text(left, y0, "no games found in", self.theme.dim, 1);
+                    fb.text(
+                        left,
+                        y0 + 12,
+                        &cut(&dir.display().to_string(), max_cols),
+                        self.theme.paper,
+                        1,
+                    );
+                } else {
+                    let end = (top + Self::ROWS_PER_PAGE).min(n);
+                    for (row, i) in (top..end).enumerate() {
+                        let y = y0 + row as i32 * row_h;
+                        let on = i == sel;
+                        if on {
+                            fb.rect(
+                                left - 4,
+                                y - 2,
+                                w - 2 * left + 8,
+                                row_h,
+                                scale(self.theme.green, 0.12),
+                            );
+                        }
+                        let label =
+                            format!("{}{}", if on { "> " } else { "  " }, self.games[i].title);
+                        fb.text(
+                            left,
+                            y,
+                            &cut(&label, max_cols),
+                            if on {
+                                self.theme.bright_green
+                            } else {
+                                self.theme.paper
+                            },
+                            1,
+                        );
+                    }
+                    let pos = format!("{}/{}", sel + 1, n);
+                    fb.text(
+                        w - left - Framebuffer::text_width(&pos, 1),
+                        h - 28,
+                        &pos,
+                        self.theme.dim,
+                        1,
+                    );
+                }
+                fb.text(
+                    left,
+                    h - 16,
+                    "A run   B back   <> page",
+                    scale(self.theme.dim, 0.7),
+                    1,
+                );
+            }
+            Screen::Menu => {}
+        }
+        if let Some((msg, _)) = &self.message {
+            fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.red, 1);
+        }
+    }
+
+    fn draw_running(&mut self, fb: &mut Framebuffer) {
+        let Some((title, system)) = self.running.clone() else {
+            return;
+        };
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, &format!("omarchy $ play {system}/"));
+        let max_cols = ((w - 2 * left) / 8) as usize;
+        let title: String = title.chars().take(max_cols).collect();
+        fb.text(left, y0 + 8, &title, self.theme.bright_green, 1);
+        let dots = ((self.now * 2.0) as usize) % 4;
+        fb.text(
+            left,
+            y0 + 24,
+            &format!("running{}", ".".repeat(dots)),
+            self.theme.dim,
+            1,
+        );
+        fb.text(
+            left,
+            h - 16,
+            "select+start or esc to come back",
+            scale(self.theme.dim, 0.7),
+            1,
+        );
     }
 
     // -- power and roll ------------------------------------------------------
@@ -381,6 +734,22 @@ impl Scene {
             return;
         }
         let t = self.t();
+        if self.running.is_some() {
+            self.draw_running(fb);
+            return;
+        }
+        if self.menu_live && !matches!(self.screen, Screen::Menu) {
+            self.draw_browser(fb);
+            if let Some((_, until)) = &self.message {
+                if self.now > *until {
+                    self.message = None;
+                }
+            }
+            if self.idle_secs > 0.0 && (now - self.last_input) as f32 > self.idle_secs {
+                self.start_screensaver(now, None);
+            }
+            return;
+        }
         self.draw_post(fb, t);
         self.draw_logo(fb, t);
         self.draw_etch(fb, t);

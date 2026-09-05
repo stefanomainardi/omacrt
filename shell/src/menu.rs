@@ -26,12 +26,11 @@ pub fn default_items() -> Vec<Item> {
         quit,
     };
     vec![
-        it("retroarch/", "retroarch", false),
-        it("mame/", "groovymame", false),
-        it("desktop/", "", true),
+        it("games/", "", false),
         it("tv-profile", "", false),
-        it("about", "", false),
         it("screensaver", "", false),
+        it("about", "", false),
+        it("desktop/", "", true),
         it("poweroff", "systemctl poweroff", false),
     ]
 }
