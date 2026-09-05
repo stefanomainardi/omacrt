@@ -64,7 +64,9 @@ name = "poweroff"
 command = "systemctl poweroff"
 ```
 
-Items without a command show a message; `quit = true` exits the shell.
+Items without a command show a message; `quit = true` exits the shell;
+`confirm = true` asks for a second press within three seconds before running
+the command (the default `poweroff` entry uses it).
 
 ## Games
 

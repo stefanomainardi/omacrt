@@ -161,6 +161,8 @@ pub struct Scene {
     menu_live: bool,
     sel: usize,
     message: Option<(String, f64)>,
+    /// Menu item waiting for a confirming second press, with its deadline.
+    armed: Option<(usize, f64)>,
     pending: Vec<Sound>,
     etch: Option<LaserEtch>,
     tag: effects::Grid,
@@ -208,6 +210,7 @@ impl Scene {
             menu_live: false,
             sel: 0,
             message: None,
+            armed: None,
             pending: Vec::new(),
             etch: None,
             tag,
@@ -353,6 +356,7 @@ impl Scene {
         };
         if next != self.sel {
             self.sel = next;
+            self.armed = None;
             self.pending.push(Sound::Move);
         }
     }
@@ -370,6 +374,19 @@ impl Scene {
         self.pending.push(Sound::Select);
         if item.quit {
             return Action::Quit;
+        }
+        if item.confirm && !item.command.trim().is_empty() {
+            let still_armed =
+                matches!(self.armed, Some((i, until)) if i == self.sel && self.now < until);
+            if !still_armed {
+                self.armed = Some((self.sel, self.now + 3.0));
+                self.message = Some((
+                    format!("press again to {}", item.name.trim_end_matches('/')),
+                    self.now + 3.0,
+                ));
+                return Action::None;
+            }
+            self.armed = None;
         }
         if !item.command.trim().is_empty() {
             self.message = Some((

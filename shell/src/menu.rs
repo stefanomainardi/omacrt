@@ -11,6 +11,9 @@ pub struct Item {
     pub command: String,
     #[serde(default)]
     pub quit: bool,
+    /// Ask for a second press within a few seconds before running the command.
+    #[serde(default)]
+    pub confirm: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -24,6 +27,7 @@ pub fn default_items() -> Vec<Item> {
         name: name.into(),
         command: command.into(),
         quit,
+        confirm: false,
     };
     vec![
         it("games/", "", false),
@@ -31,7 +35,12 @@ pub fn default_items() -> Vec<Item> {
         it("screensaver", "", false),
         it("about", "", false),
         it("desktop/", "", true),
-        it("poweroff", "systemctl poweroff", false),
+        Item {
+            name: "poweroff".into(),
+            command: "systemctl poweroff".into(),
+            quit: false,
+            confirm: true,
+        },
     ]
 }
 
