@@ -1,0 +1,378 @@
+//! omarchy-crt-shell: native boot screen and launcher for a 15 kHz CRT.
+//!
+//! Renders a low-resolution framebuffer (320x240 by default) and shows it
+//! through SDL2, either in a scaled window for development or fullscreen on
+//! the CRT output. No fake scanlines: the tube provides them.
+
+mod assets;
+mod audio;
+mod effects;
+mod etch;
+mod fb;
+mod font8x8;
+mod menu;
+mod scene;
+mod theme;
+
+use audio::Audio;
+use fb::Framebuffer;
+use scene::{Action, Nav, Scene, SysInfo};
+use sdl2::controller::Button;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::pixels::PixelFormatEnum;
+use std::path::PathBuf;
+use std::time::Instant;
+
+struct Args {
+    w: usize,
+    h: usize,
+    hz: u32,
+    scale: u32,
+    fullscreen: bool,
+    stretch: bool,
+    no_audio: bool,
+    auto_boot: bool,
+    headless: bool,
+    theme: Option<PathBuf>,
+    menu: Option<PathBuf>,
+    dump: Vec<f64>,
+    dump_dir: PathBuf,
+    idle: f32,
+    screensaver: Option<Option<effects::Kind>>,
+}
+
+const USAGE: &str = "usage: omarchy-crt-shell [options]
+  --size WxH        framebuffer size (default 320x240)
+  --hz N            refresh label shown in POST (default 60)
+  --scale N         window scale for desktop testing (default 3)
+  --fullscreen      fullscreen on the current output
+  --stretch         ignore aspect ratio, fill the output (for wide 15 kHz modes)
+  --no-audio        skip audio
+  --auto-boot       skip the PRESS START gate
+  --theme PATH      Omarchy colors.toml (default ~/.config/omarchy/current/colors.toml)
+  --menu PATH       menu.toml (default ~/.config/omarchy-crt/menu.toml)
+  --headless        render without a window; use with --dump
+  --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
+  --dump-dir DIR    where dumps go (default .)
+  --idle SECONDS    start the screensaver after this much idle time (default 60, 0 = never)
+  --screensaver [NAME]  start directly in the screensaver; NAME picks an effect";
+
+fn parse_args() -> Result<Args, String> {
+    let mut a = Args {
+        w: 320,
+        h: 240,
+        hz: 60,
+        scale: 3,
+        fullscreen: false,
+        stretch: false,
+        no_audio: false,
+        auto_boot: false,
+        headless: false,
+        theme: None,
+        menu: None,
+        dump: Vec::new(),
+        dump_dir: PathBuf::from("."),
+        idle: 60.0,
+        screensaver: None,
+    };
+    let mut it = std::env::args().skip(1);
+    while let Some(arg) = it.next() {
+        let mut val = || it.next().ok_or_else(|| format!("{arg} needs a value"));
+        match arg.as_str() {
+            "--size" => {
+                let v = val()?;
+                let (w, h) = v.split_once('x').ok_or("size must be WxH")?;
+                a.w = w.parse().map_err(|_| "bad width")?;
+                a.h = h.parse().map_err(|_| "bad height")?;
+            }
+            "--hz" => a.hz = val()?.parse().map_err(|_| "bad hz")?,
+            "--scale" => a.scale = val()?.parse().map_err(|_| "bad scale")?,
+            "--fullscreen" => a.fullscreen = true,
+            "--stretch" => a.stretch = true,
+            "--no-audio" => a.no_audio = true,
+            "--auto-boot" => a.auto_boot = true,
+            "--headless" => a.headless = true,
+            "--theme" => a.theme = Some(PathBuf::from(val()?)),
+            "--menu" => a.menu = Some(PathBuf::from(val()?)),
+            "--dump" => {
+                a.dump = val()?
+                    .split(',')
+                    .filter_map(|s| s.trim().parse().ok())
+                    .collect();
+            }
+            "--dump-dir" => a.dump_dir = PathBuf::from(val()?),
+            "--idle" => a.idle = val()?.parse().map_err(|_| "bad idle")?,
+            "--screensaver" => {
+                let name = it.next();
+                let kind = match name.as_deref() {
+                    None => None,
+                    Some(n) => Some(
+                        effects::ALL
+                            .iter()
+                            .copied()
+                            .find(|k| k.name() == n)
+                            .ok_or_else(|| {
+                                format!(
+                                    "unknown effect {n}; one of: {}",
+                                    effects::ALL
+                                        .iter()
+                                        .map(|k| k.name())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                )
+                            })?,
+                    ),
+                };
+                a.screensaver = Some(kind);
+            }
+            "-h" | "--help" => {
+                println!("{USAGE}");
+                std::process::exit(0);
+            }
+            other => return Err(format!("unknown option {other}\n{USAGE}")),
+        }
+    }
+    Ok(a)
+}
+
+fn build_scene(args: &Args) -> Scene {
+    let theme_path = args.theme.clone().or_else(theme::Theme::default_path);
+    let theme = theme_path
+        .and_then(|p| theme::Theme::load(&p))
+        .unwrap_or_else(theme::Theme::tokyo_night);
+    let menu_path = args.menu.clone().or_else(menu::default_path);
+    let items = menu_path
+        .map(|p| menu::load(&p))
+        .unwrap_or_else(menu::default_items);
+    let info = SysInfo::probe(args.w, args.h, args.hz);
+    Scene::new(theme, info, items, args.idle)
+}
+
+fn run_headless(args: &Args) -> Result<(), String> {
+    let mut scene = build_scene(args);
+    let mut fb = Framebuffer::new(args.w, args.h);
+    std::fs::create_dir_all(&args.dump_dir).map_err(|e| e.to_string())?;
+    scene.start_boot(0.0);
+    if let Some(kind) = args.screensaver {
+        scene.start_screensaver(0.0, kind);
+    }
+    let mut dumps = args.dump.clone();
+    dumps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let end = dumps.last().copied().unwrap_or(8.0) + 0.02;
+    let dt = 1.0 / 60.0;
+    let mut t = 0.0;
+    let mut next = 0;
+    while t <= end {
+        scene.draw(&mut fb, t);
+        fb.roll(scene.roll(), t as f32);
+        let (sx, sy) = scene.shake();
+        fb.shift(sx, sy, 0);
+        fb.apply_gain(scene.power());
+        while next < dumps.len() && t + dt / 2.0 >= dumps[next] {
+            let path = args.dump_dir.join(format!("frame_{:.2}.ppm", dumps[next]));
+            fb.write_ppm(&path).map_err(|e| e.to_string())?;
+            println!("{}", path.display());
+            next += 1;
+        }
+        scene.take_sounds();
+        t += dt;
+    }
+    Ok(())
+}
+
+fn run(args: &Args) -> Result<(), String> {
+    let sdl = sdl2::init()?;
+    let video = sdl.video()?;
+    let gcs = sdl.game_controller()?;
+    let audio = if args.no_audio {
+        Audio::silent()
+    } else {
+        Audio::open(&sdl.audio()?)?
+    };
+
+    let mut builder = video.window(
+        "omarchy-crt",
+        args.w as u32 * args.scale,
+        args.h as u32 * args.scale,
+    );
+    builder.position_centered();
+    if args.fullscreen {
+        builder.fullscreen_desktop();
+    } else {
+        builder.resizable();
+    }
+    let window = builder.build().map_err(|e| e.to_string())?;
+    let mut canvas = window
+        .into_canvas()
+        .present_vsync()
+        .build()
+        .map_err(|e| e.to_string())?;
+    if !args.stretch {
+        canvas
+            .set_logical_size(args.w as u32, args.h as u32)
+            .map_err(|e| e.to_string())?;
+    }
+    let creator = canvas.texture_creator();
+    let mut tex = creator
+        .create_texture_streaming(PixelFormatEnum::ARGB8888, args.w as u32, args.h as u32)
+        .map_err(|e| e.to_string())?;
+    sdl.mouse().show_cursor(false);
+
+    let mut controllers = Vec::new();
+    for i in 0..gcs.num_joysticks()? {
+        if gcs.is_game_controller(i) {
+            if let Ok(c) = gcs.open(i) {
+                controllers.push(c);
+            }
+        }
+    }
+
+    let mut scene = build_scene(args);
+    let mut fb = Framebuffer::new(args.w, args.h);
+    let mut bytes = Vec::with_capacity(args.w * args.h * 4);
+    let clock = Instant::now();
+    let now = || clock.elapsed().as_secs_f64();
+    if args.auto_boot || args.screensaver.is_some() {
+        scene.start_boot(now());
+    }
+    if let Some(kind) = args.screensaver {
+        scene.start_screensaver(now(), kind);
+    }
+
+    let mut dumps = args.dump.clone();
+    dumps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mut next_dump = 0;
+    if !dumps.is_empty() {
+        std::fs::create_dir_all(&args.dump_dir).map_err(|e| e.to_string())?;
+    }
+
+    let mut pump = sdl.event_pump()?;
+    'main: loop {
+        for ev in pump.poll_iter() {
+            let mut start = false;
+            let mut nav = None;
+            let mut fire = false;
+            match ev {
+                Event::Quit { .. } => break 'main,
+                Event::KeyDown {
+                    keycode: Some(k),
+                    repeat: false,
+                    ..
+                } => match k {
+                    Keycode::Escape | Keycode::Q => break 'main,
+                    Keycode::Space | Keycode::Return => {
+                        start = true;
+                        fire = true;
+                    }
+                    Keycode::Up | Keycode::K => nav = Some(Nav::Up),
+                    Keycode::Down | Keycode::J => nav = Some(Nav::Down),
+                    Keycode::Left | Keycode::H => nav = Some(Nav::Left),
+                    Keycode::Right | Keycode::L => nav = Some(Nav::Right),
+                    _ => {}
+                },
+                Event::MouseButtonDown { .. } => start = true,
+                Event::ControllerDeviceAdded { which, .. } => {
+                    if let Ok(c) = gcs.open(which) {
+                        controllers.push(c);
+                    }
+                }
+                Event::ControllerButtonDown { button, .. } => match button {
+                    Button::A | Button::Start => {
+                        start = true;
+                        fire = true;
+                    }
+                    Button::DPadUp => nav = Some(Nav::Up),
+                    Button::DPadDown => nav = Some(Nav::Down),
+                    Button::DPadLeft => nav = Some(Nav::Left),
+                    Button::DPadRight => nav = Some(Nav::Right),
+                    _ => {}
+                },
+                _ => {}
+            }
+            let is_input = start || nav.is_some() || fire;
+            if is_input && scene.touch(now()) {
+                continue;
+            }
+            if start && !scene.boot_started() {
+                scene.start_boot(now());
+                continue;
+            }
+            if let Some(n) = nav {
+                scene.navigate(n);
+            }
+            if fire {
+                match scene.activate() {
+                    Action::Quit => break 'main,
+                    Action::Launch(cmd) => {
+                        if let Err(e) = menu::launch(&cmd) {
+                            eprintln!("launch failed: {e}");
+                        }
+                    }
+                    Action::None => {}
+                }
+            }
+        }
+
+        let t = now();
+        scene.draw(&mut fb, t);
+        fb.roll(scene.roll(), t as f32);
+        let (sx, sy) = scene.shake();
+        fb.shift(sx, sy, 0);
+        fb.apply_gain(scene.power());
+        for s in scene.take_sounds() {
+            audio.play(s);
+        }
+
+        if scene.boot_started() && next_dump < dumps.len() {
+            let bt = scene_time(&scene, t);
+            if bt >= dumps[next_dump] {
+                let path = args
+                    .dump_dir
+                    .join(format!("frame_{:.2}.ppm", dumps[next_dump]));
+                let _ = fb.write_ppm(&path);
+                next_dump += 1;
+            }
+        }
+
+        fb.to_bgra(&mut bytes);
+        tex.update(None, &bytes, args.w * 4)
+            .map_err(|e| e.to_string())?;
+        canvas.clear();
+        canvas.copy(&tex, None, None)?;
+        canvas.present();
+    }
+    Ok(())
+}
+
+fn scene_time(scene: &Scene, now: f64) -> f64 {
+    // Scene keeps its own t0; expose elapsed boot time for dump timing.
+    if scene.boot_started() {
+        now - scene_t0(scene)
+    } else {
+        -1.0
+    }
+}
+
+fn scene_t0(scene: &Scene) -> f64 {
+    scene.t0()
+}
+
+fn main() {
+    let args = match parse_args() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
+    };
+    let result = if args.headless {
+        run_headless(&args)
+    } else {
+        run(&args)
+    };
+    if let Err(e) = result {
+        eprintln!("omarchy-crt-shell: {e}");
+        std::process::exit(1);
+    }
+}

@@ -1,0 +1,258 @@
+//! Synthesized sounds, mixed in the SDL audio callback.
+//! Every sound is rendered once at startup into a sample buffer.
+
+use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
+use std::sync::{Arc, Mutex};
+
+pub const RATE: u32 = 48_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Sound {
+    PowerOn,
+    Crunch,
+    Chime,
+    Move,
+    Select,
+    Thud,
+}
+
+struct Voice {
+    data: Arc<Vec<f32>>,
+    pos: usize,
+}
+
+pub struct Mixer {
+    voices: Arc<Mutex<Vec<Voice>>>,
+}
+
+impl AudioCallback for Mixer {
+    type Channel = f32;
+    fn callback(&mut self, out: &mut [f32]) {
+        out.fill(0.0);
+        let mut voices = self.voices.lock().unwrap();
+        for v in voices.iter_mut() {
+            for sample in out.iter_mut() {
+                if v.pos >= v.data.len() {
+                    break;
+                }
+                *sample += v.data[v.pos];
+                v.pos += 1;
+            }
+        }
+        voices.retain(|v| v.pos < v.data.len());
+        for s in out.iter_mut() {
+            *s = s.clamp(-1.0, 1.0);
+        }
+    }
+}
+
+pub struct Audio {
+    _device: Option<AudioDevice<Mixer>>,
+    voices: Arc<Mutex<Vec<Voice>>>,
+    bank: Vec<(Sound, Arc<Vec<f32>>)>,
+}
+
+impl Audio {
+    pub fn silent() -> Self {
+        Self {
+            _device: None,
+            voices: Arc::new(Mutex::new(Vec::new())),
+            bank: Vec::new(),
+        }
+    }
+
+    pub fn open(subsystem: &sdl2::AudioSubsystem) -> Result<Self, String> {
+        let voices = Arc::new(Mutex::new(Vec::new()));
+        let spec = AudioSpecDesired {
+            freq: Some(RATE as i32),
+            channels: Some(1),
+            samples: Some(512),
+        };
+        let cb_voices = voices.clone();
+        let device = subsystem.open_playback(None, &spec, move |_| Mixer { voices: cb_voices })?;
+        device.resume();
+        let bank = vec![
+            (Sound::PowerOn, Arc::new(synth_power_on())),
+            (Sound::Crunch, Arc::new(synth_crunch())),
+            (Sound::Chime, Arc::new(synth_chime())),
+            (Sound::Move, Arc::new(synth_beep(880.0, 0.025, 0.035))),
+            (Sound::Select, Arc::new(synth_beep(1320.0, 0.06, 0.04))),
+            (Sound::Thud, Arc::new(synth_thud())),
+        ];
+        Ok(Self {
+            _device: Some(device),
+            voices,
+            bank,
+        })
+    }
+
+    pub fn play(&self, s: Sound) {
+        if let Some((_, data)) = self.bank.iter().find(|(k, _)| *k == s) {
+            self.voices.lock().unwrap().push(Voice {
+                data: data.clone(),
+                pos: 0,
+            });
+        }
+    }
+}
+
+fn seconds(n: f32) -> usize {
+    (n * RATE as f32) as usize
+}
+
+/// Deterministic noise, good enough for a click.
+struct Lcg(u32);
+impl Lcg {
+    fn next(&mut self) -> f32 {
+        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
+        (self.0 >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
+    }
+}
+
+/// One-pole lowpass over a buffer.
+fn lowpass(buf: &mut [f32], cutoff_hz: f32) {
+    let rc = 1.0 / (2.0 * std::f32::consts::PI * cutoff_hz);
+    let dt = 1.0 / RATE as f32;
+    let a = dt / (rc + dt);
+    let mut y = 0.0;
+    for s in buf.iter_mut() {
+        y += a * (*s - y);
+        *s = y;
+    }
+}
+
+/// Toggle switch clunk plus the degauss thump of a TV coming to life.
+fn synth_power_on() -> Vec<f32> {
+    let n = seconds(0.6);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(7);
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let click = if t < 0.012 {
+            rng.next() * (1.0 - t / 0.012) * 0.9
+        } else {
+            0.0
+        };
+        let thump = (2.0 * std::f32::consts::PI * 52.0 * t).sin() * (-t * 9.0).exp() * 0.7;
+        let hum = (2.0 * std::f32::consts::PI * 15_625.0 * t).sin()
+            * (-(t - 0.05).max(0.0) * 6.0).exp()
+            * 0.02;
+        let hiss = rng.next() * (-t * 12.0).exp() * 0.08;
+        *s = click + thump + hum + hiss;
+    }
+    lowpass(&mut out[..], 6000.0);
+    for s in out.iter_mut() {
+        *s *= 0.35;
+    }
+    out
+}
+
+/// Frozen HDD seek: voice-coil click, arm rings around 1.3 and 2.1 kHz, carriage clunk.
+fn synth_crunch() -> Vec<f32> {
+    let n = seconds(0.07);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(3);
+    let tau = 2.0 * std::f32::consts::PI;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let env = (-t * 58.0).exp();
+        let click = if i == 0 {
+            0.85
+        } else if i < 6 {
+            0.12
+        } else {
+            0.0
+        };
+        let clunk = (tau * 270.0 * t).sin() * (-t * 78.0).exp() * 0.4;
+        let ring13 = (tau * 1300.0 * t).sin() * (-t * 68.0).exp() * 0.32;
+        let ring21 = (tau * 2080.0 * t).sin() * (-t * 88.0).exp() * 0.26;
+        let grit = rng.next() * (-t * 110.0).exp() * 0.16;
+        *s = (click + clunk + ring13 + ring21 + grit) * env;
+    }
+    lowpass(&mut out[..], 4200.0);
+    for s in out.iter_mut() {
+        *s *= 0.3;
+    }
+    out
+}
+
+/// Systems-online chord: soft partials, slow tape echo, long tail.
+fn synth_chime() -> Vec<f32> {
+    let tail = 5.4;
+    let n = seconds(tail);
+    let mut dry = vec![0.0; n];
+    let tau = 2.0 * std::f32::consts::PI;
+    // D major with an added ninth, spread over two octaves.
+    let notes = [146.83, 220.0, 293.66, 369.99, 440.0, 587.33, 659.25];
+    let gains = [0.9, 0.7, 0.8, 0.6, 0.55, 0.45, 0.25];
+    for (i, s) in dry.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let attack = (t / 0.03).min(1.0);
+        let hold = if t < 1.4 {
+            1.0
+        } else {
+            (-(t - 1.4) * 1.6).exp()
+        };
+        let mut v = 0.0;
+        for (k, f) in notes.iter().enumerate() {
+            // Triangle-ish: sine plus a quiet third harmonic.
+            let ph = tau * f * t;
+            v += gains[k]
+                * (ph.sin() + 0.18 * (3.0 * ph).sin())
+                * (1.0 + 0.01 * (t * 0.7 + k as f32).sin());
+        }
+        *s = v * attack * hold * 0.045;
+    }
+    // Lowpass sweep approximation: brighter for the first 0.3 s, then mellow.
+    lowpass(&mut dry[..], 1400.0);
+    // Two tape echoes with feedback and damping.
+    let mut out = dry.clone();
+    let d1 = seconds(0.36);
+    let d2 = seconds(0.54);
+    let mut fb = vec![0.0; n];
+    for i in 0..n {
+        let e1 = if i >= d1 { fb[i - d1] } else { 0.0 };
+        fb[i] = dry[i] + e1 * 0.42;
+        let e2 = if i >= d2 { fb[i - d2] } else { 0.0 };
+        out[i] += (e1 + e2) * 0.46;
+    }
+    lowpass(&mut out[..], 2400.0);
+    // Master envelope: full for 1.4 s, then to silence at the tail.
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let env = if t < 1.4 {
+            1.0
+        } else {
+            (-(t - 1.4) * 1.15).exp()
+        };
+        *s *= env;
+    }
+    out
+}
+
+fn synth_beep(freq: f32, dur: f32, gain: f32) -> Vec<f32> {
+    let n = seconds(dur);
+    let mut out = vec![0.0; n];
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let square = if (t * freq).fract() < 0.5 { 1.0 } else { -1.0 };
+        let env = (-(t / dur) * 5.0).exp();
+        *s = square * env * gain;
+    }
+    out
+}
+
+/// Arcade title-card thud: a low sine drop with a touch of noise.
+fn synth_thud() -> Vec<f32> {
+    let n = seconds(0.25);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(11);
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let f = 140.0 - 90.0 * (t / 0.25).min(1.0);
+        let body = (2.0 * std::f32::consts::PI * f * t).sin() * (-t * 14.0).exp();
+        let snap = rng.next() * (-t * 90.0).exp() * 0.3;
+        *s = (body * 0.8 + snap) * 0.4;
+    }
+    out
+}
