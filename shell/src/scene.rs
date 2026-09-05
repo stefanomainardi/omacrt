@@ -8,11 +8,13 @@
 
 use crate::assets::ICON_24;
 use crate::audio::Sound;
+use crate::bt::Bluetooth;
 use crate::effects::{self, Effect, Kind, Palette};
 use crate::etch::LaserEtch;
 use crate::fb::{Color, Framebuffer, scale};
 use crate::library::{Game, Library};
 use crate::menu::Item;
+use crate::pad::PadKind;
 use crate::profile::{PRESETS, Profile};
 use crate::theme::Theme;
 use std::path::PathBuf;
@@ -48,6 +50,9 @@ enum Screen {
         top: usize,
     },
     Profile {
+        sel: usize,
+    },
+    Pair {
         sel: usize,
     },
 }
@@ -180,6 +185,8 @@ pub struct Scene {
     profile: Profile,
     recent: Vec<(usize, PathBuf)>,
     favorites: Vec<(usize, PathBuf)>,
+    pad: PadKind,
+    bt: Bluetooth,
 }
 
 impl Scene {
@@ -220,6 +227,8 @@ impl Scene {
             last_input: 0.0,
             idle_secs,
             rng: 0x2545_f491,
+            pad: PadKind::Generic,
+            bt: Bluetooth::new(),
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
@@ -406,6 +415,17 @@ impl Scene {
                 self.screen = Screen::Profile { sel: 0 };
                 return Action::None;
             }
+            "pair-pad" => {
+                if !Bluetooth::available() {
+                    "bluetoothctl not found".to_string()
+                } else {
+                    self.screen = Screen::Pair { sel: 0 };
+                    if self.bt.devices.is_empty() {
+                        self.bt.start_scan();
+                    }
+                    return Action::None;
+                }
+            }
             "screensaver" => {
                 let now = self.now;
                 self.start_screensaver(now, None);
@@ -557,6 +577,21 @@ impl Scene {
                     _ => {}
                 }
             }
+            Screen::Pair { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < self.bt.devices.len() => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.screen = Screen::Menu;
+                    moved = true;
+                }
+                _ => {}
+            },
             Screen::Menu => {}
         }
         if moved {
@@ -610,6 +645,15 @@ impl Scene {
                 }
                 _ => Action::None,
             },
+            Screen::Pair { sel } => {
+                self.pending.push(Sound::Select);
+                if self.bt.devices.is_empty() {
+                    self.bt.start_scan();
+                } else {
+                    self.bt.pair(sel);
+                }
+                Action::None
+            }
             Screen::Menu => Action::None,
         }
     }
@@ -708,6 +752,7 @@ impl Scene {
         self.chime_played = true;
         match system {
             Some("profile") => self.screen = Screen::Profile { sel: 0 },
+            Some("pair") => self.screen = Screen::Pair { sel: 0 },
             Some(n) => match self.library.systems.iter().position(|s| s.name == n) {
                 Some(i) => self.open_games(Some(i)),
                 None => self.screen = Screen::Systems { sel: 0 },
@@ -718,6 +763,28 @@ impl Scene {
 
     pub fn is_running(&self) -> bool {
         self.running.is_some()
+    }
+
+    /// Remember which pad family is connected, for on-screen button labels.
+    pub fn set_pad(&mut self, name: Option<&str>) {
+        self.pad = name.map(PadKind::from_name).unwrap_or(PadKind::Generic);
+    }
+
+    fn hint(&self, parts: &[(&str, &str)]) -> String {
+        let l = self.pad.labels();
+        parts
+            .iter()
+            .map(|(button, what)| {
+                let b = match *button {
+                    "A" => l.accept,
+                    "B" => l.back,
+                    "Y" => l.fav,
+                    other => other,
+                };
+                format!("{b} {what}")
+            })
+            .collect::<Vec<_>>()
+            .join("  ")
     }
 
     /// Compact header used by the browser and the running screen: small icon,
@@ -948,10 +1015,32 @@ impl Scene {
                     1,
                 );
             }
+            Screen::Pair { sel } => {
+                let y0 = self.draw_header(fb, "omarchy $ pair-pad");
+                let devices = self.bt.devices.clone();
+                if devices.is_empty() {
+                    fb.text(left, y0, "no devices yet", self.theme.dim, 1);
+                }
+                for (i, (mac, name)) in devices.iter().enumerate().take(Self::ROWS_PER_PAGE) {
+                    let y = y0 + i as i32 * row_h;
+                    self.draw_row(fb, y, name, &mac[9..], i == sel, self.theme.paper);
+                }
+                let dots = ((self.now * 2.0) as usize) % 4;
+                let status = if self.bt.busy {
+                    format!("{}{}", self.bt.status, ".".repeat(dots))
+                } else {
+                    self.bt.status.clone()
+                };
+                fb.text(left, h - 28, &cut(&status, max_cols), self.theme.cyan, 1);
+                let hint = self.hint(&[("A", "pair/scan"), ("B", "back")]);
+                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+            }
             Screen::Menu => {}
         }
         if let Some((msg, _)) = &self.message {
-            fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.cyan, 1);
+            if !matches!(self.screen, Screen::Pair { .. }) {
+                fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.cyan, 1);
+            }
         }
     }
 
@@ -1036,6 +1125,9 @@ impl Scene {
             return;
         }
         if self.menu_live && !matches!(self.screen, Screen::Menu) {
+            if matches!(self.screen, Screen::Pair { .. }) && self.bt.poll() {
+                self.pending.push(Sound::Lock);
+            }
             self.draw_browser(fb);
             if let Some((_, until)) = &self.message {
                 if self.now > *until {

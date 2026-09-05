@@ -38,6 +38,10 @@ pub struct System {
     /// Allow rewind (costs CPU and memory; off for 3D systems).
     #[serde(default)]
     pub rewind: bool,
+    /// Left stick as d-pad in RetroArch: 0 off, 1 on (default), 2 forced.
+    /// Off for systems with a real analog stick (Nintendo 64, Dreamcast).
+    #[serde(default)]
+    pub analog_dpad: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -191,6 +195,7 @@ fn default_systems() -> Vec<System> {
         devices: Vec::new(),
         runahead,
         rewind,
+        analog_dpad: None,
     };
     vec![
         sys(
@@ -346,6 +351,14 @@ fn default_systems() -> Vec<System> {
             ]),
         ),
     ]
+    .into_iter()
+    .map(|mut s| {
+        if matches!(s.name.as_str(), "n64" | "dreamcast" | "psx") {
+            s.analog_dpad = Some(0);
+        }
+        s
+    })
+    .collect()
 }
 
 impl Library {
@@ -591,4 +604,9 @@ video_crop_overscan = "false"
 video_frame_delay_auto = "true"
 audio_resampler_quality = "3"
 config_save_on_exit = "false"
+input_driver = "udev"
+input_joypad_driver = "udev"
+input_autodetect_enable = "true"
+joypad_autoconfig_dir = "/usr/share/libretro/autoconfig/udev"
+input_max_users = "4"
 "#;

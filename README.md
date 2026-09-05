@@ -93,6 +93,11 @@ scanlines or curvature. The tube provides those.
 - **Recent and favorites.** Two virtual folders on top of the systems list;
   `F` or the `Y` button stars a game. Multi disc games appear once through
   `.m3u` playlists.
+- **Controllers.** SDL game controller API in the shell (hotplug, left stick
+  as d-pad, button hints in the pad's own vocabulary, extra mappings from a
+  `gamecontrollerdb.txt`), udev autoconfig profiles in RetroArch, analog to
+  d-pad per system, and a `pair-pad` screen that drives `bluetoothctl`. See
+  [`docs/input.md`](docs/input.md).
 - **TV profile.** Monitor preset (`generic_15`, `ntsc`, `pal`, arcade
   chassis), centering, horizontal size and sync polarity, saved as
   `switchres.ini` plus RetroArch centering keys, with the 240p Test Suite one
@@ -118,7 +123,7 @@ and the timeline.
 ## Repository layout
 
 - **`docs/`** research and decisions: the 15 kHz study, the video policy, the
-  systems file and TV profile.
+  systems file and TV profile, controllers.
 - **`scripts/crt-probe.sh`** read-only probe of a DRM connector: status, EDID,
   kernel mode list, Hyprland view. Used to test DACs.
 - **`shell/`** the native launcher.

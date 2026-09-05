@@ -6,18 +6,21 @@
 
 mod assets;
 mod audio;
+mod bt;
 mod effects;
 mod etch;
 mod fb;
 mod font8x8;
 mod library;
 mod menu;
+mod pad;
 mod profile;
 mod scene;
 mod theme;
 
 use audio::Audio;
 use fb::Framebuffer;
+use pad::Stick;
 use scene::{Action, Nav, Scene, SysInfo};
 use sdl2::controller::Button;
 use sdl2::event::Event;
@@ -245,6 +248,16 @@ fn run(args: &Args) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     sdl.mouse().show_cursor(false);
 
+    // Extra mappings for pads SDL does not know (SDL_GameControllerDB format).
+    if let Some(dir) = library::default_path().parent() {
+        let db = dir.join("gamecontrollerdb.txt");
+        if db.exists() {
+            match gcs.load_mappings(&db) {
+                Ok(n) => eprintln!("loaded {n} controller mappings"),
+                Err(e) => eprintln!("gamecontrollerdb: {e}"),
+            }
+        }
+    }
     let mut controllers = Vec::new();
     for i in 0..gcs.num_joysticks()? {
         if gcs.is_game_controller(i) {
@@ -253,8 +266,12 @@ fn run(args: &Args) -> Result<(), String> {
             }
         }
     }
+    let mut stick = Stick::new();
 
     let mut scene = build_scene(args);
+    if let Some(c) = controllers.last() {
+        scene.set_pad(Some(&c.name()));
+    }
     let mut fb = Framebuffer::new(args.w, args.h);
     let mut bytes = Vec::with_capacity(args.w * args.h * 4);
     let clock = Instant::now();
@@ -321,9 +338,18 @@ fn run(args: &Args) -> Result<(), String> {
                 Event::MouseButtonDown { .. } => start = true,
                 Event::ControllerDeviceAdded { which, .. } => {
                     if let Ok(c) = gcs.open(which) {
+                        scene.set_pad(Some(&c.name()));
                         controllers.push(c);
                     }
                 }
+                Event::ControllerDeviceRemoved { which, .. } => {
+                    controllers.retain(|c| c.instance_id() != which);
+                    match controllers.last() {
+                        Some(c) => scene.set_pad(Some(&c.name())),
+                        None => scene.set_pad(None),
+                    }
+                }
+                Event::ControllerAxisMotion { axis, value, .. } => stick.set(axis, value),
                 Event::ControllerButtonDown { button, .. } => match button {
                     Button::A | Button::Start => {
                         start = true;
@@ -376,6 +402,12 @@ fn run(args: &Args) -> Result<(), String> {
                     },
                     Action::None => {}
                 }
+            }
+        }
+
+        if let Some(n) = stick.poll(now()) {
+            if !scene.is_running() && !scene.touch(now()) {
+                scene.navigate(n);
             }
         }
 

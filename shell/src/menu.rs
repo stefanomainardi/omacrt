@@ -32,6 +32,7 @@ pub fn default_items() -> Vec<Item> {
     vec![
         it("games/", "", false),
         it("tv-profile", "", false),
+        it("pair-pad", "", false),
         it("screensaver", "", false),
         it("about", "", false),
         it("desktop/", "", true),

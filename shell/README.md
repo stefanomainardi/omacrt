@@ -40,7 +40,10 @@ Options:
 
 Controls: arrows or `hjkl` move, `Enter` or `Space` select, `Esc` or
 `Backspace` go back, `F` stars a game, `q` quits. Game controllers work through
-SDL: d-pad moves, `A` or `Start` selects, `B` goes back, `Y` stars a game.
+SDL: d-pad or left stick moves, `A` or `Start` selects, `B` goes back, `Y`
+stars a game. Extra pad mappings load from
+`~/.config/omarchy-crt/gamecontrollerdb.txt`. See
+[`../docs/input.md`](../docs/input.md).
 
 ## Menu
 
