@@ -9,8 +9,9 @@ signal out of a modern AMD GPU, and a native boot screen and launcher that
 brings the Omarchy look to a 320x240 tube, in the spirit of
 [crt.omarchy.org](https://crt.omarchy.org/).
 
-Status: early prototype. The launcher runs on a desktop window today; the
-first real CRT test is pending hardware.
+Status: early prototype. The launcher runs in a desktop window, browses a
+ROM library and starts games through RetroArch; the first real CRT test is
+pending hardware. Development happens on `develop`, `main` holds what works.
 
 ## Why
 
@@ -23,7 +24,8 @@ collects the research and builds that setup.
 ## What "no compromises" means here
 
 - **Native modelines per game.** 224, 240, 256 or 288 lines, 60.00, 59.94, 57.5
-  or 50 Hz, chosen by the emulator at launch, not a fixed super-resolution.
+  or 50 Hz, chosen by the emulator at launch and on the fly, not one fixed mode
+  for everything.
 - **Real interlace.** 480i and 576i for the systems that used them.
 - **Analog RGB out of a modern GPU.** A DisplayPort DAC that accepts pixel
   clocks down to a few MHz, into a SCART TV with proper composite sync and
@@ -72,10 +74,18 @@ scanlines or curvature. The tube provides those.
   random walk decides the etch order, cells flash and cool from yellow to their
   final gradient color, sparks fly along Bezier arcs and pile up on the
   baseline.
-- **CRT badge.** A cartridge style label whose letters drop in one by one with
-  a thud and a screen shake, arcade title card style.
+- **CRT tag.** A stair-stepped pixel "CRT" under the wordmark, revealed like a
+  tape hunting for sync: torn lines, tracking noise, snow, then a clean lock.
 - **Menu.** An `ls` listing driven by `~/.config/omarchy-crt/menu.toml`, with
   keyboard, `hjkl` and game controller navigation.
+- **Game browser.** `games/` lists the systems from `systems.toml`, then the
+  ROMs of a system as a paged list. A game starts in RetroArch with a dedicated
+  config: no RetroArch menu, no notifications, save state on exit and resume on
+  start. The shell waits behind the game and comes back when it ends.
+- **Video policy.** Each system declares how the display mode follows the
+  game: `super` (wide frame, height and refresh follow the core), `native`, or
+  a pinned frame such as `512x224`. See
+  [`docs/video-policy.md`](docs/video-policy.md).
 - **Screensaver.** After an idle period the wordmark cycles through text
   effects (laser etch, rain, beams, burn, slide, decrypt, expand, unstable),
   like Omarchy's own screensaver does in the terminal.
@@ -96,7 +106,7 @@ and the timeline.
 
 ## Repository layout
 
-- **`docs/`** research and decisions.
+- **`docs/`** research and decisions: the 15 kHz study and the video policy.
 - **`scripts/crt-probe.sh`** read-only probe of a DRM connector: status, EDID,
   kernel mode list, Hyprland view. Used to test DACs.
 - **`shell/`** the native launcher.
@@ -109,12 +119,19 @@ and the timeline.
    automate rebuilds.
 3. **Real DAC.** RTD2166 adapter plus VideoAmp or UMSA on a SCART TV; verify
    240p, 288p and 480i with `switchres`.
-4. **Game launch.** RetroArch and GroovyMAME in KMS/DRM on a second virtual
-   terminal, returning to the launcher on exit.
+4. **Game launch on the CRT.** RetroArch in KMS/DRM on a second virtual
+   terminal with mode switching on, GroovyMAME next; the desktop launch path
+   already works.
 5. **Omarchy integration.** `omarchy-crt-install`, menu entries, TV profiles
    (NTSC, PAL, generic 15 kHz), geometry test patterns.
 6. **More effects.** Port the rest of the TerminalTextEffects catalog to the
    screensaver.
+
+## Contributing
+
+Work lands on `develop` and is merged to `main` when it runs. Commits follow
+Conventional Commits. The launcher builds with a stable Rust toolchain and
+SDL2; `cargo build --release` in `shell/` is all it takes.
 
 ## Credits and licenses
 

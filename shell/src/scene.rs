@@ -555,7 +555,10 @@ impl Scene {
                         },
                         1,
                     );
-                    let right = format!("{count:>4}  {}", sys.video);
+                    let right = format!(
+                        "{count:>4}  {}",
+                        crate::library::VideoPolicy::parse(&sys.video).label()
+                    );
                     fb.text(
                         w - left - Framebuffer::text_width(&right, 1),
                         y,

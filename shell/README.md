@@ -32,10 +32,15 @@ Options:
 | `--auto-boot`                              | start the boot sequence immediately                                           |
 | `--theme PATH`                             | alternative `colors.toml`                                                     |
 | `--menu PATH`                              | alternative `menu.toml`                                                       |
+| `--systems PATH`                           | alternative `systems.toml`                                                    |
+| `--browse [SYSTEM]`                        | boot straight into the game browser                                           |
+| `--idle SECONDS`                           | screensaver after this idle time, default 60, 0 disables                      |
+| `--screensaver [NAME]`                     | start in the screensaver, optionally with one effect                          |
 | `--headless --dump 1.0,4.5 --dump-dir DIR` | render frames to PPM without a window                                         |
 
-Controls: arrows or `hjkl` move, `Enter` or `Space` select, `Esc` or `q` quit.
-Game controllers work through SDL: d-pad moves, `A` or `Start` selects.
+Controls: arrows or `hjkl` move, `Enter` or `Space` select, `Esc` or
+`Backspace` go back, `q` quits. Game controllers work through SDL: d-pad moves,
+`A` or `Start` selects, `B` goes back.
 
 ## Menu
 
@@ -60,6 +65,15 @@ command = "systemctl poweroff"
 ```
 
 Items without a command show a message; `quit = true` exits the shell.
+
+## Games
+
+`~/.config/omarchy-crt/systems.toml` lists the systems: ROM directory, libretro
+core, extensions and a video policy (`super`, `native` or a pinned `WxH`). The
+shell writes `retroarch.cfg` once (menu and notifications off, save state on
+exit, resume on start) and a `launch.cfg` per game with the policy keys, then
+runs `retroarch --config ... --appendconfig ... -L core rom` and waits. See
+[`../docs/video-policy.md`](../docs/video-policy.md).
 
 ## Sound
 

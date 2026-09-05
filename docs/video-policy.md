@@ -1,0 +1,67 @@
+# Video policy: how a game gets its display mode
+
+Every system in `systems.toml` carries a `video` value that decides how the
+display mode follows the game. The launcher turns it into RetroArch settings
+written to a per launch file and passed with `--appendconfig`, so the base
+`retroarch.cfg` stays untouched and each system can behave differently.
+
+## The three policies
+
+- **`super` (default).** A fixed wide frame, 2560 pixels by default, whose
+  height and refresh rate follow the core: 224, 240, 256 or 288 lines at the
+  game's own frequency. Horizontal scaling into a wide frame is invisible on a
+  CRT, and it avoids a mode switch when a game changes only its width. Write
+  `super:1920` or `super:3840` for other widths.
+- **`native`.** Width, height and refresh all follow the core. The purest
+  output, one mode switch per resolution change, integer scaling on.
+- **`WxH` (pinned frame).** One fixed mode for the whole session, the core is
+  scaled into it. Use it where a console mixes widths inside one game without
+  a real mode change, such as `512x224` for the Super Nintendo, or where a
+  vertical arcade game needs a taller frame than 240 lines.
+
+## RetroArch keys per policy
+
+| Policy   | Keys written to `launch.cfg`                                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `super`  | `crt_switch_resolution`, `crt_switch_resolution_super = 2560`, `aspect_ratio_index = 22` (core provided), `video_scale_integer = false` |
+| `native` | `crt_switch_resolution`, `crt_switch_resolution_super = 0`, `aspect_ratio_index = 22`, `video_scale_integer = true`                     |
+| `WxH`    | `crt_switch_resolution = 0`, `video_fullscreen_x/y`, `aspect_ratio_index = 23` (custom), `custom_viewport_*`                            |
+
+`crt_switch_resolution` is `1` only when `switching = true` is set at the top
+of `systems.toml`. Mode switching needs RetroArch on the KMS or X11 video
+driver and the 15 kHz kernel; on a Wayland desktop it does nothing, so it stays
+off while testing in a window. Pinned frames work everywhere.
+
+## Interlace
+
+Systems that draw 480 or 576 lines (Dreamcast, Naomi, PlayStation 2, some
+PlayStation menus) get a real interlaced mode from the same mechanism: the core
+reports 480 lines, the timing calculator picks 480i at the game's refresh, the
+patched `amdgpu` driver accepts it. No half height fallback.
+
+## Example
+
+```toml
+switching = false
+
+[[system]]
+name = "snes"
+dir = "~/Games/roms/snes"
+core = "snes9x"
+extensions = ["sfc", "smc", "zip"]
+video = "512x224"
+
+[[system]]
+name = "megadrive"
+dir = "~/Games/roms/megadrive"
+core = "genesis_plus_gx"
+extensions = ["md", "bin", "zip"]
+video = "super"
+
+[[system]]
+name = "dreamcast"
+dir = "~/Games/roms/dreamcast"
+core = "flycast"
+extensions = ["gdi", "chd", "cdi"]
+video = "native"
+```

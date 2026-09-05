@@ -17,9 +17,85 @@ pub struct System {
     /// Accepted extensions, lowercase, without the dot.
     #[serde(default)]
     pub extensions: Vec<String>,
-    /// Preferred video mode label, e.g. `240p60` or `288p50`.
+    /// Video policy: `super` (default, wide frame, height follows the core),
+    /// `native` (exact core resolution), or a pinned frame such as `512x224`.
     #[serde(default)]
     pub video: String,
+}
+
+/// How the display mode follows the game.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VideoPolicy {
+    /// Fixed wide width (2560 by default), vertical resolution and refresh follow the core.
+    Super(u32),
+    /// Width, height and refresh all follow the core.
+    Native,
+    /// One fixed frame for the whole session; the core is scaled into it.
+    Fixed(u32, u32),
+}
+
+impl VideoPolicy {
+    pub fn parse(s: &str) -> Self {
+        let s = s.trim().to_lowercase();
+        if s.is_empty() || s == "super" {
+            return VideoPolicy::Super(2560);
+        }
+        if let Some(w) = s.strip_prefix("super:") {
+            return VideoPolicy::Super(w.parse().unwrap_or(2560));
+        }
+        if s == "native" {
+            return VideoPolicy::Native;
+        }
+        if let Some((w, h)) = s.split_once('x') {
+            if let (Ok(w), Ok(h)) = (w.parse(), h.parse()) {
+                return VideoPolicy::Fixed(w, h);
+            }
+        }
+        VideoPolicy::Super(2560)
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            VideoPolicy::Super(2560) => "super".into(),
+            VideoPolicy::Super(w) => format!("super:{w}"),
+            VideoPolicy::Native => "native".into(),
+            VideoPolicy::Fixed(w, h) => format!("{w}x{h}"),
+        }
+    }
+
+    /// RetroArch keys for this policy. `switching` enables CRT SwitchRes
+    /// (needs the KMS or X11 video driver and the 15 kHz kernel); without it
+    /// only pinned frames change anything, which is what a desktop test needs.
+    pub fn retroarch_keys(&self, switching: bool) -> String {
+        let mut out = String::new();
+        let mut kv = |k: &str, v: &str| out.push_str(&format!("{k} = \"{v}\"\n"));
+        match self {
+            VideoPolicy::Super(w) => {
+                kv("crt_switch_resolution", if switching { "1" } else { "0" });
+                kv("crt_switch_resolution_super", &w.to_string());
+                kv("aspect_ratio_index", "22");
+                kv("video_scale_integer", "false");
+            }
+            VideoPolicy::Native => {
+                kv("crt_switch_resolution", if switching { "1" } else { "0" });
+                kv("crt_switch_resolution_super", "0");
+                kv("aspect_ratio_index", "22");
+                kv("video_scale_integer", "true");
+            }
+            VideoPolicy::Fixed(w, h) => {
+                kv("crt_switch_resolution", "0");
+                kv("video_fullscreen_x", &w.to_string());
+                kv("video_fullscreen_y", &h.to_string());
+                kv("aspect_ratio_index", "23");
+                kv("custom_viewport_x", "0");
+                kv("custom_viewport_y", "0");
+                kv("custom_viewport_width", &w.to_string());
+                kv("custom_viewport_height", &h.to_string());
+                kv("video_scale_integer", "false");
+            }
+        }
+        out
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +106,10 @@ struct File {
     retroarch: Option<String>,
     #[serde(default)]
     core_dir: Option<String>,
+    /// Enable mode switching in RetroArch (CRT SwitchRes). Off until the
+    /// 15 kHz stack is in place; pinned frames work regardless.
+    #[serde(default)]
+    switching: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -43,6 +123,7 @@ pub struct Library {
     pub retroarch: String,
     pub core_dir: PathBuf,
     pub config_dir: PathBuf,
+    pub switching: bool,
 }
 
 fn home() -> PathBuf {
@@ -74,34 +155,28 @@ fn default_systems() -> Vec<System> {
         video: video.into(),
     };
     vec![
-        sys(
-            "nes",
-            "~/Games/roms/nes",
-            "mesen",
-            &["nes", "zip"],
-            "240p60",
-        ),
+        sys("nes", "~/Games/roms/nes", "mesen", &["nes", "zip"], "super"),
         sys(
             "snes",
             "~/Games/roms/snes",
             "snes9x",
             &["sfc", "smc", "zip"],
-            "240p60",
+            "super",
         ),
         sys(
             "megadrive",
             "~/Games/roms/megadrive",
             "genesis_plus_gx",
             &["md", "bin", "gen", "zip"],
-            "240p60",
+            "super",
         ),
-        sys("arcade", "~/Games/roms/arcade", "fbneo", &["zip"], "240p60"),
+        sys("arcade", "~/Games/roms/arcade", "fbneo", &["zip"], "super"),
         sys(
             "psx",
             "~/Games/roms/psx",
             "swanstation",
             &["cue", "chd", "pbp"],
-            "240p60",
+            "super",
         ),
     ]
 }
@@ -115,7 +190,7 @@ impl Library {
         let file = std::fs::read_to_string(path)
             .ok()
             .and_then(|t| toml::from_str::<File>(&t).ok());
-        let (systems, retroarch, core_dir) = match file {
+        let (systems, retroarch, core_dir, switching) = match file {
             Some(f) => (
                 if f.system.is_empty() {
                     default_systems()
@@ -126,11 +201,13 @@ impl Library {
                 f.core_dir
                     .map(|d| expand(&d))
                     .unwrap_or_else(|| PathBuf::from("/usr/lib/libretro")),
+                f.switching,
             ),
             None => (
                 default_systems(),
                 "retroarch".into(),
                 PathBuf::from("/usr/lib/libretro"),
+                false,
             ),
         };
         Self {
@@ -138,6 +215,7 @@ impl Library {
             retroarch,
             core_dir,
             config_dir,
+            switching,
         }
     }
 
@@ -191,9 +269,15 @@ impl Library {
     /// waits for the process; RetroArch's menu is never shown.
     pub fn command(&self, system: &System, game: &Game) -> std::io::Result<std::process::Command> {
         let cfg = self.retroarch_config()?;
+        // Per launch overrides: the video policy of this system.
+        let policy = VideoPolicy::parse(&system.video);
+        let launch_cfg = self.config_dir.join("launch.cfg");
+        std::fs::write(&launch_cfg, policy.retroarch_keys(self.switching))?;
         let mut cmd = std::process::Command::new(&self.retroarch);
         cmd.arg("--config")
             .arg(cfg)
+            .arg("--appendconfig")
+            .arg(launch_cfg)
             .arg("--fullscreen")
             .arg("-L")
             .arg(self.core_path(system))
@@ -248,6 +332,4 @@ input_quit_gamepad_combo = "4"
 savestate_auto_save = "true"
 savestate_auto_load = "true"
 video_smooth = "false"
-video_scale_integer = "false"
-aspect_ratio_index = "22"
 "#;
