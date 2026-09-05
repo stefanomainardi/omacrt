@@ -94,9 +94,11 @@ scanlines or curvature. The tube provides those.
   collapses to a line and the emulator takes over. System logos in the Games
   list carry each console's signature color.
 - **Videos.** A `Videos` entry plays any folder of films through mpv with the
-  shell still in charge: pad controls (pause, seek, volume, stop) over mpv's
-  IPC socket, a 240p overlay with progress and times, position saved on quit.
-  Deinterlacing stays off so 480i sources reach the tube as fields.
+  shell still in charge: keyboard and pad controls (pause, seek, volume, stop),
+  a themed on screen display drawn by mpv itself (title, progress, times,
+  state, volume, hints) that appears on every command and stays while paused,
+  position saved on quit. Deinterlacing stays off so 480i sources reach the
+  tube as fields.
 - **Sound everywhere.** Clicks under the BIOS typewriter, whooshes on
   submenus, crackle under the laser etch, a scrape and a click when a cartridge
   goes in, all synthesized at startup. No background music.

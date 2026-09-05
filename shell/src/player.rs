@@ -24,9 +24,123 @@ BS quit
 q quit
 ";
 
-/// Build the mpv command for one file. `socket` is the IPC path and
-/// `input_conf` the key bindings file.
-pub fn command(mpv: &str, file: &Path, socket: &Path, input_conf: &Path) -> std::process::Command {
+/// On screen display drawn by mpv itself, in the shell's language: a dark
+/// bar at the bottom with the progress, times, state and the command hints,
+/// shown for a few seconds at start and after every command, always while
+/// paused. Colors arrive through script-opts.
+pub const OSD_LUA: &str = r#"-- Written by omarchy-crt-shell
+local mp = require "mp"
+local options = require "mp.options"
+local o = { accent = "7aa2f7", dim = "565f89", paper = "c0caf5", selection = "292e42", hints = "Enter pause   < > seek 10s   ^ v volume   Esc stop" }
+options.read_options(o, "omarchycrt")
+
+local overlay = mp.create_osd_overlay("ass-events")
+local hide_timer = nil
+local visible = false
+
+local function ass_color(hex)
+  -- RRGGBB to ASS &HBBGGRR&
+  return "&H" .. hex:sub(5, 6) .. hex:sub(3, 4) .. hex:sub(1, 2) .. "&"
+end
+
+local function clock(s)
+  if not s or s < 0 then s = 0 end
+  s = math.floor(s)
+  local h = math.floor(s / 3600)
+  local m = math.floor((s % 3600) / 60)
+  local sec = s % 60
+  if h > 0 then return string.format("%d:%02d:%02d", h, m, sec) end
+  return string.format("%d:%02d", m, sec)
+end
+
+local function render()
+  local w, h = mp.get_osd_size()
+  if not w or w == 0 then w, h = 640, 480 end
+  local pos = mp.get_property_number("time-pos", 0)
+  local dur = mp.get_property_number("duration", 0)
+  local paused = mp.get_property_native("pause", false)
+  local vol = mp.get_property_number("volume", 100)
+  local title = mp.get_property("media-title", ""):gsub("%.[%w]+$", "")
+  if #title > 40 then title = title:sub(1, 38) .. ".." end
+  local accent, dim, paper, sel = ass_color(o.accent), ass_color(o.dim), ass_color(o.paper), ass_color(o.selection)
+
+  -- Geometry in OSD pixels; sizes scale with height so 240 and 480 lines both read.
+  local unit = h / 240
+  local margin = math.floor(16 * unit)
+  local bar_h = math.floor(4 * unit)
+  local box_h = math.floor(52 * unit)
+  local box_y = h - margin - box_h
+  local fs_big = math.floor(9 * unit) * 2
+  local fs_small = math.floor(7 * unit) * 2
+  local font = "\\fnmonospace"
+
+  local a = {}
+  -- Box.
+  a[#a+1] = string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H28&\\p1}m %d %d l %d %d l %d %d l %d %d{\\p0}",
+    margin - 6 * unit, box_y - 4 * unit, w - margin + 6 * unit, box_y - 4 * unit, w - margin + 6 * unit, h - margin + 4 * unit, margin - 6 * unit, h - margin + 4 * unit)
+  -- Title.
+  a[#a+1] = string.format("{\\an7\\pos(%d,%d)\\bord0\\shad0%s\\fs%d\\1c%s}%s",
+    margin + 8 * unit, box_y + 5 * unit, font, fs_big, paper, title:gsub("[{}]", ""))
+  -- Progress track and fill.
+  local track_y = box_y + 22 * unit
+  local track_x0, track_x1 = margin + 8 * unit, w - margin - 8 * unit
+  a[#a+1] = string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\1c%s\\p1}m %d %d l %d %d l %d %d l %d %d{\\p0}",
+    sel, track_x0, track_y, track_x1, track_y, track_x1, track_y + bar_h, track_x0, track_y + bar_h)
+  if dur > 0 then
+    local fx = track_x0 + (track_x1 - track_x0) * math.max(0, math.min(1, pos / dur))
+    a[#a+1] = string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\1c%s\\p1}m %d %d l %d %d l %d %d l %d %d{\\p0}",
+      accent, track_x0, track_y, fx, track_y, fx, track_y + bar_h, track_x0, track_y + bar_h)
+    -- Knob.
+    a[#a+1] = string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\1c%s\\p1}m %d %d l %d %d l %d %d l %d %d{\\p0}",
+      paper, fx - unit, track_y - unit, fx + unit, track_y - unit, fx + unit, track_y + bar_h + unit, fx - unit, track_y + bar_h + unit)
+  end
+  -- Times, state, volume.
+  local line_y = track_y + bar_h + 5 * unit
+  a[#a+1] = string.format("{\\an7\\pos(%d,%d)\\bord0\\shad0%s\\fs%d\\1c%s}%s / %s",
+    track_x0, line_y, font, fs_small, paper, clock(pos), clock(dur))
+  local state = paused and "PAUSED" or "PLAYING"
+  a[#a+1] = string.format("{\\an9\\pos(%d,%d)\\bord0\\shad0%s\\fs%d\\1c%s}%s   VOL %d%%",
+    track_x1, line_y, font, fs_small, paused and accent or dim, state, math.floor(vol))
+  -- Hints.
+  a[#a+1] = string.format("{\\an7\\pos(%d,%d)\\bord0\\shad0%s\\fs%d\\1c%s}%s",
+    track_x0, line_y + 10 * unit, font, fs_small, dim, o.hints)
+
+  overlay.res_x, overlay.res_y = w, h
+  overlay.data = table.concat(a, "\n")
+  overlay:update()
+end
+
+local function hide()
+  if mp.get_property_native("pause", false) then return end
+  overlay:remove()
+  visible = false
+end
+
+local function show(seconds)
+  visible = true
+  render()
+  if hide_timer then hide_timer:kill() end
+  hide_timer = mp.add_timeout(seconds or 3, hide)
+end
+
+mp.observe_property("pause", "native", function() show(3) end)
+mp.observe_property("volume", "number", function() show(2) end)
+mp.register_event("seek", function() show(3) end)
+mp.register_event("file-loaded", function() show(4) end)
+mp.observe_property("time-pos", "number", function() if visible then render() end end)
+"#;
+
+/// Build the mpv command for one file. `socket` is the IPC path,
+/// `input_conf` the key bindings, `osd` the Lua overlay, `colors` the
+/// theme as `accent,dim,paper,selection` hex values.
+pub fn command(
+    mpv: &str,
+    file: &Path,
+    socket: &Path,
+    input_conf: &Path,
+    osd: &Path,
+    colors: [&str; 4],
+) -> std::process::Command {
     let mut cmd = std::process::Command::new(mpv);
     cmd.arg("--fs")
         .arg("--no-terminal")
@@ -35,6 +149,11 @@ pub fn command(mpv: &str, file: &Path, socket: &Path, input_conf: &Path) -> std:
         .arg("--osd-level=0")
         .arg("--no-input-default-bindings")
         .arg(format!("--input-conf={}", input_conf.display()))
+        .arg(format!("--script={}", osd.display()))
+        .arg(format!(
+            "--script-opts=omarchycrt-accent={},omarchycrt-dim={},omarchycrt-paper={},omarchycrt-selection={}",
+            colors[0], colors[1], colors[2], colors[3]
+        ))
         .arg("--keep-open=no")
         .arg("--deinterlace=no")
         .arg("--save-position-on-quit")

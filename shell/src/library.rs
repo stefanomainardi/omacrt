@@ -547,11 +547,22 @@ impl Library {
             std::fs::create_dir_all(&self.config_dir)?;
             let input_conf = self.config_dir.join("mpv-input.conf");
             std::fs::write(&input_conf, crate::player::INPUT_CONF)?;
+            let osd = self.config_dir.join("mpv-osd.lua");
+            std::fs::write(&osd, crate::player::OSD_LUA)?;
+            // `extra` carries the theme colors for the OSD as "accent,dim,paper,selection".
+            let parts: Vec<&str> = extra.split(',').collect();
+            let colors = if parts.len() == 4 {
+                [parts[0], parts[1], parts[2], parts[3]]
+            } else {
+                ["7aa2f7", "565f89", "c0caf5", "292e42"]
+            };
             return Ok(crate::player::command(
                 "mpv",
                 &game.path,
                 &self.mpv_socket(),
                 &input_conf,
+                &osd,
+                colors,
             ));
         }
         let cfg = self.retroarch_config()?;

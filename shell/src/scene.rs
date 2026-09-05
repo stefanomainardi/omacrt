@@ -1098,10 +1098,19 @@ impl Scene {
 
     fn run_entry(&mut self, entry: &Entry) -> Action {
         let system = self.library.systems[entry.sys].clone();
-        match self
-            .library
-            .command(&system, &entry.game, &self.profile.retroarch_keys())
-        {
+        let extra = if system.is_video() {
+            let hex = |c: Color| format!("{c:06x}");
+            format!(
+                "{},{},{},{}",
+                hex(self.theme.accent),
+                hex(self.theme.dim),
+                hex(self.theme.paper),
+                hex(self.theme.selection)
+            )
+        } else {
+            self.profile.retroarch_keys()
+        };
+        match self.library.command(&system, &entry.game, &extra) {
             Ok(cmd) if system.is_video() => {
                 self.pending.push(Sound::Whoosh);
                 self.player = Some(Player::new(self.library.mpv_socket(), &entry.game.title));
