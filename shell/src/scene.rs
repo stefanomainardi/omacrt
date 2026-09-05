@@ -200,6 +200,8 @@ pub struct Scene {
     screen_since: f64,
     settings: Settings,
     diag: Vec<(String, String)>,
+    /// A game list opened from the home menu goes back to it, not to Games.
+    list_from_home: bool,
     mark_cols: i32,
     mark_rows: i32,
     boot_started: bool,
@@ -247,6 +249,7 @@ impl Scene {
             screen_since: 0.0,
             settings: Settings::load(&library.config_dir),
             diag: Vec::new(),
+            list_from_home: false,
             mark_cols,
             mark_rows,
             boot_started: false,
@@ -430,10 +433,12 @@ impl Scene {
             }
             1 => {
                 let list = self.favorites.clone();
+                self.list_from_home = true;
                 self.open_virtual(&list);
             }
             2 => {
                 let list = self.recent.clone();
+                self.list_from_home = true;
                 self.open_virtual(&list);
             }
             3 => self.go(Screen::Settings { sel: 0 }),
@@ -695,6 +700,11 @@ impl Scene {
                         moved = true;
                     }
                     Nav::Back => {
+                        if self.list_from_home {
+                            self.screen = Screen::Menu;
+                            self.pending.push(Sound::Move);
+                            return;
+                        }
                         let row = match self.screen {
                             Screen::Games { sys: Some(i), .. } => i + Self::VIRTUAL,
                             _ => 0,
@@ -865,6 +875,7 @@ impl Scene {
         match self.screen {
             Screen::Systems { sel, .. } => {
                 self.pending.push(Sound::Select);
+                self.list_from_home = false;
                 match sel {
                     0 => {
                         let list = self.recent.clone();

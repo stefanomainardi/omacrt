@@ -1,16 +1,60 @@
 # Demo script for scripts/demo-video.sh: <seconds> <action> [arg]
 # Actions: start, up, down, left, right, back, fire, fav, saver [effect]
-0.8   start          # power on from the PRESS START gate
-15.5  down           # wander through the menu once the show is over
-16.2  down
-16.9  up
-17.6  up
-18.5  fire           # games/
-19.9  down
-20.5  down
-21.1  down           # snes/
-21.9  fire           # the 240p test suite rom
-24.3  back
-25.3  back           # back to the menu
-27.0  saver vhstape  # screensaver on the wordmark
-32.5  fire           # wake up
+0.8   start          # power on from the PRESS START gate; the show runs to ~9.6
+11.0  down           # a look at the home menu
+11.6  down
+12.2  up
+12.8  up
+13.6  fire           # Games
+15.0  down
+15.5  down
+16.0  down           # snes
+16.8  fire           # game list
+18.2  fav            # star the first entry
+19.6  back
+20.4  back           # home
+21.2  down           # Favorites
+21.9  fire
+23.6  back
+24.4  down           # Recent
+25.0  down           # Settings
+25.8  fire
+27.0  fire           # TV profile
+28.2  right          # next monitor preset
+28.9  right
+29.7  down           # h shift
+30.3  right
+30.8  right
+31.6  back           # saves, back to Settings
+32.6  down           # Pads (skip)
+33.2  down           # Screensaver
+33.9  fire
+35.0  down           # after
+35.6  left           # 30 s
+36.3  down           # effect
+36.9  right          # laseretch
+37.5  right          # rain
+38.3  down           # preview
+39.0  fire           # screensaver preview: rain
+45.5  fire           # wake up
+46.6  back           # back to Settings
+47.4  down           # Diagnostics
+48.0  fire
+49.6  down
+50.2  down
+50.8  down
+52.4  back
+53.2  back           # home
+54.0  down           # About
+54.7  fire
+56.4  down
+56.9  down
+57.4  down
+57.9  down
+58.4  down
+58.9  down
+61.0  back
+61.8  down           # Power
+62.5  fire
+64.5  back
+65.5  saver vhstape  # closing shot
