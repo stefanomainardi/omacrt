@@ -1,0 +1,16 @@
+# Demo script for scripts/demo-video.sh: <seconds> <action> [arg]
+# Actions: start, up, down, left, right, back, fire, fav, saver [effect]
+0.8   start          # power on from the PRESS START gate
+14.0  down           # wander through the menu once the etch is done
+14.7  down
+15.4  up
+16.1  up
+17.0  fire           # games/
+18.4  down
+19.0  down
+19.6  down           # snes/
+20.4  fire           # the 240p test suite rom
+22.8  back
+23.8  back           # back to the menu
+25.5  saver vhstape  # screensaver on the wordmark
+31.5  fire           # wake up

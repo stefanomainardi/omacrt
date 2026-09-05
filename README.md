@@ -129,6 +129,9 @@ and the timeline.
   systems file and TV profile, controllers.
 - **`scripts/crt-probe.sh`** read-only probe of a DRM connector: status, EDID,
   kernel mode list, Hyprland view. Used to test DACs.
+- **`scripts/demo-video.sh`** renders the shell offline from `scripts/demo.txt`
+  (scripted input) and encodes an MP4 with the synthesized audio, frame exact.
+- **`scripts/vm.sh`** throwaway Omarchy VM for kernel packaging tests.
 - **`shell/`** the native launcher.
 
 ## Roadmap

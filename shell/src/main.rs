@@ -49,6 +49,9 @@ struct Args {
     idle: f32,
     screensaver: Option<Option<effects::Kind>>,
     dump_audio: Option<PathBuf>,
+    record: Option<PathBuf>,
+    record_secs: f32,
+    script: Option<PathBuf>,
 }
 
 const USAGE: &str = "usage: omarchy-crt-shell [options]
@@ -68,7 +71,11 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --dump-dir DIR    where dumps go (default .)
   --idle SECONDS    start the screensaver after this much idle time (default 60, 0 = never)
   --screensaver [NAME]  start directly in the screensaver; NAME picks an effect
-  --dump-audio DIR  write every synthesized sound as WAV into DIR and exit";
+  --dump-audio DIR  write every synthesized sound as WAV into DIR and exit
+  --record DIR      offline render: one PPM per frame at 60 fps plus audio.wav
+  --record-secs N   length of the recording (default 30)
+  --script FILE     scripted input for --record: lines of '<seconds> <action>'
+                    with start, up, down, left, right, back, fire, fav, saver [NAME]";
 
 type ArgIter = std::iter::Peekable<std::iter::Skip<std::env::Args>>;
 
@@ -104,6 +111,9 @@ fn parse_args() -> Result<Args, String> {
         idle: 60.0,
         screensaver: None,
         dump_audio: None,
+        record: None,
+        record_secs: 30.0,
+        script: None,
     };
     let mut it = std::env::args().skip(1).peekable();
     while let Some(arg) = it.next() {
@@ -134,6 +144,13 @@ fn parse_args() -> Result<Args, String> {
             "--dump-dir" => a.dump_dir = PathBuf::from(take(&mut it, &arg)?),
             "--idle" => a.idle = take(&mut it, &arg)?.parse().map_err(|_| "bad idle")?,
             "--dump-audio" => a.dump_audio = Some(PathBuf::from(take(&mut it, &arg)?)),
+            "--record" => a.record = Some(PathBuf::from(take(&mut it, &arg)?)),
+            "--record-secs" => {
+                a.record_secs = take(&mut it, &arg)?
+                    .parse()
+                    .map_err(|_| "bad record-secs")?
+            }
+            "--script" => a.script = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--screensaver" => {
                 let name = optional(&mut it);
                 let kind = match name.as_deref() {
@@ -212,6 +229,103 @@ fn run_headless(args: &Args) -> Result<(), String> {
         scene.take_sounds();
         t += dt;
     }
+    Ok(())
+}
+
+/// Offline render for demo videos: every frame as PPM, all sounds mixed into
+/// one WAV at the exact frame times, inputs replayed from a script.
+fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
+    let mut scene = build_scene(args);
+    let mut fb = Framebuffer::new(args.w, args.h);
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let bank = audio::render_bank();
+    let total = (args.record_secs * audio::RATE as f32) as usize;
+    let mut master = vec![0f32; total];
+    let mut script: Vec<(f32, String, Option<String>)> = Vec::new();
+    if let Some(path) = &args.script {
+        let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        for line in text.lines() {
+            let line = line.split('#').next().unwrap_or("").trim();
+            if line.is_empty() {
+                continue;
+            }
+            let mut parts = line.split_whitespace();
+            let at: f32 = parts
+                .next()
+                .and_then(|v| v.parse().ok())
+                .ok_or_else(|| format!("bad script line: {line}"))?;
+            let action = parts
+                .next()
+                .ok_or_else(|| format!("bad script line: {line}"))?;
+            script.push((at, action.to_string(), parts.next().map(str::to_string)));
+        }
+        script.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    } else {
+        script.push((0.5, "start".into(), None));
+    }
+    let dt = 1.0 / 60.0;
+    let mut next = 0;
+    let mut frame = 0usize;
+    let mut t = 0.0f32;
+    while t <= args.record_secs {
+        while next < script.len() && script[next].0 <= t {
+            let (_, action, arg) = &script[next];
+            let now = t as f64;
+            match action.as_str() {
+                "start" => scene.start_boot(now),
+                "saver" => {
+                    let kind = arg
+                        .as_deref()
+                        .and_then(|n| effects::ALL.iter().copied().find(|k| k.name() == n));
+                    scene.start_screensaver(now, kind);
+                }
+                other => {
+                    if !scene.touch(now) {
+                        match other {
+                            "up" => scene.navigate(Nav::Up),
+                            "down" => scene.navigate(Nav::Down),
+                            "left" => scene.navigate(Nav::Left),
+                            "right" => scene.navigate(Nav::Right),
+                            "back" => scene.navigate(Nav::Back),
+                            "fav" => scene.toggle_favorite(),
+                            "fire" => match scene.activate() {
+                                Action::Quit => break,
+                                Action::Run(_, title) => {
+                                    eprintln!("script: not launching {title} while recording");
+                                    scene.game_finished(true);
+                                }
+                                _ => {}
+                            },
+                            _ => return Err(format!("unknown script action {other}")),
+                        }
+                    }
+                }
+            }
+            next += 1;
+        }
+        scene.draw(&mut fb, t as f64);
+        fb.roll(scene.roll(), t);
+        fb.apply_gain(scene.power());
+        let offset = (t * audio::RATE as f32) as usize;
+        for s in scene.take_sounds() {
+            if let Some((_, data)) = bank.iter().find(|(k, _)| *k == s) {
+                for (i, v) in data.iter().enumerate() {
+                    if let Some(m) = master.get_mut(offset + i) {
+                        *m += v;
+                    }
+                }
+            }
+        }
+        fb.write_ppm(&dir.join(format!("frame_{frame:05}.ppm")))
+            .map_err(|e| e.to_string())?;
+        frame += 1;
+        t += dt;
+    }
+    for m in master.iter_mut() {
+        *m = m.clamp(-1.0, 1.0);
+    }
+    audio::write_wav(&dir.join("audio.wav"), &master).map_err(|e| e.to_string())?;
+    println!("{frame} frames and audio.wav in {}", dir.display());
     Ok(())
 }
 
@@ -481,7 +595,9 @@ fn main() {
         }
         return;
     }
-    let result = if args.headless {
+    let result = if let Some(dir) = &args.record {
+        run_record(&args, dir)
+    } else if args.headless {
         run_headless(&args)
     } else {
         run(&args)

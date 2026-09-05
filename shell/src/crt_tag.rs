@@ -230,7 +230,7 @@ pub fn synth(rate: u32) -> Vec<f32> {
                 let sq = if (dt * f).fract() < 0.5 { 1.0 } else { -1.0 };
                 let sub = (tau * f * 0.5 * dt).sin();
                 let env = (-dt * 14.0).exp();
-                v += (sq * 0.6 + sub * 0.4) * 0.11 * env;
+                v += (sq * 0.6 + sub * 0.4) * 0.09 * env;
             }
         }
 
@@ -238,8 +238,8 @@ pub fn synth(rate: u32) -> Vec<f32> {
         let dt = t - TRACE_SECS;
         if dt >= 0.0 {
             let f = 150.0 * (-dt * 6.0).exp() + 42.0;
-            let body = (tau * f * dt).sin() * (-dt * 9.0).exp() * 0.5;
-            let crack = rnd() * (-dt * 110.0).exp() * 0.25;
+            let body = (tau * f * dt).sin() * (-dt * 9.0).exp() * 0.3;
+            let crack = rnd() * (-dt * 110.0).exp() * 0.16;
             v += body + crack;
         }
         *s = v.clamp(-1.0, 1.0);
