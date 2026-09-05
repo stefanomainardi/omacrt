@@ -56,6 +56,9 @@ snes9x_superscope_crosshair = "0"
   and 16 bit systems at the cost of running the core twice per frame. Leave
   `0` on 3D systems.
 - **`rewind`.** Enables the rewind buffer. Off for 3D systems.
+- **`player`.** `retroarch` (default) or `mpv`. An `mpv` system is a video
+  folder: files play fullscreen through mpv, the shell keeps the pad and draws
+  the overlay. The built-in `videos` system points at `~/Videos`.
 
 ## Built-in defaults
 

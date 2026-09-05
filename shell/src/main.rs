@@ -16,6 +16,7 @@ mod icons;
 mod library;
 mod menu;
 mod pad;
+mod player;
 mod profile;
 mod scene;
 mod settings;
@@ -501,6 +502,9 @@ fn run(args: &Args) -> Result<(), String> {
             }
             let is_input = start || nav.is_some() || fire || fav;
             if scene.is_running() {
+                if scene.player_active() && is_input {
+                    scene.player_input(nav, fire && !start_only(&ev));
+                }
                 continue;
             }
             if is_input && scene.touch(now()) {
@@ -581,6 +585,10 @@ fn run(args: &Args) -> Result<(), String> {
         canvas.present();
     }
     Ok(())
+}
+
+fn start_only(_ev: &Event) -> bool {
+    false
 }
 
 fn scene_time(scene: &Scene, now: f64) -> f64 {

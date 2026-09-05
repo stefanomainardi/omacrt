@@ -15,6 +15,7 @@ use crate::fb::{Color, Framebuffer, scale};
 use crate::icons;
 use crate::library::{Game, Library};
 use crate::pad::PadKind;
+use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
 use crate::theme::Theme;
@@ -127,8 +128,9 @@ impl SysInfo {
 const MARK_SCALE: i32 = 3;
 const ETCH_START: f32 = 4.15;
 /// Home menu entries: icon, label, opens a submenu.
-const HOME: [(icons::Icon, &str, bool); 6] = [
+const HOME: [(icons::Icon, &str, bool); 7] = [
     (icons::GAMEPAD, "Games", true),
+    (icons::FILM, "Videos", true),
     (icons::STAR, "Favorites", true),
     (icons::CLOCK, "Recent", true),
     (icons::GEAR, "Settings", true),
@@ -222,6 +224,7 @@ pub struct Scene {
     theme_blend: Option<(Theme, Theme, f64)>,
     launching: Option<Launch>,
     post_clicks: usize,
+    player: Option<Player>,
     mark_cols: i32,
     mark_rows: i32,
     boot_started: bool,
@@ -285,6 +288,7 @@ impl Scene {
             theme_blend: None,
             launching: None,
             post_clicks: 0,
+            player: None,
             mark_cols,
             mark_rows,
             boot_started: false,
@@ -526,18 +530,27 @@ impl Scene {
                     self.go(Screen::Systems { sel: 0, top: 0 });
                 }
             }
-            1 => {
+            1 => match self.library.systems.iter().position(|s| s.is_video()) {
+                Some(i) => {
+                    self.list_from_home = true;
+                    self.open_games(Some(i));
+                }
+                None => {
+                    self.message = Some(("no video folder in systems.toml".into(), self.now + 4.0))
+                }
+            },
+            2 => {
                 let list = self.favorites.clone();
                 self.list_from_home = true;
                 self.open_virtual(&list);
             }
-            2 => {
+            3 => {
                 let list = self.recent.clone();
                 self.list_from_home = true;
                 self.open_virtual(&list);
             }
-            3 => self.go(Screen::Settings { sel: 0 }),
-            4 => self.go(Screen::About { top: 0 }),
+            4 => self.go(Screen::Settings { sel: 0 }),
+            5 => self.go(Screen::About { top: 0 }),
             _ => self.go(Screen::Power { sel: 0 }),
         }
         Action::None
@@ -1089,6 +1102,22 @@ impl Scene {
             .library
             .command(&system, &entry.game, &self.profile.retroarch_keys())
         {
+            Ok(cmd) if system.is_video() => {
+                self.pending.push(Sound::Whoosh);
+                self.player = Some(Player::new(self.library.mpv_socket(), &entry.game.title));
+                self.launching = Some(Launch {
+                    cmd,
+                    title: entry.game.title.clone(),
+                    system: system.name.clone(),
+                    disc: true,
+                    color: self.theme.yellow,
+                    started: self.now - LAUNCH_SECS as f64, // no animation, start right away
+                    spawned: false,
+                });
+                self.running = Some((entry.game.title.clone(), system.name.clone()));
+                self.remember(entry);
+                Action::None
+            }
             Ok(cmd) => {
                 let disc = matches!(
                     system.name.as_str(),
@@ -1181,6 +1210,7 @@ impl Scene {
     pub fn game_finished(&mut self, ok: bool) {
         self.running = None;
         self.launching = None;
+        self.player = None;
         self.last_input = self.now;
         self.pending
             .push(if ok { Sound::Lock } else { Sound::Crunch });
@@ -1215,6 +1245,27 @@ impl Scene {
 
     pub fn is_running(&self) -> bool {
         self.running.is_some()
+    }
+
+    pub fn player_active(&self) -> bool {
+        self.player.is_some()
+    }
+
+    /// Pad input while a video plays: pause, seek, volume, stop.
+    pub fn player_input(&mut self, nav: Option<Nav>, fire: bool) {
+        let Some(p) = self.player.as_mut() else {
+            return;
+        };
+        match nav {
+            Some(Nav::Left) => p.seek(-10),
+            Some(Nav::Right) => p.seek(10),
+            Some(Nav::Up) => p.volume(5),
+            Some(Nav::Down) => p.volume(-5),
+            Some(Nav::Back) => p.quit(),
+            None if fire => p.toggle_pause(),
+            _ => {}
+        }
+        self.pending.push(Sound::Move);
     }
 
     /// Remember which pad family is connected, for on-screen button labels.
@@ -1575,6 +1626,69 @@ impl Scene {
         }
     }
 
+    /// Video overlay: title, progress bar, times, pause state. mpv draws the
+    /// picture in its own fullscreen window; this is what the shell shows
+    /// underneath and on a second output.
+    fn draw_player(&mut self, fb: &mut Framebuffer) {
+        let now = self.now;
+        let Some(p) = self.player.as_mut() else {
+            return;
+        };
+        p.poll(now);
+        let (time, duration, paused, connected) = (p.time, p.duration, p.paused, p.connected);
+        let title = p.title.clone();
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let width = w - 2 * left;
+        let y0 = self.draw_header(fb, "Playing videos");
+        let max_cols = (width / 8) as usize;
+        fb.text(
+            left,
+            y0 + 8,
+            &title.chars().take(max_cols).collect::<String>(),
+            self.theme.bright_green,
+            1,
+        );
+        let bar_y = y0 + 40;
+        fb.rect(left, bar_y, width, 6, self.theme.selection);
+        if duration > 0.0 {
+            let filled = ((time / duration).clamp(0.0, 1.0) * width as f64) as i32;
+            fb.rect(left, bar_y, filled, 6, self.theme.accent);
+        }
+        let times = format!(
+            "{} / {}",
+            crate::player::clock(time),
+            crate::player::clock(duration)
+        );
+        fb.text(left, bar_y + 12, &times, self.theme.paper, 1);
+        let state = if !connected {
+            "starting mpv"
+        } else if paused {
+            "paused"
+        } else {
+            "playing"
+        };
+        fb.text(
+            w - left - Framebuffer::text_width(state, 1),
+            bar_y + 12,
+            state,
+            self.theme.dim,
+            1,
+        );
+        if paused {
+            fb.rect(w / 2 - 8, h / 2 + 10, 5, 16, self.theme.paper);
+            fb.rect(w / 2 + 3, h / 2 + 10, 5, 16, self.theme.paper);
+        }
+        let hint = self.hint(&[
+            ("A", "pause"),
+            ("<>", "seek"),
+            ("^v", "volume"),
+            ("B", "stop"),
+        ]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
     fn draw_running(&mut self, fb: &mut Framebuffer) {
         let Some((title, system)) = self.running.clone() else {
             return;
@@ -1653,7 +1767,9 @@ impl Scene {
         }
         let t = self.t();
         if self.running.is_some() {
-            if self.launching.is_some()
+            if self.player.is_some() {
+                self.draw_player(fb);
+            } else if self.launching.is_some()
                 && ((now - self.launching.as_ref().unwrap().started) as f32) < LAUNCH_SECS
             {
                 self.draw_launching(fb);

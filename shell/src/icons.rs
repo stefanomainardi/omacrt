@@ -213,6 +213,22 @@ pub fn system_logo(name: &str) -> Option<(&'static Logo, u32)> {
         "psx" | "playstation" => (&LOGO_PSX, 0xc8c8c8),
         "n64" => (&LOGO_N64, 0x2ecc71),
         "dreamcast" | "dc" => (&LOGO_DC, 0xff8f3f),
+        "videos" | "video" | "movies" => (&LOGO_FILM, 0xf5d76e),
         _ => return None,
     })
 }
+pub const FILM: Icon = [
+    "########", "#.#..#.#", "########", "#......#", "#......#", "########", "#.#..#.#", "########",
+];
+pub const LOGO_FILM: Logo = [
+    "..........",
+    "##########",
+    "#.##..##.#",
+    "##########",
+    "#........#",
+    "#........#",
+    "##########",
+    "#.##..##.#",
+    "##########",
+    "..........",
+];

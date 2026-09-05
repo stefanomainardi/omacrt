@@ -42,6 +42,9 @@ pub struct System {
     /// Off for systems with a real analog stick (Nintendo 64, Dreamcast).
     #[serde(default)]
     pub analog_dpad: Option<u8>,
+    /// `retroarch` (default) or `mpv` for video folders.
+    #[serde(default)]
+    pub player: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -196,6 +199,7 @@ fn default_systems() -> Vec<System> {
         runahead,
         rewind,
         analog_dpad: None,
+        player: String::new(),
     };
     vec![
         sys(
@@ -358,10 +362,37 @@ fn default_systems() -> Vec<System> {
         }
         s
     })
+    .chain(std::iter::once(System {
+        name: "videos".into(),
+        dir: "~/Videos".into(),
+        core: String::new(),
+        extensions: crate::player::EXTENSIONS
+            .iter()
+            .map(|e| e.to_string())
+            .collect(),
+        video: "native".into(),
+        options: BTreeMap::new(),
+        devices: Vec::new(),
+        runahead: 0,
+        rewind: false,
+        analog_dpad: None,
+        player: "mpv".into(),
+    }))
     .collect()
 }
 
+impl System {
+    pub fn is_video(&self) -> bool {
+        self.player == "mpv"
+    }
+}
+
 impl Library {
+    /// IPC socket used to talk to mpv.
+    pub fn mpv_socket(&self) -> PathBuf {
+        self.config_dir.join("mpv.sock")
+    }
+
     pub fn load(path: &Path) -> Self {
         let config_dir = path
             .parent()
@@ -512,6 +543,14 @@ impl Library {
         game: &Game,
         extra: &str,
     ) -> std::io::Result<std::process::Command> {
+        if system.is_video() {
+            std::fs::create_dir_all(&self.config_dir)?;
+            return Ok(crate::player::command(
+                "mpv",
+                &game.path,
+                &self.mpv_socket(),
+            ));
+        }
         let cfg = self.retroarch_config()?;
         let cores_cfg = self.config_dir.join("cores.cfg");
         let mut options = String::new();
