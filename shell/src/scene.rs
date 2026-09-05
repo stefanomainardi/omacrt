@@ -110,39 +110,6 @@ const MARK_SCALE: i32 = 3;
 const ETCH_START: f32 = 4.15;
 const TAG_SCALE: i32 = 2;
 const TAG_START: f32 = 6.9;
-const TAG_TOTAL: f32 = 1.4;
-
-/// "CRT" in a 5x7 pixel font, each letter one pixel row lower than the last:
-/// a stair-step diagonal, the 8-bit way to slant a title.
-fn crt_tag_art() -> String {
-    const C: [&str; 7] = [
-        ".###.", "#...#", "#....", "#....", "#....", "#...#", ".###.",
-    ];
-    const R: [&str; 7] = [
-        "####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#",
-    ];
-    const T: [&str; 7] = [
-        "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#..",
-    ];
-    let letters = [C, R, T];
-    let (w, h) = (17usize, 9usize);
-    let mut canvas = vec![vec![b'.'; w]; h];
-    for (i, glyph) in letters.iter().enumerate() {
-        for (ry, row) in glyph.iter().enumerate() {
-            for (rx, ch) in row.bytes().enumerate() {
-                if ch == b'#' {
-                    canvas[ry + i][i * 6 + rx] = b'#';
-                }
-            }
-        }
-    }
-    let rows: Vec<String> = canvas
-        .into_iter()
-        .map(|r| String::from_utf8(r).unwrap())
-        .collect();
-    let refs: Vec<&str> = rows.iter().map(|r| r.as_str()).collect();
-    effects::art_to_blocks(&refs)
-}
 
 struct Saver {
     effect: Effect,
@@ -170,9 +137,7 @@ pub struct Scene {
     armed: Option<(usize, f64)>,
     pending: Vec<Sound>,
     etch: Option<LaserEtch>,
-    tag: effects::Grid,
-    tag_seed: u32,
-    tag_sounds: [bool; 2],
+    tag_sound_played: bool,
     saver: Option<Saver>,
     last_input: f64,
     idle_secs: f32,
@@ -200,7 +165,6 @@ impl Scene {
         let stops = [theme.magenta, theme.cyan, theme.paper];
         let grid = effects::Grid::wordmark(stops);
         let (mark_cols, mark_rows) = (grid.cols, grid.rows);
-        let tag = effects::Grid::from_text(&crt_tag_art(), stops);
         Self {
             theme,
             info,
@@ -220,9 +184,7 @@ impl Scene {
             armed: None,
             pending: Vec::new(),
             etch: None,
-            tag,
-            tag_seed: 0x1234_5678,
-            tag_sounds: [false; 2],
+            tag_sound_played: false,
             saver: None,
             last_input: 0.0,
             idle_secs,
@@ -1337,44 +1299,25 @@ impl Scene {
         let mw = self.mark_cols * MARK_SCALE;
         let mark_x = (fb.w as i32 - mw) / 2;
         let mark_bottom = self.mark_final_y(fb) + self.mark_rows * 2 * MARK_SCALE;
-        let tw = self.tag.cols * TAG_SCALE;
-        let th = self.tag.rows * 2 * TAG_SCALE;
+        let tw = crate::crt_tag::COLS * TAG_SCALE;
+        let th = crate::crt_tag::ROWS * TAG_SCALE;
         (mark_x + mw - tw - 2, mark_bottom + 2, tw, th)
     }
 
     /// "CRT" appears like a tape hunting for sync (TTE `vhstape`): torn lines,
     /// a tracking wave, snow, then a clean redraw with a lock click.
+    /// "CRT" traced by an electron beam, letter notes, a stamp and a glint.
     fn draw_crt_tag(&mut self, fb: &mut Framebuffer, t: f32) {
         if t < TAG_START {
             return;
         }
         let local = t - TAG_START;
         let (x, y, _, _) = self.tag_geometry(fb);
-        if !self.tag_sounds[0] {
-            self.tag_sounds[0] = true;
-            self.pending.push(Sound::Vhs);
+        if !self.tag_sound_played {
+            self.tag_sound_played = true;
+            self.pending.push(Sound::TagReveal);
         }
-        if local >= TAG_TOTAL {
-            if !self.tag_sounds[1] {
-                self.tag_sounds[1] = true;
-                self.pending.push(Sound::Lock);
-            }
-            for cell in &self.tag.cells {
-                effects::draw_cell(fb, x, y, TAG_SCALE, cell, cell.final_color);
-            }
-            return;
-        }
-        effects::draw_vhs(
-            fb,
-            &self.tag,
-            x,
-            y,
-            TAG_SCALE,
-            local,
-            TAG_TOTAL,
-            self.tag_seed,
-            1.0,
-        );
+        crate::crt_tag::draw(fb, x, y, TAG_SCALE, local, self.stops(), self.theme.cyan);
     }
 
     fn draw_listing(&mut self, fb: &mut Framebuffer, t: f32) {

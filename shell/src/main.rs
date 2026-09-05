@@ -7,6 +7,7 @@
 mod assets;
 mod audio;
 mod bt;
+mod crt_tag;
 mod effects;
 mod etch;
 mod fb;
@@ -47,6 +48,7 @@ struct Args {
     dump_dir: PathBuf,
     idle: f32,
     screensaver: Option<Option<effects::Kind>>,
+    dump_audio: Option<PathBuf>,
 }
 
 const USAGE: &str = "usage: omarchy-crt-shell [options]
@@ -65,7 +67,8 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
   --dump-dir DIR    where dumps go (default .)
   --idle SECONDS    start the screensaver after this much idle time (default 60, 0 = never)
-  --screensaver [NAME]  start directly in the screensaver; NAME picks an effect";
+  --screensaver [NAME]  start directly in the screensaver; NAME picks an effect
+  --dump-audio DIR  write every synthesized sound as WAV into DIR and exit";
 
 type ArgIter = std::iter::Peekable<std::iter::Skip<std::env::Args>>;
 
@@ -100,6 +103,7 @@ fn parse_args() -> Result<Args, String> {
         dump_dir: PathBuf::from("."),
         idle: 60.0,
         screensaver: None,
+        dump_audio: None,
     };
     let mut it = std::env::args().skip(1).peekable();
     while let Some(arg) = it.next() {
@@ -129,6 +133,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--dump-dir" => a.dump_dir = PathBuf::from(take(&mut it, &arg)?),
             "--idle" => a.idle = take(&mut it, &arg)?.parse().map_err(|_| "bad idle")?,
+            "--dump-audio" => a.dump_audio = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--screensaver" => {
                 let name = optional(&mut it);
                 let kind = match name.as_deref() {
@@ -461,6 +466,21 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if let Some(dir) = &args.dump_audio {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        for (kind, data) in audio::render_bank() {
+            let path = dir.join(format!("{kind:?}.wav").to_lowercase());
+            if let Err(e) = audio::write_wav(&path, &data) {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+            println!("{}", path.display());
+        }
+        return;
+    }
     let result = if args.headless {
         run_headless(&args)
     } else {

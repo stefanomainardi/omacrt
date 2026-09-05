@@ -85,8 +85,9 @@ options go to `cores.cfg`, the TV profile to `profile.toml` and
 ## Sound
 
 Every sound is synthesized at startup: a switch clunk with a degauss thump, HDD
-seek clicks during the POST, a systems-online chord with tape echo, and short
-square-wave beeps for navigation.
+seek clicks during the POST, a systems-online chord with tape echo, the CRT tag
+reveal (beam whine, arpeggio, stamp) and short square-wave beeps for
+navigation. `--dump-audio DIR` writes them all as WAV files.
 
 ## Timeline
 

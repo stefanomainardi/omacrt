@@ -13,7 +13,7 @@ pub enum Sound {
     Chime,
     Move,
     Select,
-    Vhs,
+    TagReveal,
     Lock,
 }
 
@@ -72,15 +72,10 @@ impl Audio {
         let cb_voices = voices.clone();
         let device = subsystem.open_playback(None, &spec, move |_| Mixer { voices: cb_voices })?;
         device.resume();
-        let bank = vec![
-            (Sound::PowerOn, Arc::new(synth_power_on())),
-            (Sound::Crunch, Arc::new(synth_crunch())),
-            (Sound::Chime, Arc::new(synth_chime())),
-            (Sound::Move, Arc::new(synth_beep(880.0, 0.025, 0.035))),
-            (Sound::Select, Arc::new(synth_beep(1320.0, 0.06, 0.04))),
-            (Sound::Vhs, Arc::new(synth_vhs())),
-            (Sound::Lock, Arc::new(synth_beep(2200.0, 0.02, 0.05))),
-        ];
+        let bank = render_bank()
+            .into_iter()
+            .map(|(k, v)| (k, Arc::new(v)))
+            .collect();
         Ok(Self {
             _device: Some(device),
             voices,
@@ -96,6 +91,41 @@ impl Audio {
             });
         }
     }
+}
+
+/// Every sound the shell uses, rendered to samples.
+pub fn render_bank() -> Vec<(Sound, Vec<f32>)> {
+    vec![
+        (Sound::PowerOn, synth_power_on()),
+        (Sound::Crunch, synth_crunch()),
+        (Sound::Chime, synth_chime()),
+        (Sound::Move, synth_beep(880.0, 0.025, 0.035)),
+        (Sound::Select, synth_beep(1320.0, 0.06, 0.04)),
+        (Sound::TagReveal, crate::crt_tag::synth(RATE)),
+        (Sound::Lock, synth_beep(2200.0, 0.02, 0.05)),
+    ]
+}
+
+/// Write one sound as a 16 bit mono WAV, for listening outside the shell.
+pub fn write_wav(path: &std::path::Path, data: &[f32]) -> std::io::Result<()> {
+    let mut out = Vec::with_capacity(44 + data.len() * 2);
+    let bytes = (data.len() * 2) as u32;
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + bytes).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&RATE.to_le_bytes());
+    out.extend_from_slice(&(RATE * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&bytes.to_le_bytes());
+    for s in data {
+        out.extend_from_slice(&((s.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
+    }
+    std::fs::write(path, out)
 }
 
 fn seconds(n: f32) -> usize {
@@ -240,36 +270,6 @@ fn synth_beep(freq: f32, dur: f32, gain: f32) -> Vec<f32> {
         let square = if (t * freq).fract() < 0.5 { 1.0 } else { -1.0 };
         let env = (-(t / dur) * 5.0).exp();
         *s = square * env * gain;
-    }
-    out
-}
-
-/// Tape hunting for sync: mains buzz, head-switching ticks and hiss, dying out.
-fn synth_vhs() -> Vec<f32> {
-    let n = seconds(1.8);
-    let mut out = vec![0.0; n];
-    let mut rng = Lcg(19);
-    let tau = 2.0 * std::f32::consts::PI;
-    for (i, s) in out.iter_mut().enumerate() {
-        let t = i as f32 / RATE as f32;
-        let env = if t < 1.1 {
-            1.0
-        } else {
-            (-(t - 1.1) * 6.0).exp()
-        };
-        let saw = 2.0 * ((t * 50.0).fract()) - 1.0;
-        let buzz = saw * 0.25 + (tau * 100.0 * t).sin() * 0.08;
-        let tick = if (t * 60.0).fract() < 0.004 {
-            rng.next() * 0.9
-        } else {
-            0.0
-        };
-        let hiss = rng.next() * 0.12 * (0.6 + 0.4 * (tau * 7.0 * t).sin());
-        *s = (buzz + tick + hiss) * env;
-    }
-    lowpass(&mut out[..], 3500.0);
-    for s in out.iter_mut() {
-        *s *= 0.22;
     }
     out
 }

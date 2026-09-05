@@ -74,8 +74,11 @@ scanlines or curvature. The tube provides those.
   random walk decides the etch order, cells flash and cool from yellow to their
   final gradient color, sparks fly along Bezier arcs and pile up on the
   baseline.
-- **CRT tag.** A stair-stepped pixel "CRT" under the wordmark, revealed like a
-  tape hunting for sync: torn lines, tracking noise, snow, then a clean lock.
+- **CRT tag.** A stair-stepped pixel "CRT" under the wordmark, drawn the way a
+  vector monitor would: an electron dot traces the strokes while a whine
+  follows its height, each finished letter flashes and rings a note of a
+  rising arpeggio, a bass stamp locks the word, a glint sweeps across it and
+  returns every few seconds.
 - **Menu.** An `ls` listing driven by `~/.config/omarchy-crt/menu.toml`, with
   keyboard, `hjkl` and game controller navigation.
 - **Game browser.** `games/` lists the systems from `systems.toml`, then the
