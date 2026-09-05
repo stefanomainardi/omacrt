@@ -1084,34 +1084,30 @@ impl Scene {
         color: Color,
     ) {
         let w = fb.w as i32;
-        let left = (w as f32 * 0.05) as i32;
-        let max_cols = ((w - 2 * left) / 8) as usize;
+        let margin = (w as f32 * 0.05) as i32;
+        let left = margin + self.slide();
+        let max_cols = ((w - 2 * margin) / 8) as usize;
         if on {
-            fb.rect(
-                left - 4,
-                y - 2,
-                w - 2 * left + 8,
-                12,
-                scale(self.theme.green, 0.12),
-            );
+            fb.rect(left, y - 2, w - 2 * margin, 12, self.theme.selection);
         }
         let room = max_cols.saturating_sub(right.chars().count() + 1);
-        let text: String = format!("{}{}", if on { "> " } else { "  " }, label)
-            .chars()
-            .take(room)
-            .collect();
+        let text: String = format!("  {label}").chars().take(room).collect();
         fb.text(
             left,
             y,
             &text,
-            if on { self.theme.bright_green } else { color },
+            if on { self.theme.accent } else { color },
             1,
         );
         fb.text(
-            w - left - Framebuffer::text_width(right, 1),
+            left + w - 2 * margin - Framebuffer::text_width(right, 1),
             y,
             right,
-            self.theme.dim,
+            if on {
+                self.theme.accent
+            } else {
+                self.theme.dim
+            },
             1,
         );
     }
