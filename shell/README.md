@@ -38,8 +38,9 @@ Options:
 | `--screensaver [NAME]`                     | start in the screensaver, optionally with one effect                          |
 | `--headless --dump 1.0,4.5 --dump-dir DIR` | render frames to PPM without a window                                         |
 
-Controls: arrows or `hjkl` move, `Enter` or `Space` select, `Esc` or
-`Backspace` go back, `F` stars a game, `q` quits. Game controllers work through
+Controls: arrows or `hjkl` move, `Enter` or `Space` select (and skip the boot
+sequence while it plays), `Esc` or `Backspace` go back, `F` stars a game, `q`
+quits. Game controllers work through
 SDL: d-pad or left stick moves, `A` or `Start` selects, `B` goes back, `Y`
 stars a game. Extra pad mappings load from
 `~/.config/omarchy-crt/gamecontrollerdb.txt`. See

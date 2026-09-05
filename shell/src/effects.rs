@@ -313,7 +313,7 @@ impl Effect {
     /// Seconds after which the picture is complete.
     pub fn length(&self) -> f32 {
         match self {
-            Effect::Etch(e) => e.total_cells() as f32 / 60.0 + 0.6,
+            Effect::Etch(e) => e.total_cells() as f32 / 120.0 + 0.6,
             Effect::Vhs { total, .. } => *total,
             Effect::Planned { length, .. } => *length,
         }

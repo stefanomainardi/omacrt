@@ -381,6 +381,24 @@ impl Scene {
         self.pending.push(Sound::PowerOn);
     }
 
+    /// Jump to the end of the boot sequence: menu up, sounds that would have
+    /// played are marked as done so nothing fires late.
+    pub fn skip_boot(&mut self, now: f64) {
+        if !self.boot_started || self.menu_live {
+            return;
+        }
+        self.t0 = now - 9.75;
+        self.chime_played = true;
+        self.tag_sound_played = true;
+        self.etch_sound_played = true;
+        self.post_clicks = usize::MAX / 2;
+        self.pending.push(Sound::Lock);
+    }
+
+    pub fn booting(&self) -> bool {
+        self.boot_started && !self.menu_live
+    }
+
     /// Any user input: wakes the screensaver (returns true if it did).
     pub fn touch(&mut self, now: f64) -> bool {
         self.last_input = now;

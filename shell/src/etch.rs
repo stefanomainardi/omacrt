@@ -14,7 +14,7 @@ use crate::fb::{Color, Framebuffer, lerp_color, rgb};
 
 /// Effect ticks per second (TTE runs at 120 on the site).
 pub const TICK_HZ: f32 = 120.0;
-const ETCH_SPEED: usize = 1; // cells per etch step
+const ETCH_SPEED: usize = 2; // cells per etch step (twice the site: a boot screen, not a web page)
 const ETCH_DELAY: u32 = 1; // ticks between etch steps
 const SPAWN_TICKS: u32 = 3;
 const COOL_STEP_TICKS: u32 = 3;
@@ -197,7 +197,7 @@ impl LaserEtch {
     /// little more sizzle when the beam jumps far (a new branch of the walk).
     pub fn synth(&self, rate: u32) -> Vec<f32> {
         let step = (ETCH_DELAY + 1) as f32 / TICK_HZ;
-        let total = self.order.len() as f32 * step + 0.4;
+        let total = (self.order.len() / ETCH_SPEED) as f32 * step + 0.4;
         let n = (total * rate as f32) as usize;
         let mut out = vec![0.0f32; n];
         let sr = rate as f32;
@@ -213,7 +213,7 @@ impl LaserEtch {
         let (mut lo, mut hi) = (0.0f32, 0.0f32);
         let a_hi = 1.0 / (1.0 + sr / (tau * 6000.0));
         let a_lo = 1.0 / (1.0 + sr / (tau * 2500.0));
-        let work = self.order.len() as f32 * step;
+        let work = (self.order.len() / ETCH_SPEED) as f32 * step;
         for (i, s) in out.iter_mut().enumerate() {
             let t = i as f32 / sr;
             let w = rnd();
@@ -226,7 +226,7 @@ impl LaserEtch {
         let mut prev: Option<(i32, i32)> = None;
         for (k, &idx) in self.order.iter().enumerate() {
             let cell = &self.cells[idx];
-            let at = k as f32 * step;
+            let at = (k / ETCH_SPEED) as f32 * step;
             let start = (at * sr) as usize;
             let jump = prev
                 .map(|(c, r)| ((cell.col - c).abs() + (cell.row - r).abs()) > 2)

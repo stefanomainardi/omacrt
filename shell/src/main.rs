@@ -510,6 +510,10 @@ fn run(args: &Args) -> Result<(), String> {
                 scene.start_boot(now());
                 continue;
             }
+            if start && scene.booting() {
+                scene.skip_boot(now());
+                continue;
+            }
             if let Some(n) = nav {
                 scene.navigate(n);
             }
