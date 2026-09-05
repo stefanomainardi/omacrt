@@ -346,6 +346,8 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
 }
 
 fn run(args: &Args) -> Result<(), String> {
+    // Keep reading the pad while mpv or RetroArch own the focused window.
+    sdl2::hint::set("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
     let sdl = sdl2::init()?;
     let video = sdl.video()?;
     let gcs = sdl.game_controller()?;

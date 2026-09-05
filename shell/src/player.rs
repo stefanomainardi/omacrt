@@ -10,8 +10,23 @@ pub const EXTENSIONS: [&str; 10] = [
     "mp4", "mkv", "avi", "mpg", "mpeg", "ts", "m4v", "webm", "mov", "vob",
 ];
 
-/// Build the mpv command for one file. `socket` is the IPC path.
-pub fn command(mpv: &str, file: &Path, socket: &Path) -> std::process::Command {
+/// Key bindings mpv applies itself while it has keyboard focus: the same
+/// actions the shell sends over IPC for the pad.
+pub const INPUT_CONF: &str = "# Written by omarchy-crt-shell
+ENTER cycle pause
+SPACE cycle pause
+RIGHT seek 10
+LEFT seek -10
+UP add volume 5
+DOWN add volume -5
+ESC quit
+BS quit
+q quit
+";
+
+/// Build the mpv command for one file. `socket` is the IPC path and
+/// `input_conf` the key bindings file.
+pub fn command(mpv: &str, file: &Path, socket: &Path, input_conf: &Path) -> std::process::Command {
     let mut cmd = std::process::Command::new(mpv);
     cmd.arg("--fs")
         .arg("--no-terminal")
@@ -19,6 +34,7 @@ pub fn command(mpv: &str, file: &Path, socket: &Path) -> std::process::Command {
         .arg("--no-osc")
         .arg("--osd-level=0")
         .arg("--no-input-default-bindings")
+        .arg(format!("--input-conf={}", input_conf.display()))
         .arg("--keep-open=no")
         .arg("--deinterlace=no")
         .arg("--save-position-on-quit")
