@@ -316,6 +316,13 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
                 }
             }
         }
+        for data in scene.take_samples() {
+            for (i, v) in data.iter().enumerate() {
+                if let Some(m) = master.get_mut(offset + i) {
+                    *m += v;
+                }
+            }
+        }
         fb.write_ppm(&dir.join(format!("frame_{frame:05}.ppm")))
             .map_err(|e| e.to_string())?;
         frame += 1;
@@ -536,6 +543,9 @@ fn run(args: &Args) -> Result<(), String> {
         fb.apply_gain(scene.power());
         for s in scene.take_sounds() {
             audio.play(s);
+        }
+        for data in scene.take_samples() {
+            audio.play_samples(data);
         }
 
         if scene.boot_started() && next_dump < dumps.len() {

@@ -136,8 +136,10 @@ pub struct Scene {
     /// Menu item waiting for a confirming second press, with its deadline.
     armed: Option<(usize, f64)>,
     pending: Vec<Sound>,
+    pending_samples: Vec<Vec<f32>>,
     etch: Option<LaserEtch>,
     tag_sound_played: bool,
+    etch_sound_played: bool,
     saver: Option<Saver>,
     last_input: f64,
     idle_secs: f32,
@@ -183,8 +185,10 @@ impl Scene {
             message: None,
             armed: None,
             pending: Vec::new(),
+            pending_samples: Vec::new(),
             etch: None,
             tag_sound_played: false,
+            etch_sound_played: false,
             saver: None,
             last_input: 0.0,
             idle_secs,
@@ -227,6 +231,11 @@ impl Scene {
     /// Sounds queued during the last `draw`; the caller plays them.
     pub fn take_sounds(&mut self) -> Vec<Sound> {
         std::mem::take(&mut self.pending)
+    }
+
+    /// Runtime-generated buffers queued during the last `draw`.
+    pub fn take_samples(&mut self) -> Vec<Vec<f32>> {
+        std::mem::take(&mut self.pending_samples)
     }
 
     pub fn boot_started(&self) -> bool {
@@ -1289,6 +1298,10 @@ impl Scene {
         let x = ((w - mw as f32) * 0.5).round() as i32;
         let y = lerp(h * 0.36, final_y as f32, settle).round() as i32;
         if let Some(etch) = self.etch.as_mut() {
+            if !self.etch_sound_played {
+                self.etch_sound_played = true;
+                self.pending_samples.push(etch.synth(crate::audio::RATE));
+            }
             etch.advance_to(t - ETCH_START);
             etch.draw(fb, x, y, MARK_SCALE, fade);
         }

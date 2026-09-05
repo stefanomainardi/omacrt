@@ -83,6 +83,17 @@ impl Audio {
         })
     }
 
+    /// Play a buffer generated at runtime (the laser etch follows a random walk).
+    pub fn play_samples(&self, data: Vec<f32>) {
+        if self._device.is_none() {
+            return;
+        }
+        self.voices.lock().unwrap().push(Voice {
+            data: Arc::new(data),
+            pos: 0,
+        });
+    }
+
     pub fn play(&self, s: Sound) {
         if let Some((_, data)) = self.bank.iter().find(|(k, _)| *k == s) {
             self.voices.lock().unwrap().push(Voice {

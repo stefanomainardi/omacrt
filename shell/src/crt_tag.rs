@@ -160,11 +160,11 @@ fn draw_floor(
     let scroll = floor_scroll(t);
     for y in HORIZON..h {
         let dy = (y - HORIZON) as f32 + 1.0;
-        let depth = 240.0 / dy + scroll; // world z of this scanline
+        let depth = 12000.0 / dy + scroll * 6.0; // world z of this scanline
         let fog = clamp01((dy - 2.0) / 34.0) * alpha;
         let row_parity = (depth / 10.0).floor() as i32;
         for x in 0..w {
-            let wx = (x - w / 2) as f32 * dy / 40.0;
+            let wx = (x - w / 2) as f32 * 50.0 / dy;
             let parity = (row_parity + (wx / 10.0).floor() as i32) & 1;
             let base = if parity == 0 {
                 look.floor_light
