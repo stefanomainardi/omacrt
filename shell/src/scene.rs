@@ -1520,13 +1520,16 @@ impl Scene {
                         1,
                     );
                 }
-                fb.text(
-                    left,
-                    h - 16,
-                    "A run  B back  Y fav  <> page",
-                    scale(self.theme.dim, 0.7),
-                    1,
-                );
+                let is_video = sys
+                    .map(|i| self.library.systems[i].is_video())
+                    .unwrap_or(false);
+                let hint = self.hint(&[
+                    ("A", if is_video { "play" } else { "run" }),
+                    ("B", "back"),
+                    ("Y", "fav"),
+                    ("<>", "page"),
+                ]);
+                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
             Screen::Profile { sel } => {
                 let y0 = self.draw_header(fb, "TV");
@@ -2135,17 +2138,6 @@ impl Scene {
         if let Some((msg, _)) = &self.message {
             fb.text(left, h - 28, &cut(msg), scale(self.theme.cyan, fade), 1);
         }
-        let footer = format!(
-            "{} {} {}",
-            self.info.kernel, self.info.mode, self.theme.name
-        );
-        fb.text(
-            left,
-            h - 14,
-            &cut(&footer),
-            scale(self.theme.dim, 0.7 * fade),
-            1,
-        );
     }
 
     /// A submenu drawn like the home rows under the compact header.
