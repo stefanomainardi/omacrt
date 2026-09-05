@@ -745,7 +745,7 @@ impl Scene {
                         if let Err(e) = self.profile.save(&self.library.config_dir) {
                             eprintln!("profile: {e}");
                         }
-                        self.screen = Screen::Menu;
+                        self.screen = Screen::Settings { sel: 0 };
                         self.pending.push(Sound::Lock);
                         return;
                     }
