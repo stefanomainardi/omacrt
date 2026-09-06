@@ -83,7 +83,8 @@ pub struct Audio {
     /// Also make the CRT the system default sink while on (everything plays
     /// on the television). Off by default.
     pub system_default: bool,
-    /// Sink volume applied to the CRT output, percent.
+    /// Sink volume applied to the CRT output, percent. PipeWire allows up to
+    /// 150; 125 is about +6 dB, enough for a DAC whose line level sits low.
     pub volume: u32,
 }
 
@@ -125,7 +126,7 @@ impl Default for Audio {
         Self {
             route: true,
             system_default: false,
-            volume: 100,
+            volume: 125,
         }
     }
 }
@@ -169,8 +170,9 @@ args = ["--fullscreen", "--stretch", "--auto-boot"]
 route = true
 # Also make the CRT the system default sink while on (everything on the TV).
 system_default = false
-# Sink volume for the CRT, percent.
-volume = 100
+# Sink volume for the CRT, percent (up to 150). 125 is about +6 dB, which the
+# RGB-Pi 2 needs to reach a normal television volume.
+volume = 125
 "#;
 
 impl Config {
