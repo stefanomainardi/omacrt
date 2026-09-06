@@ -39,10 +39,12 @@ case ":$PATH:" in
 esac
 
 echo "== installing plugin into $plugin_dir"
-rm -rf "$plugin_dir"
+# Overwrite in place: removing the folder makes the shell drop the plugin
+# for a moment and the bar widget vanishes; changed files hot reload instead.
 mkdir -p "$plugin_dir/bin"
-cp "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$plugin_dir/"
-[ -f "$repo/plugin/README.md" ] && cp "$repo/plugin/README.md" "$plugin_dir/"
+for f in "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$repo/plugin/README.md"; do
+  [ -f "$f" ] && install -m 644 "$f" "$plugin_dir/$(basename "$f")"
+done
 install -m 755 "$repo/shell/target/release/omarchy-crt" "$plugin_dir/bin/omarchy-crt"
 
 if command -v omarchy >/dev/null 2>&1; then
