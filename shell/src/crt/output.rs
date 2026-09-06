@@ -318,12 +318,11 @@ pub fn workspace_rule(name: &str) {
     hypr_eval(&format!(
         "hl.workspace_rule({{ workspace = \"name:{WORKSPACE}\", monitor = \"{name}\", default = true, persistent = true }})"
     ));
-    // No `workspace.move` here: moving a workspace that holds a fullscreen
-    // window desynchronised Hyprland's fullscreen bookkeeping and the bar
-    // came back above the launcher. The rule alone places new windows.
-    hypr_eval(&format!(
-        "hl.dispatch(hl.dsp.focus({{ workspace = \"name:{WORKSPACE}\" }}))"
-    ));
+    // No `workspace.move` and no focus dispatch here: moving a workspace
+    // that holds a fullscreen window desynchronised Hyprland's fullscreen
+    // bookkeeping, and focusing before the output exists lands on the
+    // desktop. The rule alone (default = true) gives the output `crt` when
+    // it comes up; the launcher window then gets focus explicitly.
 }
 
 /// Keyboard focus to the first window of a class.

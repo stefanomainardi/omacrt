@@ -14,7 +14,8 @@ BarWidget {
   property var status: ({})
   readonly property bool connected: !!(status.connector && status.connector.connected)
   readonly property bool active: status.active === true
-  readonly property bool lockLost: !!(status.dac && status.dac.present && status.dac.lock === "lost")
+  // Only a lost lock while the tube is on the air is news; standby reads as lost too.
+  readonly property bool lockLost: root.active && !!(status.dac && status.dac.present && status.dac.lock === "lost")
   readonly property string lines: (status.mode && status.mode.lines) ? status.mode.lines : ""
   readonly property bool hideWhenAbsent: setting("hideWhenAbsent", false) === true
   readonly property int refreshIntervalSec: Math.max(2, Math.min(60, Number(setting("refreshIntervalSec", 5)) || 5))
@@ -112,8 +113,8 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    // nf-fa-television, with the line standard once the tube is on the air.
-    text: root.active ? ("  " + root.lines) : ""
+    // nf-md-television, with the line standard once the tube is on the air.
+    text: root.active ? ("󰔂 " + root.lines) : "󰔂"
     tooltipText: root.active
       ? ("Omarchy CRT on the air, " + root.lines)
       : (root.connected ? "Omarchy CRT in standby" : "No CRT DAC connected")

@@ -40,7 +40,7 @@ Panel {
   readonly property bool connected: !!(conn && conn.connected)
   readonly property bool active: status.active === true
   readonly property bool locked: !!(dac.present && dac.lock === "locked")
-  readonly property bool lockLost: !!(dac.present && dac.lock === "lost")
+  readonly property bool lockLost: root.active && !!(dac.present && dac.lock === "lost")
   readonly property string standard: String(status.standard || "ntsc")
   readonly property string csync: String(dac.csync || "")
   readonly property bool audioOnTv: !!(audio && audio.routed)
@@ -415,7 +415,7 @@ Panel {
                 onClicked: root.runAction(["dac", "csync", modelData])
               }
             }
-            Act { text: "Reset DAC"; onClicked: root.runAction(["dac", "reset"]) }
+            Act { text: "Reset DAC"; tooltipText: "Last resort: a reset leaves the DAC in a different colour state until its next power cycle"; onClicked: root.runAction(["dac", "reset"]) }
           }
           Toggle {
             width: parent.width

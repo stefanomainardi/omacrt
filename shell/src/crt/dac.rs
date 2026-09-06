@@ -94,6 +94,14 @@ impl Dac {
             unsafe { libc::close(fd) };
             return Err(e);
         }
+        // One talker at a time: the page register is shared state, and the
+        // bar plugin polls status while the CLI or the launcher may be
+        // writing. The lock lives as long as this handle.
+        if unsafe { libc::flock(fd, libc::LOCK_EX) } < 0 {
+            let e = io::Error::last_os_error();
+            unsafe { libc::close(fd) };
+            return Err(e);
+        }
         Ok(Self {
             fd,
             bus: bus.to_string(),

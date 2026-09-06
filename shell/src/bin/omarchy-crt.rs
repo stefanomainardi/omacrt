@@ -396,6 +396,12 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
             state.standard.clone()
         }
     });
+    // Rules first: the output must come up already bound to the `crt`
+    // workspace, or Hyprland hands it the next free numbered desktop one.
+    compositor_fullscreen_policy(true);
+    output::workspace_rule(&conn.name);
+    output::window_rules(&conn.name);
+    output::isolate(&conn.name);
     match apply_mode(cfg, &conn, &standard, None, (0, 0)) {
         Ok(ml) => println!(
             "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
@@ -424,10 +430,6 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
             None => println!("audio:      no HDMI audio pin for this output"),
         }
     }
-    compositor_fullscreen_policy(true);
-    output::workspace_rule(&conn.name);
-    output::window_rules(&conn.name);
-    output::isolate(&conn.name);
     match launcher::start(cfg, &conn.name, crt_sink(cfg, &conn).as_deref()) {
         Ok(note) => {
             println!("launcher:   {note}");
