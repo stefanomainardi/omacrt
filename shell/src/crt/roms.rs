@@ -210,7 +210,7 @@ pub fn scan(lib: &Library) -> Vec<Scan> {
                 std::fs::read_dir(&dir)
                     .map(|rd| {
                         rd.filter_map(|e| e.ok())
-                            .filter(|e| e.path().is_file())
+                            .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
                             .filter(|e| {
                                 let p = e.path();
                                 let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
@@ -256,7 +256,7 @@ pub fn link(root: &Path, current: &[System]) -> (Vec<System>, Vec<Linked>) {
         let files = std::fs::read_dir(&dir)
             .map(|rd| {
                 rd.filter_map(|e| e.ok())
-                    .filter(|e| e.path().is_file())
+                    .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
                     .count()
             })
             .unwrap_or(0);

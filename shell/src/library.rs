@@ -440,10 +440,12 @@ impl Library {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             return Vec::new();
         };
+        // `file_type` comes free with the directory entry; a stat per file
+        // is what makes a 8000 ROM folder on a USB disk take seconds.
         let files: Vec<PathBuf> = entries
             .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
             .map(|e| e.path())
-            .filter(|p| p.is_file())
             .collect();
         let mut hidden: Vec<PathBuf> = Vec::new();
         for m3u in files.iter().filter(|p| has_ext(p, "m3u")) {
@@ -466,14 +468,21 @@ impl Library {
                 .map(|e| system.extensions.iter().any(|x| x.eq_ignore_ascii_case(e)))
                 .unwrap_or(false)
         };
+        let video = system.is_video();
         let mut games: Vec<Game> = files
             .iter()
-            .filter(|p| accepted(p) && !hidden.contains(p) && !crate::videofit::is_crt_file(p))
+            .filter(|p| accepted(p) && !hidden.contains(p) && (!video || !crate::videofit::is_crt_file(p)))
             .map(|path| {
-                let crt = crate::videofit::crt_path(path);
+                // CRT ready siblings only exist for videos; skip the stat elsewhere.
+                let crt = if video {
+                    let c = crate::videofit::crt_path(path);
+                    c.exists().then_some(c)
+                } else {
+                    None
+                };
                 Game {
                     title: clean_title(path),
-                    crt_path: crt.exists().then_some(crt),
+                    crt_path: crt,
                     path: path.clone(),
                 }
             })
