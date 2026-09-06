@@ -7,7 +7,8 @@
 #
 #   scripts/shoot.sh prep      film timing (60.00 Hz), tube on, launcher fresh
 #   scripts/shoot.sh desktop   bar panel: power off, power on (records DP-2)
-#   scripts/shoot.sh tour      systems, collections, covers, a game, a video
+#   scripts/shoot.sh tour      systems, collections, covers, a game (leave it by hand)
+#   scripts/shoot.sh tour2     back home, Videos, the Omarchy intro
 #   scripts/shoot.sh restore   back to the NTSC timing
 set -u
 
@@ -49,6 +50,7 @@ case "${1:-}" in
     say "fresh boot on the tube (laser etch, Mode 7 tag)"
     omarchy-crt shell restart >/dev/null
     sleep 14
+    key home 0.5
     say "Games: the systems and their consoles"
     key fire 2.5
     for _ in 1 2 3 4 5 6 7 8; do key down 1.1; done
@@ -65,10 +67,11 @@ case "${1:-}" in
     say "Chrono Trigger"
     omarchy-crt focus >/dev/null
     key fire 1
-    cue "let the game run ~40 s, then press Esc on the real keyboard to leave"
-    sleep 2
+    say "let the game run ~40 s, press Esc on the real keyboard, then run 'tour2'"
+    ;;
+  tour2)
     say "back home, then Videos"
-    key back 0.8; key back 0.8; key back 0.8
+    key home 1.0
     key down 0.9
     key fire 2.5
     for _ in 1 2 3 4 5; do key down 0.8; done

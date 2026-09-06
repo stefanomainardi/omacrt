@@ -14,7 +14,7 @@ use std::time::Duration;
 
 /// Canonical input names, in the order the help text lists them.
 pub const INPUTS: &[&str] = &[
-    "up", "down", "left", "right", "fire", "back", "fav", "alt", "start",
+    "up", "down", "left", "right", "fire", "back", "fav", "alt", "start", "home",
 ];
 
 pub fn path() -> PathBuf {
@@ -33,6 +33,7 @@ pub fn normalize(name: &str) -> Option<&'static str> {
         "fav" | "y" | "f" => "fav",
         "alt" | "x" => "alt",
         "start" => "start",
+        "home" | "menu" => "home",
         _ => return None,
     })
 }

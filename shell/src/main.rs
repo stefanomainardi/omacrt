@@ -355,6 +355,15 @@ fn run(args: &Args) -> Result<(), String> {
     } else {
         Audio::open(&sdl.audio()?)?
     };
+    // SDL's PulseAudio backend opens the default device by name, so the
+    // PULSE_SINK the CLI set for us is ignored; move the stream ourselves
+    // once it exists.
+    if let Ok(sink) = std::env::var("PULSE_SINK") {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            omarchy_crt_shell::crt::audio::move_streams(&sink);
+        });
+    }
 
     let mut builder = video.window(
         "omarchy-crt",
@@ -557,10 +566,15 @@ fn run(args: &Args) -> Result<(), String> {
                 fire,
                 fav,
                 alt,
+                home,
                 ..
             } = inp;
+            if home {
+                scene.home();
+                continue;
+            }
 
-            let is_input = start || nav.is_some() || fire || fav || alt;
+            let is_input = start || nav.is_some() || fire || fav || alt || home;
             if scene.is_running() {
                 if scene.player_active() && is_input {
                     scene.player_input(nav, fire);
@@ -680,6 +694,7 @@ struct Input {
     fire: bool,
     fav: bool,
     alt: bool,
+    home: bool,
     quit: bool,
 }
 
@@ -694,6 +709,7 @@ fn control_input(line: &str) -> Option<Input> {
         "fav" => inp.fav = true,
         "alt" => inp.alt = true,
         "start" => inp.start = true,
+        "home" => inp.home = true,
         _ => {
             inp.start = true;
             inp.fire = true;

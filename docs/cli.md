@@ -12,7 +12,7 @@ omarchy-crt boot                     login reset: output off, audio back to the 
 omarchy-crt toggle
 omarchy-crt mode ntsc|pal|film [--lines N] [--shift-x X] [--shift-y Y]
 omarchy-crt shell start|stop|restart|focus
-omarchy-crt shell key <input>...   # up down left right fire back fav alt start
+omarchy-crt shell key <input>...   # home up down left right fire back fav alt start
 omarchy-crt focus
 omarchy-crt audio crt|desktop|all|apps
 omarchy-crt dac status|reset|csync and|xor|separate|watch
@@ -132,8 +132,8 @@ omarchy-crt shell key down down fire   # two rows down, open
 omarchy-crt shell key back             # B
 ```
 
-Inputs: `up`, `down`, `left`, `right`, `fire` (A, Enter), `back` (B, Esc),
-`fav` (Y), `alt` (X), `start`. Aliases such as `enter`, `esc`, `a`, `b` work
+Inputs: `home` (top of the main menu), `up`, `down`, `left`, `right`, `fire`
+(A, Enter), `back` (B, Esc), `fav` (Y), `alt` (X), `start`. Aliases such as `enter`, `esc`, `a`, `b` work
 too. This is how `scripts/shoot.sh` records the tour and how tests drive the
 menu; a game already running keeps the real keyboard and pad, nothing from
 the pipe reaches it.

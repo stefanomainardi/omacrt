@@ -24,7 +24,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   mode [ntsc|pal] [--lines N] [--shift-x X] [--shift-y Y]
                            standard, active lines, picture shift; no args = full frame
   shell start|stop|restart|focus
-  shell key <input>...           drive the launcher: up down left right fire back fav alt
+  shell key <input>...           drive the launcher: home up down left right fire back fav alt
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
   dac status|reset|csync and|xor|separate|watch

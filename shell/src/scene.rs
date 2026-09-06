@@ -570,6 +570,19 @@ impl Scene {
         Some((cmd, l.title.clone(), l.lines))
     }
 
+    /// Back to the top of the main menu, whatever screen is open. Scripts
+    /// driving the control pipe start from here.
+    pub fn home(&mut self) {
+        if self.running.is_some() || self.launching.is_some() {
+            return;
+        }
+        self.screen = Screen::Menu;
+        self.sel = 0;
+        self.list_from_home = false;
+        self.open_collection = None;
+        self.pending.push(Sound::Move);
+    }
+
     pub fn activate(&mut self) -> Action {
         if !self.menu_live || self.running.is_some() {
             return Action::None;

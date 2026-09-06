@@ -14,6 +14,24 @@ use std::time::Duration;
 
 pub const ADDR: u16 = 0x78;
 const I2C_SLAVE_FORCE: libc::c_ulong = 0x0706;
+const I2C_RDWR: libc::c_ulong = 0x0707;
+const I2C_M_RD: u16 = 0x0001;
+
+/// `struct i2c_msg` from linux/i2c.h.
+#[repr(C)]
+struct I2cMsg {
+    addr: u16,
+    flags: u16,
+    len: u16,
+    buf: *mut u8,
+}
+
+/// `struct i2c_rdwr_ioctl_data` from linux/i2c-dev.h.
+#[repr(C)]
+struct I2cRdwrIoctlData {
+    msgs: *mut I2cMsg,
+    nmsgs: u32,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Csync {
@@ -124,14 +142,32 @@ impl Dac {
         Ok(())
     }
 
+    /// Register read as one combined I2C transaction (register pointer
+    /// write, then read), so another bus user such as ddcutil probing the
+    /// monitor address cannot slip between the two halves.
     fn read(&self, reg: u8) -> io::Result<u8> {
-        let n = unsafe { libc::write(self.fd, [reg].as_ptr() as *const libc::c_void, 1) };
-        if n != 1 {
-            return Err(io::Error::last_os_error());
-        }
+        let mut pointer = [reg];
         let mut out = [0u8; 1];
-        let n = unsafe { libc::read(self.fd, out.as_mut_ptr() as *mut libc::c_void, 1) };
-        if n != 1 {
+        let mut msgs = [
+            I2cMsg {
+                addr: ADDR,
+                flags: 0,
+                len: 1,
+                buf: pointer.as_mut_ptr(),
+            },
+            I2cMsg {
+                addr: ADDR,
+                flags: I2C_M_RD,
+                len: 1,
+                buf: out.as_mut_ptr(),
+            },
+        ];
+        let data = I2cRdwrIoctlData {
+            msgs: msgs.as_mut_ptr(),
+            nmsgs: msgs.len() as u32,
+        };
+        let r = unsafe { libc::ioctl(self.fd, I2C_RDWR, &data) };
+        if r < 0 {
             return Err(io::Error::last_os_error());
         }
         Ok(out[0])
