@@ -141,6 +141,22 @@ pub fn plan(p: &Probe, fit: &VideoFit) -> Plan {
 }
 
 impl Plan {
+    /// Square pixel width of the target picture; SD frames are 720 wide with
+    /// non square pixels, so fitting happens in this virtual frame first.
+    fn virtual_width(&self) -> u32 {
+        match self.standard {
+            Standard::Ntsc => 640,
+            Standard::Pal => 768,
+        }
+    }
+
+    fn sar(&self) -> &'static str {
+        match self.standard {
+            Standard::Ntsc => "8/9",
+            Standard::Pal => "16/15",
+        }
+    }
+
     pub fn label(&self) -> String {
         if self.retro {
             return "240p".into();
@@ -191,11 +207,11 @@ impl Plan {
         let chain = if self.retro {
             format!("scale={w}:{h}:flags=area")
         } else {
-            self.fit_chain(w, h)
+            self.fit_chain(self.virtual_width(), h)
         };
         a.push(format!("--vf=lavfi=[{chain}]"));
         a.push("--video-unscaled=no".into());
-        a.push(format!("--video-aspect-override={}:{}", w, h));
+        a.push("--video-aspect-override=4:3".into());
         if self.speedup {
             a.push("--speed=1.04271".into());
             a.push("--audio-pitch-correction=yes".into());
@@ -241,20 +257,24 @@ impl Plan {
                 Standard::Pal => "50",
             };
             vf.push(format!("fps={field_rate}"));
-            vf.push(self.fit_chain(w, h / 2));
+            vf.push(self.fit_chain(self.virtual_width(), h / 2));
+            vf.push(format!("scale={w}:{}:flags=lanczos", h / 2));
             vf.push("tinterlace=merge,setfield=tff".into());
         } else if self.pulldown {
             vf.push("fps=24000/1001".into());
-            vf.push(self.fit_chain(w, h));
+            vf.push(self.fit_chain(self.virtual_width(), h));
+            vf.push(format!("scale={w}:{h}:flags=lanczos"));
             vf.push("telecine=pattern=32,setfield=tff".into());
         } else if self.speedup {
             vf.push("setpts=PTS/1.04271,fps=25".into());
-            vf.push(self.fit_chain(w, h));
+            vf.push(self.fit_chain(self.virtual_width(), h));
+            vf.push(format!("scale={w}:{h}:flags=lanczos"));
             vf.push("setfield=tff".into());
             af.push("atempo=1.04271".into());
         } else {
             vf.push(format!("fps={out_rate}"));
-            vf.push(self.fit_chain(w, h));
+            vf.push(self.fit_chain(self.virtual_width(), h));
+            vf.push(format!("scale={w}:{h}:flags=lanczos"));
             vf.push("setfield=tff".into());
         }
         let matrix = match self.standard {
@@ -264,6 +284,9 @@ impl Plan {
         vf.push(format!(
             "scale=in_range=tv:out_range=tv:out_color_matrix={matrix},format=yuv420p"
         ));
+        if !self.retro {
+            vf.push(format!("setsar={}", self.sar()));
+        }
         af.push("loudnorm=I=-16:TP=-1.5:LRA=11".into());
         let mut cmd = Command::new("ffmpeg");
         cmd.arg("-y")

@@ -12,7 +12,10 @@ writing a CRT ready file with ffmpeg.
   Film at 24 fps takes one of the two historical routes: **3:2 pulldown** to
   59.94 (the American DVD) or the **PAL speed-up** of 25/24 with the audio
   time stretched (the European DVD).
-- **Resolution to 720x480 or 720x576, interlaced.** Sources at field rate (50
+- **Resolution to 720x480 or 720x576, interlaced.** SD frames have non
+  square pixels, so the picture is first fitted into a square pixel frame
+  (640x480 or 768x576) and then stretched to 720 wide with the matching
+  sample aspect ratio (8:9 or 16:15), the way DVDs are authored. Sources at field rate (50
   or 60 fps) are scaled to field height and woven two frames per interlaced
   frame, so every field carries its own instant and motion stays intact.
   Other sources are scaled to the full frame and flagged interlaced.
@@ -67,16 +70,17 @@ conversion in the background. The row shows the percentage while it runs and a
 
 The ffmpeg chain follows the plan:
 
-- field rate sources: `fps=60000/1001` (or `50`), scale to `720x240` (or
-  `720x288`) with the aspect chain, `tinterlace=merge`, `setfield=tff`;
+- field rate sources: `fps=60000/1001` (or `50`), the aspect chain into
+  `640x240` (or `768x288`), stretch to `720` wide, `tinterlace=merge`,
+  `setfield=tff`;
 - 24 fps with pulldown: `fps=24000/1001`, scale, `telecine=pattern=32`;
 - 24 fps with speed-up: `setpts=PTS/1.04271,fps=25`, scale, `atempo=1.04271`;
 - everything else: `fps` to the standard, scale, `setfield=tff`;
 - HDR sources first pass through `zscale` linearization, `tonemap=hable` and
   back to BT.709;
-- then `scale=out_color_matrix=<sd matrix>,format=yuv420p`, `libx264` at CRF
-  18 with `+ilme+ildct` and `tff=1`, `-aspect 4:3`, AAC stereo with
-  `loudnorm`.
+- then `scale=out_color_matrix=<sd matrix>,format=yuv420p`, `setsar` to the
+  SD pixel aspect, `libx264` at CRF 18 with `+ilme+ildct` and `tff=1`,
+  `-aspect 4:3`, AAC stereo with `loudnorm`.
 
 Retro conversions skip interlacing and write 320x240 progressive.
 
