@@ -257,7 +257,8 @@ impl Plan {
                 Standard::Pal => "50",
             };
             vf.push(format!("fps={field_rate}"));
-            vf.push(self.fit_chain(self.virtual_width(), h / 2));
+            // Fit in the full frame, then squeeze each frame to field height.
+            vf.push(self.fit_chain(self.virtual_width(), h));
             vf.push(format!("scale={w}:{}:flags=lanczos", h / 2));
             vf.push("tinterlace=merge,setfield=tff".into());
         } else if self.pulldown {
