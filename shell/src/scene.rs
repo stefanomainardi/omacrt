@@ -854,15 +854,18 @@ impl Scene {
     /// Entries of system `i` in the folder currently browsed.
     fn entries_for(&self, i: usize) -> Vec<Entry> {
         let system = &self.library.systems[i];
-        let dir = self
-            .game_dir
-            .clone()
-            .unwrap_or_else(|| crate::library::expand(&system.dir));
-        self.library
-            .games_in(system, &dir)
-            .into_iter()
-            .map(|game| Entry { game, sys: i })
-            .collect()
+        // Indexed systems list from the index, one title each, no folders.
+        // Folder browsing is for systems that only have a directory.
+        let games = match &self.game_dir {
+            None if self.library.uses_index(system) || system.dir.is_empty() => {
+                self.library.games(system)
+            }
+            None => self
+                .library
+                .games_in(system, &crate::library::expand(&system.dir)),
+            Some(dir) => self.library.games_in(system, dir),
+        };
+        games.into_iter().map(|game| Entry { game, sys: i }).collect()
     }
 
     /// Counts for the systems screen, computed once per library read so the
