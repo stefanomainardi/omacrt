@@ -117,3 +117,12 @@ run-ahead is per system. On the host side, USB polling at 1 kHz helps with
 some pads: add `usbhid.jspoll=1` to the kernel command line of the CRT boot
 entry. Wired pads over the game controller API keep the shell itself under a
 frame of input lag.
+
+## Adopting an existing collection
+
+`omarchy-crt library link DIR --write` reads a ROM collection laid out the
+RePlayOS or Batocera way (`nintendo_nes`, `sony_psx`, `sega_dc`, ...) and
+writes a `systems.toml` whose systems point at those folders, with the core
+Arch ships for each. Nothing is copied. Systems already defined keep their
+tuning and only change directory. `omarchy-crt bios import DIR --all` brings
+the matching `bios` folder into RetroArch's system directory.

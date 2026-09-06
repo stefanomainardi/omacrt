@@ -57,6 +57,10 @@ GPU (DisplayPort) -> DAC (Realtek RTD2166/2168) -> sync combiner (VGA to SCART R
   [D0023R/linux_kernel_15khz](https://github.com/D0023R/linux_kernel_15khz).
   The plan is a `linux-crt` package built from `linux-lts` with those patches,
   living next to the stock kernels through Omarchy's Limine and UKI setup.
+- **Lines per system.** On the HDMI tier the launcher asks `omarchy-crt` to
+  switch the tube to a system's pinned line count before a game starts (224
+  lines for Super Nintendo) and back to the full frame after, so pixels land
+  one line per line without a kernel patch.
 - **Mode switching.** Wayland cannot set arbitrary modelines and Hyprland drops
   the interlace flag. The desktop shows fixed progressive 15 kHz modes;
   RetroArch and GroovyMAME run through KMS/DRM on a separate virtual terminal
