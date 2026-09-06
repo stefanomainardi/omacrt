@@ -42,21 +42,21 @@ common TV mode and XOR for PVM style monitors, so try both.
 RetroRGB reported a "jumpy screen" that the vendor attributes to a PLL
 decoupling problem in the current hardware revision. RePlayOS works around it
 with a background process that polls register `0x61` at 1 kHz and resets the
-DAC when it drops to `0xEF`. `scripts/rgbpi2-dac.py watch` does the same.
+DAC when it drops to `0xEF`. `omarchy-crt dac watch` does the same.
 
 ## The tool
 
 ```sh
-scripts/rgbpi2-dac.py status            # lock register
-scripts/rgbpi2-dac.py reset             # 2 s reset pulse
-scripts/rgbpi2-dac.py csync xor         # or and, separate
-scripts/rgbpi2-dac.py watch             # auto reset on signal loss
+omarchy-crt dac status            # lock register and csync mode
+omarchy-crt dac reset             # 2 s reset pulse, csync restored after
+omarchy-crt dac csync xor         # or and, separate
+omarchy-crt dac watch             # auto reset on signal loss
 ```
 
-The connector defaults to the first connected HDMI output whose EDID names a
+`omarchy-crt on` runs the csync selection for you after the modeline. The
+connector defaults to the first connected HDMI output whose EDID names a
 Mortaca device; the I2C bus is read from the connector's `ddc` link in sysfs.
-Only Python 3 is needed. The device node is usually `root:i2c`, so join the
-`i2c` group or use sudo.
+The device node is usually `root:i2c`, so join the `i2c` group.
 
 ## Hyprland modelines that work
 

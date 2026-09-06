@@ -163,6 +163,10 @@ struct Launch {
     color: Color,
     started: f64,
     spawned: bool,
+    /// Active lines the CRT should switch to for this program (a pinned
+    /// 224 line system on a 240 line output), when the output is a wide
+    /// super resolution the host controls.
+    lines: Option<u32>,
 }
 
 const LAUNCH_SECS: f32 = 1.15;
@@ -219,6 +223,10 @@ struct Saver {
 
 pub struct Scene {
     theme: Theme,
+    /// Pixel size of the output the shell is drawn on. On a wide 15 kHz
+    /// super resolution the whole frame is one 4:3 picture, so launched
+    /// programs must fill it instead of keeping square pixels.
+    output_size: (u32, u32),
     info: SysInfo,
     band_y: f32,
     screen_since: f64,
@@ -285,6 +293,7 @@ impl Scene {
         let grid = effects::Grid::wordmark(stops);
         let (mark_cols, mark_rows) = (grid.cols, grid.rows);
         Self {
+            output_size: (320, 240),
             theme,
             info,
             band_y: -1.0,
@@ -513,14 +522,14 @@ impl Scene {
     }
 
     /// The RetroArch command once the launch animation has run its course.
-    pub fn take_launch(&mut self) -> Option<(std::process::Command, String)> {
+    pub fn take_launch(&mut self) -> Option<(std::process::Command, String, Option<u32>)> {
         let l = self.launching.as_mut()?;
         if l.spawned || ((self.now - l.started) as f32) < LAUNCH_SECS - 0.2 {
             return None;
         }
         l.spawned = true;
         let cmd = std::mem::replace(&mut l.cmd, std::process::Command::new("true"));
-        Some((cmd, l.title.clone()))
+        Some((cmd, l.title.clone(), l.lines))
     }
 
     pub fn activate(&mut self) -> Action {
@@ -1226,6 +1235,17 @@ impl Scene {
         }
     }
 
+    /// Called by the host with the size of the drawable output.
+    pub fn set_output_size(&mut self, w: u32, h: u32) {
+        self.output_size = (w.max(1), h.max(1));
+    }
+
+    /// True when the output is a wide super resolution (3520x240 and the
+    /// like) where a square pixel picture would show as a thin strip.
+    fn wide_output(&self) -> bool {
+        self.output_size.0 as f32 / self.output_size.1 as f32 > 3.0
+    }
+
     fn run_entry(&mut self, entry: &Entry) -> Action {
         let system = self.library.systems[entry.sys].clone();
         let extra = if system.is_video() {
@@ -1243,9 +1263,31 @@ impl Scene {
                 self.message = Some((format!("fit: {}", plan.label()), self.now + 4.0));
                 lines.extend(plan.mpv_args());
             }
+            if self.wide_output() {
+                lines.push("--keepaspect=no".into());
+            }
             lines.join("\n")
         } else {
-            self.profile.retroarch_keys()
+            let mut keys = self.profile.retroarch_keys();
+            if self.wide_output() {
+                // Fill the frame (aspect 24 = Full): the tube turns the wide frame back into 4:3.
+                let (w, h) = self.output_size;
+                keys.push_str(&format!(
+                    "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\n",
+                    w as f32 / h as f32
+                ));
+            }
+            keys
+        };
+        // Pinned frame heights become real line counts on a wide output the
+        // host controls: a 224 line game gets 224 lines on the tube.
+        let lines = match crate::library::VideoPolicy::parse(&system.video) {
+            crate::library::VideoPolicy::Fixed(_, h)
+                if self.wide_output() && !system.is_video() && h != self.output_size.1 =>
+            {
+                Some(h)
+            }
+            _ => None,
         };
         match self.library.command(&system, &entry.game, &extra) {
             Ok(cmd) if system.is_video() => {
@@ -1259,6 +1301,7 @@ impl Scene {
                     color: self.theme.yellow,
                     started: self.now - LAUNCH_SECS as f64, // no animation, start right away
                     spawned: false,
+                    lines,
                 });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
                 self.remember(entry);
@@ -1282,6 +1325,7 @@ impl Scene {
                     color,
                     started: self.now,
                     spawned: false,
+                    lines,
                 });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
                 self.remember(entry);

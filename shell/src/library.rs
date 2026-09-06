@@ -537,7 +537,7 @@ impl Library {
             kv("core_options_path", &cores_cfg.display().to_string());
         }
         out.push_str(extra);
-        out
+        dedupe_keys(&out)
     }
 
     /// Build the RetroArch command for one game. `extra` holds additional
@@ -564,9 +564,16 @@ impl Library {
                 ["7aa2f7", "565f89", "c0caf5", "292e42"]
             };
             let fit_args: Vec<String> = lines.map(str::to_string).collect();
-            // A CRT ready file needs no live fitting.
+            // A CRT ready file needs no live fitting, but window options
+            // (how the picture fills a wide super resolution) still apply.
             let (file, fit_args) = match &game.crt_path {
-                Some(c) => (c.as_path(), Vec::new()),
+                Some(c) => (
+                    c.as_path(),
+                    fit_args
+                        .into_iter()
+                        .filter(|a| a.starts_with("--keepaspect"))
+                        .collect(),
+                ),
                 None => (game.path.as_path(), fit_args),
             };
             let mut cmd =
@@ -600,6 +607,29 @@ impl Library {
             .stderr(std::process::Stdio::null());
         Ok(cmd)
     }
+}
+
+/// RetroArch keeps the first occurrence of a duplicated key, so later
+/// overrides (the output geometry appended by the shell) must replace the
+/// earlier value instead of following it.
+fn dedupe_keys(text: &str) -> String {
+    let mut order: Vec<String> = Vec::new();
+    let mut values: BTreeMap<String, String> = BTreeMap::new();
+    for line in text.lines() {
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let k = k.trim().to_string();
+        if !values.contains_key(&k) {
+            order.push(k.clone());
+        }
+        values.insert(k, v.trim().to_string());
+    }
+    let mut out = String::new();
+    for k in order {
+        out.push_str(&format!("{k} = {}\n", values[&k]));
+    }
+    out
 }
 
 fn has_ext(p: &Path, ext: &str) -> bool {

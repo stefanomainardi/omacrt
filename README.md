@@ -46,7 +46,7 @@ GPU (DisplayPort) -> DAC (Realtek RTD2166/2168) -> sync combiner (VGA to SCART R
 - **HDMI tier.** An HDMI to SCART DAC such as the RGB-Pi 2 works from the
   desktop with wide "super resolution" modelines (3520x240 at 72 MHz) and
   carries audio, but needs its sync combiner configured over I2C first. See
-  [docs/rgb-pi-2.md](docs/rgb-pi-2.md) and `scripts/rgbpi2-dac.py`. First
+  [docs/rgb-pi-2.md](docs/rgb-pi-2.md) and `omarchy-crt dac`. First
   light on the BeoCenter 1 came this way on 2026-09-06.
 - **Sync and SCART.** The VGA H and V sync must be combined into composite sync
   at 0.3 to 1 V, and the TV needs 1 to 3 V on SCART pin 16 to switch to RGB.
@@ -165,12 +165,19 @@ and the timeline.
   kernel mode list, Hyprland view, and the HDMI audio path (ELD pin, PipeWire
   profile and sink for that connector). `--tone` plays a 2 s test tone on the
   matching sink. Used to test DACs.
-- **`scripts/rgbpi2-dac.py`** configures an RGB-Pi 2 over the HDMI DDC bus:
-  composite sync mode, reset, lock status, auto reset watcher.
+- **`bin/omarchy-crt-install`** builds the launcher and the CLI, installs
+  them in `~/.local/bin` and installs the bar plugin.
+- **`plugin/`** the Omarchy bar plugin (`io.github.stefanomainardi.omarchy-crt`):
+  a television glyph in the bar and a panel drawn like a TV on screen display
+  with power, NTSC or PAL, launcher focus, DAC sync, audio and library health.
+  See [plugin/README.md](plugin/README.md).
 - **`scripts/demo-video.sh`** renders the shell offline from `scripts/demo.txt`
   (scripted input) and encodes an MP4 with the synthesized audio, frame exact.
 - **`scripts/vm.sh`** throwaway Omarchy VM for kernel packaging tests.
-- **`shell/`** the native launcher.
+- **`shell/`** the native launcher (`omarchy-crt-shell`) and the CLI
+  (`omarchy-crt`) that turns the desktop into a CRT station: modeline, DAC
+  composite sync, audio routing, launcher, window rules, library and BIOS
+  checks. See [docs/cli.md](docs/cli.md).
 
 ## Roadmap
 

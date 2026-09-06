@@ -195,6 +195,7 @@ name = "omarchy-crt-shell"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "libc",
  "sdl2",
  "serde",
  "serde_json",

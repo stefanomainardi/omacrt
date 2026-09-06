@@ -13,15 +13,11 @@ mod etch;
 mod fb;
 mod font8x8;
 mod icons;
-mod library;
 mod menu;
 mod pad;
-mod player;
-mod profile;
 mod scene;
-mod settings;
 mod theme;
-mod videofit;
+use omarchy_crt_shell::{library, player, profile, settings, videofit};
 
 use audio::Audio;
 use fb::Framebuffer;
@@ -311,7 +307,7 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
             }
             next += 1;
         }
-        if let Some((_, title)) = scene.take_launch() {
+        if let Some((_, title, _)) = scene.take_launch() {
             eprintln!("script: not launching {title} while recording");
         }
         scene.draw(&mut fb, t as f64);
@@ -434,12 +430,23 @@ fn run(args: &Args) -> Result<(), String> {
 
     let mut pump = sdl.event_pump()?;
     let mut child: Option<std::process::Child> = None;
+    // The compositor hands fullscreen to the emulator while it runs and does
+    // not give it back when it exits, so the shell re-asserts it itself.
+    let mut fullscreen_check = 0.0_f64;
+    let mut lines_changed = false;
     'main: loop {
         if let Some(c) = child.as_mut() {
             match c.try_wait() {
                 Ok(Some(status)) => {
                     child = None;
                     scene.game_finished(status.success());
+                    if lines_changed {
+                        crt_mode(None);
+                        lines_changed = false;
+                    }
+                    if args.fullscreen {
+                        reassert_fullscreen(canvas.window_mut());
+                    }
                 }
                 Ok(None) => {}
                 Err(e) => {
@@ -447,6 +454,11 @@ fn run(args: &Args) -> Result<(), String> {
                     child = None;
                     scene.game_finished(false);
                 }
+            }
+        } else if args.fullscreen && now() - fullscreen_check > 0.5 {
+            fullscreen_check = now();
+            if canvas.window().fullscreen_state() == sdl2::video::FullscreenType::Off {
+                reassert_fullscreen(canvas.window_mut());
             }
         }
         for ev in pump.poll_iter() {
@@ -547,7 +559,19 @@ fn run(args: &Args) -> Result<(), String> {
             }
         }
 
-        if let Some((mut cmd, title)) = scene.take_launch() {
+        if let Some((mut cmd, title, lines)) = scene.take_launch() {
+            // Hand the output to the emulator: a fullscreen window in the
+            // way would make the compositor tile the newcomer next to us.
+            if args.fullscreen {
+                let _ = canvas
+                    .window_mut()
+                    .set_fullscreen(sdl2::video::FullscreenType::Off);
+            }
+            if let Some(h) = lines {
+                if crt_mode(Some(h)) {
+                    lines_changed = true;
+                }
+            }
             match cmd.spawn() {
                 Ok(c) => {
                     eprintln!("running {title}");
@@ -566,6 +590,9 @@ fn run(args: &Args) -> Result<(), String> {
         }
 
         let t = now();
+        if let Ok((ow, oh)) = canvas.output_size() {
+            scene.set_output_size(ow, oh);
+        }
         scene.draw(&mut fb, t);
         fb.roll(scene.roll(), t as f32);
         fb.apply_gain(scene.power());
@@ -647,5 +674,36 @@ fn main() {
     if let Err(e) = result {
         eprintln!("omarchy-crt-shell: {e}");
         std::process::exit(1);
+    }
+}
+
+/// Ask the compositor for fullscreen again after another window took it.
+fn reassert_fullscreen(window: &mut sdl2::video::Window) {
+    let _ = window.set_fullscreen(sdl2::video::FullscreenType::Off);
+    let _ = window.set_fullscreen(sdl2::video::FullscreenType::Desktop);
+    window.raise();
+}
+
+/// Ask the CLI to switch the CRT to `lines` active lines (or back to the
+/// full frame). Returns true when the command ran and succeeded.
+fn crt_mode(lines: Option<u32>) -> bool {
+    let name = "omarchy-crt";
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join(name)))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from(name));
+    let mut cmd = std::process::Command::new(bin);
+    cmd.arg("mode");
+    if let Some(h) = lines {
+        cmd.arg("--lines").arg(h.to_string());
+    }
+    match cmd
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+    {
+        Ok(s) => s.success(),
+        Err(_) => false,
     }
 }

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Build omarchy-crt from this checkout and install it for the current user:
+# the launcher and the CLI into ~/.local/bin, the Omarchy bar plugin into
+# ~/.config/omarchy/plugins. Re-run after pulling to update everything.
+#
+#   bin/omarchy-crt-install            build and install
+#   bin/omarchy-crt-install --no-build install the binaries already built
+set -euo pipefail
+
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+plugin_id="io.github.stefanomainardi.omarchy-crt"
+bin_dir="${HOME}/.local/bin"
+plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
+build=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-build) build=0 ;;
+    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
+    *) echo "unknown option $arg" >&2; exit 1 ;;
+  esac
+done
+
+if [ "$build" = 1 ]; then
+  echo "== building (cargo build --release)"
+  (cd "$repo/shell" && cargo build --release)
+fi
+
+for b in omarchy-crt omarchy-crt-shell; do
+  [ -x "$repo/shell/target/release/$b" ] || { echo "missing $repo/shell/target/release/$b" >&2; exit 1; }
+done
+
+echo "== installing binaries into $bin_dir"
+mkdir -p "$bin_dir"
+install -m 755 "$repo/shell/target/release/omarchy-crt" "$bin_dir/omarchy-crt"
+install -m 755 "$repo/shell/target/release/omarchy-crt-shell" "$bin_dir/omarchy-crt-shell"
+case ":$PATH:" in
+  *":$bin_dir:"*) ;;
+  *) echo "note: $bin_dir is not in PATH" ;;
+esac
+
+echo "== installing plugin into $plugin_dir"
+rm -rf "$plugin_dir"
+mkdir -p "$plugin_dir/bin"
+cp "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$plugin_dir/"
+[ -f "$repo/plugin/README.md" ] && cp "$repo/plugin/README.md" "$plugin_dir/"
+install -m 755 "$repo/shell/target/release/omarchy-crt" "$plugin_dir/bin/omarchy-crt"
+
+if command -v omarchy >/dev/null 2>&1; then
+  omarchy plugin validate "$plugin_dir"
+  if ! omarchy plugin list --json 2>/dev/null | grep -q "\"$plugin_id\""; then
+    omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  fi
+  if omarchy plugin list --json 2>/dev/null | python3 -c '
+import json,sys
+pl=[p for p in json.load(sys.stdin) if p.get("id")=="'"$plugin_id"'"]
+sys.exit(0 if pl and not pl[0].get("enabled") else 1)'; then
+    omarchy plugin enable "$plugin_id" right
+  fi
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+fi
+
+"$bin_dir/omarchy-crt" status || true
+echo "done. Try: omarchy-crt on"
