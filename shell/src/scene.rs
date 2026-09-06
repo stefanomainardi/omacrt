@@ -865,7 +865,10 @@ impl Scene {
                 .games_in(system, &crate::library::expand(&system.dir)),
             Some(dir) => self.library.games_in(system, dir),
         };
-        games.into_iter().map(|game| Entry { game, sys: i }).collect()
+        games
+            .into_iter()
+            .map(|game| Entry { game, sys: i })
+            .collect()
     }
 
     /// Counts for the systems screen, computed once per library read so the

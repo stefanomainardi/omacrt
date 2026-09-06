@@ -445,6 +445,8 @@ fn run(args: &Args) -> Result<(), String> {
                         lines_changed = false;
                     }
                     if args.fullscreen {
+                        // The game had its own workspace; bring ours back.
+                        crt_focus();
                         reassert_fullscreen(canvas.window_mut());
                     }
                 }
@@ -560,13 +562,6 @@ fn run(args: &Args) -> Result<(), String> {
         }
 
         if let Some((mut cmd, title, lines)) = scene.take_launch() {
-            // Hand the output to the emulator: a fullscreen window in the
-            // way would make the compositor tile the newcomer next to us.
-            if args.fullscreen {
-                let _ = canvas
-                    .window_mut()
-                    .set_fullscreen(sdl2::video::FullscreenType::Off);
-            }
             if let Some(h) = lines {
                 if crt_mode(Some(h)) {
                     lines_changed = true;
@@ -706,4 +701,19 @@ fn crt_mode(lines: Option<u32>) -> bool {
         Ok(s) => s.success(),
         Err(_) => false,
     }
+}
+
+/// Ask the CLI to put keyboard focus (and the CRT workspace) back on us.
+fn crt_focus() {
+    let name = "omarchy-crt";
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join(name)))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from(name));
+    let _ = std::process::Command::new(bin)
+        .arg("focus")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
 }

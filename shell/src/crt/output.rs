@@ -207,20 +207,30 @@ pub fn disable(name: &str) -> (bool, String) {
     ))
 }
 
-/// Pin the launcher, RetroArch and mpv to the CRT output. No `fullscreen`
-/// rule: the programs request fullscreen themselves, and a rule-made
-/// fullscreen leaves the bar layer visible above the window.
+/// Pin the launcher to the CRT output, and RetroArch and mpv to their own
+/// workspace on it. The launcher stays fullscreen on `crt` underneath, the
+/// game takes `crtgame` for as long as it runs, and nothing of the desktop
+/// is ever composited in between. No `fullscreen` rule: the programs ask
+/// for it themselves, and a rule-made fullscreen leaves the bar above them.
 pub fn window_rules(name: &str) {
+    hypr_eval(&format!(
+        "hl.window_rule({{ name = \"omarchy-crt-shell\", match = {{ class = \"{SHELL_CLASS}\" }}, monitor = \"{name}\" }})"
+    ));
+    hypr_eval(&format!(
+        "hl.workspace_rule({{ workspace = \"name:{GAME_WORKSPACE}\", monitor = \"{name}\" }})"
+    ));
     for (rule, class) in [
-        ("omarchy-crt-shell", SHELL_CLASS),
         ("omarchy-crt-retroarch", "com.libretro.RetroArch"),
         ("omarchy-crt-mpv", "mpv"),
     ] {
         hypr_eval(&format!(
-            "hl.window_rule({{ name = \"{rule}\", match = {{ class = \"{class}\" }}, monitor = \"{name}\" }})"
+            "hl.window_rule({{ name = \"{rule}\", match = {{ class = \"{class}\" }}, monitor = \"{name}\", workspace = \"name:{GAME_WORKSPACE}\" }})"
         ));
     }
 }
+
+/// Workspace games and videos run on while the launcher waits underneath.
+pub const GAME_WORKSPACE: &str = "crtgame";
 
 /// Name of the workspace the CRT output owns while on, so it never takes a
 /// numbered desktop workspace and new terminals never land on the tube.
