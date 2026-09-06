@@ -550,6 +550,54 @@ impl Library {
         self.games_in(system, &expand(&system.dir))
     }
 
+    /// Curated lists: `~/.config/omarchy-crt/collections/<Name>.txt`, one
+    /// absolute game path per line. Returns (name, [(system index, path)]).
+    pub fn collections(&self) -> Vec<(String, Vec<(usize, PathBuf)>)> {
+        let dir = self.config_dir.join("collections");
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for e in rd.flatten() {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("txt") {
+                continue;
+            }
+            let name = path
+                .file_stem()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let items: Vec<(usize, PathBuf)> = text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                .filter_map(|l| {
+                    let p = PathBuf::from(l);
+                    self.system_of(&p).map(|i| (i, p))
+                })
+                .collect();
+            out.push((name, items));
+        }
+        out.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+        out
+    }
+
+    /// Index of the system a game file belongs to: from the index when it
+    /// knows the file, else from the folder the file sits in.
+    pub fn system_of(&self, path: &Path) -> Option<usize> {
+        if let Some(ix) = &self.index {
+            if let Some(it) = ix.items.iter().find(|i| i.path == path) {
+                return self.systems.iter().position(|s| s.name == it.system);
+            }
+        }
+        self.systems
+            .iter()
+            .position(|s| !s.dir.is_empty() && path.starts_with(expand(&s.dir)))
+    }
+
     /// True when this system lists from the index rather than a folder.
     pub fn uses_index(&self, system: &System) -> bool {
         self.index

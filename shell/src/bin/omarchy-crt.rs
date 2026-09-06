@@ -36,6 +36,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library assign DIR SYS   tell the scan what a folder holds
   library unknown          files the scan could not place
   library systems          the systems catalogue
+  library collections [import DIR]  curated lists (RePlayOS _favorites folders import)
   doctor                   checks with plain answers
   config                   config file path and contents
 
@@ -329,8 +330,11 @@ fn apply_mode(
         _ => base,
     };
     // The TV profile's shift is global; the caller adds the system's own.
+    // Shifts are in launcher pixels (320 wide), scaled to the mode's width.
     let profile = omarchy_crt_shell::profile::Profile::load(&omarchy_crt_shell::crt::config_dir());
-    let (dx, dy) = (profile.h_shift + shift.0, profile.v_shift + shift.1);
+    let sx = (ml.width() as f64 / 320.0).max(1.0);
+    let dx = ((profile.h_shift + shift.0) as f64 * sx).round() as i32;
+    let dy = profile.v_shift + shift.1;
     let ml = if dx != 0 || dy != 0 {
         ml.shifted(dx, dy)
     } else {
@@ -821,6 +825,86 @@ fn cmd_library(args: &[String]) {
                 println!("{}", u.display());
             }
         }
+        Some("collections") => {
+            let dir = omarchy_crt_shell::crt::config_dir().join("collections");
+            match pos.get(1).map(|s| s.as_str()) {
+                Some("import") => {
+                    let Some(src) = pos.get(2) else {
+                        die(
+                            "collections import needs a folder of lists (a RePlayOS _favorites folder)",
+                        )
+                    };
+                    let src = PathBuf::from(src);
+                    let Some(ix) = Index::load() else {
+                        die("no index yet, run omarchy-crt library scan")
+                    };
+                    std::fs::create_dir_all(&dir).unwrap_or_else(|e| die(&e.to_string()));
+                    let mut lists = 0;
+                    let mut games = 0;
+                    let mut missing = 0;
+                    let Ok(rd) = std::fs::read_dir(&src) else {
+                        die(&format!("{} is not a directory", src.display()))
+                    };
+                    let mut folders: Vec<PathBuf> = rd
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.is_dir())
+                        .collect();
+                    folders.sort();
+                    for folder in folders {
+                        let name = folder
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        let mut paths: Vec<String> = Vec::new();
+                        let Ok(files) = std::fs::read_dir(&folder) else {
+                            continue;
+                        };
+                        for f in files.flatten() {
+                            let fp = f.path();
+                            // RePlayOS: `<system>@<title>.fav` holding `/roms/<system>/<file>`.
+                            let Ok(text) = std::fs::read_to_string(&fp) else {
+                                continue;
+                            };
+                            let rel = text.trim().trim_start_matches('/');
+                            let rel = rel.strip_prefix("roms/").unwrap_or(rel);
+                            if rel.is_empty() {
+                                continue;
+                            }
+                            let suffix = format!("/{rel}");
+                            match ix
+                                .items
+                                .iter()
+                                .find(|i| i.path.to_string_lossy().ends_with(&suffix))
+                            {
+                                Some(it) => paths.push(it.path.display().to_string()),
+                                None => missing += 1,
+                            }
+                        }
+                        if paths.is_empty() {
+                            continue;
+                        }
+                        paths.sort();
+                        paths.dedup();
+                        games += paths.len();
+                        lists += 1;
+                        let pretty = name.replace(['-', '_'], " ");
+                        std::fs::write(dir.join(format!("{pretty}.txt")), paths.join("\n") + "\n")
+                            .unwrap_or_else(|e| die(&e.to_string()));
+                    }
+                    println!(
+                        "{lists} collection(s), {games} games, {missing} entries not in the index, written to {}",
+                        dir.display()
+                    );
+                }
+                _ => {
+                    let lib = library();
+                    for (name, items) in lib.collections() {
+                        println!("{:<32} {:>5}", name, items.len());
+                    }
+                }
+            }
+        }
         Some("systems") => {
             for (s, label, core, exts) in index::CATALOG {
                 println!("{:<12} {:<28} {:<20} {}", s, label, core, exts.join(","));
@@ -863,6 +947,10 @@ fn cmd_library(args: &[String]) {
 }
 
 fn main() {
+    // `omarchy-crt library | head` must not panic when the reader goes away.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = argv.first().map(|s| s.as_str()) else {
         println!("{HELP}");

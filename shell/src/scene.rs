@@ -47,7 +47,12 @@ enum Screen {
         sel: usize,
         top: usize,
     },
-    /// `sys` is None for the virtual lists (recent, favorites).
+    /// Curated lists imported or written by hand.
+    Collections {
+        sel: usize,
+        top: usize,
+    },
+    /// `sys` is None for the virtual lists (recent, favorites, collections).
     Games {
         sys: Option<usize>,
         sel: usize,
@@ -277,6 +282,10 @@ pub struct Scene {
     library: Library,
     screen: Screen,
     games: Vec<Entry>,
+    /// Which virtual list is open: 0 recent, 1 favorites, 2 a collection.
+    virtual_row: usize,
+    /// The collection open in the game list, if any (index into collections()).
+    open_collection: Option<usize>,
     /// Box art and console pictures, fetched and scaled off thread.
     art: crate::art::Art,
     /// Pixels taken from the right of list rows by a picture panel.
@@ -321,6 +330,8 @@ impl Scene {
             settings: Settings::load(&library.config_dir),
             diag: Vec::new(),
             list_from_home: false,
+            virtual_row: 0,
+            open_collection: None,
             art: crate::art::Art::new(),
             row_shrink: 0,
             profile_preview: false,
@@ -856,7 +867,7 @@ impl Scene {
     // -- game browser (systems, then games; recent and favorites on top) -----
 
     const ROWS_PER_PAGE: usize = 13;
-    const VIRTUAL: usize = 2; // recent/, favorites/
+    const VIRTUAL: usize = 3; // recent/, favorites/, collections/
 
     fn open_games(&mut self, sys: Option<usize>) {
         self.game_dir = None;
@@ -1000,6 +1011,31 @@ impl Scene {
                     moved = true;
                 }
             }
+            Screen::Collections { sel, .. } => {
+                let n = self.library.collections().len();
+                match nav {
+                    Nav::Up if *sel > 0 => {
+                        *sel -= 1;
+                        moved = true;
+                    }
+                    Nav::Down if *sel + 1 < n => {
+                        *sel += 1;
+                        moved = true;
+                    }
+                    Nav::Back | Nav::Left => {
+                        self.screen = Screen::Systems { sel: 2, top: 0 };
+                        moved = true;
+                    }
+                    _ => {}
+                }
+                if let Screen::Collections { sel, top } = &mut self.screen {
+                    if *sel < *top {
+                        *top = *sel;
+                    } else if *sel >= *top + SYS_PAGE {
+                        *top = *sel + 1 - SYS_PAGE;
+                    }
+                }
+            }
             Screen::Games { sel, top, .. } => {
                 let n = self.games.len();
                 let page = Self::ROWS_PER_PAGE;
@@ -1031,9 +1067,17 @@ impl Scene {
                             self.pending.push(Sound::Move);
                             return;
                         }
+                        if let Some(ci) = self.open_collection.take() {
+                            self.screen = Screen::Collections {
+                                sel: ci,
+                                top: ci.saturating_sub(SYS_PAGE - 1),
+                            };
+                            self.pending.push(Sound::Move);
+                            return;
+                        }
                         let row = match self.screen {
                             Screen::Games { sys: Some(i), .. } => i + Self::VIRTUAL,
-                            _ => 0,
+                            _ => self.virtual_row,
                         };
                         self.screen = Screen::Systems {
                             sel: row,
@@ -1262,16 +1306,31 @@ impl Scene {
             Screen::Systems { sel, .. } => {
                 self.pending.push(Sound::Select);
                 self.list_from_home = false;
+                self.open_collection = None;
                 match sel {
                     0 => {
+                        self.virtual_row = 0;
                         let list = self.recent.clone();
                         self.open_virtual(&list);
                     }
                     1 => {
+                        self.virtual_row = 1;
                         let list = self.favorites.clone();
                         self.open_virtual(&list);
                     }
+                    2 => self.go(Screen::Collections { sel: 0, top: 0 }),
                     i => self.open_games(Some(i - Self::VIRTUAL)),
+                }
+                Action::None
+            }
+            Screen::Collections { sel, .. } => {
+                let lists = self.library.collections();
+                if let Some((_, items)) = lists.get(sel) {
+                    self.pending.push(Sound::Select);
+                    self.virtual_row = 2;
+                    self.open_collection = Some(sel);
+                    let list = items.clone();
+                    self.open_virtual(&list);
                 }
                 Action::None
             }
@@ -1766,6 +1825,17 @@ impl Scene {
                             );
                             fb.bitmap(left + ox + 4, y + 1, &icons::STAR, icon_c, 1, 8);
                         }
+                        2 => {
+                            self.draw_row(
+                                fb,
+                                y,
+                                "Collections",
+                                &format!("{:>4}", self.library.collections().len()),
+                                on,
+                                self.theme.paper,
+                            );
+                            fb.bitmap(left + ox + 4, y + 1, &icons::FOLDER, icon_c, 1, 8);
+                        }
                         _ => {
                             let sys = &systems[i - Self::VIRTUAL];
                             let count = self
@@ -1831,6 +1901,56 @@ impl Scene {
                 let hint = self.hint(&[("A", "open"), ("B", "back")]);
                 fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
+            Screen::Collections { sel, top } => {
+                let y0 = self.draw_header(fb, "Collections");
+                let lists = self.library.collections();
+                if lists.is_empty() {
+                    fb.text(left, y0, "no collections yet", self.theme.dim, 1);
+                    fb.text(
+                        left,
+                        y0 + 12,
+                        "omarchy-crt library collections import <folder>",
+                        scale(self.theme.dim, 0.8),
+                        1,
+                    );
+                } else {
+                    let end = (top + SYS_PAGE).min(lists.len());
+                    for (row, i) in (top..end).enumerate() {
+                        let y = y0 + row as i32 * row_h;
+                        let (name, items) = &lists[i];
+                        self.draw_row(
+                            fb,
+                            y,
+                            name,
+                            &format!("{:>4}", items.len()),
+                            i == sel,
+                            self.theme.paper,
+                        );
+                        fb.bitmap(
+                            left + self.slide() + 4,
+                            y + 1,
+                            &icons::FOLDER,
+                            if i == sel {
+                                self.theme.accent
+                            } else {
+                                self.theme.dim
+                            },
+                            1,
+                            8,
+                        );
+                    }
+                    let pos = format!("{}/{}", sel + 1, lists.len());
+                    fb.text(
+                        w - left - Framebuffer::text_width(&pos, 1),
+                        h - 28,
+                        &pos,
+                        self.theme.dim,
+                        1,
+                    );
+                }
+                let hint = self.hint(&[("A", "open"), ("B", "back")]);
+                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+            }
             Screen::Games { sys, sel, top } => {
                 let prompt = match sys {
                     Some(i) => match &self.game_dir {
@@ -1843,7 +1963,16 @@ impl Scene {
                         ),
                         None => self.library.systems[i].name.clone(),
                     },
-                    None => "Recent and favorites".to_string(),
+                    None => match self.open_collection {
+                        Some(ci) => self
+                            .library
+                            .collections()
+                            .get(ci)
+                            .map(|(n, _)| n.clone())
+                            .unwrap_or_else(|| "Collection".into()),
+                        None if self.virtual_row == 1 => "Favorites".to_string(),
+                        None => "Recent".to_string(),
+                    },
                 };
                 let n = self.games.len();
                 let y0 = self.draw_header(fb, &prompt);
