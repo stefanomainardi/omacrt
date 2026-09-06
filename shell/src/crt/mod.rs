@@ -210,6 +210,8 @@ pub struct State {
     pub on: bool,
     pub standard: String,
     pub lines: u32,
+    pub shift_x: i32,
+    pub shift_y: i32,
     pub previous_profile: String,
     pub previous_sink: String,
     pub audio_card: String,

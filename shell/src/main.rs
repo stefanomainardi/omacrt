@@ -22,7 +22,7 @@ use omarchy_crt_shell::{library, player, profile, settings, videofit};
 use audio::Audio;
 use fb::Framebuffer;
 use pad::Stick;
-use scene::{Action, Nav, Scene, SysInfo};
+use scene::{Action, Geometry, Nav, Scene, SysInfo};
 use sdl2::controller::Button;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -562,8 +562,8 @@ fn run(args: &Args) -> Result<(), String> {
         }
 
         if let Some((mut cmd, title, lines)) = scene.take_launch() {
-            if let Some(h) = lines {
-                if crt_mode(Some(h)) {
+            if let Some(g) = lines {
+                if crt_mode(Some(g)) {
                     lines_changed = true;
                 }
             }
@@ -587,6 +587,10 @@ fn run(args: &Args) -> Result<(), String> {
         let t = now();
         if let Ok((ow, oh)) = canvas.output_size() {
             scene.set_output_size(ow, oh);
+        }
+        if scene.take_profile_preview() && child.is_none() {
+            scene.save_profile();
+            crt_mode_async(None);
         }
         scene.draw(&mut fb, t);
         fb.roll(scene.roll(), t as f32);
@@ -679,9 +683,9 @@ fn reassert_fullscreen(window: &mut sdl2::video::Window) {
     window.raise();
 }
 
-/// Ask the CLI to switch the CRT to `lines` active lines (or back to the
-/// full frame). Returns true when the command ran and succeeded.
-fn crt_mode(lines: Option<u32>) -> bool {
+/// Ask the CLI to switch the CRT to a program's geometry, or back to the
+/// full frame. Returns true when the command ran and succeeded.
+fn crt_mode(geometry: Option<Geometry>) -> bool {
     let name = "omarchy-crt";
     let bin = std::env::current_exe()
         .ok()
@@ -690,8 +694,16 @@ fn crt_mode(lines: Option<u32>) -> bool {
         .unwrap_or_else(|| PathBuf::from(name));
     let mut cmd = std::process::Command::new(bin);
     cmd.arg("mode");
-    if let Some(h) = lines {
-        cmd.arg("--lines").arg(h.to_string());
+    if let Some(g) = geometry {
+        if let Some(h) = g.lines {
+            cmd.arg("--lines").arg(h.to_string());
+        }
+        if g.shift_x != 0 {
+            cmd.arg("--shift-x").arg(g.shift_x.to_string());
+        }
+        if g.shift_y != 0 {
+            cmd.arg("--shift-y").arg(g.shift_y.to_string());
+        }
     }
     match cmd
         .stdout(std::process::Stdio::null())
@@ -716,4 +728,27 @@ fn crt_focus() {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status();
+}
+
+/// Like `crt_mode`, without waiting: for live adjustments while drawing.
+fn crt_mode_async(geometry: Option<Geometry>) {
+    let name = "omarchy-crt";
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join(name)))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from(name));
+    let mut cmd = std::process::Command::new(bin);
+    cmd.arg("mode");
+    if let Some(g) = geometry {
+        if let Some(h) = g.lines {
+            cmd.arg("--lines").arg(h.to_string());
+        }
+        cmd.arg("--shift-x").arg(g.shift_x.to_string());
+        cmd.arg("--shift-y").arg(g.shift_y.to_string());
+    }
+    let _ = cmd
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
 }

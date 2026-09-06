@@ -6,7 +6,7 @@ the BeoCenter 1. Items move to the README roadmap when they land.
 ## Phase A, stabilise the tube (now)
 
 - **Subfolders.** RePlayOS collections keep ROMs in subfolders (`00 Clean
-  Romset`, `01 Other Romsets`, ...). The launcher browses folders inside a
+Romset`, `01 Other Romsets`, ...). The launcher browses folders inside a
   system and the library counts them, so Super Nintendo and Mega Drive show
   up from the external disk.
 - **No desktop flash on launch.** RetroArch and mpv open on their own
@@ -20,6 +20,22 @@ the BeoCenter 1. Items move to the README roadmap when they land.
   launcher drives the same numbers.
 - **Audio levels.** CRT sink boost as one setting, RetroArch at 0 dB, mpv
   loudness normalised. A PipeWire limiter before the sink if clipping shows.
+
+## Phase A2, playing well
+
+- **In game menu, Omarchy style.** A combo on the pad (Select + Start, or a
+  home button) and a key on the keyboard pause the game and bring the
+  launcher's pause screen to the tube: resume, save state, load state,
+  reset, a few emulator options that matter (fast forward, rewind, run
+  ahead, aspect), and back to the launcher. RetroArch is driven through its
+  network command interface; the launcher already sees the pad in the
+  background and Hyprland carries the keyboard bind.
+- **Save states.** One slot per game with a timestamp, quick save and load
+  from the pause menu, "resume where you left" on the game row.
+- **Pad recognition.** Identify the pad family and layout on plug (SDL
+  database plus vendor and product ids), map RetroPad buttons per family,
+  show the right glyphs everywhere, remember per pad. Unknown pads get a
+  short mapping wizard on the tube.
 
 ## Phase B, a launcher worth looking at
 

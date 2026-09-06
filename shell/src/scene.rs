@@ -163,10 +163,17 @@ struct Launch {
     color: Color,
     started: f64,
     spawned: bool,
-    /// Active lines the CRT should switch to for this program (a pinned
-    /// 224 line system on a 240 line output), when the output is a wide
-    /// super resolution the host controls.
-    lines: Option<u32>,
+    /// Geometry the CRT should switch to for this program, when the output
+    /// is a wide super resolution the host controls.
+    lines: Option<Geometry>,
+}
+
+/// Per program picture geometry handed to the host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Geometry {
+    pub lines: Option<u32>,
+    pub shift_x: i32,
+    pub shift_y: i32,
 }
 
 const LAUNCH_SECS: f32 = 1.15;
@@ -267,6 +274,8 @@ pub struct Scene {
     library: Library,
     screen: Screen,
     games: Vec<Entry>,
+    /// A shift changed on the TV profile screen and the tube should show it.
+    profile_preview: bool,
     /// Subfolder of the current system being browsed, None at its root.
     game_dir: Option<PathBuf>,
     /// Game counts per system, refreshed when the library is (re)read.
@@ -305,6 +314,7 @@ impl Scene {
             settings: Settings::load(&library.config_dir),
             diag: Vec::new(),
             list_from_home: false,
+            profile_preview: false,
             game_dir: None,
             system_counts: Vec::new(),
             themes: Theme::installed(),
@@ -530,7 +540,7 @@ impl Scene {
     }
 
     /// The RetroArch command once the launch animation has run its course.
-    pub fn take_launch(&mut self) -> Option<(std::process::Command, String, Option<u32>)> {
+    pub fn take_launch(&mut self) -> Option<(std::process::Command, String, Option<Geometry>)> {
         let l = self.launching.as_mut()?;
         if l.spawned || ((self.now - l.started) as f32) < LAUNCH_SECS - 0.2 {
             return None;
@@ -1223,8 +1233,14 @@ impl Scene {
     fn adjust_profile(&mut self, row: usize, dir: i32) {
         match row {
             0 => self.profile.cycle_preset(dir),
-            1 => self.profile.h_shift = (self.profile.h_shift + dir).clamp(-16, 16),
-            2 => self.profile.v_shift = (self.profile.v_shift + dir).clamp(-16, 16),
+            1 => {
+                self.profile.h_shift = (self.profile.h_shift + dir).clamp(-16, 16);
+                self.profile_preview = true;
+            }
+            2 => {
+                self.profile.v_shift = (self.profile.v_shift + dir).clamp(-16, 16);
+                self.profile_preview = true;
+            }
             3 => self.profile.h_size = (self.profile.h_size + dir as f32 * 0.01).clamp(0.8, 1.2),
             4 => self.profile.invert_sync = !self.profile.invert_sync,
             _ => {}
@@ -1315,6 +1331,18 @@ impl Scene {
         }
     }
 
+    /// True once when a TV profile shift changed; the host saves the profile
+    /// and moves the picture so the change shows while adjusting.
+    pub fn take_profile_preview(&mut self) -> bool {
+        std::mem::take(&mut self.profile_preview)
+    }
+
+    pub fn save_profile(&self) {
+        if let Err(e) = self.profile.save(&self.library.config_dir) {
+            eprintln!("profile: {e}");
+        }
+    }
+
     /// Called by the host with the size of the drawable output.
     pub fn set_output_size(&mut self, w: u32, h: u32) {
         self.output_size = (w.max(1), h.max(1));
@@ -1361,13 +1389,25 @@ impl Scene {
         };
         // Pinned frame heights become real line counts on a wide output the
         // host controls: a 224 line game gets 224 lines on the tube.
-        let lines = match crate::library::VideoPolicy::parse(&system.video) {
-            crate::library::VideoPolicy::Fixed(_, h)
-                if self.wide_output() && !system.is_video() && h != self.output_size.1 =>
-            {
-                Some(h)
+        // Geometry the tube switches to for this program: the system's own
+        // line count, else a pinned frame height, plus its picture shift.
+        let lines = if self.wide_output() && !system.is_video() {
+            let pinned = match crate::library::VideoPolicy::parse(&system.video) {
+                crate::library::VideoPolicy::Fixed(_, h) => Some(h),
+                _ => None,
+            };
+            let l = system.lines.or(pinned);
+            if l.is_some() || system.shift_x != 0 || system.shift_y != 0 {
+                Some(Geometry {
+                    lines: l,
+                    shift_x: system.shift_x,
+                    shift_y: system.shift_y,
+                })
+            } else {
+                None
             }
-            _ => None,
+        } else {
+            None
         };
         match self.library.command(&system, &entry.game, &extra) {
             Ok(cmd) if system.is_video() => {

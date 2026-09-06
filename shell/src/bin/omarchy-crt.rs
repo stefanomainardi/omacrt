@@ -21,7 +21,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   off                      launcher closed, audio back, output disabled
   boot                     login reset: CRT output off, audio back to the desktop
   toggle
-  mode [ntsc|pal] [--lines N]  standard and active lines (224 for SNES); no args = full frame
+  mode [ntsc|pal] [--lines N] [--shift-x X] [--shift-y Y]
+                           standard, active lines, picture shift; no args = full frame
   shell start|stop|restart|focus
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
@@ -58,7 +59,7 @@ fn positional(args: &[String]) -> Vec<&String> {
             skip = false;
             continue;
         }
-        if a == "--lines" {
+        if a == "--lines" || a == "--shift-x" || a == "--shift-y" {
             skip = true;
             continue;
         }
@@ -317,6 +318,7 @@ fn apply_mode(
     conn: &Connector,
     standard: &str,
     lines: Option<u32>,
+    shift: (i32, i32),
 ) -> Result<Modeline, String> {
     let base = cfg
         .modeline(standard)
@@ -326,6 +328,14 @@ fn apply_mode(
         Some(l) if l != base.height() => base.with_lines(l),
         _ => base,
     };
+    // The TV profile's shift is global; the caller adds the system's own.
+    let profile = omarchy_crt_shell::profile::Profile::load(&omarchy_crt_shell::crt::config_dir());
+    let (dx, dy) = (profile.h_shift + shift.0, profile.v_shift + shift.1);
+    let ml = if dx != 0 || dy != 0 {
+        ml.shifted(dx, dy)
+    } else {
+        ml
+    };
     let (ok, out) = output::apply_modeline(&conn.name, &ml, &cfg.output.position);
     if !ok {
         return Err(format!("modeline refused: {out}"));
@@ -333,6 +343,8 @@ fn apply_mode(
     let mut state = State::load();
     state.standard = standard.into();
     state.lines = ml.height();
+    state.shift_x = shift.0;
+    state.shift_y = shift.1;
     state.save();
     Ok(ml)
 }
@@ -381,7 +393,7 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
             state.standard.clone()
         }
     });
-    match apply_mode(cfg, &conn, &standard, None) {
+    match apply_mode(cfg, &conn, &standard, None, (0, 0)) {
         Ok(ml) => println!(
             "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
             standard.to_uppercase(),
@@ -883,13 +895,19 @@ fn main() {
             if std != "ntsc" && std != "pal" {
                 die("mode needs ntsc or pal");
             }
-            let lines = args
-                .iter()
-                .position(|a| a == "--lines")
-                .and_then(|i| args.get(i + 1))
-                .and_then(|v| v.parse().ok());
+            let flag = |name: &str| -> Option<i32> {
+                args.iter()
+                    .position(|a| a == name)
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|v| v.parse().ok())
+            };
+            let lines = flag("--lines").map(|v| v.max(0) as u32);
+            let shift = (
+                flag("--shift-x").unwrap_or(0),
+                flag("--shift-y").unwrap_or(0),
+            );
             let conn = connector(&cfg);
-            match apply_mode(&cfg, &conn, std, lines) {
+            match apply_mode(&cfg, &conn, std, lines, shift) {
                 Ok(ml) => println!(
                     "{} {}x{} {:.3} kHz {:.3} Hz",
                     std.to_uppercase(),
@@ -900,7 +918,8 @@ fn main() {
                 ),
                 Err(e) => die(&e),
             }
-            std::thread::sleep(std::time::Duration::from_millis(800));
+            // The DAC keeps its csync selection across modesets; a quick
+            // confirming write is enough and the launcher gets focus back.
             let _ = set_csync(&cfg, &conn);
             launcher::focus();
         }

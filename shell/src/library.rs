@@ -45,6 +45,16 @@ pub struct System {
     /// `retroarch` (default) or `mpv` for video folders.
     #[serde(default)]
     pub player: String,
+    /// Active lines the CRT switches to for this system (224 for Super
+    /// Nintendo). Unset: the pinned frame height, else the standard's.
+    #[serde(default)]
+    pub lines: Option<u32>,
+    /// Picture shift on the tube for this system, pixels and lines, added to
+    /// the TV profile's global shift.
+    #[serde(default)]
+    pub shift_x: i32,
+    #[serde(default)]
+    pub shift_y: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,6 +221,9 @@ fn default_systems() -> Vec<System> {
         rewind,
         analog_dpad: None,
         player: String::new(),
+        lines: None,
+        shift_x: 0,
+        shift_y: 0,
     };
     vec![
         sys(
@@ -330,7 +343,7 @@ fn default_systems() -> Vec<System> {
             false,
             opts(&[
                 ("beetle_psx_hw_internal_resolution", "1x(native)"),
-                ("beetle_psx_hw_crop_overscan", "disabled"),
+                ("beetle_psx_hw_crop_overscan", "enabled"),
                 ("beetle_psx_hw_dither_mode", "1x(native)"),
                 ("beetle_psx_hw_analog_toggle", "enabled"),
             ]),
@@ -388,6 +401,9 @@ fn default_systems() -> Vec<System> {
         rewind: false,
         analog_dpad: None,
         player: "mpv".into(),
+        lines: None,
+        shift_x: 0,
+        shift_y: 0,
     }))
     .collect()
 }
@@ -454,6 +470,9 @@ impl Library {
                     rewind: false,
                     analog_dpad: None,
                     player: String::new(),
+                    lines: None,
+                    shift_x: 0,
+                    shift_y: 0,
                 });
             }
         }

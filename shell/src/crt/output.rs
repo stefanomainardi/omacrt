@@ -162,6 +162,29 @@ impl Modeline {
         m
     }
 
+    /// Move the picture on the tube: right by `dx` pixels (front porch
+    /// shrinks, back porch grows) and down by `dy` lines. Porches keep a
+    /// minimum so sync stays legal.
+    pub fn shifted(&self, dx: i32, dy: i32) -> Self {
+        let mut m = self.clone();
+        let hfront = (self.h[1] - self.h[0]) as i32;
+        let hsync = (self.h[2] - self.h[1]) as i32;
+        let hback = (self.h[3] - self.h[2]) as i32;
+        let dx = dx.clamp(-(hback - 16).max(0), (hfront - 8).max(0));
+        let hfront = hfront - dx;
+        m.h[1] = self.h[0] + hfront as u32;
+        m.h[2] = m.h[1] + hsync as u32;
+        // htotal unchanged, back porch absorbs the rest
+        let vfront = (self.v[1] - self.v[0]) as i32;
+        let vsync = (self.v[2] - self.v[1]) as i32;
+        let vback = (self.v[3] - self.v[2]) as i32;
+        let dy = dy.clamp(-(vback - 4).max(0), (vfront - 1).max(0));
+        let vfront = vfront - dy;
+        m.v[1] = self.v[0] + vfront as u32;
+        m.v[2] = m.v[1] + vsync as u32;
+        m
+    }
+
     pub fn to_hypr(&self) -> String {
         format!(
             "modeline {} {} {} {} {} {} {} {} {} {}",
