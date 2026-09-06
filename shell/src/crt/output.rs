@@ -207,7 +207,9 @@ pub fn disable(name: &str) -> (bool, String) {
     ))
 }
 
-/// Pin the launcher, RetroArch and mpv to the CRT output, fullscreen.
+/// Pin the launcher, RetroArch and mpv to the CRT output. No `fullscreen`
+/// rule: the programs request fullscreen themselves, and a rule-made
+/// fullscreen leaves the bar layer visible above the window.
 pub fn window_rules(name: &str) {
     for (rule, class) in [
         ("omarchy-crt-shell", SHELL_CLASS),
@@ -215,9 +217,26 @@ pub fn window_rules(name: &str) {
         ("omarchy-crt-mpv", "mpv"),
     ] {
         hypr_eval(&format!(
-            "hl.window_rule({{ name = \"{rule}\", match = {{ class = \"{class}\" }}, monitor = \"{name}\", fullscreen = true }})"
+            "hl.window_rule({{ name = \"{rule}\", match = {{ class = \"{class}\" }}, monitor = \"{name}\" }})"
         ));
     }
+}
+
+/// Name of the workspace the CRT output owns while on, so it never takes a
+/// numbered desktop workspace and new terminals never land on the tube.
+pub const WORKSPACE: &str = "crt";
+
+/// Bind the `crt` workspace to the CRT output and show it there.
+pub fn workspace_rule(name: &str) {
+    hypr_eval(&format!(
+        "hl.workspace_rule({{ workspace = \"name:{WORKSPACE}\", monitor = \"{name}\", default = true, persistent = true }})"
+    ));
+    hypr_eval(&format!(
+        "hl.dispatch(hl.dsp.workspace.move({{ workspace = \"name:{WORKSPACE}\", monitor = \"{name}\" }}))"
+    ));
+    hypr_eval(&format!(
+        "hl.dispatch(hl.dsp.focus({{ workspace = \"name:{WORKSPACE}\" }}))"
+    ));
 }
 
 /// Keyboard focus to the first window of a class.

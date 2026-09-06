@@ -8,6 +8,7 @@ everything it does can be typed in a terminal.
 omarchy-crt status [--json]          output, mode, DAC, audio, launcher, library, BIOS
 omarchy-crt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
 omarchy-crt off                      launcher closed, audio back, output disabled
+omarchy-crt boot                     login reset: output off, audio back to the desktop
 omarchy-crt toggle
 omarchy-crt mode ntsc|pal [--lines N]
 omarchy-crt shell start|stop|restart|focus
@@ -40,6 +41,25 @@ omarchy-crt config
 
 `off` reverses the list: launcher stopped, audio restored, options reset,
 output disabled.
+
+## Boot and workspaces
+
+Hyprland lights every connected output with its preferred mode at login, which
+for the DAC means 1024x768 (a flickering television) and a numbered desktop
+workspace stolen by the CRT. Two lines in the user config keep the tube quiet
+until asked and put audio back on the desktop after a reboot:
+
+```lua
+-- ~/.config/hypr/monitors.lua, before the fallback rule
+hl.monitor({ output = "desc:ATG MORTACA DEV00", disabled = true })
+-- ~/.config/hypr/autostart.lua
+o.launch_on_start("omarchy-crt boot")
+```
+
+`on` binds a named workspace `crt` to the CRT output, so terminals and
+browsers keep opening on the desktop monitors and `off` gives nothing back to
+sort out. `boot` restores the previous default sink, disables the output when
+the compositor lit it, and clears the state.
 
 ## Modelines and lines
 

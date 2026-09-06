@@ -471,7 +471,9 @@ impl Library {
         let video = system.is_video();
         let mut games: Vec<Game> = files
             .iter()
-            .filter(|p| accepted(p) && !hidden.contains(p) && (!video || !crate::videofit::is_crt_file(p)))
+            .filter(|p| {
+                accepted(p) && !hidden.contains(p) && (!video || !crate::videofit::is_crt_file(p))
+            })
             .map(|path| {
                 // CRT ready siblings only exist for videos; skip the stat elsewhere.
                 let crt = if video {

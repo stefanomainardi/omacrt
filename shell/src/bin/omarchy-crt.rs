@@ -19,6 +19,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   status [--json]          output, mode, DAC, audio, launcher, BIOS at a glance
   on [ntsc|pal]            15 kHz modeline, DAC csync, audio to the TV, launcher
   off                      launcher closed, audio back, output disabled
+  boot                     login reset: CRT output off, audio back to the desktop
   toggle
   mode [ntsc|pal] [--lines N]  standard and active lines (224 for SNES); no args = full frame
   shell start|stop|restart|focus
@@ -327,8 +328,23 @@ fn set_csync(cfg: &Config, conn: &Connector) -> Result<String, String> {
     let mode =
         Csync::parse(&cfg.output.csync).ok_or("output.csync must be and, xor or separate")?;
     let dac = open_dac(conn)?;
-    dac.set_csync(mode).map_err(|e| e.to_string())?;
-    Ok(mode.label().into())
+    // The DAC re-initialises when the input signal appears and may ignore or
+    // scramble the first write, so write, read back and retry for a while.
+    let mut last = None;
+    for _ in 0..8 {
+        dac.set_csync(mode).map_err(|e| e.to_string())?;
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        last = dac.csync().ok();
+        if last == Some(mode.value()) {
+            return Ok(mode.label().into());
+        }
+    }
+    Err(format!(
+        "csync {} not accepted, register reads {}",
+        mode.label(),
+        last.map(|v| format!("0x{v:02X}"))
+            .unwrap_or("nothing".into())
+    ))
 }
 
 /// Hyprland options that let RetroArch and mpv take the tube while they run
@@ -380,6 +396,7 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
         }
     }
     compositor_fullscreen_policy(true);
+    output::workspace_rule(&conn.name);
     output::window_rules(&conn.name);
     match launcher::start(cfg, &conn.name) {
         Ok(note) => {
@@ -403,6 +420,38 @@ fn cmd_off(cfg: &Config) {
     if let Some(conn) = output::pick(cfg) {
         output::disable(&conn.name);
         println!("output:     {} disabled", conn.name);
+    }
+    state.on = false;
+    state.save();
+}
+
+/// Login time reset: the compositor may have lit the CRT output with its
+/// fallback mode and PipeWire remembers the CRT sink as default. Put the
+/// desktop back to normal without touching the launcher config.
+fn cmd_boot(cfg: &Config) {
+    let mut state = State::load();
+    if cfg.audio.route && (!state.previous_sink.is_empty() || state.on) {
+        println!("audio:      {}", audio::route_back(&mut state));
+    } else if let Some(conn) = output::pick(cfg) {
+        // Nothing saved but the CRT sink may still be the default from an
+        // unclean shutdown: fall back to any non CRT sink.
+        if let Some(t) = audio::target(&conn) {
+            if audio::default_sink().as_deref() == Some(t.sink.as_str()) {
+                if let Some(other) = audio::other_sink(&t.sink) {
+                    omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &other]);
+                    println!("audio:      {other}");
+                }
+            }
+        }
+    }
+    if let Some(conn) = output::pick(cfg) {
+        let lit = output::hypr_monitor(&conn.name)
+            .map(|m| !m["disabled"].as_bool().unwrap_or(true))
+            .unwrap_or(false);
+        if lit {
+            output::disable(&conn.name);
+            println!("output:     {} disabled until `omarchy-crt on`", conn.name);
+        }
     }
     state.on = false;
     state.save();
@@ -698,6 +747,7 @@ fn main() {
         }
         "on" => cmd_on(&cfg, positional(args).first().map(|s| s.as_str())),
         "off" => cmd_off(&cfg),
+        "boot" => cmd_boot(&cfg),
         "toggle" => {
             if status(&cfg)["active"].as_bool().unwrap_or(false) {
                 cmd_off(&cfg)
@@ -812,8 +862,12 @@ fn main() {
                     );
                 }
                 "reset" => {
-                    dac.reset().unwrap_or_else(|e| die(&e.to_string()));
-                    println!("reset done");
+                    let mode = Csync::parse(&cfg.output.csync);
+                    dac.reset(mode).unwrap_or_else(|e| die(&e.to_string()));
+                    println!(
+                        "reset done, csync {}",
+                        mode.map(|m| m.label()).unwrap_or("unchanged")
+                    );
                 }
                 "csync" => {
                     let mode = pos
@@ -824,7 +878,8 @@ fn main() {
                     println!("csync {}", mode.label());
                 }
                 "watch" => {
-                    dac.watch(|msg| println!("{msg}"))
+                    let mode = Csync::parse(&cfg.output.csync).unwrap_or(Csync::Xor);
+                    dac.watch(mode, |msg| println!("{msg}"))
                         .unwrap_or_else(|e| die(&e.to_string()));
                 }
                 other => die(&format!("unknown dac command {other}")),

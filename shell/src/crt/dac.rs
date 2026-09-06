@@ -165,20 +165,24 @@ impl Dac {
 
     /// Two second reset pulse. The reset clears the csync selection, so the
     /// previous value is written back afterwards.
-    pub fn reset(&self) -> io::Result<()> {
-        let keep = self.csync().unwrap_or(0);
+    pub fn reset(&self, csync: Option<Csync>) -> io::Result<()> {
+        // Keep the current selection only when it reads as a known mode; a
+        // confused DAC returns garbage here and must not get it written back.
+        let keep = csync.or_else(|| self.csync().ok().and_then(Csync::from_value));
         self.page(0)?;
         self.write(0x60, 0x00)?;
         std::thread::sleep(Duration::from_millis(2000));
         self.write(0x60, 0xFF)?;
-        std::thread::sleep(Duration::from_millis(200));
-        self.page(4)?;
-        self.write(0xB5, keep)
+        std::thread::sleep(Duration::from_millis(300));
+        if let Some(mode) = keep {
+            self.set_csync(mode)?;
+        }
+        Ok(())
     }
 
     /// Poll the lock register and reset the DAC when the signal drops, the
     /// way RePlayOS works around the PLL issue of this hardware revision.
-    pub fn watch(&self, mut on_event: impl FnMut(&str)) -> io::Result<()> {
+    pub fn watch(&self, csync: Csync, mut on_event: impl FnMut(&str)) -> io::Result<()> {
         let mut last = self.lock()?;
         on_event(&format!("watching {}, {}", self.bus, last.label()));
         loop {
@@ -186,7 +190,7 @@ impl Dac {
             let Ok(now) = self.lock() else { continue };
             if last != Lock::Lost && now == Lock::Lost {
                 on_event("lock lost, resetting");
-                self.reset()?;
+                self.reset(Some(csync))?;
             }
             last = now;
         }

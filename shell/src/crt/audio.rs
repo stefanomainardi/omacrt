@@ -81,6 +81,22 @@ pub fn active_profile(card: &str) -> Option<String> {
     None
 }
 
+/// Any sink that is not the CRT one, preferring non HDMI outputs.
+pub fn other_sink(crt: &str) -> Option<String> {
+    let text = run("pactl", &["list", "short", "sinks"])?;
+    let names: Vec<String> = text
+        .lines()
+        .filter_map(|l| l.split_whitespace().nth(1))
+        .filter(|n| *n != crt)
+        .map(str::to_string)
+        .collect();
+    names
+        .iter()
+        .find(|n| !n.contains("hdmi"))
+        .or(names.first())
+        .cloned()
+}
+
 pub fn default_sink() -> Option<String> {
     run("pactl", &["get-default-sink"]).map(|s| s.trim().to_string())
 }
