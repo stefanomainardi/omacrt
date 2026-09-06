@@ -40,9 +40,14 @@ GPU (DisplayPort) -> DAC (Realtek RTD2166/2168) -> sync combiner (VGA to SCART R
 ```
 
 - **DAC.** Only adapters built on the Realtek RTD2166 or RTD2168 are known to
-  pass the low pixel clocks 15 kHz needs. HDMI is out: its 25 MHz floor makes
-  240p impossible. Validated units: CableDeconn DP to VGA (non 4K, no audio),
-  Cable Matters 102026, biaze ZH277.
+  pass the low pixel clocks 15 kHz needs. HDMI is out for native 320x240: its
+  25 MHz floor makes it impossible. Validated units: CableDeconn DP to VGA
+  (non 4K, no audio), Cable Matters 102026, biaze ZH277.
+- **HDMI tier.** An HDMI to SCART DAC such as the RGB-Pi 2 works from the
+  desktop with wide "super resolution" modelines (3520x240 at 72 MHz) and
+  carries audio, but needs its sync combiner configured over I2C first. See
+  [docs/rgb-pi-2.md](docs/rgb-pi-2.md) and `scripts/rgbpi2-dac.py`. First
+  light on the BeoCenter 1 came this way on 2026-09-06.
 - **Sync and SCART.** The VGA H and V sync must be combined into composite sync
   at 0.3 to 1 V, and the TV needs 1 to 3 V on SCART pin 16 to switch to RGB.
   Preferred: VideoAmp (also emulates an EDID), then UMSA, sirMagb F-15,
@@ -160,6 +165,8 @@ and the timeline.
   kernel mode list, Hyprland view, and the HDMI audio path (ELD pin, PipeWire
   profile and sink for that connector). `--tone` plays a 2 s test tone on the
   matching sink. Used to test DACs.
+- **`scripts/rgbpi2-dac.py`** configures an RGB-Pi 2 over the HDMI DDC bus:
+  composite sync mode, reset, lock status, auto reset watcher.
 - **`scripts/demo-video.sh`** renders the shell offline from `scripts/demo.txt`
   (scripted input) and encodes an MP4 with the synthesized audio, frame exact.
 - **`scripts/vm.sh`** throwaway Omarchy VM for kernel packaging tests.
@@ -167,9 +174,9 @@ and the timeline.
 
 ## Roadmap
 
-1. **First light.** Test the launcher on a CRT through an HDMI DAC (RGB-Pi 2),
-   which needs no kernel patch but only fixed 240p. The DAC also carries HDMI
-   audio to the SCART pins and its minijack, so sound follows the picture.
+1. **First light.** Done on 2026-09-06: the launcher runs on the BeoCenter 1
+   through the RGB-Pi 2 at 240p and 288p with audio over SCART. Next: centering
+   and overscan safe area, color levels, per game modes.
 2. **Kernel.** Package `linux-crt` from `linux-lts` with the 15 kHz patches;
    automate rebuilds.
 3. **Real DAC.** RTD2166 adapter plus VideoAmp or UMSA on a SCART TV; verify

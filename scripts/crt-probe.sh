@@ -138,7 +138,7 @@ for m in json.load(sys.stdin):
     print("  current:",m["width"],"x",m["height"],"@",m["refreshRate"],"| disabled:",m["disabled"])
     print("  availableModes:")
     for am in m.get("availableModes",[]): print("    ",am)
-' "$conn"
+' "${conn#card*-}"
 fi
 
 echo "== recent amdgpu/drm kernel log lines:"
