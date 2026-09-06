@@ -246,10 +246,15 @@ pub fn window_rules(name: &str) {
     hypr_eval(&format!(
         "hl.window_rule({{ name = \"omarchy-crt-player\", match = {{ class = \"omarchy-crt-player\" }}, monitor = \"{name}\", workspace = \"name:{GAME_WORKSPACE}\" }})"
     ));
-    // Undo the rule older versions installed for every RetroArch window.
-    hypr_eval(
-        "hl.window_rule({ name = \"omarchy-crt-retroarch\", match = { class = \"com.libretro.RetroArch\" }, enabled = false })",
-    );
+    // RetroArch opening on the launcher's workspace (the launcher has focus
+    // when it starts a game) goes to the game workspace as it maps. A rule
+    // moves it before the compositor books its fullscreen state; moving it
+    // afterwards from the window.open handler left the workspace without a
+    // fullscreen record and the bar drawn over the game. Every other
+    // RetroArch, opened from the desktop, is untouched.
+    hypr_eval(&format!(
+        "hl.window_rule({{ name = \"omarchy-crt-retroarch\", match = {{ class = \"com.libretro.RetroArch\", workspace = \"name:{WORKSPACE}\" }}, workspace = \"name:{GAME_WORKSPACE}\" }})"
+    ));
     hypr_eval(
         "hl.window_rule({ name = \"omarchy-crt-mpv\", match = { class = \"mpv\" }, enabled = false })",
     );

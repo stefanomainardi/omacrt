@@ -794,6 +794,25 @@ impl Library {
             } else {
                 kv("run_ahead_enabled", "false");
             }
+            // The launcher's pause menu drives RetroArch over its UDP command
+            // interface on the loopback (PAUSE_TOGGLE, SAVE_STATE, QUIT, ...).
+            kv("network_cmd_enable", "true");
+            kv("network_cmd_port", &crate::game::PORT.to_string());
+            // Auto load and save of the per game state: a game resumes where
+            // it was left, and the pause menu's save is an explicit copy.
+            kv("savestate_auto_save", "true");
+            kv("savestate_auto_load", "true");
+            kv("quit_on_close_content", "1");
+            // A hotkey and a pad combo pause the game and could open an
+            // in-game overlay; RGUI does not render on this gl/wayland
+            // super-resolution path (it opens and pauses but draws nothing),
+            // so the launcher will draw its own pause screen. Meanwhile the
+            // network command interface above drives pause, save, load and
+            // quit, and the pad combo is reserved so nothing quits by
+            // accident.
+            kv("menu_toggle_gamepad_combo", "0");
+            kv("input_menu_toggle", "nul");
+            kv("input_quit_gamepad_combo", "0");
             kv(
                 "rewind_enable",
                 if system.rewind { "true" } else { "false" },
@@ -873,6 +892,14 @@ impl Library {
             .stderr(game_log());
         Ok(cmd)
     }
+}
+
+/// True when the emulator's log shows it had already torn the game down
+/// when it died: an exit-time crash, not a game crash.
+pub fn exited_after_unload() -> bool {
+    std::fs::read_to_string(game_log_path())
+        .map(|t| t.contains("Unloading core"))
+        .unwrap_or(false)
 }
 
 /// Where the emulator's own output goes, one file per run, so a crash on the

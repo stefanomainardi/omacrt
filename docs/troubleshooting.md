@@ -43,6 +43,29 @@ runs. Two launcher processes fighting over the tube produce the same
 symptom; `omarchy-crt shell stop` waits for the launcher to exit and kills a
 stuck one.
 
+## The in-game menu (RGUI) is blank
+
+RetroArch's own menu opens and pauses the game (the picture freezes) but
+draws nothing over it on this gl/Wayland super-resolution path. So the
+launcher does not rely on RGUI: it drives the emulator over the network
+command interface instead (`omarchy-crt game pause|save|load|reset|quit`),
+and its own pause overlay is still to be built. Commands only reach
+RetroArch when its input driver is `wayland`; a saved config carrying the
+`x` (X11) driver silently disables both keyboard input and the command
+loop under Wayland, so the launcher forces `input_driver = wayland`.
+
+## RetroArch crashes are logged to the desktop
+
+Every core dump makes Omarchy pop a "Process crashed: retroarch" toast.
+The launcher's own crashes are fixed (the realtime limit and the run-ahead
+secondary instance above); what remains is an intermittent SIGSEGV inside
+RetroArch or a libretro core on this fresh install, unrelated to
+omarchy-crt (it happens from a plain terminal too). A core dump cannot be
+suppressed per process here: `RLIMIT_CORE = 0` is ignored when
+`kernel.core_pattern` pipes to systemd-coredump, and `PR_SET_DUMPABLE(0)`
+is reset by `execve`. Clear the toasts with `omarchy-shell -q notifications
+dismissAll`.
+
 ## Wrong game starts from a script
 
 The control pipe (`omarchy-crt shell key`) is stateless: inputs land on

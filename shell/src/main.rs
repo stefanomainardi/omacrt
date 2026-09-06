@@ -460,7 +460,9 @@ fn run(args: &Args) -> Result<(), String> {
                         "game exited: {status} (its output: {})",
                         library::game_log_path().display()
                     );
-                    scene.game_finished(status.success());
+                    // A crash inside RetroArch's own shutdown is a normal
+                    // end of play as far as the launcher is concerned.
+                    scene.game_finished(status.success() || library::exited_after_unload());
                     if lines_changed {
                         crt_mode(None);
                         lines_changed = false;
@@ -576,6 +578,13 @@ fn run(args: &Args) -> Result<(), String> {
 
             let is_input = start || nav.is_some() || fire || fav || alt || home;
             if scene.is_running() {
+                if inp.menu {
+                    // The launcher's own pause overlay is not built yet;
+                    // for now this pauses and unpauses the running game.
+                    if let Err(e) = omarchy_crt_shell::game::pause_toggle() {
+                        eprintln!("game pause: {e}");
+                    }
+                }
                 if scene.player_active() && is_input {
                     scene.player_input(nav, fire);
                 }
@@ -687,7 +696,7 @@ fn run(args: &Args) -> Result<(), String> {
 }
 
 /// One user input, from a key, a pad button or the control pipe.
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 struct Input {
     start: bool,
     nav: Option<Nav>,
@@ -695,6 +704,8 @@ struct Input {
     fav: bool,
     alt: bool,
     home: bool,
+    /// In-game menu of the running emulator.
+    menu: bool,
     quit: bool,
 }
 
@@ -710,6 +721,7 @@ fn control_input(line: &str) -> Option<Input> {
         "alt" => inp.alt = true,
         "start" => inp.start = true,
         "home" => inp.home = true,
+        "menu" => inp.menu = true,
         _ => {
             inp.start = true;
             inp.fire = true;

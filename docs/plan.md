@@ -23,13 +23,19 @@ Romset`, `01 Other Romsets`, ...). The launcher browses folders inside a
 
 ## Phase A2, playing well
 
-- **In game menu, Omarchy style.** A combo on the pad (Select + Start, or a
-  home button) and a key on the keyboard pause the game and bring the
-  launcher's pause screen to the tube: resume, save state, load state,
-  reset, a few emulator options that matter (fast forward, rewind, run
-  ahead, aspect), and back to the launcher. RetroArch is driven through its
-  network command interface; the launcher already sees the pad in the
-  background and Hyprland carries the keyboard bind.
+- **In game menu, Omarchy style.** The plumbing is in: RetroArch runs with
+  its network command interface on, and `omarchy-crt game
+pause|save|load|reset|quit` drives it (proven on the tube). `omarchy-crt
+shell key menu` pauses and resumes the running game today. What is left is
+  the visual: RetroArch's own RGUI opens but renders nothing at the wide
+  super-resolution, so the launcher must draw its own pause overlay. The
+  clean path is to pause the game first (it then stops asking the compositor
+  for frames), switch the tube to the launcher's workspace to show the
+  overlay, and reverse both on resume, so the hidden game never triggers the
+  not-responding dialog. Options to expose: resume, save state, load state,
+  reset, fast forward, rewind, aspect, back to the launcher. The launcher
+  already sees the pad in the background and the control pipe carries the
+  bind.
 - **Save states.** One slot per game with a timestamp, quick save and load
   from the pause menu, "resume where you left" on the game row.
 - **Pad recognition.** Identify the pad family and layout on plug (SDL

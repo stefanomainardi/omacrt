@@ -24,7 +24,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   mode [ntsc|pal] [--lines N] [--shift-x X] [--shift-y Y]
                            standard, active lines, picture shift; no args = full frame
   shell start|stop|restart|focus
-  shell key <input>...           drive the launcher: home up down left right fire back fav alt
+  shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
+  game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
   dac status|reset|csync and|xor|separate|watch
@@ -1018,6 +1019,36 @@ fn main() {
             // confirming write is enough and the launcher gets focus back.
             let _ = set_csync(&cfg, &conn);
             launcher::focus();
+        }
+        "game" => {
+            use omarchy_crt_shell::game;
+            let sub = positional(args)
+                .first()
+                .map(|s| s.as_str())
+                .unwrap_or("status")
+                .to_string();
+            let r = match sub.as_str() {
+                "menu" => game::send("MENU_TOGGLE"),
+                "pause" => game::pause_toggle(),
+                "save" => game::save_state(),
+                "load" => game::load_state(),
+                "reset" => game::reset(),
+                "quit" => game::quit(),
+                "cmd" => match positional(args).get(1) {
+                    Some(c) => game::send(c),
+                    None => die("game cmd needs a RetroArch command"),
+                },
+                _ => {
+                    println!(
+                        "{}",
+                        launcher::playing().unwrap_or("nothing running on the tube")
+                    );
+                    Ok(())
+                }
+            };
+            if let Err(e) = r {
+                die(&format!("game: {e}"));
+            }
         }
         "shell" => {
             let sub = positional(args)
