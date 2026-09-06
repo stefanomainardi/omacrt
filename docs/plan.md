@@ -67,13 +67,15 @@ Romset`, `01 Other Romsets`, ...). The launcher browses folders inside a
 
 ## Phase D, a television, not only a console
 
-- **Media player for the tube.** Music from local files with a visualiser
-  built for 240p, playlists, album art; the same pad and keyboard language as
-  the games.
-- **YouTube.** Search and play through `yt-dlp` and mpv with the Video fit
-  pipeline, a "watch later" list, 480i when the KMS session lands.
-- **Spotify.** `librespot` as a Spotify Connect endpoint on the television
-  plus a player screen, for Premium accounts.
+- **cliamp as the engine.** Omarchy's default music player, cliamp (a
+  Winamp 2 tribute TUI), already speaks local files, YouTube, Spotify, Qobuz,
+  Tidal, Plex, Jellyfin and tens of thousands of radio stations, runs as a
+  daemon and exposes IPC and a CLI. The tube gets a 240p face on top of that
+  daemon: the same pad and keyboard language as the games, a visualiser built
+  for 15 kHz, album art, radio dial. Its skin language (Winamp playlist,
+  equaliser, retro chrome) is the reference for the mood.
+- **Video.** YouTube and local video through mpv with the Video fit pipeline
+  (already in), a "watch later" list, 480i when the KMS session lands.
 
 ## Phase E, the native path
 
