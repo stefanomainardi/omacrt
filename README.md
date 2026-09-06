@@ -157,7 +157,9 @@ and the timeline.
 - **`docs/`** research and decisions: the 15 kHz study, the video policy, the
   systems file and TV profile, controllers, video on a CRT.
 - **`scripts/crt-probe.sh`** read-only probe of a DRM connector: status, EDID,
-  kernel mode list, Hyprland view. Used to test DACs.
+  kernel mode list, Hyprland view, and the HDMI audio path (ELD pin, PipeWire
+  profile and sink for that connector). `--tone` plays a 2 s test tone on the
+  matching sink. Used to test DACs.
 - **`scripts/demo-video.sh`** renders the shell offline from `scripts/demo.txt`
   (scripted input) and encodes an MP4 with the synthesized audio, frame exact.
 - **`scripts/vm.sh`** throwaway Omarchy VM for kernel packaging tests.
@@ -166,7 +168,8 @@ and the timeline.
 ## Roadmap
 
 1. **First light.** Test the launcher on a CRT through an HDMI DAC (RGB-Pi 2),
-   which needs no kernel patch but only fixed 240p.
+   which needs no kernel patch but only fixed 240p. The DAC also carries HDMI
+   audio to the SCART pins and its minijack, so sound follows the picture.
 2. **Kernel.** Package `linux-crt` from `linux-lts` with the 15 kHz patches;
    automate rebuilds.
 3. **Real DAC.** RTD2166 adapter plus VideoAmp or UMSA on a SCART TV; verify
