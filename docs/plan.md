@@ -58,6 +58,10 @@ Romset`, `01 Other Romsets`, ...). The launcher browses folders inside a
   BIOS import from a discovered `bios` folder; per system folder and core
   editing with a path field and a core picker. Everything writes
   `systems.toml` through `omarchy-crt`.
+- **Cores on demand.** When a system in the index has no core installed
+  (`mame2003` today), the library overlay says so and offers to install it
+  (`libretro-mame2003-plus` through `omarchy pkg add` or `pacman`), then the
+  system comes alive in the launcher. Same for RetroArch or mpv missing.
 - **Output settings in the panel.** Connector, workspace, standard, csync and
   volume editable from the panel and stored in `crt.toml`.
 

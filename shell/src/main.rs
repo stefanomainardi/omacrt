@@ -4,6 +4,7 @@
 //! through SDL2, either in a scaled window for development or fullscreen on
 //! the CRT output. No fake scanlines: the tube provides them.
 
+mod art;
 mod assets;
 mod audio;
 mod bt;
@@ -17,7 +18,7 @@ mod menu;
 mod pad;
 mod scene;
 mod theme;
-use omarchy_crt_shell::{library, player, profile, settings, videofit};
+use omarchy_crt_shell::{index, library, player, profile, settings, videofit};
 
 use audio::Audio;
 use fb::Framebuffer;
@@ -296,7 +297,7 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
                             "fav" => scene.toggle_favorite(),
                             "convert" => scene.convert_selected(),
                             "fire" => match scene.activate() {
-                                Action::Quit => break,
+                                Action::Quit | Action::Restart => break,
                                 _ => {}
                             },
                             "finish" => scene.game_finished(true),
@@ -457,7 +458,11 @@ fn run(args: &Args) -> Result<(), String> {
                     scene.game_finished(false);
                 }
             }
-        } else if args.fullscreen && now() - fullscreen_check > 0.5 {
+        }
+        // Whether a game runs or not: if the compositor took our fullscreen
+        // away (a new window mapped on our workspace), ask for it again so
+        // the tube never shows the desktop around us.
+        if args.fullscreen && now() - fullscreen_check > 0.1 {
             fullscreen_check = now();
             if canvas.window().fullscreen_state() == sdl2::video::FullscreenType::Off {
                 reassert_fullscreen(canvas.window_mut());
@@ -551,6 +556,16 @@ fn run(args: &Args) -> Result<(), String> {
             if fire {
                 match scene.activate() {
                     Action::Quit => break 'main,
+                    Action::Restart => {
+                        use std::os::unix::process::CommandExt;
+                        let exe = std::env::current_exe()
+                            .unwrap_or_else(|_| PathBuf::from("omarchy-crt-shell"));
+                        let err = std::process::Command::new(exe)
+                            .args(std::env::args().skip(1))
+                            .exec();
+                        eprintln!("restart failed: {err}");
+                        break 'main;
+                    }
                     Action::Launch(cmd) => {
                         if let Err(e) = menu::launch(&cmd) {
                             eprintln!("launch failed: {e}");

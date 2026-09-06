@@ -35,6 +35,8 @@ fn ease(t: f32) -> f32 {
 pub enum Action {
     None,
     Quit,
+    /// Start the launcher again in place (same arguments).
+    Restart,
     Launch(String),
 }
 
@@ -179,8 +181,9 @@ pub struct Geometry {
 const LAUNCH_SECS: f32 = 1.15;
 
 /// Power submenu entries.
-const POWER_ITEMS: [(icons::Icon, &str, bool); 2] = [
+const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::DESKTOP, "Back to desktop", false),
+    (icons::PULSE, "Restart launcher", false),
     (icons::POWER, "Power off", false),
 ];
 
@@ -274,6 +277,10 @@ pub struct Scene {
     library: Library,
     screen: Screen,
     games: Vec<Entry>,
+    /// Box art and console pictures, fetched and scaled off thread.
+    art: crate::art::Art,
+    /// Pixels taken from the right of list rows by a picture panel.
+    row_shrink: i32,
     /// A shift changed on the TV profile screen and the tube should show it.
     profile_preview: bool,
     /// Subfolder of the current system being browsed, None at its root.
@@ -314,6 +321,8 @@ impl Scene {
             settings: Settings::load(&library.config_dir),
             diag: Vec::new(),
             list_from_home: false,
+            art: crate::art::Art::new(),
+            row_shrink: 0,
             profile_preview: false,
             game_dir: None,
             system_counts: Vec::new(),
@@ -716,6 +725,7 @@ impl Scene {
         self.pending.push(Sound::Select);
         match sel {
             0 => Action::Quit,
+            1 => Action::Restart,
             _ => {
                 let still_armed =
                     matches!(self.armed, Some((i, until)) if i == sel && self.now < until);
@@ -1632,8 +1642,8 @@ impl Scene {
         on: bool,
         color: Color,
     ) {
-        let w = fb.w as i32;
-        let margin = (w as f32 * 0.05) as i32;
+        let margin = (fb.w as f32 * 0.05) as i32;
+        let w = fb.w as i32 - self.row_shrink;
         let left = margin + self.slide();
         let max_cols = ((w - 2 * margin) / 8) as usize;
         if on {
@@ -1685,6 +1695,44 @@ impl Scene {
                 let y0 = self.draw_header(fb, "Games");
                 let ox = self.slide();
                 let systems = self.library.systems.clone();
+                // The selected console sits on the right; rows make room.
+                let panel = 72;
+                self.row_shrink = panel + 8;
+                if sel >= Self::VIRTUAL {
+                    let name = systems[sel - Self::VIRTUAL].name.clone();
+                    let px = w - left - panel;
+                    let py = y0 + 6;
+                    if let Some(img) = self.art.system_image(&name, panel as usize) {
+                        let img = img.clone();
+                        fb.blit(
+                            px + (panel - img.w as i32) / 2,
+                            py + (panel - img.h as i32) / 2,
+                            &img,
+                        );
+                    } else if let Some((logo, c)) = icons::system_logo(&name) {
+                        fb.bitmap(px + panel / 2 - 10, py + panel / 2 - 10, logo, c, 2, 10);
+                    }
+                    let label = crate::index::catalog(&name)
+                        .map(|(l, _, _)| l.to_string())
+                        .unwrap_or_else(|| name.clone());
+                    let words: Vec<&str> = label.split(' ').collect();
+                    let mut line = String::new();
+                    let mut ly = py + panel + 6;
+                    for wd in words {
+                        if !line.is_empty() && (line.len() + 1 + wd.len()) * 8 > panel as usize {
+                            fb.text(px, ly, &line, scale(self.theme.dim, 0.9), 1);
+                            ly += 10;
+                            line.clear();
+                        }
+                        if !line.is_empty() {
+                            line.push(' ');
+                        }
+                        line.push_str(wd);
+                    }
+                    if !line.is_empty() {
+                        fb.text(px, ly, &line, scale(self.theme.dim, 0.9), 1);
+                    }
+                }
                 let total = Self::VIRTUAL + systems.len();
                 let end = (top + SYS_PAGE).min(total);
                 for (row, i) in (top..end).enumerate() {
@@ -1799,6 +1847,92 @@ impl Scene {
                 };
                 let n = self.games.len();
                 let y0 = self.draw_header(fb, &prompt);
+                // Box art of the selected game on the right, once the cursor
+                // rests; scrolling fast shows the frame and no downloads.
+                let cover_box = 84;
+                let with_covers = n > 0
+                    && self
+                        .games
+                        .get(sel)
+                        .map(|e| {
+                            !e.game.folder
+                                && !self.library.systems[e.sys].is_video()
+                                && crate::art::system_label(&self.library.systems[e.sys].name)
+                                    .is_some()
+                        })
+                        .unwrap_or(false);
+                if with_covers {
+                    self.row_shrink = cover_box + 10;
+                    let entry = self.games[sel].clone();
+                    let system = self.library.systems[entry.sys].name.clone();
+                    let bx = w - left - cover_box;
+                    let by = y0 + 4;
+                    let settled = self.now - self.last_input > 0.12;
+                    let img = if settled {
+                        self.art
+                            .cover(
+                                &system,
+                                &entry.game.path,
+                                cover_box as usize,
+                                cover_box as usize,
+                            )
+                            .cloned()
+                    } else {
+                        None
+                    };
+                    let frame = scale(self.theme.dim, 0.6);
+                    match img {
+                        Some(img) => {
+                            let x = bx + (cover_box - img.w as i32) / 2;
+                            let y = by + (cover_box - img.h as i32) / 2;
+                            fb.rect(x - 1, y - 1, img.w as i32 + 2, img.h as i32 + 2, frame);
+                            fb.blit(x, y, &img);
+                        }
+                        None => {
+                            // Dashed frame; a blinking dot while it loads.
+                            for i in (0..cover_box).step_by(4) {
+                                fb.put(bx + i, by, frame);
+                                fb.put(bx + i, by + cover_box - 1, frame);
+                                fb.put(bx, by + i, frame);
+                                fb.put(bx + cover_box - 1, by + i, frame);
+                            }
+                            let key = crate::art::Art::cover_key(&system, &entry.game.path);
+                            if !settled || self.art.loading(&key) {
+                                if (self.now * 3.0) as i64 % 2 == 0 {
+                                    fb.rect(
+                                        bx + cover_box / 2 - 2,
+                                        by + cover_box / 2 - 2,
+                                        4,
+                                        4,
+                                        frame,
+                                    );
+                                }
+                            } else {
+                                fb.text_centered(
+                                    bx + cover_box / 2,
+                                    by + cover_box / 2 - 4,
+                                    "no art",
+                                    frame,
+                                    1,
+                                );
+                            }
+                        }
+                    }
+                    // Tags of the file name under the box: region, revision.
+                    let stem = entry
+                        .game
+                        .path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
+                    let (_, tags, _, _) = crate::index::parse_name(stem);
+                    let mut ty = by + cover_box + 6;
+                    for t in tags.iter().take(3) {
+                        let t: String = t.chars().take((cover_box / 8) as usize).collect();
+                        fb.text(bx, ty, &t, scale(self.theme.dim, 0.9), 1);
+                        ty += 10;
+                    }
+                }
                 if n == 0 {
                     match sys {
                         Some(i) => {
@@ -2108,6 +2242,8 @@ impl Scene {
     // -- drawing -------------------------------------------------------------
 
     pub fn draw(&mut self, fb: &mut Framebuffer, now: f64) {
+        self.art.poll();
+        self.row_shrink = 0;
         self.now = now;
         self.tick_theme();
         self.tick_conversion();

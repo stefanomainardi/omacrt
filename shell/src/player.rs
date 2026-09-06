@@ -142,7 +142,9 @@ pub fn command(
     colors: [&str; 4],
 ) -> std::process::Command {
     let mut cmd = std::process::Command::new(mpv);
-    cmd.arg("--fs")
+    // Our own Wayland app id, so window rules pin this player to the tube
+    // and leave a desktop mpv alone.
+    cmd.arg("--wayland-app-id=omarchy-crt-player").arg("--fs")
         .arg("--no-terminal")
         .arg("--really-quiet")
         .arg("--no-osc")

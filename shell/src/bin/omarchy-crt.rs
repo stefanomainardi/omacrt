@@ -375,8 +375,11 @@ fn set_csync(cfg: &Config, conn: &Connector) -> Result<String, String> {
 /// Hyprland options that let RetroArch and mpv take the tube while they run
 /// and hand it back to the launcher when they exit.
 fn compositor_fullscreen_policy(on: bool) {
+    // 0: a window that opens under a fullscreen one stays behind it. The
+    // launcher keeps the tube while RetroArch starts; the launcher then moves
+    // RetroArch to the game workspace and nothing else is ever composited.
     let code = if on {
-        "hl.config({ misc = { on_focus_under_fullscreen = 1, exit_window_retains_fullscreen = true } })"
+        "hl.config({ misc = { on_focus_under_fullscreen = 0, exit_window_retains_fullscreen = true } })"
     } else {
         "hl.config({ misc = { on_focus_under_fullscreen = 0, exit_window_retains_fullscreen = false } })"
     };
@@ -424,6 +427,7 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
     compositor_fullscreen_policy(true);
     output::workspace_rule(&conn.name);
     output::window_rules(&conn.name);
+    output::isolate(&conn.name);
     match launcher::start(cfg, &conn.name, crt_sink(cfg, &conn).as_deref()) {
         Ok(note) => {
             println!("launcher:   {note}");
@@ -443,6 +447,7 @@ fn cmd_off(cfg: &Config) {
         println!("audio:      {}", audio::route_back(&mut state));
     }
     compositor_fullscreen_policy(false);
+    output::unisolate();
     if let Some(conn) = output::pick(cfg) {
         output::disable(&conn.name);
         println!("output:     {} disabled", conn.name);

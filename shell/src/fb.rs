@@ -67,6 +67,24 @@ impl Framebuffer {
         self.px[y as usize * self.w + x as usize] = c;
     }
 
+    /// Draw an image with straight alpha over what is already there.
+    pub fn blit(&mut self, x: i32, y: i32, img: &crate::art::Image) {
+        for iy in 0..img.h {
+            let dy = y + iy as i32;
+            if dy < 0 || dy >= self.h as i32 {
+                continue;
+            }
+            for ix in 0..img.w {
+                let dx = x + ix as i32;
+                if dx < 0 || dx >= self.w as i32 {
+                    continue;
+                }
+                let bg = self.px[dy as usize * self.w + dx as usize];
+                self.px[dy as usize * self.w + dx as usize] = img.over(ix, iy, bg);
+            }
+        }
+    }
+
     pub fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: Color) {
         for yy in y.max(0)..(y + h).min(self.h as i32) {
             for xx in x.max(0)..(x + w).min(self.w as i32) {

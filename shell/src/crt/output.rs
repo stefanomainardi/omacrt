@@ -230,11 +230,12 @@ pub fn disable(name: &str) -> (bool, String) {
     ))
 }
 
-/// Pin the launcher to the CRT output, and RetroArch and mpv to their own
-/// workspace on it. The launcher stays fullscreen on `crt` underneath, the
-/// game takes `crtgame` for as long as it runs, and nothing of the desktop
-/// is ever composited in between. No `fullscreen` rule: the programs ask
-/// for it themselves, and a rule-made fullscreen leaves the bar above them.
+/// Pin the launcher to the CRT output and our video player to its own
+/// workspace there. RetroArch has no way to carry an app id of ours, so the
+/// launcher moves its window by pid after it maps (`place_child` in the
+/// launcher); a class rule would drag every RetroArch on the desktop along.
+/// No `fullscreen` rule: the programs ask for it themselves, and a rule-made
+/// fullscreen leaves the bar above them.
 pub fn window_rules(name: &str) {
     hypr_eval(&format!(
         "hl.window_rule({{ name = \"omarchy-crt-shell\", match = {{ class = \"{SHELL_CLASS}\" }}, monitor = \"{name}\" }})"
@@ -242,14 +243,67 @@ pub fn window_rules(name: &str) {
     hypr_eval(&format!(
         "hl.workspace_rule({{ workspace = \"name:{GAME_WORKSPACE}\", monitor = \"{name}\" }})"
     ));
-    for (rule, class) in [
-        ("omarchy-crt-retroarch", "com.libretro.RetroArch"),
-        ("omarchy-crt-mpv", "mpv"),
-    ] {
-        hypr_eval(&format!(
-            "hl.window_rule({{ name = \"{rule}\", match = {{ class = \"{class}\" }}, monitor = \"{name}\", workspace = \"name:{GAME_WORKSPACE}\" }})"
-        ));
-    }
+    hypr_eval(&format!(
+        "hl.window_rule({{ name = \"omarchy-crt-player\", match = {{ class = \"omarchy-crt-player\" }}, monitor = \"{name}\", workspace = \"name:{GAME_WORKSPACE}\" }})"
+    ));
+    // Undo the rule older versions installed for every RetroArch window.
+    hypr_eval(
+        "hl.window_rule({ name = \"omarchy-crt-retroarch\", match = { class = \"com.libretro.RetroArch\" }, enabled = false })",
+    );
+    hypr_eval(
+        "hl.window_rule({ name = \"omarchy-crt-mpv\", match = { class = \"mpv\" }, enabled = false })",
+    );
+}
+
+/// Keep the tube to ourselves. A Lua handler on `window.open` inside the
+/// compositor moves anything that is not ours off the CRT workspaces to the
+/// desktop (a video started from the desktop while the tube had focus), and
+/// sends RetroArch straight to the game workspace the moment it maps, so the
+/// launcher underneath never loses fullscreen.
+pub fn isolate(name: &str) {
+    let Some(text) = run("hyprctl", &["monitors", "-j"]) else {
+        return;
+    };
+    let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(&text) else {
+        return;
+    };
+    // The focused desktop monitor, else the biggest one.
+    let desk = list
+        .iter()
+        .filter(|m| m["name"] != name && !m["disabled"].as_bool().unwrap_or(false))
+        .max_by_key(|m| {
+            let focused = m["focused"].as_bool().unwrap_or(false) as i64;
+            let area = m["width"].as_i64().unwrap_or(0) * m["height"].as_i64().unwrap_or(0);
+            (focused, area)
+        })
+        .and_then(|m| m["activeWorkspace"]["id"].as_i64());
+    let Some(desk) = desk else { return };
+    let code = format!(
+        r#"if omarchy_crt_isolate then omarchy_crt_isolate:remove() end
+omarchy_crt_isolate = hl.on("window.open", function(w)
+  if not w or not w.workspace then return end
+  local ws = w.workspace.name
+  if ws ~= "{WORKSPACE}" and ws ~= "{GAME_WORKSPACE}" then return end
+  local class = tostring(w.class or "")
+  if class == "{SHELL_CLASS}" or class == "omarchy-crt-player" then return end
+  if class == "com.libretro.RetroArch" then
+    hl.dispatch(hl.dsp.window.move({{ window = w, workspace = "name:{GAME_WORKSPACE}" }}))
+    hl.dispatch(hl.dsp.focus({{ workspace = "name:{GAME_WORKSPACE}" }}))
+    return
+  end
+  hl.dispatch(hl.dsp.window.move({{ window = w, workspace = "{desk}" }}))
+end)
+return "isolating"
+"#
+    );
+    hypr_eval(&code);
+}
+
+/// Drop the isolation handler.
+pub fn unisolate() {
+    hypr_eval(
+        "if omarchy_crt_isolate then omarchy_crt_isolate:remove(); omarchy_crt_isolate = nil end return \"ok\"",
+    );
 }
 
 /// Workspace games and videos run on while the launcher waits underneath.
@@ -264,9 +318,9 @@ pub fn workspace_rule(name: &str) {
     hypr_eval(&format!(
         "hl.workspace_rule({{ workspace = \"name:{WORKSPACE}\", monitor = \"{name}\", default = true, persistent = true }})"
     ));
-    hypr_eval(&format!(
-        "hl.dispatch(hl.dsp.workspace.move({{ workspace = \"name:{WORKSPACE}\", monitor = \"{name}\" }}))"
-    ));
+    // No `workspace.move` here: moving a workspace that holds a fullscreen
+    // window desynchronised Hyprland's fullscreen bookkeeping and the bar
+    // came back above the launcher. The rule alone places new windows.
     hypr_eval(&format!(
         "hl.dispatch(hl.dsp.focus({{ workspace = \"name:{WORKSPACE}\" }}))"
     ));
