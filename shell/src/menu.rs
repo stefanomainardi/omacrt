@@ -5,12 +5,11 @@ pub fn launch(command: &str) -> std::io::Result<()> {
     if command.trim().is_empty() {
         return Ok(());
     }
-    std::process::Command::new("sh")
-        .arg("-c")
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c")
         .arg(command)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_| ())
+        .stderr(std::process::Stdio::null());
+    cmd.spawn().map(|_| ())
 }

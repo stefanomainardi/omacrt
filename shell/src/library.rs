@@ -787,7 +787,10 @@ impl Library {
             if system.runahead > 0 {
                 kv("run_ahead_enabled", "true");
                 kv("run_ahead_frames", &system.runahead.to_string());
-                kv("run_ahead_secondary_instance", "true");
+                // One core instance: the secondary one is torn down at exit in
+                // a way that crashes several cores (SIGSEGV after "Unloading
+                // core"), and run-ahead works without it.
+                kv("run_ahead_secondary_instance", "false");
             } else {
                 kv("run_ahead_enabled", "false");
             }
@@ -864,10 +867,28 @@ impl Library {
         cmd.arg("-L")
             .arg(self.core_path(system))
             .arg(&game.path)
+            .arg("--verbose")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+            .stderr(game_log());
         Ok(cmd)
+    }
+}
+
+/// Where the emulator's own output goes, one file per run, so a crash on the
+/// tube leaves something to read: `~/.local/state/omarchy-crt/game.log`.
+pub fn game_log_path() -> PathBuf {
+    crate::crt::state_dir().join("game.log")
+}
+
+fn game_log() -> std::process::Stdio {
+    let path = game_log_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    match std::fs::File::create(&path) {
+        Ok(f) => std::process::Stdio::from(f),
+        Err(_) => std::process::Stdio::null(),
     }
 }
 

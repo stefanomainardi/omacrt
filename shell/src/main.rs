@@ -447,6 +447,10 @@ fn run(args: &Args) -> Result<(), String> {
             match c.try_wait() {
                 Ok(Some(status)) => {
                     child = None;
+                    eprintln!(
+                        "game exited: {status} (its output: {})",
+                        library::game_log_path().display()
+                    );
                     scene.game_finished(status.success());
                     if lines_changed {
                         crt_mode(None);
@@ -466,10 +470,12 @@ fn run(args: &Args) -> Result<(), String> {
                 }
             }
         }
-        // Whether a game runs or not: if the compositor took our fullscreen
-        // away (a new window mapped on our workspace), ask for it again so
-        // the tube never shows the desktop around us.
-        if args.fullscreen && now() - fullscreen_check > 0.1 {
+        // If the compositor took our fullscreen away (a new window mapped on
+        // our workspace), ask for it again so the tube never shows the
+        // desktop around us. Not while a game runs: the game owns the tube
+        // then, and a fullscreen request from us would pull its workspace
+        // out from under it.
+        if args.fullscreen && !scene.is_running() && now() - fullscreen_check > 0.1 {
             fullscreen_check = now();
             if canvas.window().fullscreen_state() == sdl2::video::FullscreenType::Off {
                 reassert_fullscreen(canvas.window_mut());

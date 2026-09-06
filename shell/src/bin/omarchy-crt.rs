@@ -1037,7 +1037,6 @@ fn main() {
                 "stop" => println!("{}", launcher::stop()),
                 "restart" => {
                     launcher::stop();
-                    std::thread::sleep(std::time::Duration::from_millis(600));
                     let conn = connector(&cfg);
                     println!(
                         "{}",

@@ -80,6 +80,14 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
     if let Some(s) = sink {
         cmd.env("PULSE_SINK", s).env("PIPEWIRE_NODE", s);
     }
+    // SDL's PipeWire backend loads module-rt into the launcher, which sets a
+    // 200 ms RLIMIT_RTTIME on the process so rtkit grants it realtime. Every
+    // game inherits that limit (an unprivileged process cannot raise it
+    // back), rtkit then grants realtime to RetroArch's PulseAudio thread
+    // too, and the kernel kills the game with SIGKILL the first time that
+    // thread runs 200 ms without sleeping. libpulse leaves the limits alone,
+    // rtkit refuses it, and the games run as they do from a terminal.
+    cmd.env("SDL_AUDIODRIVER", "pulseaudio");
     cmd.args(&cfg.shell.args)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
@@ -97,20 +105,43 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
     Ok("started".into())
 }
 
+/// Stop the launcher and wait until it is gone. SDL turns SIGTERM into a
+/// quit event, which the launcher only sees once its frame loop runs again,
+/// so a launcher busy in a mode change can take a moment; one that never
+/// answers gets SIGKILL, otherwise a restart would end with two launchers
+/// fighting over the tube.
 pub fn stop() -> String {
     let list = pids();
+    if list.is_empty() {
+        return "not running".into();
+    }
     for pid in &list {
         unsafe { libc::kill(*pid as libc::pid_t, libc::SIGTERM) };
     }
-    if list.is_empty() {
-        "not running".into()
-    } else {
-        format!("stopped {}", list.len())
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if pids().is_empty() {
+            return format!("stopped {}", list.len());
+        }
     }
+    let left = pids();
+    for pid in &left {
+        unsafe { libc::kill(*pid as libc::pid_t, libc::SIGKILL) };
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    format!("stopped {} ({} killed)", list.len(), left.len())
 }
 
+/// Bring the tube's current program to the front: the game while one runs,
+/// else the launcher. Focusing the launcher over a running game would hide
+/// the game's workspace, and a hidden fullscreen client blocks on its next
+/// frame until the compositor calls it unresponsive.
 pub fn focus() -> (bool, String) {
-    output::focus_class(SHELL_CLASS)
+    match playing() {
+        Some("retroarch") => output::focus_class("com.libretro.RetroArch"),
+        Some("mpv") => output::focus_class("omarchy-crt-player"),
+        _ => output::focus_class(SHELL_CLASS),
+    }
 }
 
 /// Which program is on the tube besides the launcher.
