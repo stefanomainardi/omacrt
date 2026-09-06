@@ -1,5 +1,5 @@
 # Demo script for scripts/demo-video.sh: <seconds> <action> [arg]
-# Actions: start, up, down, left, right, back, fire, fav, saver [effect], finish
+# Actions: start, up, down, left, right, back, fire, fav, saver [effect], finish, convert
 0.8   start          # power on; boot show runs to ~9.6
 11.0  down           # a look at the home menu
 11.6  down
@@ -15,59 +15,81 @@
 21.4  finish         # (the emulator would run here) back to the list
 22.6  back
 23.4  back           # home
-24.2  down           # Favorites
+24.2  down           # Videos
 24.9  fire
-26.4  back
-27.2  down           # Recent
-27.8  down           # Settings
-28.6  fire
-29.8  fire           # TV profile
-31.0  right          # next monitor preset
-31.7  right
-32.5  down           # h shift
-33.1  right
-33.6  right
-34.4  back           # saves, back to Settings
-35.4  down           # Pads
-36.0  down           # Screensaver
-36.7  fire
-37.8  down           # after
-38.4  left           # 30 s
-39.1  down           # effect
-39.7  right          # laseretch
-40.3  right          # rain
-41.1  down           # preview
-41.8  fire           # screensaver preview: rain
-47.5  fire           # wake up
-48.6  back           # back to Settings
-49.4  down           # Style
-50.0  fire
-51.2  down           # catppuccin
-52.4  down           # catppuccin-latte
-53.6  down           # ethereal
-54.8  down           # everforest
-56.0  down           # flexoki-light
-57.2  down           # gruvbox
-58.4  down           # hackerman
-59.6  down           # kanagawa
-61.4  back           # keep it
-62.2  down           # Diagnostics
-62.8  fire
-64.4  down
-65.0  down
-65.6  down
-67.0  back
-67.8  back           # home
-68.6  down           # About
-69.3  fire
-71.0  down
-71.5  down
-72.0  down
-72.5  down
-73.0  down
-73.5  down
-75.4  back
-76.2  down           # Power
-76.9  fire
-78.6  back
-79.6  saver vhstape  # closing shot
+26.4  down
+27.0  down
+27.6  down
+28.2  down
+28.8  down           # Omarchy Intro, CRT ready
+30.2  fire           # play: overlay while mpv starts
+32.6  finish
+33.6  back           # home
+34.4  down           # Favorites
+35.1  fire
+36.6  back
+37.4  down           # Recent
+38.0  down           # Settings
+38.8  fire
+40.0  fire           # TV profile
+41.2  right          # next monitor preset
+41.9  right
+42.7  down           # h shift
+43.3  right
+43.8  right
+44.6  back           # saves, back to Settings
+45.4  down           # Video fit
+46.0  fire
+47.2  right          # standard: ntsc
+48.0  down           # film 24 fps
+48.6  right          # speedup
+49.4  down           # aspect
+50.0  right          # crop
+50.6  right          # anamorphic
+51.4  down           # overscan
+52.2  down           # retro 240p
+52.8  right          # on
+54.0  back           # saves
+55.0  down           # Pads
+55.6  down           # Screensaver
+56.3  fire
+57.4  down           # after
+58.0  left           # 30 s
+58.7  down           # effect
+59.3  right          # laseretch
+59.9  right          # rain
+60.7  down           # preview
+61.4  fire           # screensaver preview: rain
+66.5  fire           # wake up
+67.6  back           # back to Settings
+68.4  down           # Style
+69.0  fire
+70.2  down           # catppuccin
+71.4  down           # catppuccin-latte
+72.6  down           # ethereal
+73.8  down           # everforest
+75.0  down           # flexoki-light
+76.2  down           # gruvbox
+77.4  down           # hackerman
+78.6  down           # kanagawa
+80.4  back           # keep it
+81.2  down           # Diagnostics
+81.8  fire
+83.4  down
+84.0  down
+84.6  down
+86.0  back
+86.8  back           # home
+87.6  down           # About
+88.3  fire
+90.0  down
+90.5  down
+91.0  down
+91.5  down
+92.0  down
+92.5  down
+94.4  back
+95.2  down           # Power
+95.9  fire
+97.6  back
+98.6  saver vhstape  # closing shot
