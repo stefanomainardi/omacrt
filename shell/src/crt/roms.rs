@@ -205,7 +205,7 @@ pub fn scan(lib: &Library) -> Vec<Scan> {
         .map(|s| {
             let dir = expand(&s.dir);
             let exists = dir.is_dir();
-            let games = lib.games(s).len();
+            let games = lib.count(s);
             let unknown = if exists && !s.extensions.is_empty() {
                 std::fs::read_dir(&dir)
                     .map(|rd| {
@@ -253,13 +253,7 @@ pub fn link(root: &Path, current: &[System]) -> (Vec<System>, Vec<Linked>) {
         if !dir.is_dir() {
             continue;
         }
-        let files = std::fs::read_dir(&dir)
-            .map(|rd| {
-                rd.filter_map(|e| e.ok())
-                    .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
-                    .count()
-            })
-            .unwrap_or(0);
+        let files = count_files(&dir, 2);
         if files == 0 || linked.iter().any(|l: &Linked| l.system == *name) {
             continue;
         }
@@ -333,4 +327,21 @@ pub fn systems_toml(systems: &[System], switching: bool) -> String {
         }
     }
     out
+}
+
+/// Files under `dir`, following subfolders `depth` levels down.
+fn count_files(dir: &Path, depth: u32) -> usize {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut n = 0;
+    for e in rd.flatten() {
+        let Ok(ft) = e.file_type() else { continue };
+        if ft.is_file() {
+            n += 1;
+        } else if ft.is_dir() && depth > 0 {
+            n += count_files(&e.path(), depth - 1);
+        }
+    }
+    n
 }

@@ -20,7 +20,7 @@ use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
 use crate::theme::Theme;
 use crate::videofit::{self, Conversion};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn clamp(v: f32, a: f32, b: f32) -> f32 {
     v.max(a).min(b)
@@ -267,6 +267,10 @@ pub struct Scene {
     library: Library,
     screen: Screen,
     games: Vec<Entry>,
+    /// Subfolder of the current system being browsed, None at its root.
+    game_dir: Option<PathBuf>,
+    /// Game counts per system, refreshed when the library is (re)read.
+    system_counts: Vec<usize>,
     running: Option<(String, String)>,
     mark_small: effects::Grid,
     profile: Profile,
@@ -292,7 +296,7 @@ impl Scene {
         let stops = [theme.magenta, theme.cyan, theme.paper];
         let grid = effects::Grid::wordmark(stops);
         let (mark_cols, mark_rows) = (grid.cols, grid.rows);
-        Self {
+        let mut scene = Self {
             output_size: (320, 240),
             theme,
             info,
@@ -301,6 +305,8 @@ impl Scene {
             settings: Settings::load(&library.config_dir),
             diag: Vec::new(),
             list_from_home: false,
+            game_dir: None,
+            system_counts: Vec::new(),
             themes: Theme::installed(),
             theme_blend: None,
             launching: None,
@@ -339,7 +345,9 @@ impl Scene {
             games: Vec::new(),
             running: None,
             mark_small: grid,
-        }
+        };
+        scene.refresh_counts();
+        scene
     }
 
     fn rand(&mut self) -> u32 {
@@ -685,13 +693,7 @@ impl Scene {
                     Screen::Games { sel, .. } => sel,
                     _ => 0,
                 };
-                let system = self.library.systems[i].clone();
-                self.games = self
-                    .library
-                    .games(&system)
-                    .into_iter()
-                    .map(|game| Entry { game, sys: i })
-                    .collect();
+                self.games = self.entries_for(i);
                 if let Screen::Games { sel, .. } = &mut self.screen {
                     *sel = sel_keep.min(self.games.len().saturating_sub(1));
                 }
@@ -837,15 +839,9 @@ impl Scene {
     const VIRTUAL: usize = 2; // recent/, favorites/
 
     fn open_games(&mut self, sys: Option<usize>) {
+        self.game_dir = None;
         self.games = match sys {
-            Some(i) => {
-                let system = self.library.systems[i].clone();
-                self.library
-                    .games(&system)
-                    .into_iter()
-                    .map(|game| Entry { game, sys: i })
-                    .collect()
-            }
+            Some(i) => self.entries_for(i),
             None => Vec::new(),
         };
         self.screen = Screen::Games {
@@ -853,6 +849,72 @@ impl Scene {
             sel: 0,
             top: 0,
         };
+    }
+
+    /// Entries of system `i` in the folder currently browsed.
+    fn entries_for(&self, i: usize) -> Vec<Entry> {
+        let system = &self.library.systems[i];
+        let dir = self
+            .game_dir
+            .clone()
+            .unwrap_or_else(|| crate::library::expand(&system.dir));
+        self.library
+            .games_in(system, &dir)
+            .into_iter()
+            .map(|game| Entry { game, sys: i })
+            .collect()
+    }
+
+    /// Counts for the systems screen, computed once per library read so the
+    /// screen never rescans folders while drawing.
+    fn refresh_counts(&mut self) {
+        self.system_counts = self
+            .library
+            .systems
+            .iter()
+            .map(|s| self.library.count(s))
+            .collect();
+    }
+
+    /// Step into a subfolder of the current system.
+    fn enter_folder(&mut self, sys: usize, dir: PathBuf) {
+        self.game_dir = Some(dir);
+        self.games = self.entries_for(sys);
+        self.screen = Screen::Games {
+            sys: Some(sys),
+            sel: 0,
+            top: 0,
+        };
+        self.pending.push(Sound::Select);
+    }
+
+    /// One folder up; false when already at the system root.
+    fn leave_folder(&mut self, sys: usize) -> bool {
+        let Some(cur) = self.game_dir.clone() else {
+            return false;
+        };
+        let root = crate::library::expand(&self.library.systems[sys].dir);
+        let parent = cur.parent().map(Path::to_path_buf);
+        let leaving = cur.file_name().map(|n| n.to_string_lossy().into_owned());
+        self.game_dir = match parent {
+            Some(p) if p != root => Some(p),
+            _ => None,
+        };
+        self.games = self.entries_for(sys);
+        let sel = leaving
+            .and_then(|name| {
+                self.games
+                    .iter()
+                    .position(|e| e.game.folder && e.game.title == name)
+            })
+            .unwrap_or(0);
+        self.screen = Screen::Games {
+            sys: Some(sys),
+            sel,
+            top: sel.saturating_sub(Self::ROWS_PER_PAGE - 1),
+        };
+        self.pending.push(Sound::Move);
+        true
     }
 
     fn open_virtual(&mut self, list: &[(usize, PathBuf)]) {
@@ -867,6 +929,7 @@ impl Scene {
                         c.exists().then_some(c)
                     },
                     path: p.clone(),
+                    folder: false,
                 },
                 sys: *i,
             })
@@ -932,6 +995,11 @@ impl Scene {
                         moved = true;
                     }
                     Nav::Back => {
+                        if let Screen::Games { sys: Some(i), .. } = self.screen {
+                            if self.leave_folder(i) {
+                                return;
+                            }
+                        }
                         if self.list_from_home {
                             self.screen = Screen::Menu;
                             self.pending.push(Sound::Move);
@@ -1175,10 +1243,16 @@ impl Scene {
                 }
                 Action::None
             }
-            Screen::Games { sel, .. } => {
+            Screen::Games { sel, sys, .. } => {
                 let Some(entry) = self.games.get(sel).cloned() else {
                     return Action::None;
                 };
+                if entry.game.folder {
+                    if let Some(i) = sys {
+                        self.enter_folder(i, entry.game.path.clone());
+                    }
+                    return Action::None;
+                }
                 self.run_entry(&entry)
             }
             Screen::Profile { sel } => match sel {
@@ -1600,7 +1674,11 @@ impl Scene {
                         }
                         _ => {
                             let sys = &systems[i - Self::VIRTUAL];
-                            let count = self.library.games(sys).len();
+                            let count = self
+                                .system_counts
+                                .get(i - Self::VIRTUAL)
+                                .copied()
+                                .unwrap_or(0);
                             let right = format!(
                                 "{count:>4}  {}",
                                 crate::library::VideoPolicy::parse(&sys.video).label()
@@ -1661,7 +1739,16 @@ impl Scene {
             }
             Screen::Games { sys, sel, top } => {
                 let prompt = match sys {
-                    Some(i) => self.library.systems[i].name.clone(),
+                    Some(i) => match &self.game_dir {
+                        Some(d) => format!(
+                            "{} / {}",
+                            self.library.systems[i].name,
+                            d.file_name()
+                                .map(|n| n.to_string_lossy())
+                                .unwrap_or_default()
+                        ),
+                        None => self.library.systems[i].name.clone(),
+                    },
                     None => "Recent and favorites".to_string(),
                 };
                 let n = self.games.len();
@@ -1697,7 +1784,23 @@ impl Scene {
                         } else if entry.game.crt_path.is_some() {
                             right.push_str(" CRT");
                         }
-                        let fav = self.is_favorite(&entry);
+                        let fav = !entry.game.folder && self.is_favorite(&entry);
+                        if entry.game.folder {
+                            self.draw_row(fb, y, &entry.game.title, "", i == sel, self.theme.paper);
+                            fb.bitmap(
+                                left + self.slide() + 4,
+                                y + 1,
+                                &icons::FOLDER,
+                                if i == sel {
+                                    self.theme.accent
+                                } else {
+                                    self.theme.dim
+                                },
+                                1,
+                                8,
+                            );
+                            continue;
+                        }
                         self.draw_row(fb, y, &entry.game.title, &right, i == sel, self.theme.paper);
                         if fav {
                             fb.bitmap(

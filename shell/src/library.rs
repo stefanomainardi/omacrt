@@ -67,6 +67,8 @@ pub struct Game {
     pub path: PathBuf,
     /// CRT ready conversion next to the source, when it exists.
     pub crt_path: Option<PathBuf>,
+    /// A subfolder to browse into rather than a file to run.
+    pub folder: bool,
 }
 
 /// How the display mode follows the game.
@@ -436,14 +438,65 @@ impl Library {
     /// list. When a folder holds `.m3u` playlists, the disc images they
     /// reference are hidden so a multi disc game shows up once.
     pub fn games(&self, system: &System) -> Vec<Game> {
-        let dir = expand(&system.dir);
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+        self.games_in(system, &expand(&system.dir))
+    }
+
+    /// Files matching a system's extensions under `dir` (a folder of a
+    /// system), counted through subfolders up to three levels deep.
+    pub fn count(&self, system: &System) -> usize {
+        fn walk(dir: &Path, system: &System, depth: u32) -> usize {
+            let Ok(rd) = std::fs::read_dir(dir) else {
+                return 0;
+            };
+            let mut n = 0;
+            for e in rd.flatten() {
+                let Ok(ft) = e.file_type() else { continue };
+                if ft.is_dir() {
+                    if depth > 0 {
+                        n += walk(&e.path(), system, depth - 1);
+                    }
+                } else if ft.is_file() {
+                    let p = e.path();
+                    let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
+                    if system.extensions.is_empty()
+                        || system
+                            .extensions
+                            .iter()
+                            .any(|x| x.eq_ignore_ascii_case(ext))
+                    {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        }
+        walk(&expand(&system.dir), system, 3)
+    }
+
+    /// Entries of one folder of a system: subfolders first (browsable), then
+    /// the games in it, sorted by title.
+    pub fn games_in(&self, system: &System, dir: &Path) -> Vec<Game> {
+        let Ok(entries) = std::fs::read_dir(dir) else {
             return Vec::new();
         };
+        let entries: Vec<std::fs::DirEntry> = entries.filter_map(|e| e.ok()).collect();
+        let mut folders: Vec<Game> = entries
+            .iter()
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+            .map(|e| Game {
+                title: e.file_name().to_string_lossy().into_owned(),
+                path: e.path(),
+                crt_path: None,
+                folder: true,
+            })
+            .collect();
+        folders.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        let dir = dir.to_path_buf();
+        let entries = entries.into_iter();
         // `file_type` comes free with the directory entry; a stat per file
         // is what makes a 8000 ROM folder on a USB disk take seconds.
         let files: Vec<PathBuf> = entries
-            .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
             .map(|e| e.path())
             .collect();
@@ -472,7 +525,9 @@ impl Library {
         let mut games: Vec<Game> = files
             .iter()
             .filter(|p| {
-                accepted(p) && !hidden.contains(p) && (!video || !crate::videofit::is_crt_file(p))
+                accepted(p)
+                    && !hidden.iter().any(|h| h == *p)
+                    && (!video || !crate::videofit::is_crt_file(p))
             })
             .map(|path| {
                 // CRT ready siblings only exist for videos; skip the stat elsewhere.
@@ -485,7 +540,8 @@ impl Library {
                 Game {
                     title: clean_title(path),
                     crt_path: crt,
-                    path: path.clone(),
+                    path: path.to_path_buf(),
+                    folder: false,
                 }
             })
             .collect();
@@ -503,7 +559,8 @@ impl Library {
             }
         }
         games.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
-        games
+        folders.extend(games);
+        folders
     }
 
     pub fn core_path(&self, system: &System) -> PathBuf {
