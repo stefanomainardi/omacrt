@@ -118,11 +118,30 @@ some pads: add `usbhid.jspoll=1` to the kernel command line of the CRT boot
 entry. Wired pads over the game controller API keep the shell itself under a
 frame of input lag.
 
-## Adopting an existing collection
+## The index: any layout, scanned once
 
-`omarchy-crt library link DIR --write` reads a ROM collection laid out the
-RePlayOS or Batocera way (`nintendo_nes`, `sony_psx`, `sega_dc`, ...) and
-writes a `systems.toml` whose systems point at those folders, with the core
-Arch ships for each. Nothing is copied. Systems already defined keep their
-tuning and only change directory. `omarchy-crt bios import DIR --all` brings
-the matching `bios` folder into RetroArch's system directory.
+Nobody should have to rename folders for a launcher. `omarchy-crt library
+scan DIR` walks whatever you point it at (an external disk, `~/Games`, a
+messy download folder) and decides the system of every file from the file
+inward:
+
+1. extensions that name a system on their own (`.sfc`, `.md`, `.z64`, `.pce`);
+2. the words in the folder names above the file, tokenised, so `sega_dc`,
+   `Sega - Dreamcast` and `DC games` all read as Dreamcast while `dcp` does
+   not;
+3. the file itself: disc signatures in `.cue`/`.bin`/`.iso` images (PlayStation,
+   Saturn, Mega-CD, Dreamcast, PC Engine CD, Neo Geo CD, 3DO, CD-i), the file
+   names inside a `.zip`, cartridge headers, arcade set names;
+4. what you told it before with `omarchy-crt library assign FOLDER SYSTEM`.
+
+The result lands in `~/.local/share/omarchy-crt/library.json` with title,
+tags, region and disc number per game. The launcher lists from it: one entry
+per title (regional variants collapse onto the preferred region, multi disc
+games onto disc 1), systems appear when they have games and hide when they
+do not, and folders no longer matter. Roots and your folder answers live in
+`~/.config/omarchy-crt/library.toml`. `systems.toml` keeps only what is
+tuning: core, options, video policy, run-ahead. Systems the scan finds but
+`systems.toml` does not mention take their core from the built in catalogue
+(`omarchy-crt library systems`).
+
+A 28,000 game disk over USB scans in about four seconds.

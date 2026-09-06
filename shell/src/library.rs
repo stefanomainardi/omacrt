@@ -152,9 +152,16 @@ pub struct Library {
     pub core_dir: PathBuf,
     pub config_dir: PathBuf,
     pub switching: bool,
+    /// The scanned game index, when `omarchy-crt library scan` has run.
+    /// Systems found there list from it; systems without index entries
+    /// fall back to their folder.
+    pub index: Option<crate::index::Index>,
 }
 
-fn home() -> PathBuf {
+/// Regions in the order a duplicate title picks its variant.
+const REGION_ORDER: &[&str] = &["Europe", "World", "USA", "Japan"];
+
+pub fn home() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
@@ -425,25 +432,122 @@ impl Library {
                 false,
             ),
         };
-        Self {
+        let index = crate::index::Index::load();
+        let mut systems = systems;
+        if let Some(ix) = &index {
+            for (name, _) in ix.systems() {
+                if systems.iter().any(|s| s.name == name) {
+                    continue;
+                }
+                let (core, exts) = crate::index::catalog(&name)
+                    .map(|(_, c, e)| (c.to_string(), e.iter().map(|x| x.to_string()).collect()))
+                    .unwrap_or_default();
+                systems.push(System {
+                    name: name.clone(),
+                    dir: String::new(),
+                    core,
+                    extensions: exts,
+                    video: "super".into(),
+                    options: BTreeMap::new(),
+                    devices: Vec::new(),
+                    runahead: 0,
+                    rewind: false,
+                    analog_dpad: None,
+                    player: String::new(),
+                });
+            }
+        }
+        let mut lib = Self {
             systems,
             retroarch,
             core_dir,
             config_dir,
             switching,
+            index,
+        };
+        // Systems with nothing to show hide, unless that would empty the list.
+        let kept: Vec<System> = lib
+            .systems
+            .iter()
+            .filter(|s| s.is_video() || lib.count(s) > 0)
+            .cloned()
+            .collect();
+        if !kept.is_empty() {
+            lib.systems = kept;
         }
+        lib
+    }
+
+    /// Index entries of a system, one per title: regional variants collapse
+    /// onto the preferred region and multi disc games onto disc 1.
+    fn indexed(&self, system: &System) -> Option<Vec<Game>> {
+        let ix = self.index.as_ref()?;
+        let items = ix.items_of(&system.name);
+        if items.is_empty() {
+            return None;
+        }
+        let rank = |it: &crate::index::Item| -> usize {
+            REGION_ORDER
+                .iter()
+                .position(|r| r.eq_ignore_ascii_case(&it.region))
+                .unwrap_or(REGION_ORDER.len())
+        };
+        let mut best: BTreeMap<String, &crate::index::Item> = BTreeMap::new();
+        for it in items {
+            if it.disc.map(|d| d > 1).unwrap_or(false) {
+                continue;
+            }
+            let key = it.title.to_lowercase();
+            match best.get(&key) {
+                Some(cur) if rank(cur) <= rank(it) => {}
+                _ => {
+                    best.insert(key, it);
+                }
+            }
+        }
+        let mut games: Vec<Game> = best
+            .into_values()
+            .map(|it| Game {
+                title: it.title.clone(),
+                path: it.path.clone(),
+                crt_path: None,
+                folder: false,
+            })
+            .collect();
+        games.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        Some(games)
     }
 
     /// ROMs of a system, sorted by title. Missing directories yield an empty
     /// list. When a folder holds `.m3u` playlists, the disc images they
     /// reference are hidden so a multi disc game shows up once.
     pub fn games(&self, system: &System) -> Vec<Game> {
+        if let Some(g) = self.indexed(system) {
+            return g;
+        }
+        if system.dir.is_empty() {
+            return Vec::new();
+        }
         self.games_in(system, &expand(&system.dir))
+    }
+
+    /// True when this system lists from the index rather than a folder.
+    pub fn uses_index(&self, system: &System) -> bool {
+        self.index
+            .as_ref()
+            .map(|ix| ix.items.iter().any(|i| i.system == system.name))
+            .unwrap_or(false)
     }
 
     /// Files matching a system's extensions under `dir` (a folder of a
     /// system), counted through subfolders up to three levels deep.
     pub fn count(&self, system: &System) -> usize {
+        if let Some(g) = self.indexed(system) {
+            return g.len();
+        }
+        if system.dir.is_empty() {
+            return 0;
+        }
         fn walk(dir: &Path, system: &System, depth: u32) -> usize {
             let Ok(rd) = std::fs::read_dir(dir) else {
                 return 0;

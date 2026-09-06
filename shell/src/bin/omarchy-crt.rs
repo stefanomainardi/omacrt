@@ -10,7 +10,7 @@ use omarchy_crt_shell::crt::output::{self, Connector, Modeline};
 use omarchy_crt_shell::crt::{Config, State, audio, bios, launcher, roms};
 use omarchy_crt_shell::library::{self, Library};
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::exit;
 
 const HELP: &str = "\
@@ -28,8 +28,13 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   dac status|reset|csync and|xor|separate|watch
   bios [--json]            BIOS files the cores expect
   bios import DIR [--all]  copy BIOS files from another collection
-  library scan [--json]    systems, folders, game counts, cores
-  library link DIR [--write]  adopt a RePlayOS or Batocera roms folder
+  library [--json]         systems, sources, game counts, cores
+  library scan [DIR...]    index every game under the roots (any layout)
+  library discover         mounted places that look like collections
+  library roots add|remove DIR
+  library assign DIR SYS   tell the scan what a folder holds
+  library unknown          files the scan could not place
+  library systems          the systems catalogue
   doctor                   checks with plain answers
   config                   config file path and contents
 
@@ -672,45 +677,138 @@ fn cmd_bios(args: &[String]) {
 }
 
 fn cmd_library(args: &[String]) {
-    let lib = library();
+    use omarchy_crt_shell::index::{self, Index, LibraryConfig};
     let pos = positional(args);
     match pos.first().map(|s| s.as_str()) {
-        Some("link") => {
-            let Some(dir) = pos.get(1) else {
-                die("library link needs the roms directory")
-            };
-            let root = PathBuf::from(dir);
-            if !root.is_dir() {
-                die(&format!("{dir} is not a directory"));
-            }
-            let (systems, linked) = roms::link(&root, &lib.systems);
-            if linked.is_empty() {
-                die("no known system folder found there");
-            }
-            for l in &linked {
-                println!("{:<16} -> {:<12} {} files", l.folder, l.system, l.files);
-            }
-            let text = roms::systems_toml(&systems, lib.switching);
-            if has(args, "--write") {
-                let path = library::default_path();
-                if path.exists() {
-                    let backup = path.with_extension("toml.bak");
-                    let _ = std::fs::copy(&path, &backup);
-                    println!("previous file kept as {}", backup.display());
+        Some("scan") => {
+            let mut lc = LibraryConfig::load();
+            let given: Vec<PathBuf> = pos[1..].iter().map(PathBuf::from).collect();
+            for g in &given {
+                if !g.is_dir() {
+                    die(&format!("{} is not a directory", g.display()));
                 }
-                if let Some(p) = path.parent() {
-                    let _ = std::fs::create_dir_all(p);
+                let canon = std::fs::canonicalize(g).unwrap_or(g.clone());
+                if !lc.roots.contains(&canon) {
+                    lc.roots.push(canon);
                 }
-                std::fs::write(&path, text).unwrap_or_else(|e| die(&e.to_string()));
-                println!("written {}", path.display());
-            } else {
+            }
+            if lc.roots.is_empty() {
+                let found = index::discover();
+                if found.is_empty() {
+                    die("nothing to scan: pass a folder, e.g. omarchy-crt library scan ~/Games");
+                }
+                println!("no roots configured, using what looks like a collection:");
+                for f in &found {
+                    println!("  {}", f.display());
+                }
+                lc.roots = found;
+            }
+            lc.save().unwrap_or_else(|e| die(&e.to_string()));
+            let quiet = has(args, "--quiet");
+            let started = std::time::Instant::now();
+            let mut last = String::new();
+            let ix = index::scan(&lc.roots, &lc.hints(), |dir| {
+                if !quiet && dir != last {
+                    eprint!("\r\x1b[2K  {dir}");
+                    last = dir.to_string();
+                }
+            });
+            if !quiet {
+                eprint!("\r\x1b[2K");
+            }
+            ix.save().unwrap_or_else(|e| die(&e.to_string()));
+            let secs = started.elapsed().as_secs_f32();
+            println!(
+                "{} games in {} systems, {:.1} s",
+                ix.items.len(),
+                ix.systems().len(),
+                secs
+            );
+            for (system, n) in ix.systems() {
+                let label = index::catalog(&system)
+                    .map(|(l, _, _)| l)
+                    .unwrap_or("unknown to the catalogue");
+                println!("  {:<12} {:>6}  {}", system, n, label);
+            }
+            if !ix.unknown.is_empty() {
                 println!(
-                    "\n{text}\nRun again with --write to save it as {}.",
-                    library::default_path().display()
+                    "{} file(s) with no system; folders involved:",
+                    ix.unknown.len()
+                );
+                let mut dirs: std::collections::BTreeMap<PathBuf, usize> = Default::default();
+                for u in &ix.unknown {
+                    if let Some(d) = u.parent() {
+                        *dirs.entry(d.to_path_buf()).or_default() += 1;
+                    }
+                }
+                for (d, n) in dirs.iter().take(12) {
+                    println!("  {:>5}  {}", n, d.display());
+                }
+                println!("assign one with: omarchy-crt library assign <folder> <system>");
+            }
+        }
+        Some("discover") => {
+            for f in index::discover() {
+                println!("{}", f.display());
+            }
+        }
+        Some("roots") => {
+            let mut lc = LibraryConfig::load();
+            match (pos.get(1).map(|s| s.as_str()), pos.get(2)) {
+                (Some("add"), Some(d)) => {
+                    let p =
+                        std::fs::canonicalize(d).unwrap_or_else(|_| die(&format!("{d} not found")));
+                    if !lc.roots.contains(&p) {
+                        lc.roots.push(p);
+                    }
+                    lc.save().unwrap_or_else(|e| die(&e.to_string()));
+                }
+                (Some("remove"), Some(d)) => {
+                    let p = std::fs::canonicalize(d).unwrap_or(PathBuf::from(d));
+                    lc.roots.retain(|r| *r != p && r != Path::new(d));
+                    lc.save().unwrap_or_else(|e| die(&e.to_string()));
+                }
+                _ => {}
+            }
+            for r in &lc.roots {
+                println!(
+                    "{}{}",
+                    r.display(),
+                    if r.is_dir() { "" } else { "  (not mounted)" }
                 );
             }
         }
+        Some("assign") => {
+            let (Some(path), Some(system)) = (pos.get(1), pos.get(2)) else {
+                die("library assign needs a folder (or file) and a system name");
+            };
+            if index::catalog(system).is_none() {
+                eprintln!("note: {system} is not in the catalogue, it will list without a core");
+            }
+            let mut lc = LibraryConfig::load();
+            let p = std::fs::canonicalize(path).unwrap_or(PathBuf::from(path));
+            lc.hints.insert(p.display().to_string(), system.to_string());
+            lc.save().unwrap_or_else(|e| die(&e.to_string()));
+            println!(
+                "{} -> {system}; run `omarchy-crt library scan` to apply",
+                p.display()
+            );
+        }
+        Some("unknown") => {
+            let Some(ix) = Index::load() else {
+                die("no index yet, run omarchy-crt library scan")
+            };
+            for u in &ix.unknown {
+                println!("{}", u.display());
+            }
+        }
+        Some("systems") => {
+            for (s, label, core, exts) in index::CATALOG {
+                println!("{:<12} {:<28} {:<20} {}", s, label, core, exts.join(","));
+            }
+        }
         _ => {
+            let lib = library();
             let scan = roms::scan(&lib);
             if has(args, "--json") {
                 let rows: Vec<Value> = scan
@@ -719,6 +817,15 @@ fn cmd_library(args: &[String]) {
                     .collect();
                 println!("{}", Value::Array(rows));
                 return;
+            }
+            let ix = Index::load();
+            if let Some(ix) = &ix {
+                println!("index: {} games, scanned {}", ix.items.len(), ix.scanned_at);
+                for r in &ix.roots {
+                    println!("  root {}", r.display());
+                }
+            } else {
+                println!("no index: run `omarchy-crt library scan <folder>`");
             }
             for s in &scan {
                 let note = if !s.exists {

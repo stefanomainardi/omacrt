@@ -161,6 +161,14 @@ cargo build --release
 See [`shell/README.md`](shell/README.md) for every flag, the menu file format
 and the timeline.
 
+## The library scans anything
+
+Point `omarchy-crt library scan` at a disk and it works out what every file
+is: extension, the words in the folder names, disc image signatures, the
+names inside zips. No renaming, no fixed folder scheme. Regional variants
+collapse onto one title, systems show up when they have games. Details in
+[docs/systems.md](docs/systems.md).
+
 ## Repository layout
 
 - **`docs/`** research and decisions: the 15 kHz study, the video policy, the
@@ -180,8 +188,8 @@ and the timeline.
 - **`scripts/vm.sh`** throwaway Omarchy VM for kernel packaging tests.
 - **`shell/`** the native launcher (`omarchy-crt-shell`) and the CLI
   (`omarchy-crt`) that turns the desktop into a CRT station: modeline, DAC
-  composite sync, audio routing, launcher, window rules, library and BIOS
-  checks. See [docs/cli.md](docs/cli.md).
+  composite sync, audio routing, launcher, window rules, the game index and
+  BIOS checks. See [docs/cli.md](docs/cli.md).
 
 ## Roadmap
 

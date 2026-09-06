@@ -17,8 +17,9 @@ omarchy-crt audio crt|desktop|all|apps
 omarchy-crt dac status|reset|csync and|xor|separate|watch
 omarchy-crt bios [--json]
 omarchy-crt bios import DIR [--all]
-omarchy-crt library scan [--json]
-omarchy-crt library link DIR [--write]
+omarchy-crt library [--json]
+omarchy-crt library scan [DIR...]
+omarchy-crt library discover | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
 omarchy-crt doctor
 omarchy-crt config
 ```
@@ -81,13 +82,12 @@ pal  = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"   # 15.63 kHz, 50.
 
 ## Library and BIOS
 
-`library scan` lists every system with its folder, game count, files with
-unknown extensions and whether the core is installed. `library link DIR`
-reads a ROM collection laid out the RePlayOS or Batocera way
-(`nintendo_nes`, `sony_psx`, `sega_dc`, ...), maps each folder to a system
-and core available on Arch, prints the resulting `systems.toml` and writes it
-with `--write` (the previous file is kept as `systems.toml.bak`). Nothing is
-copied, the systems point at the collection.
+`library scan DIR...` indexes every game under the given folders, whatever
+their layout, and remembers the folders as roots; without arguments it
+rescans the roots, or discovers mounted disks that look like collections.
+`library` shows systems with counts and sources, `library unknown` the files
+it could not place and `library assign FOLDER SYSTEM` teaches it. See
+[docs/systems.md](systems.md) for the detection rules.
 
 `bios` checks the files each core expects in RetroArch's system directory,
 `MISS` for required files of systems you actually have. `bios import DIR`

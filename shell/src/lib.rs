@@ -3,6 +3,7 @@
 //! by both the launcher (`omarchy-crt-shell`) and the CLI (`omarchy-crt`).
 
 pub mod crt;
+pub mod index;
 pub mod library;
 pub mod player;
 pub mod profile;
