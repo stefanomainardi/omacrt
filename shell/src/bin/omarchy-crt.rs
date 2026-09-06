@@ -24,7 +24,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   mode [ntsc|pal] [--lines N]  standard and active lines (224 for SNES); no args = full frame
   shell start|stop|restart|focus
   focus                    keyboard focus to the launcher
-  audio crt|desktop
+  audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
   dac status|reset|csync and|xor|separate|watch
   bios [--json]            BIOS files the cores expect
   bios import DIR [--all]  copy BIOS files from another collection
@@ -76,6 +76,14 @@ fn open_dac(conn: &Connector) -> Result<Dac, String> {
         return Err(format!("no RGB-Pi 2 at 0x78 on {bus}"));
     }
     Ok(dac)
+}
+
+/// Sink the launcher should play on: the DAC's when audio routing is on.
+fn crt_sink(cfg: &Config, conn: &Connector) -> Option<String> {
+    if !cfg.audio.route {
+        return None;
+    }
+    audio::target(conn).map(|t| t.sink)
 }
 
 fn library() -> Library {
@@ -388,7 +396,8 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
         match audio::target(&conn) {
             Some(t) => {
                 let mut state = State::load();
-                let note = audio::route_to_crt(&t, cfg.audio.volume, &mut state);
+                let note =
+                    audio::route_to_crt(&t, cfg.audio.volume, cfg.audio.system_default, &mut state);
                 state.save();
                 println!("audio:      {note}");
             }
@@ -398,7 +407,7 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
     compositor_fullscreen_policy(true);
     output::workspace_rule(&conn.name);
     output::window_rules(&conn.name);
-    match launcher::start(cfg, &conn.name) {
+    match launcher::start(cfg, &conn.name, crt_sink(cfg, &conn).as_deref()) {
         Ok(note) => {
             println!("launcher:   {note}");
             launcher::focus();
@@ -798,7 +807,8 @@ fn main() {
                     let conn = connector(&cfg);
                     println!(
                         "{}",
-                        launcher::start(&cfg, &conn.name).unwrap_or_else(|e| die(&e))
+                        launcher::start(&cfg, &conn.name, crt_sink(&cfg, &conn).as_deref())
+                            .unwrap_or_else(|e| die(&e))
                     );
                     launcher::focus();
                 }
@@ -809,7 +819,8 @@ fn main() {
                     let conn = connector(&cfg);
                     println!(
                         "{}",
-                        launcher::start(&cfg, &conn.name).unwrap_or_else(|e| die(&e))
+                        launcher::start(&cfg, &conn.name, crt_sink(&cfg, &conn).as_deref())
+                            .unwrap_or_else(|e| die(&e))
                     );
                     launcher::focus();
                 }
@@ -836,10 +847,39 @@ fn main() {
             match positional(args).first().map(|s| s.as_str()) {
                 Some("crt") => println!(
                     "{}",
-                    audio::route_to_crt(&target, cfg.audio.volume, &mut state)
+                    audio::route_to_crt(
+                        &target,
+                        cfg.audio.volume,
+                        cfg.audio.system_default,
+                        &mut state
+                    )
                 ),
                 Some("desktop") => println!("{}", audio::route_back(&mut state)),
-                _ => die("audio needs crt or desktop"),
+                Some("all") => {
+                    if state.previous_sink.is_empty() {
+                        if let Some(prev) = audio::default_sink() {
+                            if prev != target.sink {
+                                state.previous_sink = prev;
+                            }
+                        }
+                    }
+                    omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &target.sink]);
+                    println!("system default: {}", target.sink);
+                }
+                Some("apps") => {
+                    if !state.previous_sink.is_empty() {
+                        omarchy_crt_shell::crt::run(
+                            "pactl",
+                            &["set-default-sink", &state.previous_sink],
+                        );
+                        println!("system default: {}", state.previous_sink);
+                        state.previous_sink.clear();
+                    } else if let Some(other) = audio::other_sink(&target.sink) {
+                        omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &other]);
+                        println!("system default: {other}");
+                    }
+                }
+                _ => die("audio needs crt, desktop, all or apps"),
             }
             state.save();
         }

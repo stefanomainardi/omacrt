@@ -43,7 +43,8 @@ Panel {
   readonly property bool lockLost: !!(dac.present && dac.lock === "lost")
   readonly property string standard: String(status.standard || "ntsc")
   readonly property string csync: String(dac.csync || "")
-  readonly property bool audioOnTv: !!(audio && audio.routed && audio["default"])
+  readonly property bool audioOnTv: !!(audio && audio.routed)
+  readonly property bool audioAll: !!(audio && audio["default"])
   readonly property bool shellRunning: shell.running === true
   readonly property int biosMissing: Number(bios.missing || 0)
   readonly property var missingCores: (library.missing_cores || [])
@@ -316,7 +317,7 @@ Panel {
                 Key { text: root.mode ? (root.mode.width + "x" + root.mode.height) : "--"; color: root.active ? root.phosphor : root.muted; opacity: 0.85 }
                 Key { text: "DAC " + (root.dac.present ? String(root.dac.lock).toUpperCase() : "NONE"); color: root.lockLost ? root.urgent : (root.active ? root.phosphor : root.muted); opacity: 0.85 }
                 Key { text: "CSYNC " + (root.csync ? root.csync.toUpperCase() : "--"); color: root.active ? root.phosphor : root.muted; opacity: 0.85 }
-                Key { text: "AUDIO " + (root.audioOnTv ? "TV" : "DESK"); color: root.active ? root.phosphor : root.muted; opacity: 0.85 }
+                Key { text: "AUDIO " + (root.audioAll ? "ALL" : (root.audioOnTv ? "TV" : "DESK")); color: root.active ? root.phosphor : root.muted; opacity: 0.85 }
               }
             }
 
@@ -419,11 +420,20 @@ Panel {
           Toggle {
             width: parent.width
             visible: !!root.audio
-            label: "Audio to the TV"
-            description: root.audio ? (root.audioOnTv ? "HDMI audio follows the picture, default sink" : "desktop speakers, " + String(root.audio.profile || "")) : ""
+            label: "Games audio on the TV"
+            description: root.audioOnTv ? "launcher, RetroArch and mpv play through the DAC" : "everything stays on the desktop speakers"
             checked: root.audioOnTv
             foreground: root.fg
             onClicked: root.runAction(["audio", root.audioOnTv ? "desktop" : "crt"])
+          }
+          Toggle {
+            width: parent.width
+            visible: !!root.audio && root.audioOnTv
+            label: "Whole system on the TV"
+            description: root.audioAll ? "the CRT is the default sink for every app" : "desktop apps keep their own output"
+            checked: root.audioAll
+            foreground: root.fg
+            onClicked: root.runAction(["audio", root.audioAll ? "apps" : "all"])
           }
           Toggle {
             width: parent.width

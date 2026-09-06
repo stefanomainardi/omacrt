@@ -77,9 +77,12 @@ pub struct Shell {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Audio {
-    /// Route HDMI audio to the DAC while on, make it the default sink and
-    /// move running streams there.
+    /// Enable the DAC's HDMI audio profile while on and send the launcher,
+    /// RetroArch and mpv there. Desktop audio stays where it is.
     pub route: bool,
+    /// Also make the CRT the system default sink while on (everything plays
+    /// on the television). Off by default.
+    pub system_default: bool,
     /// Sink volume applied to the CRT output, percent.
     pub volume: u32,
 }
@@ -121,6 +124,7 @@ impl Default for Audio {
     fn default() -> Self {
         Self {
             route: true,
+            system_default: false,
             volume: 100,
         }
     }
@@ -160,8 +164,11 @@ bin = "omarchy-crt-shell"
 args = ["--fullscreen", "--stretch", "--auto-boot"]
 
 [audio]
-# Send HDMI audio to the DAC while on and make it the default sink.
+# Enable the DAC's HDMI audio while on and send the launcher, RetroArch and
+# mpv there. Desktop sounds stay on the desktop.
 route = true
+# Also make the CRT the system default sink while on (everything on the TV).
+system_default = false
 # Sink volume for the CRT, percent.
 volume = 100
 "#;

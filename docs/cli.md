@@ -13,7 +13,7 @@ omarchy-crt toggle
 omarchy-crt mode ntsc|pal [--lines N]
 omarchy-crt shell start|stop|restart|focus
 omarchy-crt focus
-omarchy-crt audio crt|desktop
+omarchy-crt audio crt|desktop|all|apps
 omarchy-crt dac status|reset|csync and|xor|separate|watch
 omarchy-crt bios [--json]
 omarchy-crt bios import DIR [--all]
@@ -30,10 +30,13 @@ omarchy-crt config
    config.
 2. Waits a second for the DAC to lock, then selects the composite sync mode
    over I2C (`output.csync`, `xor` by default).
-3. Switches the GPU audio card to the DAC's HDMI profile, sets the sink volume
-   (`audio.volume`, 100 by default), makes it the default sink and moves the
-   launcher, RetroArch and mpv streams there. The previous profile and sink
-   are remembered.
+3. Switches the GPU audio card to the DAC's HDMI profile and sets the sink
+   volume (`audio.volume`, 100 by default). The launcher starts with
+   `PULSE_SINK` and `PIPEWIRE_NODE` pointing at that sink, so it, RetroArch and
+   mpv play on the television while the desktop keeps its own output.
+   Streams already open are moved. `audio.system_default = true` (or `audio
+all` from the panel) makes the CRT the default sink for everything; the
+   previous profile and sink are remembered.
 4. Tells Hyprland that a new fullscreen window takes over and that the window
    underneath gets fullscreen back when it exits, and pins the launcher,
    RetroArch and mpv to the CRT output.

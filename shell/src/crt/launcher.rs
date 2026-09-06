@@ -59,7 +59,10 @@ pub fn pids() -> Vec<u32> {
         .collect()
 }
 
-pub fn start(cfg: &Config, output_name: &str) -> Result<String, String> {
+/// Start the launcher on the CRT output. `sink` is the PipeWire sink the
+/// launcher and everything it spawns should play on; it travels through
+/// `PULSE_SINK` and `PIPEWIRE_NODE`, which SDL, RetroArch and mpv honour.
+pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<String, String> {
     let bin =
         binary(cfg).ok_or_else(|| format!("launcher binary not found ({})", cfg.shell.bin))?;
     if !pids().is_empty() {
@@ -74,6 +77,9 @@ pub fn start(cfg: &Config, output_name: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(bin);
+    if let Some(s) = sink {
+        cmd.env("PULSE_SINK", s).env("PIPEWIRE_NODE", s);
+    }
     cmd.args(&cfg.shell.args)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))

@@ -132,18 +132,12 @@ pub fn move_streams(sink: &str) -> usize {
     n
 }
 
-/// Card profile to the DAC pin, sink volume, default sink, streams moved.
-pub fn route_to_crt(t: &Target, volume: u32, state: &mut State) -> String {
+/// Card profile to the DAC pin, sink volume, our streams moved there. With
+/// `system_default` the CRT also becomes the default sink for everything.
+pub fn route_to_crt(t: &Target, volume: u32, system_default: bool, state: &mut State) -> String {
     if let Some(prev) = active_profile(&t.card) {
         if prev != t.profile && state.previous_profile.is_empty() {
             state.previous_profile = prev;
-        }
-    }
-    if state.previous_sink.is_empty() {
-        if let Some(prev) = default_sink() {
-            if prev != t.sink {
-                state.previous_sink = prev;
-            }
         }
     }
     state.audio_card = t.card.clone();
@@ -154,13 +148,43 @@ pub fn route_to_crt(t: &Target, volume: u32, state: &mut State) -> String {
         &["set-sink-volume", &t.sink, &format!("{volume}%")],
     );
     run("pactl", &["set-sink-mute", &t.sink, "0"]);
-    run("pactl", &["set-default-sink", &t.sink]);
+    if system_default {
+        if state.previous_sink.is_empty() {
+            if let Some(prev) = default_sink() {
+                if prev != t.sink {
+                    state.previous_sink = prev;
+                }
+            }
+        }
+        run("pactl", &["set-default-sink", &t.sink]);
+    }
     let moved = move_streams(&t.sink);
-    format!("{} at {volume}%, {moved} stream(s) moved", t.sink)
+    format!(
+        "{} at {volume}%, {moved} stream(s) moved{}",
+        t.sink,
+        if system_default {
+            ", system default"
+        } else {
+            ""
+        }
+    )
 }
 
-/// Undo `route_to_crt` from the saved state.
+/// Undo `route_to_crt` from the saved state. Our streams go back to the
+/// desktop default sink; the system default is restored only when `on`
+/// changed it.
 pub fn route_back(state: &mut State) -> String {
+    let mut note = String::from("desktop");
+    if !state.previous_sink.is_empty() {
+        run("pactl", &["set-default-sink", &state.previous_sink]);
+        note = state.previous_sink.clone();
+    }
+    if let Some(def) = default_sink() {
+        move_streams(&def);
+        if state.previous_sink.is_empty() {
+            note = def;
+        }
+    }
     if !state.audio_card.is_empty() && !state.previous_profile.is_empty() {
         run(
             "pactl",
@@ -170,12 +194,6 @@ pub fn route_back(state: &mut State) -> String {
                 &state.previous_profile,
             ],
         );
-    }
-    let mut note = String::from("desktop");
-    if !state.previous_sink.is_empty() {
-        run("pactl", &["set-default-sink", &state.previous_sink]);
-        move_streams(&state.previous_sink);
-        note = state.previous_sink.clone();
     }
     state.previous_profile.clear();
     state.previous_sink.clear();
