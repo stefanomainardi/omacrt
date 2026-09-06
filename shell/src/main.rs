@@ -430,6 +430,13 @@ fn run(args: &Args) -> Result<(), String> {
     }
 
     let mut pump = sdl.event_pump()?;
+    let control = match omarchy_crt_shell::crt::control::listen() {
+        Ok(rx) => Some(rx),
+        Err(e) => {
+            eprintln!("control pipe: {e}");
+            None
+        }
+    };
     let mut child: Option<std::process::Child> = None;
     // The compositor hands fullscreen to the emulator while it runs and does
     // not give it back when it exits, so the shell re-asserts it itself.
@@ -468,34 +475,32 @@ fn run(args: &Args) -> Result<(), String> {
                 reassert_fullscreen(canvas.window_mut());
             }
         }
+        // Real events and control-pipe lines share one handling path.
+        let mut inputs: Vec<Input> = Vec::new();
         for ev in pump.poll_iter() {
-            let mut start = false;
-            let mut nav = None;
-            let mut fire = false;
-            let mut fav = false;
-            let mut alt = false;
+            let mut inp = Input::default();
             match ev {
-                Event::Quit { .. } => break 'main,
+                Event::Quit { .. } => inp.quit = true,
                 Event::KeyDown {
                     keycode: Some(k),
                     repeat: false,
                     ..
                 } => match k {
                     Keycode::Q => break 'main,
-                    Keycode::Escape | Keycode::Backspace => nav = Some(Nav::Back),
+                    Keycode::Escape | Keycode::Backspace => inp.nav = Some(Nav::Back),
                     Keycode::Space | Keycode::Return => {
-                        start = true;
-                        fire = true;
+                        inp.start = true;
+                        inp.fire = true;
                     }
-                    Keycode::Up | Keycode::K => nav = Some(Nav::Up),
-                    Keycode::Down | Keycode::J => nav = Some(Nav::Down),
-                    Keycode::Left | Keycode::H => nav = Some(Nav::Left),
-                    Keycode::Right | Keycode::L => nav = Some(Nav::Right),
-                    Keycode::F => fav = true,
-                    Keycode::X => alt = true,
+                    Keycode::Up | Keycode::K => inp.nav = Some(Nav::Up),
+                    Keycode::Down | Keycode::J => inp.nav = Some(Nav::Down),
+                    Keycode::Left | Keycode::H => inp.nav = Some(Nav::Left),
+                    Keycode::Right | Keycode::L => inp.nav = Some(Nav::Right),
+                    Keycode::F => inp.fav = true,
+                    Keycode::X => inp.alt = true,
                     _ => {}
                 },
-                Event::MouseButtonDown { .. } => start = true,
+                Event::MouseButtonDown { .. } => inp.start = true,
                 Event::ControllerDeviceAdded { which, .. } => {
                     if let Ok(c) = gcs.open(which) {
                         scene.set_pad(Some(&c.name()));
@@ -512,24 +517,47 @@ fn run(args: &Args) -> Result<(), String> {
                 Event::ControllerAxisMotion { axis, value, .. } => stick.set(axis, value),
                 Event::ControllerButtonDown { button, .. } => match button {
                     Button::A | Button::Start => {
-                        start = true;
-                        fire = true;
+                        inp.start = true;
+                        inp.fire = true;
                     }
-                    Button::DPadUp => nav = Some(Nav::Up),
-                    Button::DPadDown => nav = Some(Nav::Down),
-                    Button::DPadLeft => nav = Some(Nav::Left),
-                    Button::DPadRight => nav = Some(Nav::Right),
-                    Button::B | Button::Back => nav = Some(Nav::Back),
-                    Button::Y => fav = true,
-                    Button::X => alt = true,
+                    Button::DPadUp => inp.nav = Some(Nav::Up),
+                    Button::DPadDown => inp.nav = Some(Nav::Down),
+                    Button::DPadLeft => inp.nav = Some(Nav::Left),
+                    Button::DPadRight => inp.nav = Some(Nav::Right),
+                    Button::B | Button::Back => inp.nav = Some(Nav::Back),
+                    Button::Y => inp.fav = true,
+                    Button::X => inp.alt = true,
                     _ => {}
                 },
                 _ => {}
             }
+            inputs.push(inp);
+        }
+        if let Some(rx) = &control {
+            for line in rx.try_iter() {
+                match control_input(&line) {
+                    Some(inp) => inputs.push(inp),
+                    None => eprintln!("control: unknown input {line}"),
+                }
+            }
+        }
+        for inp in inputs {
+            if inp.quit {
+                break 'main;
+            }
+            let Input {
+                start,
+                nav,
+                fire,
+                fav,
+                alt,
+                ..
+            } = inp;
+
             let is_input = start || nav.is_some() || fire || fav || alt;
             if scene.is_running() {
                 if scene.player_active() && is_input {
-                    scene.player_input(nav, fire && !start_only(&ev));
+                    scene.player_input(nav, fire);
                 }
                 continue;
             }
@@ -638,8 +666,34 @@ fn run(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
-fn start_only(_ev: &Event) -> bool {
-    false
+/// One user input, from a key, a pad button or the control pipe.
+#[derive(Default)]
+struct Input {
+    start: bool,
+    nav: Option<Nav>,
+    fire: bool,
+    fav: bool,
+    alt: bool,
+    quit: bool,
+}
+
+fn control_input(line: &str) -> Option<Input> {
+    let mut inp = Input::default();
+    match omarchy_crt_shell::crt::control::normalize(line)? {
+        "up" => inp.nav = Some(Nav::Up),
+        "down" => inp.nav = Some(Nav::Down),
+        "left" => inp.nav = Some(Nav::Left),
+        "right" => inp.nav = Some(Nav::Right),
+        "back" => inp.nav = Some(Nav::Back),
+        "fav" => inp.fav = true,
+        "alt" => inp.alt = true,
+        "start" => inp.start = true,
+        _ => {
+            inp.start = true;
+            inp.fire = true;
+        }
+    }
+    Some(inp)
 }
 
 fn scene_time(scene: &Scene, now: f64) -> f64 {

@@ -4,6 +4,7 @@
 
 pub mod audio;
 pub mod bios;
+pub mod control;
 pub mod dac;
 pub mod launcher;
 pub mod output;

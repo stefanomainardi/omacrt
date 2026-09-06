@@ -7,7 +7,7 @@
 
 use omarchy_crt_shell::crt::dac::{Csync, Dac, Lock};
 use omarchy_crt_shell::crt::output::{self, Connector, Modeline};
-use omarchy_crt_shell::crt::{Config, State, audio, bios, launcher, roms};
+use omarchy_crt_shell::crt::{self, Config, State, audio, bios, launcher, roms};
 use omarchy_crt_shell::library::{self, Library};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -24,6 +24,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   mode [ntsc|pal] [--lines N] [--shift-x X] [--shift-y Y]
                            standard, active lines, picture shift; no args = full frame
   shell start|stop|restart|focus
+  shell key <input>...           drive the launcher: up down left right fire back fav alt
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
   dac status|reset|csync and|xor|separate|watch
@@ -1046,6 +1047,24 @@ fn main() {
                     launcher::focus();
                 }
                 "focus" => println!("{}", launcher::focus().1),
+                "key" => {
+                    let names: Vec<&str> = positional(args)
+                        .iter()
+                        .skip(1)
+                        .map(|n| {
+                            crt::control::normalize(n).unwrap_or_else(|| {
+                                die(&format!(
+                                    "unknown input {n}; one of {}",
+                                    crt::control::INPUTS.join(", ")
+                                ))
+                            })
+                        })
+                        .collect();
+                    if names.is_empty() {
+                        die("shell key needs at least one input name");
+                    }
+                    crt::control::send(&names).unwrap_or_else(|e| die(&e.to_string()));
+                }
                 _ => {
                     let pids = launcher::pids();
                     println!(

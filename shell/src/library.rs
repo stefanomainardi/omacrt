@@ -7,7 +7,7 @@
 //! override so its own menu never shows up.
 
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -166,6 +166,11 @@ pub struct Library {
     /// Systems found there list from it; systems without index entries
     /// fall back to their folder.
     pub index: Option<crate::index::Index>,
+    /// Named lists from `collections/*.txt`, resolved once at load time:
+    /// the launcher reads them every frame on two screens.
+    collections: Vec<(String, Vec<(usize, PathBuf)>)>,
+    /// System of every indexed file, for constant time `system_of`.
+    path_system: HashMap<PathBuf, usize>,
 }
 
 /// Regions in the order a duplicate title picks its variant.
@@ -483,6 +488,8 @@ impl Library {
             config_dir,
             switching,
             index,
+            collections: Vec::new(),
+            path_system: HashMap::new(),
         };
         // Systems with nothing to show hide, unless that would empty the list.
         let kept: Vec<System> = lib
@@ -494,7 +501,25 @@ impl Library {
         if !kept.is_empty() {
             lib.systems = kept;
         }
+        lib.path_system = match &lib.index {
+            Some(ix) => ix
+                .items
+                .iter()
+                .filter_map(|it| {
+                    let sys = lib.systems.iter().position(|s| s.name == it.system)?;
+                    Some((it.path.clone(), sys))
+                })
+                .collect(),
+            None => HashMap::new(),
+        };
+        lib.collections = lib.load_collections();
         lib
+    }
+
+    /// The named collections, sorted by name, each with its games resolved
+    /// to a system.
+    pub fn collections(&self) -> &[(String, Vec<(usize, PathBuf)>)] {
+        &self.collections
     }
 
     /// Index entries of a system, one per title: regional variants collapse
@@ -552,7 +577,7 @@ impl Library {
 
     /// Curated lists: `~/.config/omarchy-crt/collections/<Name>.txt`, one
     /// absolute game path per line. Returns (name, [(system index, path)]).
-    pub fn collections(&self) -> Vec<(String, Vec<(usize, PathBuf)>)> {
+    fn load_collections(&self) -> Vec<(String, Vec<(usize, PathBuf)>)> {
         let dir = self.config_dir.join("collections");
         let Ok(rd) = std::fs::read_dir(&dir) else {
             return Vec::new();
@@ -588,10 +613,8 @@ impl Library {
     /// Index of the system a game file belongs to: from the index when it
     /// knows the file, else from the folder the file sits in.
     pub fn system_of(&self, path: &Path) -> Option<usize> {
-        if let Some(ix) = &self.index {
-            if let Some(it) = ix.items.iter().find(|i| i.path == path) {
-                return self.systems.iter().position(|s| s.name == it.system);
-            }
+        if let Some(&i) = self.path_system.get(path) {
+            return Some(i);
         }
         self.systems
             .iter()
