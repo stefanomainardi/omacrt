@@ -127,7 +127,7 @@ fn status(cfg: &Config) -> Value {
             let h = m["height"].as_u64().unwrap_or(0) as u32;
             let disabled = m["disabled"].as_bool().unwrap_or(false);
             let mut mode = json!({ "width": w, "height": h, "refresh_hz": m["refreshRate"], "disabled": disabled });
-            for std in ["ntsc", "pal"] {
+            for std in ["ntsc", "pal", "film"] {
                 if let Some(ml) = cfg.modeline(std).and_then(Modeline::parse) {
                     if !disabled && ml.width() == w && (h == ml.height() || h == state.lines) {
                         st["active"] = json!(true);
@@ -987,8 +987,8 @@ fn main() {
                 state.standard.clone()
             };
             let std = pos.first().map(|s| s.as_str()).unwrap_or(current.as_str());
-            if std != "ntsc" && std != "pal" {
-                die("mode needs ntsc or pal");
+            if std != "ntsc" && std != "pal" && std != "film" {
+                die("mode needs ntsc, pal or film");
             }
             let flag = |name: &str| -> Option<i32> {
                 args.iter()

@@ -1022,6 +1022,10 @@ impl Scene {
                         *sel += 1;
                         moved = true;
                     }
+                    Nav::Right if n > 0 => {
+                        *sel = (*sel + SYS_PAGE).min(n - 1);
+                        moved = true;
+                    }
                     Nav::Back | Nav::Left => {
                         self.screen = Screen::Systems { sel: 2, top: 0 };
                         moved = true;

@@ -63,6 +63,9 @@ pub struct Output {
 pub struct Modelines {
     pub ntsc: String,
     pub pal: String,
+    /// 240p at 60.00 Hz for filming the tube with a 60 fps camera: no
+    /// beat between the 60.04 Hz standard timing and the shutter.
+    pub film: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -104,6 +107,7 @@ impl Default for Modelines {
         Self {
             ntsc: "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync".into(),
             pal: "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync".into(),
+            film: "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync".into(),
         }
     }
 }
@@ -159,6 +163,8 @@ standard = "ntsc"
 # Hyprland modelines. Clocks must be whole MHz, Hyprland truncates them.
 ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"
 pal = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"
+# 240p at exactly 60.00 Hz, for filming the tube with a 60 fps camera.
+film = "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync"
 
 [shell]
 bin = "omarchy-crt-shell"
@@ -197,6 +203,7 @@ impl Config {
         match standard {
             "ntsc" => Some(&self.modelines.ntsc),
             "pal" => Some(&self.modelines.pal),
+            "film" => Some(&self.modelines.film),
             _ => None,
         }
     }
