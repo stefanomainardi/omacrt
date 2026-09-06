@@ -99,6 +99,12 @@ scanlines or curvature. The tube provides those.
   state, volume, hints) that appears on every command and stays while paused,
   position saved on quit. Deinterlacing stays off so 480i sources reach the
   tube as fields.
+- **Video fit.** Modern video adapted to the tube the way the analog world did
+  it: 480i or 576i by frame rate, 3:2 pulldown or PAL speed-up for film,
+  letterbox, crop or anamorphic, SD color with HDR tone mapping, a 5% safe
+  area, and a `retro 240p` mode that turns upscaled gameplay captures back
+  into 320x240 pixels. Applied live in mpv, or baked into a `CRT` ready file
+  by ffmpeg with field based scaling. See [`docs/video.md`](docs/video.md).
 - **Sound everywhere.** Clicks under the BIOS typewriter, whooshes on
   submenus, crackle under the laser etch, a scrape and a click when a cartridge
   goes in, all synthesized at startup. No background music.
@@ -149,7 +155,7 @@ and the timeline.
 ## Repository layout
 
 - **`docs/`** research and decisions: the 15 kHz study, the video policy, the
-  systems file and TV profile, controllers.
+  systems file and TV profile, controllers, video on a CRT.
 - **`scripts/crt-probe.sh`** read-only probe of a DRM connector: status, EDID,
   kernel mode list, Hyprland view. Used to test DACs.
 - **`scripts/demo-video.sh`** renders the shell offline from `scripts/demo.txt`

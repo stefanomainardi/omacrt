@@ -19,6 +19,7 @@ pub struct Labels {
     pub accept: &'static str,
     pub back: &'static str,
     pub fav: &'static str,
+    pub alt: &'static str,
 }
 
 impl PadKind {
@@ -64,16 +65,19 @@ impl PadKind {
                 accept: "X",
                 back: "O",
                 fav: "^",
+                alt: "[]",
             },
             PadKind::Keyboard => Labels {
                 accept: "Enter",
                 back: "Esc",
                 fav: "F",
+                alt: "X",
             },
             _ => Labels {
                 accept: "A",
                 back: "B",
                 fav: "Y",
+                alt: "X",
             },
         }
     }

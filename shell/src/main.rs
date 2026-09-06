@@ -21,6 +21,7 @@ mod profile;
 mod scene;
 mod settings;
 mod theme;
+mod videofit;
 
 use audio::Audio;
 use fb::Framebuffer;
@@ -297,6 +298,7 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
                             "right" => scene.navigate(Nav::Right),
                             "back" => scene.navigate(Nav::Back),
                             "fav" => scene.toggle_favorite(),
+                            "convert" => scene.convert_selected(),
                             "fire" => match scene.activate() {
                                 Action::Quit => break,
                                 _ => {}
@@ -452,6 +454,7 @@ fn run(args: &Args) -> Result<(), String> {
             let mut nav = None;
             let mut fire = false;
             let mut fav = false;
+            let mut alt = false;
             match ev {
                 Event::Quit { .. } => break 'main,
                 Event::KeyDown {
@@ -470,6 +473,7 @@ fn run(args: &Args) -> Result<(), String> {
                     Keycode::Left | Keycode::H => nav = Some(Nav::Left),
                     Keycode::Right | Keycode::L => nav = Some(Nav::Right),
                     Keycode::F => fav = true,
+                    Keycode::X => alt = true,
                     _ => {}
                 },
                 Event::MouseButtonDown { .. } => start = true,
@@ -498,11 +502,12 @@ fn run(args: &Args) -> Result<(), String> {
                     Button::DPadRight => nav = Some(Nav::Right),
                     Button::B | Button::Back => nav = Some(Nav::Back),
                     Button::Y => fav = true,
+                    Button::X => alt = true,
                     _ => {}
                 },
                 _ => {}
             }
-            let is_input = start || nav.is_some() || fire || fav;
+            let is_input = start || nav.is_some() || fire || fav || alt;
             if scene.is_running() {
                 if scene.player_active() && is_input {
                     scene.player_input(nav, fire && !start_only(&ev));
@@ -525,6 +530,9 @@ fn run(args: &Args) -> Result<(), String> {
             }
             if fav {
                 scene.toggle_favorite();
+            }
+            if alt {
+                scene.convert_selected();
             }
             if fire {
                 match scene.activate() {

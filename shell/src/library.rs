@@ -65,6 +65,8 @@ struct File {
 pub struct Game {
     pub title: String,
     pub path: PathBuf,
+    /// CRT ready conversion next to the source, when it exists.
+    pub crt_path: Option<PathBuf>,
 }
 
 /// How the display mode follows the game.
@@ -465,11 +467,15 @@ impl Library {
                 .unwrap_or(false)
         };
         let mut games: Vec<Game> = files
-            .into_iter()
-            .filter(|p| accepted(p) && !hidden.contains(p))
-            .map(|path| Game {
-                title: clean_title(&path),
-                path,
+            .iter()
+            .filter(|p| accepted(p) && !hidden.contains(p) && !crate::videofit::is_crt_file(p))
+            .map(|path| {
+                let crt = crate::videofit::crt_path(path);
+                Game {
+                    title: clean_title(path),
+                    crt_path: crt.exists().then_some(crt),
+                    path: path.clone(),
+                }
             })
             .collect();
         // Two files that clean to the same title (regional variants) keep
@@ -549,21 +555,24 @@ impl Library {
             std::fs::write(&input_conf, crate::player::INPUT_CONF)?;
             let osd = self.config_dir.join("mpv-osd.lua");
             std::fs::write(&osd, crate::player::OSD_LUA)?;
-            // `extra` carries the theme colors for the OSD as "accent,dim,paper,selection".
-            let parts: Vec<&str> = extra.split(',').collect();
+            // `extra` carries "accent,dim,paper,selection" then one mpv argument per line.
+            let mut lines = extra.lines();
+            let parts: Vec<&str> = lines.next().unwrap_or("").split(',').collect();
             let colors = if parts.len() == 4 {
                 [parts[0], parts[1], parts[2], parts[3]]
             } else {
                 ["7aa2f7", "565f89", "c0caf5", "292e42"]
             };
-            return Ok(crate::player::command(
-                "mpv",
-                &game.path,
-                &self.mpv_socket(),
-                &input_conf,
-                &osd,
-                colors,
-            ));
+            let fit_args: Vec<String> = lines.map(str::to_string).collect();
+            // A CRT ready file needs no live fitting.
+            let (file, fit_args) = match &game.crt_path {
+                Some(c) => (c.as_path(), Vec::new()),
+                None => (game.path.as_path(), fit_args),
+            };
+            let mut cmd =
+                crate::player::command("mpv", file, &self.mpv_socket(), &input_conf, &osd, colors);
+            cmd.args(fit_args);
+            return Ok(cmd);
         }
         let cfg = self.retroarch_config()?;
         let cores_cfg = self.config_dir.join("cores.cfg");

@@ -19,6 +19,7 @@ use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
 use crate::theme::Theme;
+use crate::videofit::{self, Conversion};
 use std::path::PathBuf;
 
 fn clamp(v: f32, a: f32, b: f32) -> f32 {
@@ -72,6 +73,9 @@ enum Screen {
         top: usize,
     },
     Style {
+        sel: usize,
+    },
+    VideoFit {
         sel: usize,
     },
 }
@@ -139,13 +143,16 @@ const HOME: [(icons::Icon, &str, bool); 7] = [
 ];
 
 /// Settings submenu entries.
-const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 5] = [
+const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 6] = [
     (icons::TV, "TV profile", true),
+    (icons::FIT, "Video fit", true),
     (icons::PAD, "Pads", true),
     (icons::SAVER, "Screensaver", true),
     (icons::BRUSH, "Style", true),
     (icons::PULSE, "Diagnostics", true),
 ];
+
+const FIT_ROWS: usize = 5;
 
 /// A game being launched: the media animation plays, then RetroArch starts.
 struct Launch {
@@ -225,6 +232,7 @@ pub struct Scene {
     launching: Option<Launch>,
     post_clicks: usize,
     player: Option<Player>,
+    conversion: Option<Conversion>,
     mark_cols: i32,
     mark_rows: i32,
     boot_started: bool,
@@ -289,6 +297,7 @@ impl Scene {
             launching: None,
             post_clicks: 0,
             player: None,
+            conversion: None,
             mark_cols,
             mark_rows,
             boot_started: false,
@@ -560,7 +569,8 @@ impl Scene {
         self.pending.push(Sound::Select);
         match sel {
             0 => self.go(Screen::Profile { sel: 0 }),
-            1 => {
+            1 => self.go(Screen::VideoFit { sel: 0 }),
+            2 => {
                 if Bluetooth::available() {
                     self.go(Screen::Pair { sel: 0 });
                     if self.bt.devices.is_empty() {
@@ -570,8 +580,8 @@ impl Scene {
                     self.message = Some(("bluetoothctl not found".into(), self.now + 4.0));
                 }
             }
-            2 => self.go(Screen::Saver { sel: 0 }),
-            3 => {
+            3 => self.go(Screen::Saver { sel: 0 }),
+            4 => {
                 let cur = self.settings.theme.clone();
                 let sel = if cur == "system" {
                     0
@@ -590,6 +600,94 @@ impl Scene {
             }
         }
         Action::None
+    }
+
+    /// Video fit rows: standard, film 24, aspect, overscan, retro 240p.
+    fn adjust_fit(&mut self, row: usize, dir: i32) {
+        fn cycle(cur: &str, opts: &[&str], dir: i32) -> String {
+            let i = opts.iter().position(|o| *o == cur).unwrap_or(0) as i32;
+            opts[(i + dir).rem_euclid(opts.len() as i32) as usize].to_string()
+        }
+        let v = &mut self.settings.video;
+        match row {
+            0 => v.standard = cycle(&v.standard, &["auto", "ntsc", "pal"], dir),
+            1 => v.film24 = cycle(&v.film24, &["pulldown", "speedup"], dir),
+            2 => v.aspect = cycle(&v.aspect, &["letterbox", "crop", "anamorphic"], dir),
+            3 => v.overscan = !v.overscan,
+            4 => v.retro_240p = !v.retro_240p,
+            _ => {}
+        }
+    }
+
+    /// Start converting the selected video for the CRT (X button).
+    pub fn convert_selected(&mut self) {
+        let Screen::Games { sel, .. } = self.screen else {
+            return;
+        };
+        let Some(entry) = self.games.get(sel).cloned() else {
+            return;
+        };
+        if !self.library.systems[entry.sys].is_video() {
+            return;
+        }
+        if self.conversion.is_some() {
+            self.message = Some(("a conversion is already running".into(), self.now + 3.0));
+            return;
+        }
+        if entry.game.crt_path.is_some() {
+            self.message = Some(("already CRT ready".into(), self.now + 3.0));
+            return;
+        }
+        match Conversion::start(
+            &entry.game.path,
+            &entry.game.title,
+            &self.settings.video,
+            &self.library.config_dir,
+        ) {
+            Ok(c) => {
+                self.pending.push(Sound::Select);
+                self.message = Some((format!("converting {}", c.title), self.now + 3.0));
+                self.conversion = Some(c);
+            }
+            Err(e) => self.message = Some((format!("ffmpeg: {e}"), self.now + 4.0)),
+        }
+    }
+
+    /// Advance a running conversion; refresh the list when it finishes.
+    fn tick_conversion(&mut self) {
+        let Some(c) = self.conversion.as_mut() else {
+            return;
+        };
+        if let Some(ok) = c.poll() {
+            let title = c.title.clone();
+            self.conversion = None;
+            self.pending
+                .push(if ok { Sound::Lock } else { Sound::Crunch });
+            self.message = Some((
+                if ok {
+                    format!("{title} is CRT ready")
+                } else {
+                    format!("conversion of {title} failed")
+                },
+                self.now + 4.0,
+            ));
+            if let Screen::Games { sys: Some(i), .. } = self.screen {
+                let sel_keep = match self.screen {
+                    Screen::Games { sel, .. } => sel,
+                    _ => 0,
+                };
+                let system = self.library.systems[i].clone();
+                self.games = self
+                    .library
+                    .games(&system)
+                    .into_iter()
+                    .map(|game| Entry { game, sys: i })
+                    .collect();
+                if let Screen::Games { sel, .. } = &mut self.screen {
+                    *sel = sel_keep.min(self.games.len().saturating_sub(1));
+                }
+            }
+        }
     }
 
     /// The Power submenu: back to the desktop, power off with confirmation.
@@ -755,6 +853,10 @@ impl Scene {
             .map(|(i, p)| Entry {
                 game: Game {
                     title: crate::library::clean_title(p),
+                    crt_path: {
+                        let c = videofit::crt_path(p);
+                        c.exists().then_some(c)
+                    },
                     path: p.clone(),
                 },
                 sys: *i,
@@ -938,7 +1040,7 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.save_settings();
-                    self.screen = Screen::Settings { sel: 2 };
+                    self.screen = Screen::Settings { sel: 3 };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -954,7 +1056,7 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
-                    self.screen = Screen::Settings { sel: 4 };
+                    self.screen = Screen::Settings { sel: 5 };
                     moved = true;
                 }
                 _ => {}
@@ -973,7 +1075,7 @@ impl Scene {
                     }
                     Nav::Back => {
                         self.save_settings();
-                        self.screen = Screen::Settings { sel: 3 };
+                        self.screen = Screen::Settings { sel: 4 };
                         self.pending.push(Sound::Lock);
                         return;
                     }
@@ -990,6 +1092,29 @@ impl Scene {
                     moved = true;
                 }
             }
+            Screen::VideoFit { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < FIT_ROWS => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    let row = *sel;
+                    let dir = if nav == Nav::Right { 1 } else { -1 };
+                    self.adjust_fit(row, dir);
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.save_settings();
+                    self.screen = Screen::Settings { sel: 1 };
+                    self.pending.push(Sound::Lock);
+                    return;
+                }
+                _ => {}
+            },
             Screen::About { top } => match nav {
                 Nav::Up if *top > 0 => {
                     *top -= 1;
@@ -1091,6 +1216,11 @@ impl Scene {
                 ));
                 Action::None
             }
+            Screen::VideoFit { sel } => {
+                self.adjust_fit(sel, 1);
+                self.pending.push(Sound::Move);
+                Action::None
+            }
             Screen::Diag { .. } | Screen::About { .. } => Action::None,
             Screen::Menu => Action::None,
         }
@@ -1100,13 +1230,20 @@ impl Scene {
         let system = self.library.systems[entry.sys].clone();
         let extra = if system.is_video() {
             let hex = |c: Color| format!("{c:06x}");
-            format!(
+            let mut lines = vec![format!(
                 "{},{},{},{}",
                 hex(self.theme.accent),
                 hex(self.theme.dim),
                 hex(self.theme.paper),
                 hex(self.theme.selection)
-            )
+            )];
+            if entry.game.crt_path.is_none() {
+                let probe = videofit::probe(&entry.game.path);
+                let plan = videofit::plan(&probe, &self.settings.video);
+                self.message = Some((format!("fit: {}", plan.label()), self.now + 4.0));
+                lines.extend(plan.mpv_args());
+            }
+            lines.join("\n")
         } else {
             self.profile.retroarch_keys()
         };
@@ -1244,6 +1381,7 @@ impl Scene {
             }
             Some("power") => self.screen = Screen::Power { sel: 0 },
             Some("style") => self.screen = Screen::Style { sel: 0 },
+            Some("fit") => self.screen = Screen::VideoFit { sel: 0 },
             Some(n) => match self.library.systems.iter().position(|s| s.name == n) {
                 Some(i) => self.open_games(Some(i)),
                 None => self.screen = Screen::Systems { sel: 0, top: 0 },
@@ -1291,6 +1429,7 @@ impl Scene {
                     "A" => l.accept,
                     "B" => l.back,
                     "Y" => l.fav,
+                    "X" => l.alt,
                     other => other,
                 };
                 format!("{b} {what}")
@@ -1507,6 +1646,13 @@ impl Scene {
                         if sys.is_none() {
                             right.push_str(&self.library.systems[entry.sys].name);
                         }
+                        if let Some(c) = &self.conversion {
+                            if c.src == entry.game.path {
+                                right = format!("{}%", c.percent());
+                            }
+                        } else if entry.game.crt_path.is_some() {
+                            right.push_str(" CRT");
+                        }
                         let fav = self.is_favorite(&entry);
                         self.draw_row(fb, y, &entry.game.title, &right, i == sel, self.theme.paper);
                         if fav {
@@ -1532,12 +1678,11 @@ impl Scene {
                 let is_video = sys
                     .map(|i| self.library.systems[i].is_video())
                     .unwrap_or(false);
-                let hint = self.hint(&[
-                    ("A", if is_video { "play" } else { "run" }),
-                    ("B", "back"),
-                    ("Y", "fav"),
-                    ("<>", "page"),
-                ]);
+                let hint = if is_video {
+                    self.hint(&[("A", "play"), ("X", "convert"), ("Y", "fav"), ("B", "back")])
+                } else {
+                    self.hint(&[("A", "run"), ("B", "back"), ("Y", "fav"), ("<>", "page")])
+                };
                 fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
             Screen::Profile { sel } => {
@@ -1627,6 +1772,10 @@ impl Scene {
             }
             Screen::Style { sel } => {
                 self.draw_style(fb, sel);
+                return;
+            }
+            Screen::VideoFit { sel } => {
+                self.draw_video_fit(fb, sel);
                 return;
             }
             Screen::Menu => {}
@@ -1768,6 +1917,7 @@ impl Scene {
     pub fn draw(&mut self, fb: &mut Framebuffer, now: f64) {
         self.now = now;
         self.tick_theme();
+        self.tick_conversion();
         fb.clear(self.theme.bg);
         if self.saver.is_some() {
             self.draw_saver(fb);
@@ -2432,6 +2582,94 @@ impl Scene {
             let lw = ((1.0 - k) * w as f32) as i32;
             fb.rect(cx - lw / 2, cy, lw, 1, 0xffffff);
         }
+    }
+
+    /// Video fit settings: how modern video is adapted to the tube.
+    fn draw_video_fit(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, "Video fit");
+        let v = self.settings.video.clone();
+        let rows: [(&str, String); FIT_ROWS] = [
+            ("standard", v.standard.clone()),
+            ("film 24 fps", v.film24.clone()),
+            ("16:9 to 4:3", v.aspect.clone()),
+            (
+                "overscan 5%",
+                if v.overscan {
+                    "on".into()
+                } else {
+                    "off".into()
+                },
+            ),
+            (
+                "retro 240p",
+                if v.retro_240p {
+                    "on".into()
+                } else {
+                    "off".into()
+                },
+            ),
+        ];
+        let row_h = 14;
+        let band_y = self.band(y0 + sel as i32 * row_h);
+        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        for (i, (label, value)) in rows.iter().enumerate() {
+            let y = y0 + i as i32 * row_h;
+            let on = i == sel;
+            fb.text(
+                left + 18,
+                y + 2,
+                label,
+                if on {
+                    self.theme.accent
+                } else {
+                    self.theme.paper
+                },
+                1,
+            );
+            let right = format!("< {value} >");
+            fb.text(
+                left + width - 8 - Framebuffer::text_width(&right, 1),
+                y + 2,
+                &right,
+                if on {
+                    self.theme.accent
+                } else {
+                    self.theme.dim
+                },
+                1,
+            );
+        }
+        let notes: [&str; FIT_ROWS] = [
+            "auto: 25/50 fps -> 576i, else 480i",
+            "3:2 pulldown at 59.94, or PAL +4%",
+            "black bars, center crop, or squeeze",
+            "keeps titles inside the safe area",
+            "4:3 sources back to 320x240",
+        ];
+        let max_cols = (width / 8) as usize;
+        fb.text(
+            left,
+            h - 40,
+            &notes[sel].chars().take(max_cols).collect::<String>(),
+            scale(self.theme.dim, 0.8),
+            1,
+        );
+        fb.text(
+            left,
+            h - 28,
+            &"live in mpv; X on a video converts it"
+                .chars()
+                .take(max_cols)
+                .collect::<String>(),
+            scale(self.theme.dim, 0.7),
+            1,
+        );
+        let hint = self.hint(&[("<>", "change"), ("B", "back saves")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
     /// About: goals and credits, scrollable text.

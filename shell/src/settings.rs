@@ -12,12 +12,41 @@ pub struct Screensaver {
     pub effect: String,
 }
 
+/// How modern video is fitted to the tube.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VideoFit {
+    /// `auto`, `ntsc` (480i 59.94) or `pal` (576i 50).
+    pub standard: String,
+    /// 24 fps film: `pulldown` (3:2 to 59.94) or `speedup` (25/24, PAL style).
+    pub film24: String,
+    /// 16:9 into 4:3: `letterbox`, `crop` or `anamorphic`.
+    pub aspect: String,
+    /// Keep a 5% margin so nothing hides in the overscan.
+    pub overscan: bool,
+    /// Downscale 4:3 sources to 320x240 progressive (retro gameplay captures).
+    pub retro_240p: bool,
+}
+
+impl Default for VideoFit {
+    fn default() -> Self {
+        Self {
+            standard: "auto".into(),
+            film24: "pulldown".into(),
+            aspect: "letterbox".into(),
+            overscan: true,
+            retro_240p: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
     pub screensaver: Screensaver,
     /// Theme name from ~/.local/share/omarchy/themes, or `system` to follow Omarchy.
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default)]
+    pub video: VideoFit,
 }
 
 fn default_theme() -> String {
@@ -33,6 +62,7 @@ impl Default for Settings {
                 effect: "random".into(),
             },
             theme: "system".into(),
+            video: VideoFit::default(),
         }
     }
 }
