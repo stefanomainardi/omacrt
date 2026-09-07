@@ -126,7 +126,6 @@ impl Dispatch<wl_display::WlDisplay, ()> for State {
     }
 }
 
-
 /// A live lease: the file descriptor plus the connection that keeps it.
 pub struct Lease {
     pub fd: Option<OwnedFd>,
@@ -148,7 +147,9 @@ impl Lease {
         let _registry = display.get_registry(&qh, ());
         let mut st = State::default();
         for _ in 0..6 {
-            queue.roundtrip(&mut st).map_err(|e| format!("roundtrip: {e}"))?;
+            queue
+                .roundtrip(&mut st)
+                .map_err(|e| format!("roundtrip: {e}"))?;
             if !st.devices.is_empty() && st.devices_done >= st.devices.len() {
                 break;
             }
@@ -157,7 +158,11 @@ impl Lease {
         let Some(target) = st.connectors.iter().find(|(_, _, n, _)| n == want).cloned() else {
             return Err(format!(
                 "connector {want} is not offered for lease (offered: {}); is it marked non-desktop? (scripts/crt-lease-setup.sh)",
-                if offered.is_empty() { "none".to_string() } else { offered.join(" ") }
+                if offered.is_empty() {
+                    "none".to_string()
+                } else {
+                    offered.join(" ")
+                }
             ));
         };
         let dev = st.devices[target.1].clone();
@@ -165,12 +170,17 @@ impl Lease {
         request.request_connector(&target.0);
         let lease_obj = request.submit(&qh, ());
         for _ in 0..10 {
-            queue.roundtrip(&mut st).map_err(|e| format!("roundtrip: {e}"))?;
+            queue
+                .roundtrip(&mut st)
+                .map_err(|e| format!("roundtrip: {e}"))?;
             if st.lease_fd.is_some() || st.lease_failed {
                 break;
             }
         }
-        let fd = st.lease_fd.take().ok_or("the compositor refused the lease")?;
+        let fd = st
+            .lease_fd
+            .take()
+            .ok_or("the compositor refused the lease")?;
         Ok(Lease {
             fd: Some(fd),
             connector_id: target.3,

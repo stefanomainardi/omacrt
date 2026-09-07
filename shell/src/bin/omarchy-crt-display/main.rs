@@ -58,7 +58,10 @@ fn main() {
     let secs: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(15);
 
     let mut leased = lease::Lease::take(&want).unwrap_or_else(|e| die(&e));
-    println!("leased {} (DRM connector {})", leased.name, leased.connector_id);
+    println!(
+        "leased {} (DRM connector {})",
+        leased.name, leased.connector_id
+    );
     let target_id = leased.connector_id;
     let fd = leased.fd.take().unwrap();
     let card = Leased(fd);

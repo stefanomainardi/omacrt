@@ -42,24 +42,36 @@ impl drm::control::Device for Card {}
 /// the compositor offer it for leasing (scripts/crt-lease-setup.sh).
 pub fn leaseable(connector: &str) -> bool {
     use drm::control::Device as _;
-    let want = connector.trim_start_matches("card").trim_start_matches(|c: char| c.is_ascii_digit() || c == '-');
+    let want = connector
+        .trim_start_matches("card")
+        .trim_start_matches(|c: char| c.is_ascii_digit() || c == '-');
     let (kind, num) = match want.rsplit_once('-') {
         Some((k, n)) => (k.replace('-', ""), n.to_string()),
         None => return false,
     };
     for card in ["/dev/dri/card1", "/dev/dri/card0", "/dev/dri/card2"] {
-        let Ok(f) = std::fs::OpenOptions::new().read(true).write(true).open(card) else {
+        let Ok(f) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(card)
+        else {
             continue;
         };
         let dev = Card(OwnedFd::from(f));
-        let Ok(res) = dev.resource_handles() else { continue };
+        let Ok(res) = dev.resource_handles() else {
+            continue;
+        };
         for h in res.connectors() {
-            let Ok(info) = dev.get_connector(*h, false) else { continue };
+            let Ok(info) = dev.get_connector(*h, false) else {
+                continue;
+            };
             let name = format!("{:?}", info.interface()).replace('-', "");
             if name != kind || info.interface_id().to_string() != num {
                 continue;
             }
-            let Ok(props) = dev.get_properties(*h) else { continue };
+            let Ok(props) = dev.get_properties(*h) else {
+                continue;
+            };
             for (pid, val) in props.iter() {
                 if let Ok(pi) = dev.get_property(*pid) {
                     if pi.name().to_str().unwrap_or("") == "non-desktop" {
@@ -193,5 +205,7 @@ pub fn env(cmd: &mut Command) {
 
 /// True inside a process that was started for the tube.
 pub fn on_tube() -> bool {
-    std::env::var("WAYLAND_DISPLAY").map(|v| v == SOCKET).unwrap_or(false)
+    std::env::var("WAYLAND_DISPLAY")
+        .map(|v| v == SOCKET)
+        .unwrap_or(false)
 }

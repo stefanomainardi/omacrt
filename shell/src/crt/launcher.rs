@@ -148,7 +148,10 @@ pub fn focus() -> (bool, String) {
             Some("mpv") => "omarchy-crt-player",
             _ => SHELL_CLASS,
         };
-        return (super::display::raise(who), format!("raised {who} on the tube"));
+        return (
+            super::display::raise(who),
+            format!("raised {who} on the tube"),
+        );
     }
     match playing() {
         Some("retroarch") => output::focus_class("com.libretro.RetroArch"),

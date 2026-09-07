@@ -26,6 +26,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   shell start|stop|restart|focus
   shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
   game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
+  shot <file.png>                what the tube shows right now (leased output)
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
   dac status|reset|csync and|xor|separate|watch
@@ -130,7 +131,11 @@ fn status(cfg: &Config) -> Value {
             if display::running() {
                 let standard = st["standard"].as_str().unwrap_or("ntsc").to_string();
                 if let Some(ml) = cfg.modeline(&standard).and_then(Modeline::parse) {
-                    let ml = if state.lines > 0 && state.lines != ml.height() { ml.with_lines(state.lines) } else { ml };
+                    let ml = if state.lines > 0 && state.lines != ml.height() {
+                        ml.with_lines(state.lines)
+                    } else {
+                        ml
+                    };
                     st["active"] = json!(true);
                     st["mode"] = json!({
                         "width": ml.width(), "height": ml.height(), "refresh_hz": ml.vfreq_hz(), "disabled": false,
@@ -520,7 +525,8 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
         for _ in 0..30 {
             if let Some(t) = audio::target(conn) {
                 let mut state = State::load();
-                let note = audio::route_to_crt(&t, cfg.audio.volume, cfg.audio.system_default, &mut state);
+                let note =
+                    audio::route_to_crt(&t, cfg.audio.volume, cfg.audio.system_default, &mut state);
                 state.save();
                 println!("audio:      {note}");
                 routed = true;
@@ -1104,7 +1110,9 @@ fn main() {
             );
             let conn = connector(&cfg);
             if display::leaseable(&conn.name) && display::running() {
-                let text = cfg.modeline(std).unwrap_or_else(|| die("no modeline for that standard"));
+                let text = cfg
+                    .modeline(std)
+                    .unwrap_or_else(|| die("no modeline for that standard"));
                 let mut ml = Modeline::parse(text).unwrap_or_else(|| die("bad modeline"));
                 if let Some(l) = lines {
                     ml = ml.with_lines(l);
@@ -1120,7 +1128,14 @@ fn main() {
                 state.shift_x = shift.0;
                 state.shift_y = shift.1;
                 state.save();
-                println!("{} {}x{} {:.3} kHz {:.3} Hz", std.to_uppercase(), ml.width(), ml.height(), ml.hfreq_khz(), ml.vfreq_hz());
+                println!(
+                    "{} {}x{} {:.3} kHz {:.3} Hz",
+                    std.to_uppercase(),
+                    ml.width(),
+                    ml.height(),
+                    ml.hfreq_khz(),
+                    ml.vfreq_hz()
+                );
                 return;
             }
             match apply_mode(&cfg, &conn, std, lines, shift) {
@@ -1138,6 +1153,35 @@ fn main() {
             // confirming write is enough and the launcher gets focus back.
             let _ = set_csync(&cfg, &conn);
             launcher::focus();
+        }
+        "shot" => {
+            let given: String = positional(args)
+                .first()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| die("shot needs a file path"));
+            let path: String = if given.starts_with('/') {
+                given
+            } else {
+                match std::env::current_dir() {
+                    Ok(d) => d.join(&given).to_string_lossy().into_owned(),
+                    Err(_) => given,
+                }
+            };
+            if !display::running() {
+                die(
+                    "the display process is not running (the desktop's own tools see the tube when it is not leased)",
+                );
+            }
+            let _ = std::fs::remove_file(&path);
+            display::send(&format!("shot {path}")).unwrap_or_else(|e| die(&e.to_string()));
+            for _ in 0..40 {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                if std::path::Path::new(&path).exists() {
+                    println!("{path}");
+                    return;
+                }
+            }
+            die("no screenshot written; see ~/.local/state/omarchy-crt/display.log");
         }
         "game" => {
             use omarchy_crt_shell::game;

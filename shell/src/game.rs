@@ -21,7 +21,6 @@ pub fn send(cmd: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-
 /// Ask RetroArch something and read the reply, for example `GET_STATUS`
 /// returns `GET_STATUS PLAYING snes9x,Chrono Trigger,crc32=...` or
 /// `GET_STATUS PAUSED ...`.

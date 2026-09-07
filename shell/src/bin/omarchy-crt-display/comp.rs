@@ -6,9 +6,8 @@
 //! callbacks, so a program under the pause overlay keeps running and keeps
 //! answering. Clients reach us through `WAYLAND_DISPLAY=wayland-crt`.
 
-use crate::lease::Lease;
 use crate::drm_mode;
-use smithay::reexports::drm::control::Device as _;
+use crate::lease::Lease;
 use omarchy_crt_shell::crt::output::Modeline;
 use omarchy_crt_shell::crt::{Config, dac, display, output};
 use smithay::backend::allocator::Fourcc;
@@ -19,22 +18,30 @@ use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::{DrmOutput, DrmOutputManager, DrmOutputRenderElements};
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmEvent};
 use smithay::backend::egl::{EGLContext, EGLDisplay};
+use smithay::backend::input::KeyState;
+use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::gles::GlesRenderbuffer;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
-use smithay::backend::renderer::{ImportDma, ImportEgl};
+use smithay::backend::renderer::{
+    Bind, ExportMem, ImportDma, ImportEgl, Offscreen, TextureMapping,
+};
 use smithay::desktop::space::{SpaceRenderElements, space_render_elements};
 use smithay::desktop::{Space, Window};
-use smithay::backend::input::KeyState;
 use smithay::input::keyboard::{FilterResult, Keycode};
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::output::{Mode as WlMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
-use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction, generic::Generic};
+use smithay::reexports::calloop::{
+    EventLoop, Interest, LoopHandle, Mode, PostAction, generic::Generic,
+};
+use smithay::reexports::drm::control::Device as _;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use smithay::reexports::wayland_server::protocol::{wl_buffer, wl_seat, wl_surface::WlSurface};
 use smithay::reexports::wayland_server::{Client, Display, DisplayHandle};
+use smithay::utils::Rectangle;
 use smithay::utils::{DeviceFd, Serial, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
@@ -51,7 +58,10 @@ use smithay::wayland::shell::xdg::{
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::socket::ListeningSocketSource;
-use smithay::{delegate_compositor, delegate_dmabuf, delegate_output, delegate_seat, delegate_shm, delegate_xdg_shell};
+use smithay::{
+    delegate_compositor, delegate_dmabuf, delegate_output, delegate_seat, delegate_shm,
+    delegate_xdg_shell,
+};
 use std::ffi::OsString;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
 use std::sync::Arc;
@@ -101,21 +111,31 @@ impl ClientData for ClientState {
 
 pub fn run(connector: Option<&str>) -> Result<(), String> {
     let cfg = Config::load();
-    let want = connector
-        .map(str::to_string)
-        .unwrap_or_else(|| {
-            if cfg.output.connector.is_empty() {
-                "HDMI-A-1".into()
-            } else {
-                cfg.output.connector.trim_start_matches("card1-").to_string()
-            }
-        });
-    let standard = if cfg.output.standard.is_empty() { "ntsc" } else { cfg.output.standard.as_str() };
-    let text = cfg.modeline(standard).ok_or("no modeline for the standard in crt.toml")?;
+    let want = connector.map(str::to_string).unwrap_or_else(|| {
+        if cfg.output.connector.is_empty() {
+            "HDMI-A-1".into()
+        } else {
+            cfg.output
+                .connector
+                .trim_start_matches("card1-")
+                .to_string()
+        }
+    });
+    let standard = if cfg.output.standard.is_empty() {
+        "ntsc"
+    } else {
+        cfg.output.standard.as_str()
+    };
+    let text = cfg
+        .modeline(standard)
+        .ok_or("no modeline for the standard in crt.toml")?;
     let ml = Modeline::parse(text).ok_or("bad modeline in crt.toml")?;
 
     let mut lease = Lease::take(&want)?;
-    println!("leased {} (DRM connector {})", lease.name, lease.connector_id);
+    println!(
+        "leased {} (DRM connector {})",
+        lease.name, lease.connector_id
+    );
     let fd = lease.fd.take().unwrap();
 
     // DRM side: device, buffers, renderer.
@@ -128,7 +148,10 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     let egl = unsafe { EGLDisplay::new(gbm.clone()) }.map_err(|e| format!("egl display: {e}"))?;
     let context = EGLContext::new(&egl).map_err(|e| format!("egl context: {e}"))?;
     let mut renderer = unsafe { GlesRenderer::new(context) }.map_err(|e| format!("gles: {e}"))?;
-    let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT);
+    let allocator = GbmAllocator::new(
+        gbm.clone(),
+        GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
+    );
     let exporter = GbmFramebufferExporter::new(gbm.clone(), None);
     let render_formats = renderer.dmabuf_formats();
     let mut drm = DrmOutputManager::new(
@@ -141,7 +164,10 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     );
 
     // The connector and CRTC the lease gave us.
-    let res = drm.device().resource_handles().map_err(|e| format!("resources: {e}"))?;
+    let res = drm
+        .device()
+        .resource_handles()
+        .map_err(|e| format!("resources: {e}"))?;
     let conn_handle = res
         .connectors()
         .iter()
@@ -162,7 +188,8 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     );
 
     // Wayland side.
-    let mut event_loop: EventLoop<'static, Crt> = EventLoop::try_new().map_err(|e| e.to_string())?;
+    let mut event_loop: EventLoop<'static, Crt> =
+        EventLoop::try_new().map_err(|e| e.to_string())?;
     let display: Display<Crt> = Display::new().map_err(|e| e.to_string())?;
     let dh = display.handle();
     let handle = event_loop.handle();
@@ -186,7 +213,12 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         refresh: (ml.vfreq_hz() * 1000.0).round() as i32,
     };
     output.set_preferred(wl_mode);
-    output.change_current_state(Some(wl_mode), Some(Transform::Normal), Some(Scale::Integer(1)), Some((0, 0).into()));
+    output.change_current_state(
+        Some(wl_mode),
+        Some(Transform::Normal),
+        Some(Scale::Integer(1)),
+        Some((0, 0).into()),
+    );
     let _output_global = output.create_global::<Crt>(&dh);
 
     let compositor_state = CompositorState::new::<Crt>(&dh);
@@ -197,7 +229,8 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     let mut seat: Seat<Crt> = seat_state.new_wl_seat(&dh, "crt");
     // A keyboard with no keys behind it yet: clients such as RetroArch only
     // run when a keyboard has entered their surface.
-    seat.add_keyboard(Default::default(), 200, 25).map_err(|e| format!("keyboard: {e}"))?;
+    seat.add_keyboard(Default::default(), 200, 25)
+        .map_err(|e| format!("keyboard: {e}"))?;
     let mut dmabuf_state = DmabufState::new();
     let feedback = DmabufFeedbackBuilder::new(dev_id, render_formats)
         .build()
@@ -220,7 +253,10 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         .map_err(|e| format!("output: {e}"))?;
 
     // The DAC wants composite sync once the signal is up.
-    if let Some(conn) = output::connectors().into_iter().find(|c| c.name == lease.name) {
+    if let Some(conn) = output::connectors()
+        .into_iter()
+        .find(|c| c.name == lease.name)
+    {
         if let Some(bus) = dac::Dac::bus_of(&conn.path) {
             match dac::Dac::open(&bus) {
                 Ok(d) => {
@@ -235,20 +271,26 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     }
 
     // Sockets and sources.
-    let listener = ListeningSocketSource::with_name(SOCKET).map_err(|e| format!("socket {SOCKET}: {e}"))?;
+    let listener =
+        ListeningSocketSource::with_name(SOCKET).map_err(|e| format!("socket {SOCKET}: {e}"))?;
     let socket_name = listener.socket_name().to_os_string();
     handle
         .insert_source(listener, |stream, _, st: &mut Crt| {
-            let _ = st.dh.insert_client(stream, Arc::new(ClientState::default()));
+            let _ = st
+                .dh
+                .insert_client(stream, Arc::new(ClientState::default()));
         })
         .map_err(|e| e.to_string())?;
     handle
-        .insert_source(Generic::new(display, Interest::READ, Mode::Level), |_, display, st: &mut Crt| {
-            unsafe {
-                let _ = display.get_mut().dispatch_clients(st);
-            }
-            Ok(PostAction::Continue)
-        })
+        .insert_source(
+            Generic::new(display, Interest::READ, Mode::Level),
+            |_, display, st: &mut Crt| {
+                unsafe {
+                    let _ = display.get_mut().dispatch_clients(st);
+                }
+                Ok(PostAction::Continue)
+            },
+        )
         .map_err(|e| e.to_string())?;
     handle
         .insert_source(notifier, |event, meta, st: &mut Crt| match event {
@@ -257,44 +299,65 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         })
         .map_err(|e| e.to_string())?;
     handle
-        .insert_source(Timer::from_duration(Duration::from_millis(250)), |_, _, st: &mut Crt| {
-            if !st.lease.pump() {
-                eprintln!("the compositor revoked the lease");
-                st.running = false;
-            }
-            TimeoutAction::ToDuration(Duration::from_millis(250))
-        })
+        .insert_source(
+            Timer::from_duration(Duration::from_millis(250)),
+            |_, _, st: &mut Crt| {
+                if !st.lease.pump() {
+                    eprintln!("the compositor revoked the lease");
+                    st.running = false;
+                }
+                TimeoutAction::ToDuration(Duration::from_millis(250))
+            },
+        )
         .map_err(|e| e.to_string())?;
 
     // Control pipe: `top <app_id>`, `mode <modeline>`, `quit`. Opened
     // read-write so it never reports end of file between writers.
     let ctl = display::ctl_path();
     let _ = std::fs::remove_file(&ctl);
-    let cpath = std::ffi::CString::new(ctl.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
+    let cpath =
+        std::ffi::CString::new(ctl.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
     if unsafe { libc::mkfifo(cpath.as_ptr(), 0o600) } < 0 {
         return Err(format!("control pipe: {}", std::io::Error::last_os_error()));
     }
-    let raw = unsafe { libc::open(cpath.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC) };
+    let raw = unsafe {
+        libc::open(
+            cpath.as_ptr(),
+            libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
     if raw < 0 {
-        return Err(format!("control pipe open: {}", std::io::Error::last_os_error()));
+        return Err(format!(
+            "control pipe open: {}",
+            std::io::Error::last_os_error()
+        ));
     }
     let ctl_fd = unsafe { OwnedFd::from_raw_fd(raw) };
     handle
-        .insert_source(Generic::new(ctl_fd, Interest::READ, Mode::Level), |_, fd, st: &mut Crt| {
-            let mut buf = [0u8; 4096];
-            let n = unsafe { libc::read(fd.as_fd().as_raw_fd(), buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
-            if n > 0 {
-                let text = String::from_utf8_lossy(&buf[..n as usize]).to_string();
-                for line in text
-                    .lines()
-                    .map(|l| l.trim_matches(|c: char| c.is_whitespace() || c == '\0'))
-                    .filter(|l| !l.is_empty())
-                {
-                    st.control(line);
+        .insert_source(
+            Generic::new(ctl_fd, Interest::READ, Mode::Level),
+            |_, fd, st: &mut Crt| {
+                let mut buf = [0u8; 4096];
+                let n = unsafe {
+                    libc::read(
+                        fd.as_fd().as_raw_fd(),
+                        buf.as_mut_ptr() as *mut libc::c_void,
+                        buf.len(),
+                    )
+                };
+                if n > 0 {
+                    let text = String::from_utf8_lossy(&buf[..n as usize]).to_string();
+                    for line in text
+                        .lines()
+                        .map(|l| l.trim_matches(|c: char| c.is_whitespace() || c == '\0'))
+                        .filter(|l| !l.is_empty())
+                    {
+                        st.control(line);
+                    }
                 }
-            }
-            Ok(PostAction::Continue)
-        })
+                Ok(PostAction::Continue)
+            },
+        )
         .map_err(|e| e.to_string())?;
     let _ = std::fs::write(display::pid_path(), std::process::id().to_string());
 
@@ -323,7 +386,10 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         last_stats: Instant::now(),
         commits: Default::default(),
     };
-    println!("compositor up: WAYLAND_DISPLAY={}", crt.socket_name.to_string_lossy());
+    println!(
+        "compositor up: WAYLAND_DISPLAY={}",
+        crt.socket_name.to_string_lossy()
+    );
     crt.render();
     let signal = event_loop.get_signal();
     event_loop
@@ -358,6 +424,11 @@ impl Crt {
                 }
             }
             "key" => self.inject_key(arg.trim()),
+            "shot" => {
+                if let Err(e) = self.screenshot(arg.trim()) {
+                    eprintln!("shot: {e}");
+                }
+            }
             "mode" => match Modeline::parse(arg) {
                 Some(ml) => self.switch_mode(&ml),
                 None => eprintln!("mode: bad modeline {arg:?}"),
@@ -419,10 +490,77 @@ impl Crt {
     }
 
     fn key_event(&mut self, code: Keycode, state: KeyState) {
-        let Some(kbd) = self.seat.get_keyboard() else { return };
+        let Some(kbd) = self.seat.get_keyboard() else {
+            return;
+        };
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         let time = self.start.elapsed().as_millis() as u32;
-        kbd.input::<(), _>(self, code, state, serial, time, |_, _, _| FilterResult::Forward);
+        kbd.input::<(), _>(self, code, state, serial, time, |_, _, _| {
+            FilterResult::Forward
+        });
+    }
+
+    /// Render the current frame off screen and write it as a PNG. The
+    /// desktop's screenshot tools cannot see a leased output, this can.
+    fn screenshot(&mut self, path: &str) -> Result<(), String> {
+        if path.is_empty() {
+            return Err("shot needs a file path".into());
+        }
+        let size = self
+            .output
+            .current_mode()
+            .map(|m| m.size)
+            .ok_or("no mode")?;
+        let (w, h) = (size.w, size.h);
+        let mut target: GlesRenderbuffer = self
+            .renderer
+            .create_buffer(Fourcc::Argb8888, (w, h).into())
+            .map_err(|e| format!("offscreen buffer: {e}"))?;
+        let elements = space_render_elements(&mut self.renderer, [&self.space], &self.output, 1.0)
+            .map_err(|e| format!("elements: {e}"))?;
+        let mut tracker = OutputDamageTracker::from_output(&self.output);
+        let mut fb = self
+            .renderer
+            .bind(&mut target)
+            .map_err(|e| format!("bind: {e}"))?;
+        tracker
+            .render_output(
+                &mut self.renderer,
+                &mut fb,
+                0,
+                &elements,
+                [0.02, 0.03, 0.06, 1.0],
+            )
+            .map_err(|e| format!("render: {e}"))?;
+        let mapping = self
+            .renderer
+            .copy_framebuffer(&fb, Rectangle::from_size((w, h).into()), Fourcc::Argb8888)
+            .map_err(|e| format!("copy: {e}"))?;
+        let flipped = mapping.flipped();
+        let bytes = self
+            .renderer
+            .map_texture(&mapping)
+            .map_err(|e| format!("map: {e}"))?;
+        let (w, h) = (w as usize, h as usize);
+        let mut rgb = vec![0u8; w * h * 3];
+        for y in 0..h {
+            let src_y = if flipped { h - 1 - y } else { y };
+            for x in 0..w {
+                let s = (src_y * w + x) * 4;
+                let d = (y * w + x) * 3;
+                rgb[d] = bytes[s + 2];
+                rgb[d + 1] = bytes[s + 1];
+                rgb[d + 2] = bytes[s];
+            }
+        }
+        let file = std::fs::File::create(path).map_err(|e| format!("{path}: {e}"))?;
+        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut writer = enc.write_header().map_err(|e| e.to_string())?;
+        writer.write_image_data(&rgb).map_err(|e| e.to_string())?;
+        println!("shot: {path}");
+        Ok(())
     }
 
     fn window_with_app_id(&self, app_id: &str) -> Option<Window> {
@@ -447,9 +585,15 @@ impl Crt {
     /// Live modeline change: the CRTC, the advertised output mode and the
     /// size every client is told to use.
     fn switch_mode(&mut self, ml: &Modeline) {
-        let Some(out) = self.drm_output.as_mut() else { return };
+        let Some(out) = self.drm_output.as_mut() else {
+            return;
+        };
         let mode = drm_mode(ml);
-        if let Err(e) = out.use_mode(mode, &mut self.renderer, &DrmOutputRenderElements::<GlesRenderer, Element>::default()) {
+        if let Err(e) = out.use_mode(
+            mode,
+            &mut self.renderer,
+            &DrmOutputRenderElements::<GlesRenderer, Element>::default(),
+        ) {
             eprintln!("mode: {e}");
             return;
         }
@@ -458,7 +602,8 @@ impl Crt {
             size: (w, h).into(),
             refresh: (ml.vfreq_hz() * 1000.0).round() as i32,
         };
-        self.output.change_current_state(Some(wl_mode), None, None, None);
+        self.output
+            .change_current_state(Some(wl_mode), None, None, None);
         self.output.set_preferred(wl_mode);
         for win in self.space.elements() {
             if let Some(t) = win.toplevel() {
@@ -466,7 +611,13 @@ impl Crt {
                 t.send_pending_configure();
             }
         }
-        println!("mode: {}x{} {:.3} kHz {:.3} Hz", w, h, ml.hfreq_khz(), ml.vfreq_hz());
+        println!(
+            "mode: {}x{} {:.3} kHz {:.3} Hz",
+            w,
+            h,
+            ml.hfreq_khz(),
+            ml.vfreq_hz()
+        );
         self.frame_queued = false;
         self.render();
     }
@@ -475,16 +626,24 @@ impl Crt {
         if self.frame_queued {
             return;
         }
-        let Some(out) = self.drm_output.as_mut() else { return };
-        self.space.refresh();
-        let elements = match space_render_elements(&mut self.renderer, [&self.space], &self.output, 1.0) {
-            Ok(e) => e,
-            Err(e) => {
-                eprintln!("render elements: {e}");
-                return;
-            }
+        let Some(out) = self.drm_output.as_mut() else {
+            return;
         };
-        match out.render_frame(&mut self.renderer, &elements, [0.02, 0.03, 0.06, 1.0], FrameFlags::DEFAULT) {
+        self.space.refresh();
+        let elements =
+            match space_render_elements(&mut self.renderer, [&self.space], &self.output, 1.0) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("render elements: {e}");
+                    return;
+                }
+            };
+        match out.render_frame(
+            &mut self.renderer,
+            &elements,
+            [0.02, 0.03, 0.06, 1.0],
+            FrameFlags::DEFAULT,
+        ) {
             Ok(res) => {
                 if res.is_empty {
                     // Nothing changed: look again in a frame's time.
@@ -516,7 +675,11 @@ impl Crt {
         self.frames += 1;
         if self.last_stats.elapsed() >= Duration::from_secs(5) {
             self.last_stats = Instant::now();
-            let commits: Vec<String> = self.commits.iter().map(|(k, v)| format!("{k}:{v}")).collect();
+            let commits: Vec<String> = self
+                .commits
+                .iter()
+                .map(|(k, v)| format!("{k}:{v}"))
+                .collect();
             self.commits.clear();
             println!(
                 "{} frames so far, {} client window(s) mapped, commits in 5 s: {}",
@@ -528,7 +691,9 @@ impl Crt {
         let t = self.start.elapsed();
         let output = self.output.clone();
         for w in self.space.elements() {
-            w.send_frame(&output, t, Some(Duration::from_secs(1)), |_, _| Some(output.clone()));
+            w.send_frame(&output, t, Some(Duration::from_secs(1)), |_, _| {
+                Some(output.clone())
+            });
         }
         self.render();
     }
@@ -540,7 +705,11 @@ impl Crt {
         }
         self.space
             .elements()
-            .find(|w| w.toplevel().map(|t| t.wl_surface() == &root).unwrap_or(false))
+            .find(|w| {
+                w.toplevel()
+                    .map(|t| t.wl_surface() == &root)
+                    .unwrap_or(false)
+            })
             .cloned()
     }
 }
@@ -613,7 +782,11 @@ impl XdgShellHandler for Crt {
         &mut self.xdg_shell_state
     }
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        let size = self.output.current_mode().map(|m| m.size).unwrap_or((320, 240).into());
+        let size = self
+            .output
+            .current_mode()
+            .map(|m| m.size)
+            .unwrap_or((320, 240).into());
         surface.with_pending_state(|s| {
             s.size = Some((size.w, size.h).into());
             s.states.set(xdg_toplevel::State::Fullscreen);
@@ -642,7 +815,14 @@ impl XdgShellHandler for Crt {
         _: xdg_toplevel::ResizeEdge,
     ) {
     }
-    fn show_window_menu(&mut self, _: ToplevelSurface, _: wl_seat::WlSeat, _: Serial, _: smithay::utils::Point<i32, smithay::utils::Logical>) {}
+    fn show_window_menu(
+        &mut self,
+        _: ToplevelSurface,
+        _: wl_seat::WlSeat,
+        _: Serial,
+        _: smithay::utils::Point<i32, smithay::utils::Logical>,
+    ) {
+    }
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         if let Some(w) = self.window_for(surface.wl_surface()) {
             self.space.unmap_elem(&w);
