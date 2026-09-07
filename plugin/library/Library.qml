@@ -34,6 +34,7 @@ Item {
 
   property var lib: ({})
   property var cores: []
+  property var available: []
   property var discovered: []
   property var biosReport: ({})
   property var biosFolders: []
@@ -123,7 +124,14 @@ Item {
   Process {
     id: coresProc
     command: [root.helper, "library", "cores", "--json"]
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.cores = root.parse(text, []) }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var d = root.parse(text, {})
+        root.cores = Array.isArray(d) ? d : (d.systems || [])
+        root.available = (d && d.available) || []
+      }
+    }
   }
   Process {
     id: discoverProc
@@ -388,7 +396,24 @@ Item {
                       horizontalAlignment: Text.AlignRight
                       anchors.verticalCenter: parent.verticalCenter
                     }
+                    // The core: a picker over what is installed, or the missing
+                    // one's name in red with the install offer next to it.
+                    Dropdown {
+                      visible: modelData.core && root.available.length > 0
+                      width: Style.space(180)
+                      showLabel: false
+                      value: modelData.core_name || ""
+                      options: root.available
+                      foreground: root.fg
+                      background: root.bg
+                      fontFamily: root.mono
+                      onChanged: function(v) {
+                        if (v && v !== modelData.core_name) root.act(["library", "set", modelData.name, "core=" + v])
+                      }
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
                     Mono {
+                      visible: !modelData.core || root.available.length === 0
                       text: modelData.core_name || ""
                       width: Style.space(180)
                       color: modelData.core ? root.fg : root.urgent

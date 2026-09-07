@@ -24,6 +24,7 @@ omarchy-crt bios import DIR [--all]
 omarchy-crt bios discover [--json]   # folders on the roots and disks that hold BIOS files
 omarchy-crt library [--json]
 omarchy-crt library cores [--json]   # the core each system needs, installed or not, its package
+omarchy-crt library set SYS core=X|dir=D   # change a system's core or folder in systems.toml
 omarchy-crt library scan [DIR...]
 omarchy-crt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
 omarchy-crt doctor

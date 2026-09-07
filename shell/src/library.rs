@@ -1019,3 +1019,74 @@ input_autodetect_enable = "true"
 joypad_autoconfig_dir = "/usr/share/libretro/autoconfig/udev"
 input_max_users = "4"
 "#;
+
+/// Change one key (`core` or `dir`) of a system in `systems.toml`, adding the
+/// `[[system]]` block from the catalogue when the system only lives in the
+/// index. The file is ours (the header says so), so it is rewritten whole;
+/// per system option tables survive the round trip.
+pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), String> {
+    if !matches!(key, "core" | "dir") {
+        return Err(format!("{key}: only core and dir can be set"));
+    }
+    let path = default_path();
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut root: toml::Value = if text.trim().is_empty() {
+        toml::Value::Table(Default::default())
+    } else {
+        toml::from_str(&text).map_err(|e| format!("systems.toml: {e}"))?
+    };
+    let table = root
+        .as_table_mut()
+        .ok_or("systems.toml: not a table")?;
+    let list = table
+        .entry("system")
+        .or_insert_with(|| toml::Value::Array(Vec::new()));
+    let arr = list.as_array_mut().ok_or("systems.toml: system is not a list")?;
+    let found = arr.iter_mut().find(|v| {
+        v.get("name").and_then(toml::Value::as_str) == Some(system)
+    });
+    let entry = match found {
+        Some(e) => e,
+        None => {
+            let (_, core, exts) = crate::index::catalog(system)
+                .ok_or_else(|| format!("{system} is not in the catalogue"))?;
+            let mut t = toml::map::Map::new();
+            t.insert("name".into(), toml::Value::String(system.into()));
+            t.insert("dir".into(), toml::Value::String(String::new()));
+            t.insert("core".into(), toml::Value::String(core.into()));
+            t.insert(
+                "extensions".into(),
+                toml::Value::Array(exts.iter().map(|e| toml::Value::String(e.to_string())).collect()),
+            );
+            t.insert("video".into(), toml::Value::String("super".into()));
+            arr.push(toml::Value::Table(t));
+            arr.last_mut().unwrap()
+        }
+    };
+    let t = entry.as_table_mut().ok_or("systems.toml: bad system entry")?;
+    t.insert(key.into(), toml::Value::String(value.into()));
+    let body = toml::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    let out = format!(
+        "# Written by omarchy-crt. Each [[system]] maps a ROM folder to a core.\n{body}"
+    );
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, out).map_err(|e| e.to_string())
+}
+
+/// Cores installed in the core directory, by their short names.
+pub fn installed_cores(core_dir: &Path) -> Vec<String> {
+    let mut out: Vec<String> = std::fs::read_dir(core_dir)
+        .map(|rd| {
+            rd.flatten()
+                .filter_map(|e| {
+                    let n = e.file_name().to_string_lossy().to_string();
+                    n.strip_suffix("_libretro.so").map(|s| s.to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort();
+    out
+}

@@ -40,6 +40,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   bios discover [--json]   folders on the roots and disks that hold BIOS files
   library [--json]         systems, sources, game counts, cores
   library cores [--json]   the core each system needs, installed or not, and its package
+  library set SYS core=X|dir=D   change a system's core or folder in systems.toml
   library scan [DIR...]    index every game under the roots (any layout)
   library discover [--json]  mounted places that look like collections
   library roots add|remove DIR
@@ -941,8 +942,19 @@ fn cmd_library(args: &[String]) {
                 println!("{}{note}", f.display());
             }
         }
+        Some("set") => {
+            let (Some(system), Some(assign)) = (pos.get(1), pos.get(2)) else {
+                die("library set needs a system and key=value, e.g. library set arcade core=fbneo");
+            };
+            let Some((key, value)) = assign.split_once('=') else {
+                die("library set needs key=value (core=... or dir=...)");
+            };
+            library::set_system_field(system, key, value).unwrap_or_else(|e| die(&e));
+            println!("{system}: {key} = {value}");
+        }
         Some("cores") => {
             let lib = library();
+            let available = library::installed_cores(&lib.core_dir);
             let mut rows: Vec<Value> = Vec::new();
             for s in lib.systems.iter().filter(|s| !s.is_video()) {
                 let path = lib.core_path(s);
@@ -956,7 +968,7 @@ fn cmd_library(args: &[String]) {
                 }));
             }
             if has(args, "--json") {
-                println!("{}", Value::Array(rows));
+                println!("{}", json!({ "systems": rows, "available": available }));
                 return;
             }
             for r in &rows {
