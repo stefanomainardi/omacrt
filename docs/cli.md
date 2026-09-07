@@ -19,7 +19,7 @@ omarchy-crt game key <key> [ms]    # press a key inside the running game, held t
                                    # (enter is start, rshift the coin, or an evdev code)
 omarchy-crt watch <file|url> [--later [TITLE]]   # play on the tube now, or keep it in Videos
 omarchy-crt focus
-omarchy-crt audio crt|desktop|all|apps
+omarchy-crt audio crt|desktop|all|apps   # our own streams only, unless `all`
 omarchy-crt audio volume N           # TV sink volume, percent up to 150, kept in crt.toml
 omarchy-crt dac status|reset|csync and|xor|separate|watch
 omarchy-crt bios [--json]

@@ -86,6 +86,10 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   workspace 9` is a syntax error that changes nothing, while `hyprctl eval
   'hl.dispatch(hl.dsp.focus({ workspace = "name:x" }))'` works. A take that
   believed the first form recorded the wrong workspace.
+- PipeWire remembers a sink per application name, so moving our player's
+  audio to the television taught WirePlumber that *every* mpv belongs there,
+  desktop video included. Our player names its audio client
+  `omarchy-crt-player` for this reason.
 - This desktop focuses the window under the pointer (`input:follow_mouse`),
   so parking the cursor after focusing a window hands the keyboard straight
   back: park first, focus second. A video would not answer Escape because of

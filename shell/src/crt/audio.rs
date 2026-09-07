@@ -114,9 +114,16 @@ fn our_streams() -> Vec<(String, String)> {
             id = rest.trim().to_string();
         } else if let Some(rest) = s.strip_prefix("application.name = ") {
             let app = rest.trim_matches('"').to_string();
+            // Our own player names itself, so PipeWire remembers a sink for
+            // it alone: a desktop mpv keeps whatever output the desktop uses.
+            // Plain "mpv" stays in the list for players started before this.
             if matches!(
                 app.as_str(),
-                "omarchy-crt-shell" | "RetroArch" | "mpv" | "PipeWire ALSA [cliamp]"
+                "omarchy-crt-shell"
+                    | "RetroArch"
+                    | "omarchy-crt-player"
+                    | "mpv"
+                    | "PipeWire ALSA [cliamp]"
             ) {
                 out.push((id.clone(), app));
             }

@@ -151,6 +151,10 @@ pub fn command(
     // No --fs: the compositor floats and pins this window over the tube at
     // the output's size (crt::output::window_rules).
     cmd.arg("--wayland-app-id=omarchy-crt-player")
+        // The audio client name as well as the window id: PipeWire remembers
+        // the sink per application, and with the default name every mpv on the
+        // desktop would inherit the television as its output.
+        .arg("--audio-client-name=omarchy-crt-player")
         .arg("--no-border")
         .arg("--no-terminal")
         .arg("--really-quiet")
