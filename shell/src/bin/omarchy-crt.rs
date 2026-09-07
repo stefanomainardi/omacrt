@@ -129,7 +129,23 @@ fn status(cfg: &Config) -> Value {
             let h = m["height"].as_u64().unwrap_or(0) as u32;
             let disabled = m["disabled"].as_bool().unwrap_or(false);
             let mut mode = json!({ "width": w, "height": h, "refresh_hz": m["refreshRate"], "disabled": disabled });
-            for std in ["ntsc", "pal", "film"] {
+            // ntsc and film share 3520x240; prefer the standard the state
+            // records so the label matches what was applied, not whichever
+            // modeline happens to be checked last.
+            let saved = if state.standard.is_empty() {
+                cfg.output.standard.as_str()
+            } else {
+                state.standard.as_str()
+            };
+            let order: [&str; 3] = match saved {
+                "film" => ["film", "ntsc", "pal"],
+                "pal" => ["pal", "ntsc", "film"],
+                _ => ["ntsc", "film", "pal"],
+            };
+            for std in order {
+                if st["active"] == json!(true) {
+                    break;
+                }
                 if let Some(ml) = cfg.modeline(std).and_then(Modeline::parse) {
                     if !disabled && ml.width() == w && (h == ml.height() || h == state.lines) {
                         st["active"] = json!(true);
