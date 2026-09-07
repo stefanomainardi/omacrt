@@ -78,6 +78,11 @@ own autoconfig profiles; the wizard is for the launcher.
 
 ## In a game
 
+A game that was left in the middle asks before it starts: carry on from the
+state RetroArch wrote on exit, or start a new session. A new session does not
+read that state (it is left on disk until this session writes its own on
+exit). Games with no state start straight away.
+
 `Select` plus `Start` on the pad, the home button, `F1` on the keyboard, or
 `omarchy-crt shell key menu` pauses the game and raises the launcher's pause menu over it: resume,
 save state, load state, rewind two seconds, fast forward (toggles RetroArch's

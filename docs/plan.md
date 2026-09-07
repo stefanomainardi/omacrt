@@ -86,6 +86,10 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   workspace 9` is a syntax error that changes nothing, while `hyprctl eval
   'hl.dispatch(hl.dsp.focus({ workspace = "name:x" }))'` works. A take that
   believed the first form recorded the wrong workspace.
+- This desktop focuses the window under the pointer (`input:follow_mouse`),
+  so parking the cursor after focusing a window hands the keyboard straight
+  back: park first, focus second. A video would not answer Escape because of
+  this.
 - The launcher's own keys reach a running game only through the compositor
   (`omarchy-crt game key`), and RetroArch reads its own bindings: start is
   enter, the arcade coin rshift, A is x.

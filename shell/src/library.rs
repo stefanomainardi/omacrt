@@ -786,7 +786,7 @@ impl Library {
     }
 
     /// Per launch overrides: video policy, geometry, run-ahead, rewind, core options.
-    fn launch_keys(&self, system: &System, cores_cfg: &Path, extra: &str) -> String {
+    fn launch_keys(&self, system: &System, cores_cfg: &Path, extra: &str, resume: bool) -> String {
         let mut out = VideoPolicy::parse(&system.video).retroarch_keys(self.switching);
         {
             let mut kv = |k: &str, v: &str| out.push_str(&format!("{k} = \"{v}\"\n"));
@@ -806,8 +806,10 @@ impl Library {
             kv("network_cmd_enable", "false");
             // Auto load and save of the per game state: a game resumes where
             // it was left, and the pause menu's save is an explicit copy.
+            // `resume` is false when the player asked for a fresh start: the
+            // state on disk is left alone, this run just does not read it.
             kv("savestate_auto_save", "true");
-            kv("savestate_auto_load", "true");
+            kv("savestate_auto_load", if resume { "true" } else { "false" });
             kv("quit_on_close_content", "1");
             // A plain window the compositor floats and pins over the tube, not
             // a fullscreen one (see crt::output::window_rules); its size
@@ -846,6 +848,17 @@ impl Library {
         system: &System,
         game: &Game,
         extra: &str,
+    ) -> std::io::Result<std::process::Command> {
+        self.command_resuming(system, game, extra, true)
+    }
+
+    /// The same, saying whether the run should pick up the state left behind.
+    pub fn command_resuming(
+        &self,
+        system: &System,
+        game: &Game,
+        extra: &str,
+        resume: bool,
     ) -> std::io::Result<std::process::Command> {
         if system.is_video() {
             std::fs::create_dir_all(&self.config_dir)?;
@@ -887,7 +900,7 @@ impl Library {
         }
         std::fs::write(&cores_cfg, options)?;
         let launch_cfg = self.config_dir.join("launch.cfg");
-        std::fs::write(&launch_cfg, self.launch_keys(system, &cores_cfg, extra))?;
+        std::fs::write(&launch_cfg, self.launch_keys(system, &cores_cfg, extra, resume))?;
         let mut cmd = std::process::Command::new(&self.retroarch);
         cmd.arg("--config")
             .arg(cfg)

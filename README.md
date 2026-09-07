@@ -240,8 +240,11 @@ switches with a blend.
   scrape and click, the picture collapses to a line, the emulator takes over
   with the line count the system wants. RetroArch runs with its own menu and
   notifications off, save state on exit and resume on start.
-- **Pause menu.** Select + Start, or the home button: resume, save state, load
-  state, rewind, fast forward, slow motion, reset, back to the launcher. The compositor presses
+- **Resume or start again.** A game left in the middle asks which it is to be:
+  carry on from the state written on exit, or a new session that leaves that
+  state alone.
+- **Pause menu.** Select + Start, the home button, or F1: resume, save state,
+  load state, rewind, fast forward, slow motion, reset, back to the launcher. The compositor presses
   RetroArch's real hotkeys, so nothing depends on a network command. Every
   game with a save state carries a small arrow and says when it was left.
 - **Music.** On top of cliamp, started as a daemon when needed: the radio

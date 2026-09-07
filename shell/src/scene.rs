@@ -113,6 +113,10 @@ enum Screen {
     Equalizer {
         band: usize,
     },
+    /// A game with a state left behind: carry on, or start a new session.
+    Resume {
+        sel: usize,
+    },
     /// Button by button mapping of a pad SDL does not know.
     PadWizard,
     /// Videos hub: local films, YouTube, the clipboard link.
@@ -457,6 +461,9 @@ pub struct Scene {
     wizard: Option<Wizard>,
     /// A pad that arrived while the wizard could not show: name, guid, id.
     pending_wizard: Option<(String, String, u32)>,
+    /// The game waiting for an answer on the resume screen, and the screen
+    /// the question was asked from.
+    pending_entry: Option<(Entry, Box<Screen>)>,
     remap_request: bool,
     music: Music,
     /// Open music lists, innermost last: source, selected row, first shown row.
@@ -555,6 +562,7 @@ impl Scene {
             rumble_pending: false,
             wizard: None,
             pending_wizard: None,
+            pending_entry: None,
             remap_request: false,
             music: Music::new(std::env::var("PULSE_SINK").ok()),
             music_path: Vec::new(),
@@ -2084,6 +2092,27 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::Resume { sel } => {
+                match nav {
+                    Nav::Up if *sel > 0 => {
+                        *sel -= 1;
+                        moved = true;
+                    }
+                    Nav::Down if *sel + 1 < 2 => {
+                        *sel += 1;
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        // Never mind: back to the list the game came from.
+                        if let Some((_, from)) = self.pending_entry.take() {
+                            self.screen = *from;
+                        }
+                        self.pending.push(Sound::Lock);
+                        return;
+                    }
+                    _ => {}
+                }
+            }
             Screen::Equalizer { band } => {
                 let b = *band;
                 match nav {
@@ -2802,6 +2831,14 @@ impl Scene {
                 self.music_alt(None);
                 Action::None
             }
+            Screen::Resume { sel } => {
+                let Some((entry, from)) = self.pending_entry.take() else {
+                    return Action::None;
+                };
+                self.screen = *from;
+                self.pending.push(Sound::Select);
+                self.run_entry_resuming(&entry, sel == 0)
+            }
             Screen::Equalizer { .. } => {
                 // A walks the presets; Flat follows Custom.
                 let now = self.music.status.eq_preset.clone();
@@ -2853,7 +2890,20 @@ impl Scene {
         self.output_size.0 as f32 / self.output_size.1 as f32 > 3.0
     }
 
+    /// Launch, asking first when the game was left in the middle: RetroArch
+    /// would otherwise pick the state up without a word.
     fn run_entry(&mut self, entry: &Entry) -> Action {
+        let system = self.library.systems[entry.sys].clone();
+        if !system.is_video() && self.states.latest(&entry.game.path).is_some() {
+            self.pending_entry = Some((entry.clone(), Box::new(self.screen)));
+            self.pending.push(Sound::Move);
+            self.go(Screen::Resume { sel: 0 });
+            return Action::None;
+        }
+        self.run_entry_resuming(entry, true)
+    }
+
+    fn run_entry_resuming(&mut self, entry: &Entry, resume: bool) -> Action {
         let system = self.library.systems[entry.sys].clone();
         let extra = if system.is_video() {
             let hex = |c: Color| format!("{c:06x}");
@@ -2942,7 +2992,10 @@ impl Scene {
             None
         };
         self.music.hush();
-        match self.library.command(&system, &entry.game, &extra) {
+        match self
+            .library
+            .command_resuming(&system, &entry.game, &extra, resume)
+        {
             Ok(cmd) if system.is_video() => {
                 self.pending.push(Sound::Whoosh);
                 self.player = Some(Player::new(self.library.mpv_socket(), &entry.game.title));
@@ -3980,6 +4033,10 @@ impl Scene {
             }
             Screen::Equalizer { band } => {
                 self.draw_equalizer(fb, band);
+                return;
+            }
+            Screen::Resume { sel } => {
+                self.draw_resume(fb, sel);
                 return;
             }
             Screen::PadWizard => {
@@ -5233,6 +5290,52 @@ impl Scene {
         }
         self.draw_music_strip(fb, h - 30);
         let hint = self.hint(&[("A", "open"), ("X", "pause"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// The question asked before a game that was left in the middle: carry
+    /// on from the state, or start again. The state is never deleted; a new
+    /// session simply does not read it, and overwrites it on exit.
+    fn draw_resume(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let width = w - 2 * left;
+        let (title, label) = match &self.pending_entry {
+            Some((entry, _)) => (
+                entry.game.title.clone(),
+                self.states
+                    .latest(&entry.game.path)
+                    .map(|st| st.label())
+                    .unwrap_or_default(),
+            ),
+            None => (String::new(), String::new()),
+        };
+        let max_cols = (width / 8) as usize;
+        let head: String = title.chars().take(max_cols.saturating_sub(9)).collect();
+        let y0 = self.draw_header(fb, &format!("Resume  {head}"));
+        let items = [
+            (icons::RESUME, "Carry on where you left off", false),
+            (icons::GAMEPAD, "Start a new session", false),
+        ];
+        let row_h = 14;
+        let band_y = self.band(y0 + sel as i32 * row_h);
+        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        for (i, (icon, text, sub)) in items.iter().enumerate() {
+            let y = y0 + i as i32 * row_h;
+            self.draw_menu_row(fb, left, y, width, icon, text, *sub, i == sel, 1.0);
+        }
+        if !label.is_empty() {
+            fb.text(left + 4, y0 + 2 * row_h + 8, &label, self.theme.green, 1);
+        }
+        fb.text(
+            left + 4,
+            y0 + 2 * row_h + 20,
+            "the state on disk is kept either way",
+            scale(self.theme.dim, 0.9),
+            1,
+        );
+        let hint = self.hint(&[("A", "choose"), ("B", "back")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 

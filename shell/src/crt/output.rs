@@ -403,10 +403,10 @@ pub fn workspace_rule(name: &str) {
 pub fn raise(class: &str) -> bool {
     let game = "com.libretro.RetroArch";
     let pin_game = class != SHELL_CLASS;
+    park_cursor("");
     let (ok, out) = hypr_eval(&format!(
         "local g = hl.get_windows({{ class = \"{game}\" }})[1]; if g then hl.dispatch(hl.dsp.window.pin({{ window = g, enable = {pin_game} }})) end; local w = hl.get_windows({{ class = \"{class}\" }})[1]; if not w then return \"no window\" end; hl.dispatch(hl.dsp.focus({{ window = w }})); return \"raised\""
     ));
-    park_cursor("");
     ok && !out.contains("no window")
 }
 
@@ -417,10 +417,12 @@ pub fn expect_game_clear() {
 
 /// Keyboard focus to the first window of a class.
 pub fn focus_class(class: &str) -> (bool, String) {
+    // The pointer moves first: this desktop focuses whatever is under the
+    // cursor (input:follow_mouse), so parking it after focusing would hand
+    // the keyboard straight back to whatever window sits there.
+    park_cursor("");
     let (ok, out) = hypr_eval(&format!(
         "local w = hl.get_windows({{ class = \"{class}\" }})[1]; if not w then return \"no window\" end; hl.dispatch(hl.dsp.focus({{ window = w }})); return \"focused\""
     ));
-    // Every class we focus lives on the tube; the pointer must not follow.
-    park_cursor("");
     (ok && out.contains("focused"), out)
 }
