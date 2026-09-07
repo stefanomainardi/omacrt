@@ -13,6 +13,8 @@ pub mod music;
 pub mod padmap;
 pub mod player;
 pub mod profile;
+pub mod rumble;
+pub mod scumm;
 pub mod settings;
 pub mod states;
 pub mod store;

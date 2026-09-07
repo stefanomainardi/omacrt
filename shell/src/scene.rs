@@ -231,7 +231,7 @@ const VIDEOS_ROWS: usize = 3;
 /// Country codes the radio row cycles through; empty follows the locale.
 const COUNTRIES: [&str; 10] = ["", "IT", "US", "GB", "DE", "FR", "ES", "PT", "JP", "BR"];
 
-const FIT_ROWS: usize = 5;
+const FIT_ROWS: usize = 6;
 
 /// A game being launched: the media animation plays, then RetroArch starts.
 struct Launch {
@@ -772,6 +772,11 @@ impl Scene {
     }
 
     /// The RetroArch command once the launch animation has run its course.
+    /// Whether the desktop preview window should stay up while a game runs.
+    pub fn keep_preview_in_games(&self) -> bool {
+        self.settings.video.monitor_in_games
+    }
+
     pub fn take_launch(&mut self) -> Option<(std::process::Command, String, Option<Geometry>)> {
         let l = self.launching.as_mut()?;
         if l.spawned || ((self.now - l.started) as f32) < LAUNCH_SECS - 0.2 {
@@ -961,6 +966,7 @@ impl Scene {
             2 => v.aspect = cycle(&v.aspect, &["letterbox", "crop", "anamorphic"], dir),
             3 => v.overscan = !v.overscan,
             4 => v.retro_240p = !v.retro_240p,
+            5 => v.monitor_in_games = !v.monitor_in_games,
             _ => {}
         }
     }
@@ -1749,8 +1755,31 @@ impl Scene {
     }
 
     /// Rows of the systems screen: recent/, favorites/, then every system.
+    /// Systems the Games browser lists: everything but the videos folder,
+    /// which is not a console and has its own row on the home menu.
+    fn browse_systems(&self) -> Vec<usize> {
+        (0..self.library.systems.len())
+            .filter(|&i| !self.library.systems[i].is_video())
+            .collect()
+    }
+
+    /// The system a row of the browser stands for.
+    fn system_at_row(&self, row: usize) -> Option<usize> {
+        let n = row.checked_sub(Self::VIRTUAL)?;
+        self.browse_systems().get(n).copied()
+    }
+
+    /// The row a system sits on, for coming back to the list on it.
+    fn row_of_system(&self, sys: usize) -> usize {
+        self.browse_systems()
+            .iter()
+            .position(|&i| i == sys)
+            .map(|n| n + Self::VIRTUAL)
+            .unwrap_or(self.virtual_row)
+    }
+
     fn system_rows(&self) -> usize {
-        Self::VIRTUAL + self.library.systems.len()
+        Self::VIRTUAL + self.browse_systems().len()
     }
 
     fn navigate_browser(&mut self, nav: Nav) {
@@ -1897,7 +1926,7 @@ impl Scene {
                             return;
                         }
                         let row = match self.screen {
-                            Screen::Games { sys: Some(i), .. } => i + Self::VIRTUAL,
+                            Screen::Games { sys: Some(i), .. } => self.row_of_system(i),
                             _ => self.virtual_row,
                         };
                         self.screen = Screen::Systems {
@@ -2684,7 +2713,10 @@ impl Scene {
                         self.open_virtual(&list);
                     }
                     2 => self.go(Screen::Collections { sel: 0, top: 0 }),
-                    i => self.open_games(Some(i - Self::VIRTUAL)),
+                    i => match self.system_at_row(i) {
+                        Some(sys) => self.open_games(Some(sys)),
+                        None => return Action::None,
+                    },
                 }
                 Action::None
             }
@@ -3545,12 +3577,18 @@ impl Scene {
             Screen::Systems { sel, top } => {
                 let y0 = self.draw_header(fb, "Games");
                 let ox = self.slide();
-                let systems = self.library.systems.clone();
+                let browse = self.browse_systems();
+                let systems: Vec<crate::library::System> = browse
+                    .iter()
+                    .map(|&i| self.library.systems[i].clone())
+                    .collect();
                 // The selected console sits on the right; rows make room.
                 let panel = 72;
                 self.row_shrink = panel + 8;
-                if sel >= Self::VIRTUAL {
-                    let name = systems[sel - Self::VIRTUAL].name.clone();
+                if sel >= Self::VIRTUAL
+                    && let Some(s) = systems.get(sel - Self::VIRTUAL)
+                {
+                    let name = s.name.clone();
                     let px = w - left - panel;
                     let py = y0 + 6;
                     if let Some(img) = self.art.system_image(&name, panel as usize) {
@@ -3630,9 +3668,9 @@ impl Scene {
                         }
                         _ => {
                             let sys = &systems[i - Self::VIRTUAL];
-                            let count = self
-                                .system_counts
+                            let count = browse
                                 .get(i - Self::VIRTUAL)
+                                .and_then(|&si| self.system_counts.get(si))
                                 .copied()
                                 .unwrap_or(0);
                             let right = format!(
@@ -5192,6 +5230,14 @@ impl Scene {
                     "off".into()
                 },
             ),
+            (
+                "preview in games",
+                if v.monitor_in_games {
+                    "on".into()
+                } else {
+                    "off".into()
+                },
+            ),
         ];
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
@@ -5229,6 +5275,7 @@ impl Scene {
             "black bars, center crop, or squeeze",
             "keeps titles inside the safe area",
             "4:3 sources back to 320x240",
+            "keep the desktop preview window up while playing",
         ];
         let max_cols = (width / 8) as usize;
         fb.text(

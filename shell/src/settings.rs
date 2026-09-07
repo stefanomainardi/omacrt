@@ -25,6 +25,11 @@ pub struct VideoFit {
     pub overscan: bool,
     /// Downscale 4:3 sources to 320x240 progressive (retro gameplay captures).
     pub retro_240p: bool,
+    /// Keep the desktop preview window open while a game runs. Off by
+    /// default: the preview is for driving the launcher from the desk, and
+    /// nobody wants a second copy of the game on the monitor behind them.
+    #[serde(default)]
+    pub monitor_in_games: bool,
 }
 
 impl Default for VideoFit {
@@ -35,6 +40,7 @@ impl Default for VideoFit {
             aspect: "letterbox".into(),
             overscan: true,
             retro_240p: false,
+            monitor_in_games: false,
         }
     }
 }

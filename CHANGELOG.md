@@ -9,6 +9,19 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- GameCube, through the Dolphin core: native internal resolution, 480 lines,
+  the widescreen hacks off and the boot animation skipped.
+- ScummVM games are prepared on the way in: the scan works out what each
+  folder holds from its data files and writes the `.scummvm` launcher the core
+  needs, beside the data. The pointer is on the left stick with the settings a
+  point and click game wants, and a game still inside a disc image is reported
+  rather than half configured.
+- Vibration where the pad has it and the console had it: the Rumble Pak on a
+  Nintendo 64, the Purupuru pack on a Dreamcast, a DualShock rather than a
+  plain pad on a PlayStation, the flag on a GameCube. Nothing is turned on for
+  a pad without force feedback.
+- A setting for whether the desktop preview window stays up while a game runs.
+  It does not, by default.
 - Pads are taught to RetroArch as well as to the launcher: the profile
   directory RetroArch reads is kept filled from the profiles it ships or,
   failing that, from a translation of SDL's own mapping. `omarchy-crt-shell
@@ -25,6 +38,8 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The Games browser no longer lists the videos folder as if it were a
+  console; it has its own row on the home menu.
 - The television follows the resolution the core is drawing. Every system has
   a line count (480 for a Dreamcast, 224 for a Super Nintendo), a count above
   288 selects the interlaced mode of the standard on its own, and the launcher

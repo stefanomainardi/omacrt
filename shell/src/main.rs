@@ -483,6 +483,9 @@ fn run(args: &Args) -> Result<(), String> {
     // line count already applied.
     let mut follow_at = 0.0f64;
     let mut following: Option<u32> = None;
+    // Whether the desktop preview window was up when the game started, and
+    // so has to be put back when it ends.
+    let mut preview_was_up = false;
     // Pad buttons held, for the Select + Start pause combo.
     let mut held_back = false;
     let mut held_start = false;
@@ -500,6 +503,10 @@ fn run(args: &Args) -> Result<(), String> {
                     scene.game_finished(status.success() || library::exited_after_unload());
                     omarchy_crt_shell::crt::output::expect_game_clear();
                     following = None;
+                    if preview_was_up {
+                        preview_was_up = false;
+                        let _ = omarchy_crt_shell::crt::display::send("monitor on");
+                    }
                     if lines_changed {
                         crt_mode(None);
                         lines_changed = false;
@@ -874,6 +881,15 @@ fn run(args: &Args) -> Result<(), String> {
         }
 
         if let Some((mut cmd, title, lines)) = scene.take_launch() {
+            // The desktop preview is for driving the launcher from the desk.
+            // While a game runs it is a second copy of the picture on another
+            // screen, so it goes away and comes back when the game ends,
+            // unless the settings say to keep it.
+            preview_was_up = !scene.keep_preview_in_games()
+                && omarchy_crt_shell::crt::output::window_exists("omarchy-crt-monitor");
+            if preview_was_up {
+                let _ = omarchy_crt_shell::crt::display::send("monitor off");
+            }
             follow_at = now() + 2.0;
             following = lines.and_then(|g| g.lines);
             if let Some(g) = lines

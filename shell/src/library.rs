@@ -405,10 +405,68 @@ fn default_systems() -> Vec<System> {
                 ("reicast_widescreen_hack", "disabled"),
             ]),
         ),
+        sys(
+            "scummvm",
+            "scummvm",
+            &["scummvm", "svm"],
+            "320x200",
+            0,
+            false,
+            // Point and click on a sofa: the left stick is the pointer, with
+            // enough acceleration to cross the screen and a response curve
+            // that still lets it stop on a door handle. The interface stays at
+            // the resolution the games were drawn for, since that is what the
+            // tube shows, and hardware acceleration stays off because the core
+            // draws these games in software anyway.
+            opts(&[
+                ("scummvm_pointer_device", "Left Analog"),
+                ("scummvm_gamepad_cursor_speed", "1.0"),
+                ("scummvm_gamepad_cursor_acceleration_time", "0.2"),
+                ("scummvm_analog_response", "quadratic"),
+                ("scummvm_analog_deadzone", "15"),
+                ("scummvm_mouse_speed", "1.0"),
+                ("scummvm_mouse_fine_control_speed_reduction", "4"),
+                ("scummvm_gui_aspect_ratio", "4/3"),
+                ("scummvm_gui_h_res", "320x200"),
+                ("scummvm_video_hw_acceleration", "disabled"),
+                ("scummvm_autosave", "enabled"),
+                ("scummvm_samplerate", "48000"),
+            ]),
+        ),
+        sys(
+            "gamecube",
+            "dolphin",
+            &[
+                "iso", "gcm", "rvz", "gcz", "ciso", "wia", "dol", "elf", "m3u",
+            ],
+            "native",
+            0,
+            false,
+            // A GameCube drew 640x480 interlaced on a television, and that is
+            // what it gets here: the internal resolution stays native, the
+            // widescreen hacks stay off, and progressive scan stays off, which
+            // is what a 15 kHz set can show. The boot animation is skipped
+            // because it needs an IPL dump nobody has by default.
+            opts(&[
+                ("dolphin_efb_scale", "1x Native (640x528)"),
+                ("dolphin_widescreen", "disabled"),
+                ("dolphin_widescreen_hack", "disabled"),
+                ("dolphin_progressive_scan", "disabled"),
+                ("dolphin_force_progressive", "disabled"),
+                ("dolphin_crop_overscan", "disabled"),
+                ("dolphin_skip_gc_bios", "enabled"),
+                ("dolphin_osd_enabled", "disabled"),
+                ("dolphin_shader_compilation_mode", "sync"),
+                ("dolphin_wait_for_shaders", "enabled"),
+                ("dolphin_cpu_core", "JIT Recompiler"),
+                ("dolphin_dsp_hle", "enabled"),
+                ("dolphin_fastmem", "enabled"),
+            ]),
+        ),
     ]
     .into_iter()
     .map(|mut s| {
-        if matches!(s.name.as_str(), "n64" | "dreamcast" | "psx") {
+        if matches!(s.name.as_str(), "n64" | "dreamcast" | "psx" | "gamecube") {
             s.analog_dpad = Some(0);
         }
         s
@@ -833,6 +891,16 @@ impl Library {
                 kv("joypad_autoconfig_dir", &dir.display().to_string());
                 kv("input_autodetect_enable", "true");
             }
+            // The emulator's own rumble volume: nothing to feel without it,
+            // and nothing to gain from it when the pad cannot shake.
+            kv(
+                "input_rumble_gain",
+                if crate::rumble::pad_can_rumble() {
+                    "100"
+                } else {
+                    "0"
+                },
+            );
             if system.runahead > 0 {
                 kv("run_ahead_enabled", "true");
                 kv("run_ahead_frames", &system.runahead.to_string());
@@ -939,6 +1007,14 @@ impl Library {
         let cfg = self.retroarch_config()?;
         let cores_cfg = self.config_dir.join("cores.cfg");
         let mut options = String::new();
+        // Vibration first, so anything written by hand in systems.toml has the
+        // last word: the emulator keeps the value it reads last.
+        let rumbles = crate::rumble::pad_can_rumble();
+        if rumbles {
+            for (k, v) in crate::rumble::options(&system.name) {
+                options.push_str(&format!("{k} = \"{v}\"\n"));
+            }
+        }
         for (k, v) in &system.options {
             options.push_str(&format!("{k} = \"{v}\"\n"));
         }
@@ -955,6 +1031,14 @@ impl Library {
             .arg(launch_cfg);
         for d in &system.devices {
             cmd.arg(format!("--device={d}"));
+        }
+        // A PlayStation only shakes when the pad it is given has the motors:
+        // a device type, not a core option. A system that names its own
+        // devices has already said what it wants.
+        if rumbles && system.devices.is_empty() {
+            for d in crate::rumble::devices(&system.name) {
+                cmd.arg(format!("--device={d}"));
+            }
         }
         cmd.arg("-L")
             .arg(self.core_path(system))

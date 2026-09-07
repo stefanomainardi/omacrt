@@ -183,7 +183,9 @@ impl Modeline {
         let active = self.v[0];
         let vsync = self.v[2] - self.v[1];
         let front = self.v[1] - self.v[0];
-        let lines = lines.clamp(180, self.v[3] - vsync - 4);
+        // Never eat into the blanking: a frame with no front or back porch
+        // left is one the television cannot lock onto.
+        let lines = lines.clamp(180, self.v[3] - vsync - 8);
         let extra = active as i64 - lines as i64;
         let front = (front as i64 + extra / 2).max(1) as u32;
         let mut m = self.clone();
@@ -439,6 +441,14 @@ pub fn workspace_rule(name: &str) {
 /// Stacking among pinned windows is fixed, so raising is done with the pin
 /// itself: the game unpinned sits below the pinned launcher (still mapped,
 /// rendered and answering), pinned again it is back above. Focus follows.
+/// True when a window of this class is open on the desktop.
+pub fn window_exists(class: &str) -> bool {
+    let (ok, out) = hypr_eval(&format!(
+        "return #hl.get_windows({{ class = \"{class}\" }}) > 0 and \"yes\" or \"no\""
+    ));
+    ok && out.contains("yes")
+}
+
 pub fn raise(class: &str) -> bool {
     let game = "com.libretro.RetroArch";
     let pin_game = class != SHELL_CLASS;

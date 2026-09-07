@@ -1307,6 +1307,28 @@ fn cmd_library(args: &[String]) {
                 lc.roots = found;
             }
             lc.save().unwrap_or_else(|e| die(&e.to_string()));
+            // ScummVM games arrive as folders of data files, and the core
+            // launches a `.scummvm` file naming the game. Write the missing
+            // ones before the scan, so they are picked up as games.
+            for root in &lc.roots {
+                for folder in ["scummvm", "ScummVM", "scumm"] {
+                    let dir = root.join(folder);
+                    if !dir.is_dir() {
+                        continue;
+                    }
+                    for done in omarchy_crt_shell::scumm::prepare_all(&dir) {
+                        match done {
+                            omarchy_crt_shell::scumm::Prepared::Wrote(file, id) => {
+                                println!("scummvm:    {id}, {}", file.display())
+                            }
+                            omarchy_crt_shell::scumm::Prepared::Packaged(dir) => println!(
+                                "scummvm:    {} is still a disc image; unpack it into the folder",
+                                dir.display()
+                            ),
+                        }
+                    }
+                }
+            }
             let quiet = has(args, "--quiet");
             // --progress: one plain line per folder on stdout, for a caller
             // that shows the progress itself (the library overlay does).
@@ -1765,7 +1787,11 @@ fn main() {
                     .unwrap_or_else(|| die("no modeline for that standard"));
                 let mut ml = Modeline::parse(text).unwrap_or_else(|| die("bad modeline"));
                 if let Some(l) = lines {
-                    ml = ml.with_lines(l);
+                    // The standard's own frame is the ceiling: a core that
+                    // reports more lines than the television has (a GameCube
+                    // saying 528 for its 480 line picture) gets the whole
+                    // frame, not a frame with no blanking left in it.
+                    ml = ml.with_lines(l.min(ml.height()));
                 }
                 if shift != (0, 0) {
                     let scale = ml.width() as f32 / 320.0;
