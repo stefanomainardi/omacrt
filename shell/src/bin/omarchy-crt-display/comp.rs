@@ -122,11 +122,19 @@ impl Recorder {
         let mut cmd = std::process::Command::new("ffmpeg");
         cmd.args(["-hide_banner", "-loglevel", "error", "-y"])
             .args(["-f", "rawvideo", "-pix_fmt", "bgra"])
+            // Frames are stamped as they arrive and the output is forced to a
+            // constant 30 fps: a frame dropped because the encoder was busy is
+            // then filled in by holding the previous one, instead of shortening
+            // the film. Without this a long recording plays faster than it was
+            // shot and drifts away from its own sound, seconds of it over a
+            // quarter of an hour.
+            .args(["-use_wallclock_as_timestamps", "1"])
             .args(["-s", &format!("{REC_W}x{REC_H}"), "-r", "30", "-i", "pipe:0"]);
         if let Some(sink) = &sink {
             cmd.args(["-f", "pulse", "-i", &format!("{sink}.monitor")]);
         }
-        cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"]);
+        cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"])
+            .args(["-fps_mode", "cfr", "-r", "30"]);
         if sink.is_some() {
             cmd.args(["-c:a", "aac", "-b:a", "192k", "-shortest"]);
         }
