@@ -755,7 +755,7 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
         let mut url = url.to_string();
         if let Some(id) = url.strip_prefix("spotify:track:") {
             let out = std::process::Command::new("curl")
-                .args(["-sL", "-m", "15", "-A", USER_AGENT])
+                .args(["-sL", "-m", "15", "-A", USER_AGENT, "--proto", "=http,https", "--proto-redir", "=http,https", "--max-filesize", "26214400", "--retry", "1"])
                 .arg(format!("https://open.spotify.com/oembed?url=spotify:track:{id}"))
                 .output()
                 .ok()?;
@@ -764,7 +764,7 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
         }
         let raw = cache.join(format!("{hash:016x}.tmp"));
         let ok = std::process::Command::new("curl")
-            .args(["-sL", "-m", "15", "-A", USER_AGENT, "-o"])
+            .args(["-sL", "-m", "15", "-A", USER_AGENT, "--proto", "=http,https", "--proto-redir", "=http,https", "--max-filesize", "26214400", "--retry", "1", "-o"])
             .arg(&raw)
             .arg(&url)
             .status()
@@ -1075,7 +1075,8 @@ fn stations(url: &str) -> Result<Vec<Item>, String> {
 /// directory is HTTPS.
 fn fetch(url: &str) -> Result<Value, String> {
     let out = std::process::Command::new("curl")
-        .args(["-sL", "-m", "12", "-A", USER_AGENT, url])
+        .args(["-sL", "-m", "12", "-A", USER_AGENT, "--proto", "=http,https", "--proto-redir", "=http,https", "--max-filesize", "26214400", "--retry", "1"])
+        .arg(url)
         .output()
         .map_err(|e| format!("curl: {e}"))?;
     if !out.status.success() {

@@ -22,10 +22,13 @@ pub struct Bluetooth {
     pub busy: bool,
 }
 
-fn run(cmd: &str, capture: bool) -> std::io::Result<Child> {
-    Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
+/// One `bluetoothctl` run, arguments passed as arguments. Nothing here goes
+/// through a shell: the device list is parsed from a program's output, and a
+/// name or an address from a stranger's device has no business being read as
+/// shell syntax.
+fn bluetoothctl(args: &[&str], capture: bool) -> std::io::Result<Child> {
+    Command::new("bluetoothctl")
+        .args(args)
         .stdin(Stdio::null())
         .stdout(if capture {
             Stdio::piped()
@@ -34,6 +37,16 @@ fn run(cmd: &str, capture: bool) -> std::io::Result<Child> {
         })
         .stderr(Stdio::null())
         .spawn()
+}
+
+/// A Bluetooth address as bluetoothctl prints it, six hex pairs. Anything else
+/// did not come from the device list and is not passed on.
+fn is_address(s: &str) -> bool {
+    let parts: Vec<&str> = s.split(':').collect();
+    parts.len() == 6
+        && parts
+            .iter()
+            .all(|p| p.len() == 2 && p.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 impl Bluetooth {
@@ -60,10 +73,8 @@ impl Bluetooth {
         if self.busy {
             return;
         }
-        match run(
-            "bluetoothctl power on >/dev/null; bluetoothctl --timeout 8 scan on",
-            false,
-        ) {
+        let _ = bluetoothctl(&["power", "on"], false).map(|mut c| c.wait());
+        match bluetoothctl(&["--timeout", "8", "scan", "on"], false) {
             Ok(c) => {
                 self.state = State::Scanning(c);
                 self.busy = true;
@@ -80,10 +91,15 @@ impl Bluetooth {
         let Some((mac, name)) = self.devices.get(index).cloned() else {
             return;
         };
-        let cmd = format!(
-            "bluetoothctl pair {mac} && bluetoothctl trust {mac} && bluetoothctl connect {mac}"
-        );
-        match run(&cmd, false) {
+        if !is_address(&mac) {
+            self.status = "that device has no usable address".into();
+            return;
+        }
+        // Pair, then trust, then connect: each one its own run, so a failure
+        // stops the sequence the way the shell's && used to.
+        let _ = bluetoothctl(&["pair", &mac], false).map(|mut c| c.wait());
+        let _ = bluetoothctl(&["trust", &mac], false).map(|mut c| c.wait());
+        match bluetoothctl(&["connect", &mac], false) {
             Ok(c) => {
                 self.state = State::Pairing(c, name.clone());
                 self.busy = true;
@@ -100,7 +116,7 @@ impl Bluetooth {
             State::Idle => false,
             State::Scanning(mut c) => match c.try_wait() {
                 Ok(Some(_)) => {
-                    match run("bluetoothctl devices", true) {
+                    match bluetoothctl(&["devices"], true) {
                         Ok(l) => self.state = State::Listing(l),
                         Err(e) => {
                             self.status = format!("bluetoothctl: {e}");
@@ -177,5 +193,17 @@ impl Bluetooth {
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_real_addresses_are_passed_to_bluetoothctl() {
+        assert!(super::is_address("A4:C1:38:9F:2B:07"));
+        assert!(!super::is_address("A4:C1:38:9F:2B"));
+        assert!(!super::is_address("A4:C1:38:9F:2B:0Z"));
+        assert!(!super::is_address("; rm -rf ~"));
+        assert!(!super::is_address(""));
     }
 }

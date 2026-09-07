@@ -137,9 +137,12 @@ mp.observe_property("time-pos", "number", function() if visible then render() en
 /// Build the mpv command for one file. `socket` is the IPC path,
 /// `input_conf` the key bindings, `osd` the Lua overlay, `colors` the
 /// theme as `accent,dim,paper,selection` hex values.
+///
+/// The file itself is not added here: the caller appends its own options and
+/// then calls [`add_target`], which puts the file last behind a `--` so a
+/// name or a URL starting with a dash cannot become an mpv flag.
 pub fn command(
     mpv: &str,
-    file: &Path,
     socket: &Path,
     input_conf: &Path,
     osd: &Path,
@@ -172,7 +175,6 @@ pub fn command(
         .arg("--save-position-on-quit")
         .arg("--hwdec=auto-safe")
         .arg(format!("--input-ipc-server={}", socket.display()))
-        .arg(file)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -209,6 +211,11 @@ pub fn stop_all() -> usize {
         hit += 1;
     }
     hit
+}
+
+/// Put the file at the end of the command, behind the option terminator.
+pub fn add_target(cmd: &mut std::process::Command, file: &Path) {
+    cmd.arg("--").arg(file);
 }
 
 /// State mirrored from mpv while a video plays.

@@ -888,8 +888,9 @@ impl Library {
                 None => (game.path.as_path(), fit_args),
             };
             let mut cmd =
-                crate::player::command("mpv", file, &self.mpv_socket(), &input_conf, &osd, colors);
+                crate::player::command("mpv", &self.mpv_socket(), &input_conf, &osd, colors);
             cmd.args(fit_args);
+            crate::player::add_target(&mut cmd, file);
             return Ok(cmd);
         }
         let cfg = self.retroarch_config()?;

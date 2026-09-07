@@ -140,7 +140,8 @@ impl NameIndex {
         } else {
             let url = format!("{THUMBS}/{}/Named_Boxarts/", percent_encode(label));
             let out = std::process::Command::new("curl")
-                .args(["-fsSL", "--max-time", "60", "-A", "omarchy-crt", &url])
+                .args(["-fsSL", "--max-time", "60", "-A", "omarchy-crt", "--proto", "=http,https", "--proto-redir", "=http,https", "--max-filesize", "26214400", "--retry", "1"])
+                .arg(&url)
                 .output()
                 .ok()?;
             if !out.status.success() {
@@ -336,7 +337,7 @@ pub fn download(label: &str, name: &str, dest: &Path) -> bool {
     );
     let tmp = dest.with_extension("part");
     let ok = std::process::Command::new("curl")
-        .args(["-fsSL", "--max-time", "30", "-A", "omarchy-crt", "-o"])
+        .args(["-fsSL", "--max-time", "30", "-A", "omarchy-crt", "--proto", "=http,https", "--proto-redir", "=http,https", "--max-filesize", "26214400", "--retry", "1", "-o"])
         .arg(&tmp)
         .arg(&url)
         .status()
