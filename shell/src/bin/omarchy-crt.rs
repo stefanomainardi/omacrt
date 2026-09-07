@@ -49,7 +49,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library collections [import DIR]  curated lists (RePlayOS _favorites folders import)
   doctor                   checks with plain answers
   config                   config file path and contents
-  config set KEY VALUE     change one setting (output.csync, output.standard, audio.volume, ...)
+  config set KEY VALUE     change one setting (output.csync, output.standard, audio.volume, shell.autostart, ...)
 
 Config: ~/.config/omarchy-crt/crt.toml (written with defaults on first run)";
 
@@ -618,6 +618,10 @@ fn cmd_boot(cfg: &Config) {
     }
     state.on = false;
     state.save();
+    if cfg.shell.autostart && output::pick(cfg).is_some_and(|c| c.connected) {
+        println!("autostart: the DAC is connected, switching the tube on");
+        cmd_on(cfg, None);
+    }
 }
 
 fn cmd_doctor(cfg: &Config) -> i32 {

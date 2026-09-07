@@ -77,6 +77,9 @@ pub struct Shell {
     /// program, then in the source tree.
     pub bin: String,
     pub args: Vec<String>,
+    /// Switch the tube on at login when the DAC is connected (`omarchy-crt
+    /// boot` does it), so the television is a console from the start.
+    pub autostart: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -123,6 +126,7 @@ impl Default for Shell {
                 "--stretch".into(),
                 "--auto-boot".into(),
             ],
+            autostart: false,
         }
     }
 }
@@ -171,6 +175,8 @@ film = "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync"
 [shell]
 bin = "omarchy-crt-shell"
 args = ["--fullscreen", "--stretch", "--auto-boot"]
+# Light the tube at login when the DAC is connected (`omarchy-crt boot`).
+autostart = false
 
 [audio]
 # Enable the DAC's HDMI audio while on and send the launcher, RetroArch and
@@ -277,6 +283,7 @@ pub fn set_value(key: &str, value: &str) -> Result<(), String> {
     let allowed: &[(&str, &[&str])] = &[
         ("output", &["connector", "position", "csync", "standard"]),
         ("audio", &["route", "system_default", "volume"]),
+        ("shell", &["autostart"]),
         ("modelines", &["ntsc", "pal", "film"]),
     ];
     let ok = allowed

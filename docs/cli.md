@@ -125,6 +125,7 @@ pal = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"
 [shell]
 bin = "omarchy-crt-shell"
 args = ["--fullscreen", "--stretch", "--auto-boot"]
+autostart = false     # true: `boot` switches the tube on at login when the DAC is there
 
 [audio]
 route = true

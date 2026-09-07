@@ -117,6 +117,12 @@ scanlines or curvature. The tube provides those.
   state, volume, hints) that appears on every command and stays while paused,
   position saved on quit. Deinterlacing stays off so 480i sources reach the
   tube as fields.
+- **A console from login.** `shell.autostart = true` in `crt.toml` makes the
+  login reset switch the tube on when the DAC is connected: the television
+  boots into the launcher with the desktop.
+- **Details.** Region and revision tags under the box art, when a game was
+  last played, folder breadcrumbs in the header, a marquee for long titles,
+  the favourites star.
 - **Any pad.** Pads SDL knows just work; an unknown one gets a button by
   button wizard on the tube the moment it is plugged in, and the mapping is
   kept for next time. `X` on the Pads screen maps the current pad again.

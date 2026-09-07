@@ -18,19 +18,23 @@ pub struct StateInfo {
     pub thumb: Option<PathBuf>,
 }
 
+/// "12:03" today, "Sat 12:03" this week, "6 Sep" older.
+pub fn when_label(when: SystemTime) -> String {
+    let t: chrono::DateTime<chrono::Local> = when.into();
+    let now = chrono::Local::now();
+    let age = now.signed_duration_since(t);
+    if age.num_hours() < 20 && t.date_naive() == now.date_naive() {
+        t.format("%H:%M").to_string()
+    } else if age.num_days() < 6 {
+        t.format("%a %H:%M").to_string()
+    } else {
+        t.format("%-d %b").to_string()
+    }
+}
+
 impl StateInfo {
-    /// "12:03" today, "Sat 12:03" this week, "6 Sep" older.
     pub fn when_label(&self) -> String {
-        let t: chrono::DateTime<chrono::Local> = self.when.into();
-        let now = chrono::Local::now();
-        let age = now.signed_duration_since(t);
-        if age.num_hours() < 20 && t.date_naive() == now.date_naive() {
-            t.format("%H:%M").to_string()
-        } else if age.num_days() < 6 {
-            t.format("%a %H:%M").to_string()
-        } else {
-            t.format("%-d %b").to_string()
-        }
+        when_label(self.when)
     }
 
     pub fn label(&self) -> String {

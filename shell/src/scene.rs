@@ -353,6 +353,8 @@ pub struct Scene {
     mark_small: effects::Grid,
     profile: Profile,
     recent: Vec<(usize, PathBuf)>,
+    /// When each recent game was last started, seconds since the epoch.
+    recent_at: std::collections::HashMap<PathBuf, i64>,
     favorites: Vec<(usize, PathBuf)>,
     pad: PadKind,
     bt: Bluetooth,
@@ -454,6 +456,7 @@ impl Scene {
             vis: vec![0.0; 10],
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
+            recent_at: load_times(&library.config_dir.join("recent.txt")),
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
             library,
             screen: Screen::Menu,
@@ -2226,9 +2229,12 @@ impl Scene {
         self.recent.retain(|(_, p)| *p != entry.game.path);
         self.recent.insert(0, (entry.sys, entry.game.path.clone()));
         self.recent.truncate(20);
-        save_list(
+        self.recent_at
+            .insert(entry.game.path.clone(), chrono::Local::now().timestamp());
+        save_recent(
             &self.library.config_dir.join("recent.txt"),
             &self.recent,
+            &self.recent_at,
             &self.library,
         );
     }
@@ -2763,13 +2769,21 @@ impl Scene {
             Screen::Games { sys, sel, top } => {
                 let prompt = match sys {
                     Some(i) => match &self.game_dir {
-                        Some(d) => format!(
-                            "{} / {}",
-                            self.library.systems[i].name,
-                            d.file_name()
-                                .map(|n| n.to_string_lossy())
-                                .unwrap_or_default()
-                        ),
+                        Some(d) => {
+                            // The whole path inside the system folder, one crumb per level.
+                            let root = crate::library::expand(&self.library.systems[i].dir);
+                            let crumbs: Vec<String> = d
+                                .strip_prefix(&root)
+                                .map(|r| {
+                                    r.components()
+                                        .map(|c| c.as_os_str().to_string_lossy().to_string())
+                                        .collect()
+                                })
+                                .unwrap_or_else(|_| {
+                                    vec![d.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()]
+                                });
+                            format!("{} / {}", self.library.systems[i].name, crumbs.join(" / "))
+                        }
                         None => self.library.systems[i].name.clone(),
                     },
                     None => match self.open_collection {
@@ -2878,6 +2892,15 @@ impl Scene {
                     if let Some(st) = self.states.latest(&entry.game.path) {
                         let label: String = st.label().chars().take((cover_box / 8) as usize).collect();
                         fb.text(bx, ty + 2, &label, self.theme.green, 1);
+                        ty += 10;
+                    }
+                    if let Some(at) = self.recent_at.get(&entry.game.path) {
+                        let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs((*at).max(0) as u64);
+                        let label: String = format!("played {}", states::when_label(when))
+                            .chars()
+                            .take((cover_box / 8) as usize)
+                            .collect();
+                        fb.text(bx, ty + 2, &label, scale(self.theme.dim, 0.9), 1);
                     }
                 }
                 if n == 0 && self.search.as_deref().is_some_and(|q| !q.is_empty()) {
@@ -4476,6 +4499,47 @@ fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
             Some((i, PathBuf::from(p)))
         })
         .collect()
+}
+
+/// Third column of recent.txt: when the game was last started.
+fn load_times(path: &std::path::Path) -> std::collections::HashMap<PathBuf, i64> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Default::default();
+    };
+    text.lines()
+        .filter_map(|l| {
+            let mut parts = l.split('\t');
+            let _name = parts.next()?;
+            let p = parts.next()?;
+            let at: i64 = parts.next()?.trim().parse().ok()?;
+            Some((PathBuf::from(p), at))
+        })
+        .collect()
+}
+
+fn save_recent(
+    path: &std::path::Path,
+    list: &[(usize, PathBuf)],
+    at: &std::collections::HashMap<PathBuf, i64>,
+    lib: &Library,
+) {
+    let text: String = list
+        .iter()
+        .filter_map(|(i, p)| {
+            Some(format!(
+                "{}\t{}\t{}\n",
+                lib.systems.get(*i)?.name,
+                p.display(),
+                at.get(p).copied().unwrap_or(0)
+            ))
+        })
+        .collect();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Err(e) = std::fs::write(path, text) {
+        eprintln!("cannot write {}: {e}", path.display());
+    }
 }
 
 fn save_list(path: &std::path::Path, list: &[(usize, PathBuf)], lib: &Library) {
