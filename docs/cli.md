@@ -10,7 +10,7 @@ omarchy-crt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launc
 omarchy-crt off                      launcher closed, audio back, output disabled
 omarchy-crt boot                     login reset: output off, audio back to the desktop
 omarchy-crt toggle
-omarchy-crt mode ntsc|pal|film [--lines N] [--shift-x X] [--shift-y Y]
+omarchy-crt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
 omarchy-crt shell start|stop|restart|focus
 omarchy-crt shell key <input>...   # home up down left right fire back fav alt start
                                    # search osk del next prev first last
@@ -27,7 +27,7 @@ omarchy-crt library [--json]
 omarchy-crt library cores [--json]   # the core each system needs, installed or not, its package
 omarchy-crt library set SYS core=X|dir=D   # change a system's core or folder in systems.toml
 omarchy-crt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
-omarchy-crt library scan [DIR...]
+omarchy-crt library scan [DIR...] [--progress]   # --progress: one plain line per folder
 omarchy-crt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
 omarchy-crt doctor
 omarchy-crt config
@@ -105,11 +105,27 @@ ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"   # 15.73 kHz, 60.
 pal  = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"   # 15.63 kHz, 50.08 Hz
 ```
 
+Two interlaced timings sit next to them, for video rather than games. They
+keep the same line rate and draw two fields per frame, so the tube shows 480
+or 576 lines:
+
+```text
+ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
+pal_i  = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
+```
+
+`mode 480i` and `mode 576i` apply them. The refresh in `status` is the frame
+rate, half the field rate: 29.96 Hz means 59.93 fields. The launcher draws at
+the full line count in these modes. Both were programmed on the RGB-Pi 2;
+whether a source looks better as fields than as a deinterlaced 240p picture
+is a judgement for the eye, in front of the tube.
+
 ## Library and BIOS
 
 `library scan DIR...` indexes every game under the given folders, whatever
-their layout, and remembers the folders as roots; without arguments it
-rescans the roots, or discovers mounted disks that look like collections.
+their layout, and remembers the folders as roots. With `--progress` it prints
+`scanning <folder>` as it goes, which is how the library overlay shows a scan
+without opening a terminal. Without arguments it rescans the roots, or discovers mounted disks that look like collections.
 `library` shows systems with counts and sources, `library unknown` the files
 it could not place and `library assign FOLDER SYSTEM` teaches it. See
 [docs/systems.md](systems.md) for the detection rules.
@@ -133,6 +149,8 @@ standard = "ntsc"
 [modelines]
 ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"
 pal = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"
+ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
+pal_i = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
 
 [shell]
 bin = "omarchy-crt-shell"

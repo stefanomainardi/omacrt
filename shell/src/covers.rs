@@ -342,7 +342,10 @@ pub fn download(label: &str, name: &str, dest: &Path) -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
-    if !ok {
+    // A empty or truncated answer is no picture: the server sometimes
+    // returns a zero length body with a 200.
+    let size = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    if !ok || size < 512 {
         let _ = std::fs::remove_file(&tmp);
         return false;
     }
@@ -352,6 +355,7 @@ pub fn download(label: &str, name: &str, dest: &Path) -> bool {
         .arg(&tmp)
         .args(["-vf", "scale='min(320,iw)':-1", "-frames:v", "1", "-f", "image2", "-c:v", "png"])
         .arg(&shrunk)
+        .stderr(std::process::Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false);

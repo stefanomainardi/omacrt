@@ -42,8 +42,9 @@ television outright. Written in Rust, drawn at 320x240.
   game, the line count of each system set live.
 - **Music.** cliamp as the engine: radio by country and genre, Spotify (and
   any provider cliamp knows) with search, a hi-fi deck with cassette,
-  turntable and VU meters, seven visualizers, synced lyrics, sleep timer, all
-  tuned from a Settings page on the tube.
+  turntable and VU meters, album art and station logos, seven visualizers,
+  synced lyrics, a ten band equaliser, sleep timer, all tuned from a Settings
+  page on the tube.
 - **Video.** Local films fitted to the tube, YouTube searched and played from
   the television, a link sent from the desktop.
 - **Omarchy all the way.** Theme colours, the bar widget and its panel, a full
@@ -224,7 +225,7 @@ switches with a blend.
   with the line count the system wants. RetroArch runs with its own menu and
   notifications off, save state on exit and resume on start.
 - **Pause menu.** Select + Start, or the home button: resume, save state, load
-  state, fast forward, reset, back to the launcher. The compositor presses
+  state, rewind, fast forward, slow motion, reset, back to the launcher. The compositor presses
   RetroArch's real hotkeys, so nothing depends on a network command. Every
   game with a save state carries a small arrow and says when it was left.
 - **Music.** On top of cliamp, started as a daemon when needed: the radio
@@ -237,7 +238,10 @@ switches with a blend.
   by cliamp's spectrum and a kick detector: Mode 7 equalizer, copper bars,
   oscilloscope, starfield, plasma, pixel fire, spectrum tower. Synced lyrics
   when cliamp has them, a sleep timer, and the selection band of every list
-  breathing with the beat.
+  breathing with the beat. The album art of a Spotify track and the logo of a
+  radio station arrive on the cassette label, the record label and the dial.
+  An **equaliser** page moves the engine's ten bands one decibel at a time,
+  or takes one of its presets.
 - **Videos.** Local films through mpv with a themed on screen display and a
   fit pipeline for the tube (480i or 576i by frame rate, pulldown or PAL
   speed-up for film, letterbox or crop, a safe area, a retro 240p mode).
@@ -313,8 +317,8 @@ collapse onto one title and systems show up when they have games. Details in
 
 [`docs/plan.md`](docs/plan.md) keeps the current state. In short: the tube is
 ours, games, music and video run on it, the collection is managed from the
-bar. Next: interlaced 480i and 576i modelines for video, rewind and aspect
-in the pause menu, album art on the music screens.
+bar, and the interlaced modes are in. Next: aspect and shader choices in the
+pause menu, more screensaver effects.
 
 ## Contributing
 

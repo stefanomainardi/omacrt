@@ -18,8 +18,9 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   This replaced every earlier workaround (pinned windows, workspace rules,
   parked pointer) and every plan for a patched kernel.
 - **Playing well.** Pause menu over the game with resume, save and load state,
-  fast forward, reset and back to the launcher, all through real hotkeys the
-  compositor presses (RetroArch 1.22's network commands crash it). Save
+  rewind, fast forward, slow motion, reset and back to the launcher, all
+  through real hotkeys the compositor presses, held as long as the action
+  needs (RetroArch 1.22's network commands crash it). Save
   states in sight on the rows and under the box art. A mapping wizard for
   pads SDL does not know. Per system libretro options, run-ahead and rewind
   whitelists written at every launch.
@@ -32,14 +33,19 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   configured provider (Spotify works after `cliamp setup`). The hi-fi deck
   (cassette, dial with static, VU meters), seven visualizers with a kick
   detector standing in for the screensaver, synced lyrics, sleep timer, the
-  selection band breathing with the beat, optional pad rumble.
+  selection band breathing with the beat, optional pad rumble. Album art for
+  Spotify tracks through the public oEmbed endpoint and station logos from the
+  directory listing, on the cassette label, the record label and the dial. A
+  ten band equaliser page over the engine's own bands and presets. What plays
+  keeps a line at the foot of the home screen.
 - **Video.** Local films through mpv with the fit pipeline; YouTube from the
   tube (search through yt-dlp, watch later, recently watched, the clipboard
   link, `omarchy-crt watch`), fetched at 480p.
 - **The bar plugin.** Power, standard, DAC sync, audio and TV volume, a field
   to send a link to the television, the library overlay (sources and disks,
-  systems with a core picker and install offers, BIOS import, unplaced
-  folders).
+  systems with a core picker and install offers, the folder of the systems
+  that read one, BIOS import, unplaced folders). The scan runs inside the
+  overlay and shows the folder it is reading.
 - **The CLI.** Everything above from a terminal, with `--json` where the
   plugin needs it.
 - **Covers by title.** `shell/src/covers.rs`: the per system name index of
@@ -47,19 +53,18 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   word overlap fallback; `omarchy-crt library covers` for the whole
   collection, the same lookup lazily in the launcher. On a PlayStation set
   without region tags, 13 of 14 sampled titles found their art.
+- **Interlaced modes.** `mode 480i` and `mode 576i` program 480 and 576 line
+  frames at the same line rates as the progressive standards, and the
+  launcher draws at the full height. Whether a film looks better as fields
+  than as a deinterlaced 240p picture is still a judgement for the eye.
 
 ## Next
 
-1. **Interlaced modes.** A verified 480i and 576i modeline for the RGB-Pi 2
-   so video plays as fields, the way the fit pipeline already prepares it.
-2. **Pause menu.** Rewind where the CPU allows (per system), aspect and
-   shader choices.
-4. **Music screens.** Album art and station logos on the deck, an equaliser
-   page.
-5. **Player count.** Not in the file names the collection uses; waits for a
+1. **Pause menu.** Aspect and shader choices.
+2. **Player count.** Not in the file names the collection uses; waits for a
    metadata source.
-6. **More screensaver effects** from the TerminalTextEffects catalog.
-7. **A kernel with the 15 kHz patches** only if a timing the DAC needs turns
+3. **More screensaver effects** from the TerminalTextEffects catalog.
+4. **A kernel with the 15 kHz patches** only if a timing the DAC needs turns
    out unreachable from userspace. Nothing so far has.
 
 ## Lessons kept

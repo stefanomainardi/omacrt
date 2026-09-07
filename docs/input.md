@@ -46,9 +46,14 @@ while one shows; `Y` (`F`) sets the sleep timer; `B` leaves the music playing.
 Settings, Music chooses when the visualizer starts, how often it changes,
 which modes take part, whether it replaces the screensaver, lyrics, the
 default deck look, the radio country and pad rumble. Settings, Videos sets
-the YouTube quality and the number of search hits. On the now playing screen `A` pauses, left and
-right skip tracks, up and down move the volume by 3 dB, `B` leaves the music
-playing and goes back to the list.
+the YouTube quality and the number of search hits.
+
+The Equalizer row at the foot of the Music screen opens the ten bands of the
+engine: left and right pick a band, up and down move it a decibel at a time
+between -12 and +12, `A` walks the presets it knows (Flat, Rock, Pop, Jazz)
+and the row shows which one is in force. Moving a band by hand makes the
+preset Custom, as the engine reports it. A change made anywhere else, in
+cliamp's own interface for instance, shows up here.
 
 Button hints at the bottom of each screen follow the pad family SDL reports.
 A PlayStation pad shows `X run  O back  ^ fav`; Xbox and Nintendo pads show
@@ -74,9 +79,12 @@ own autoconfig profiles; the wizard is for the launcher.
 
 `Select` plus `Start` on the pad, the home button, or `omarchy-crt shell key
 menu` pauses the game and raises the launcher's pause menu over it: resume,
-save state, load state, fast forward (toggles RetroArch's speed and resumes),
-reset, back to the launcher. The menu shows when the game's latest save state
-was written. `B` or `Esc` resumes.
+save state, load state, rewind two seconds, fast forward (toggles RetroArch's
+speed and resumes), slow motion (toggles it too), reset, back to the
+launcher. Rewind needs the system to allow it, since it costs memory and CPU
+and is off for the 3D consoles; the menu says so rather than doing nothing.
+The menu shows when the game's latest save state was written. `B` or `Esc`
+resumes.
 
 ## In RetroArch
 
