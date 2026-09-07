@@ -22,9 +22,16 @@ while i + 18 <= 127 and not (cta[i] == 0 and cta[i + 1] == 0):
     dtds += bytes(cta[i : i + 18])
     i += 18
 oui = bytes([0x5C, 0x12, 0xCA])  # Microsoft, little endian
+# Already overridden once? Keep the block list as it is.
+j, has_ms = 0, False
+while j < len(data):
+    tag, ln = data[j] >> 5, data[j] & 0x1F
+    if tag == 3 and data[j + 1 : j + 4] == oui:
+        has_ms = True
+    j += 1 + ln
 container = uuid.uuid5(uuid.NAMESPACE_DNS, "omarchy-crt.display").bytes
 vsdb = bytes([(3 << 5) | 21]) + oui + bytes([0x02, 0x00]) + container
-body = data + vsdb
+body = data if has_ms else data + vsdb
 if 4 + len(body) + len(dtds) > 127:
     sys.exit("no room in the CTA block")
 new = bytearray(128)
