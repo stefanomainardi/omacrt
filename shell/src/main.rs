@@ -23,7 +23,7 @@ use omarchy_crt_shell::{index, library, player, profile, settings, videofit};
 use audio::Audio;
 use fb::Framebuffer;
 use pad::Stick;
-use scene::{Action, Geometry, Nav, Scene, SysInfo};
+use scene::{Action, Geometry, Nav, PauseOutcome, Scene, SysInfo};
 use sdl2::controller::Button;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -371,11 +371,9 @@ fn run(args: &Args) -> Result<(), String> {
         args.h as u32 * args.scale,
     );
     builder.position_centered();
-    if args.fullscreen {
-        builder.fullscreen_desktop();
-    } else {
-        builder.resizable();
-    }
+    // On the tube the compositor floats, pins and sizes the window through
+    // a rule; never ask for fullscreen (see crt::output::window_rules).
+    builder.resizable();
     let window = builder.build().map_err(|e| e.to_string())?;
     let mut canvas = window
         .into_canvas()
@@ -447,10 +445,10 @@ fn run(args: &Args) -> Result<(), String> {
         }
     };
     let mut child: Option<std::process::Child> = None;
-    // The compositor hands fullscreen to the emulator while it runs and does
-    // not give it back when it exits, so the shell re-asserts it itself.
-    let mut fullscreen_check = 0.0_f64;
     let mut lines_changed = false;
+    // Pad buttons held, for the Select + Start pause combo.
+    let mut held_back = false;
+    let mut held_start = false;
     'main: loop {
         if let Some(c) = child.as_mut() {
             match c.try_wait() {
@@ -463,14 +461,14 @@ fn run(args: &Args) -> Result<(), String> {
                     // A crash inside RetroArch's own shutdown is a normal
                     // end of play as far as the launcher is concerned.
                     scene.game_finished(status.success() || library::exited_after_unload());
+                    omarchy_crt_shell::crt::output::expect_game_clear();
                     if lines_changed {
                         crt_mode(None);
                         lines_changed = false;
                     }
                     if args.fullscreen {
-                        // The game had its own workspace; bring ours back.
-                        crt_focus();
-                        reassert_fullscreen(canvas.window_mut());
+                        fit_output(canvas.window_mut());
+                        omarchy_crt_shell::crt::output::raise(omarchy_crt_shell::crt::SHELL_CLASS);
                     }
                 }
                 Ok(None) => {}
@@ -479,17 +477,6 @@ fn run(args: &Args) -> Result<(), String> {
                     child = None;
                     scene.game_finished(false);
                 }
-            }
-        }
-        // If the compositor took our fullscreen away (a new window mapped on
-        // our workspace), ask for it again so the tube never shows the
-        // desktop around us. Not while a game runs: the game owns the tube
-        // then, and a fullscreen request from us would pull its workspace
-        // out from under it.
-        if args.fullscreen && !scene.is_running() && now() - fullscreen_check > 0.1 {
-            fullscreen_check = now();
-            if canvas.window().fullscreen_state() == sdl2::video::FullscreenType::Off {
-                reassert_fullscreen(canvas.window_mut());
             }
         }
         // Real events and control-pipe lines share one handling path.
@@ -532,8 +519,25 @@ fn run(args: &Args) -> Result<(), String> {
                     }
                 }
                 Event::ControllerAxisMotion { axis, value, .. } => stick.set(axis, value),
+                Event::ControllerButtonUp { button, .. } => match button {
+                    Button::Back => held_back = false,
+                    Button::Start => held_start = false,
+                    _ => {}
+                },
                 Event::ControllerButtonDown { button, .. } => match button {
+                    // Select + Start (either order) or the home button: the
+                    // pause menu over a running game.
+                    Button::Guide => inp.menu = true,
+                    Button::Start if held_back => {
+                        held_start = true;
+                        inp.menu = true;
+                    }
+                    Button::Back if held_start => {
+                        held_back = true;
+                        inp.menu = true;
+                    }
                     Button::A | Button::Start => {
+                        held_start = button == Button::Start;
                         inp.start = true;
                         inp.fire = true;
                     }
@@ -541,7 +545,10 @@ fn run(args: &Args) -> Result<(), String> {
                     Button::DPadDown => inp.nav = Some(Nav::Down),
                     Button::DPadLeft => inp.nav = Some(Nav::Left),
                     Button::DPadRight => inp.nav = Some(Nav::Right),
-                    Button::B | Button::Back => inp.nav = Some(Nav::Back),
+                    Button::B | Button::Back => {
+                        held_back = button == Button::Back;
+                        inp.nav = Some(Nav::Back);
+                    }
                     Button::Y => inp.fav = true,
                     Button::X => inp.alt = true,
                     _ => {}
@@ -579,15 +586,21 @@ fn run(args: &Args) -> Result<(), String> {
             let is_input = start || nav.is_some() || fire || fav || alt || home;
             if scene.is_running() {
                 if inp.menu {
-                    // The launcher's own pause overlay is not built yet;
-                    // for now this pauses and unpauses the running game.
-                    if let Err(e) = omarchy_crt_shell::game::pause_toggle() {
-                        eprintln!("game pause: {e}");
+                    after_pause(scene.toggle_pause());
+                    continue;
+                }
+                if scene.is_paused() {
+                    if is_input {
+                        after_pause(scene.pause_input(nav, fire));
                     }
+                    continue;
                 }
                 if scene.player_active() && is_input {
                     scene.player_input(nav, fire);
                 }
+                continue;
+            }
+            if inp.menu {
                 continue;
             }
             if is_input && scene.touch(now()) {
@@ -637,11 +650,20 @@ fn run(args: &Args) -> Result<(), String> {
             if let Some(g) = lines {
                 if crt_mode(Some(g)) {
                     lines_changed = true;
+                    if args.fullscreen {
+                        fit_output(canvas.window_mut());
+                    }
                 }
+            }
+            // The game must land on the tube whatever has focus: flag the
+            // compositor handler, and take focus ourselves as well.
+            omarchy_crt_shell::crt::output::expect_game();
+            if args.fullscreen {
+                crt_focus();
             }
             match cmd.spawn() {
                 Ok(c) => {
-                    eprintln!("running {title}");
+                    eprintln!("running {title}: {cmd:?}");
                     child = Some(c);
                 }
                 Err(e) => {
@@ -780,11 +802,6 @@ fn main() {
 }
 
 /// Ask the compositor for fullscreen again after another window took it.
-fn reassert_fullscreen(window: &mut sdl2::video::Window) {
-    let _ = window.set_fullscreen(sdl2::video::FullscreenType::Off);
-    let _ = window.set_fullscreen(sdl2::video::FullscreenType::Desktop);
-    window.raise();
-}
 
 /// Ask the CLI to switch the CRT to a program's geometry, or back to the
 /// full frame. Returns true when the command ran and succeeded.
@@ -819,6 +836,48 @@ fn crt_mode(geometry: Option<Geometry>) -> bool {
 }
 
 /// Ask the CLI to put keyboard focus (and the CRT workspace) back on us.
+/// Compositor side of a pause action: the launcher comes to the front over
+/// the paused game, resuming puts the game back in front. Both windows stay
+/// mapped and rendered throughout.
+fn after_pause(outcome: PauseOutcome) {
+    use omarchy_crt_shell::crt::output::raise;
+    match outcome {
+        PauseOutcome::Shown => {
+            raise(omarchy_crt_shell::crt::SHELL_CLASS);
+        }
+        PauseOutcome::Resumed => {
+            raise("com.libretro.RetroArch");
+        }
+        PauseOutcome::Quit | PauseOutcome::None => {}
+    }
+}
+
+/// Size our window to the tube's current mode: a pinned floating window
+/// keeps its size when the modeline changes under it.
+fn fit_output(window: &mut sdl2::video::Window) {
+    let name = "omarchy-crt";
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join(name)))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from(name));
+    let Ok(out) = std::process::Command::new(bin)
+        .args(["status", "--json"])
+        .stderr(std::process::Stdio::null())
+        .output()
+    else {
+        return;
+    };
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+        return;
+    };
+    if let (Some(w), Some(h)) = (v["mode"]["width"].as_u64(), v["mode"]["height"].as_u64()) {
+        if w > 0 && h > 0 {
+            let _ = window.set_size(w as u32, h as u32);
+        }
+    }
+}
+
 fn crt_focus() {
     let name = "omarchy-crt";
     let bin = std::env::current_exe()

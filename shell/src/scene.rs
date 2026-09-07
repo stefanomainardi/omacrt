@@ -192,6 +192,27 @@ const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::POWER, "Power off", false),
 ];
 
+/// Pause menu over a running game.
+const PAUSE_ITEMS: [(icons::Icon, &str, bool); 5] = [
+    (icons::GAMEPAD, "Resume", false),
+    (icons::FOLDER, "Save state", false),
+    (icons::FOLDER, "Load state", false),
+    (icons::PULSE, "Reset game", false),
+    (icons::DESKTOP, "Back to launcher", false),
+];
+
+/// What the main loop has to do with the compositor after a pause action.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PauseOutcome {
+    None,
+    /// The game is paused and the launcher should be brought to the tube.
+    Shown,
+    /// The game runs again and should be back on the tube.
+    Resumed,
+    /// The game was told to quit; the child wait takes it from here.
+    Quit,
+}
+
 /// Rows per page in the systems list.
 const SYS_PAGE: usize = 11;
 
@@ -297,6 +318,8 @@ pub struct Scene {
     /// Game counts per system, refreshed when the library is (re)read.
     system_counts: Vec<usize>,
     running: Option<(String, String)>,
+    /// Selected row of the pause menu while the running game is paused.
+    paused: Option<usize>,
     mark_small: effects::Grid,
     profile: Profile,
     recent: Vec<(usize, PathBuf)>,
@@ -374,6 +397,7 @@ impl Scene {
             screen: Screen::Menu,
             games: Vec::new(),
             running: None,
+            paused: None,
             mark_small: grid,
         };
         scene.refresh_counts();
@@ -1465,9 +1489,20 @@ impl Scene {
             let mut keys = self.profile.retroarch_keys();
             if self.wide_output() {
                 // Fill the frame (aspect 24 = Full): the tube turns the wide frame back into 4:3.
-                let (w, h) = self.output_size;
+                // The window is as tall as the mode the tube switches to for
+                // this system, not as the mode showing right now.
+                let (w, mut h) = self.output_size;
+                if !system.is_video() {
+                    let pinned = match crate::library::VideoPolicy::parse(&system.video) {
+                        crate::library::VideoPolicy::Fixed(_, ph) => Some(ph),
+                        _ => None,
+                    };
+                    if let Some(l) = system.lines.or(pinned) {
+                        h = l;
+                    }
+                }
                 keys.push_str(&format!(
-                    "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\n",
+                    "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\nvideo_windowed_position_width = \"{w}\"\nvideo_windowed_position_height = \"{h}\"\nvideo_window_auto_width_max = \"{w}\"\nvideo_window_auto_height_max = \"{h}\"\n",
                     w as f32 / h as f32
                 ));
             }
@@ -1605,6 +1640,7 @@ impl Scene {
     /// The game process ended; back to the list, cursor where it was.
     pub fn game_finished(&mut self, ok: bool) {
         self.running = None;
+        self.paused = None;
         self.launching = None;
         self.player = None;
         self.last_input = self.now;
@@ -1642,6 +1678,116 @@ impl Scene {
 
     pub fn is_running(&self) -> bool {
         self.running.is_some()
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.running.is_some() && self.paused.is_some()
+    }
+
+    /// Pause the running game and open the pause menu, or resume it.
+    pub fn toggle_pause(&mut self) -> PauseOutcome {
+        if self.running.is_none() || self.player.is_some() {
+            return PauseOutcome::None;
+        }
+        if let Some(l) = &self.launching {
+            if !l.spawned {
+                return PauseOutcome::None;
+            }
+        }
+        if self.paused.is_some() {
+            return self.resume_game();
+        }
+        match omarchy_crt_shell::game::pause_toggle() {
+            Ok(()) => {
+                self.paused = Some(0);
+                self.pending.push(Sound::Select);
+                PauseOutcome::Shown
+            }
+            Err(e) => {
+                self.message = Some((format!("cannot pause: {e}"), self.now + 3.0));
+                PauseOutcome::None
+            }
+        }
+    }
+
+    fn resume_game(&mut self) -> PauseOutcome {
+        let _ = omarchy_crt_shell::game::pause_toggle();
+        self.paused = None;
+        self.pending.push(Sound::Select);
+        PauseOutcome::Resumed
+    }
+
+    fn game_cmd(&mut self, result: std::io::Result<()>, done: &str) {
+        match result {
+            Ok(()) => {
+                self.pending.push(Sound::Lock);
+                self.message = Some((done.into(), self.now + 2.5));
+            }
+            Err(e) => {
+                self.pending.push(Sound::Crunch);
+                self.message = Some((format!("{e}"), self.now + 3.0));
+            }
+        }
+    }
+
+    /// Pad and keyboard while the pause menu is up.
+    pub fn pause_input(&mut self, nav: Option<Nav>, fire: bool) -> PauseOutcome {
+        let Some(sel) = self.paused else {
+            return PauseOutcome::None;
+        };
+        match nav {
+            Some(Nav::Up) if sel > 0 => {
+                self.paused = Some(sel - 1);
+                self.pending.push(Sound::Move);
+            }
+            Some(Nav::Down) if sel + 1 < PAUSE_ITEMS.len() => {
+                self.paused = Some(sel + 1);
+                self.pending.push(Sound::Move);
+            }
+            Some(Nav::Back) => return self.resume_game(),
+            _ => {}
+        }
+        if !fire {
+            return PauseOutcome::None;
+        }
+        match sel {
+            0 => self.resume_game(),
+            1 => {
+                self.game_cmd(omarchy_crt_shell::game::save_state(), "state saved");
+                PauseOutcome::None
+            }
+            2 => {
+                self.game_cmd(omarchy_crt_shell::game::load_state(), "state loaded");
+                PauseOutcome::None
+            }
+            3 => {
+                let _ = omarchy_crt_shell::game::reset();
+                self.resume_game()
+            }
+            _ => {
+                // A paused RetroArch sat on QUIT once; let it run, then ask.
+                let _ = omarchy_crt_shell::game::pause_toggle();
+                let _ = omarchy_crt_shell::game::quit();
+                self.paused = None;
+                self.pending.push(Sound::Select);
+                PauseOutcome::Quit
+            }
+        }
+    }
+
+    fn draw_pause(&mut self, fb: &mut Framebuffer) {
+        let sel = self.paused.unwrap_or(0);
+        let title = match &self.running {
+            Some((title, _)) => {
+                let w = fb.w as i32;
+                let max_cols = ((w - 2 * (w as f32 * 0.05) as i32) / 8) as usize;
+                let room = max_cols.saturating_sub("Paused  ".len() + 6);
+                let t: String = title.chars().take(room).collect();
+                format!("Paused  {t}")
+            }
+            None => "Paused".to_string(),
+        };
+        self.draw_menu_screen(fb, &title, &PAUSE_ITEMS, sel);
     }
 
     pub fn player_active(&self) -> bool {
@@ -2404,7 +2550,9 @@ impl Scene {
         }
         let t = self.t();
         if self.running.is_some() {
-            if self.player.is_some() {
+            if self.paused.is_some() {
+                self.draw_pause(fb);
+            } else if self.player.is_some() {
                 self.draw_player(fb);
             } else if self.launching.is_some()
                 && ((now - self.launching.as_ref().unwrap().started) as f32) < LAUNCH_SECS

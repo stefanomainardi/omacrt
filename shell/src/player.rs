@@ -144,7 +144,10 @@ pub fn command(
     let mut cmd = std::process::Command::new(mpv);
     // Our own Wayland app id, so window rules pin this player to the tube
     // and leave a desktop mpv alone.
-    cmd.arg("--wayland-app-id=omarchy-crt-player").arg("--fs")
+    // No --fs: the compositor floats and pins this window over the tube at
+    // the output's size (crt::output::window_rules).
+    cmd.arg("--wayland-app-id=omarchy-crt-player")
+        .arg("--no-border")
         .arg("--no-terminal")
         .arg("--really-quiet")
         .arg("--no-osc")

@@ -803,6 +803,14 @@ impl Library {
             kv("savestate_auto_save", "true");
             kv("savestate_auto_load", "true");
             kv("quit_on_close_content", "1");
+            // A plain window the compositor floats and pins over the tube, not
+            // a fullscreen one (see crt::output::window_rules); its size
+            // comes with the geometry keys the launcher appends.
+            kv("video_fullscreen", "false");
+            kv("video_windowed_fullscreen", "false");
+            kv("video_window_custom_size_enable", "true");
+            kv("video_window_save_positions", "false");
+            kv("video_window_show_decorations", "false");
             // A hotkey and a pad combo pause the game and could open an
             // in-game overlay; RGUI does not render on this gl/wayland
             // super-resolution path (it opens and pauses but draws nothing),
@@ -878,8 +886,7 @@ impl Library {
         cmd.arg("--config")
             .arg(cfg)
             .arg("--appendconfig")
-            .arg(launch_cfg)
-            .arg("--fullscreen");
+            .arg(launch_cfg);
         for d in &system.devices {
             cmd.arg(format!("--device={d}"));
         }
