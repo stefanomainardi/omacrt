@@ -158,7 +158,7 @@ pub fn db_path() -> PathBuf {
 pub fn save(mapping: &str) -> std::io::Result<()> {
     let path = db_path();
     let guid = mapping.split(',').next().unwrap_or("");
-    let mut lines: Vec<String> = std::fs::read_to_string(&path)
+    let mut lines: Vec<String> = crate::store::load_string(&path)
         .unwrap_or_default()
         .lines()
         .filter(|l| !l.starts_with(guid) || guid.is_empty())
@@ -171,7 +171,7 @@ pub fn save(mapping: &str) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(&path, lines.join("\n") + "\n")
+    crate::store::save(&path, lines.join("\n") + "\n")
 }
 
 #[cfg(test)]

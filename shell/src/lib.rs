@@ -12,6 +12,7 @@ pub mod padmap;
 pub mod player;
 pub mod profile;
 pub mod settings;
+pub mod store;
 pub mod states;
 pub mod videofit;
 pub mod yt;

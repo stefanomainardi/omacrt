@@ -6009,7 +6009,9 @@ impl Scene {
 
 /// Lists of `system_name<TAB>path` lines; system names survive reordering.
 fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
-    let Ok(text) = std::fs::read_to_string(path) else {
+    // Through the store, so a list truncated by a crash falls back to the
+    // copy taken before the last save instead of coming back empty.
+    let Some(text) = omarchy_crt_shell::store::load_string(path) else {
         return Vec::new();
     };
     text.lines()
@@ -6027,7 +6029,7 @@ fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
 
 /// Third column of recent.txt: when the game was last started.
 fn load_times(path: &std::path::Path) -> std::collections::HashMap<PathBuf, i64> {
-    let Ok(text) = std::fs::read_to_string(path) else {
+    let Some(text) = omarchy_crt_shell::store::load_string(path) else {
         return Default::default();
     };
     text.lines()
@@ -6061,7 +6063,7 @@ fn save_recent(
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Err(e) = std::fs::write(path, text) {
+    if let Err(e) = omarchy_crt_shell::store::save(path, text) {
         eprintln!("cannot write {}: {e}", path.display());
     }
 }
@@ -6074,7 +6076,7 @@ fn save_list(path: &std::path::Path, list: &[(usize, PathBuf)], lib: &Library) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Err(e) = std::fs::write(path, text) {
+    if let Err(e) = omarchy_crt_shell::store::save(path, text) {
         eprintln!("cannot write {}: {e}", path.display());
     }
 }

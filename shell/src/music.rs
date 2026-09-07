@@ -935,7 +935,7 @@ fn save_favorites(list: &[Track]) -> std::io::Result<()> {
             format!("{}\t{}\t{}\n", title.replace('\t', " "), t.path, t.note)
         })
         .collect();
-    std::fs::write(path, text)
+    crate::store::save(&path, text)
 }
 
 fn list(src: &Source) -> Result<Vec<Item>, String> {

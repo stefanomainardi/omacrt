@@ -163,8 +163,7 @@ impl Settings {
     }
 
     pub fn load(config_dir: &Path) -> Self {
-        std::fs::read_to_string(Self::path(config_dir))
-            .ok()
+        crate::store::load_string(&Self::path(config_dir))
             .and_then(|t| toml::from_str(&t).ok())
             .unwrap_or_default()
     }
@@ -172,6 +171,6 @@ impl Settings {
     pub fn save(&self, config_dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(config_dir)?;
         let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(Self::path(config_dir), text)
+        crate::store::save(&Self::path(config_dir), text)
     }
 }

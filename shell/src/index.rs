@@ -55,8 +55,7 @@ impl LibraryConfig {
     }
 
     pub fn load() -> Self {
-        std::fs::read_to_string(Self::path())
-            .ok()
+        crate::store::load_string(&Self::path())
             .and_then(|t| toml::from_str(&t).ok())
             .unwrap_or_default()
     }
@@ -64,8 +63,8 @@ impl LibraryConfig {
     pub fn save(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(crate::crt::config_dir())?;
         let body = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(
-            Self::path(),
+        crate::store::save(
+            &Self::path(),
             format!(
                 "# Written by omarchy-crt. Folders to scan for games and the systems\n# you assigned to folders the scan could not read.\n{body}"
             ),
@@ -93,14 +92,14 @@ impl Index {
     }
 
     pub fn load() -> Option<Self> {
-        let text = std::fs::read_to_string(Self::path()).ok()?;
+        let text = crate::store::load_string(&Self::path())?;
         serde_json::from_str(&text).ok()
     }
 
     pub fn save(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(data_dir())?;
         let text = serde_json::to_string(self)?;
-        std::fs::write(Self::path(), text)
+        crate::store::save(&Self::path(), text)
     }
 
     /// Systems present, with item counts, most games first.
