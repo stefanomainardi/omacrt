@@ -15,7 +15,20 @@ abstract layout, and pads can be plugged in or removed while the shell runs.
 | Select, start the boot | `Enter`, `Space`   | `A`, `Start`      |
 | Back                   | `Esc`, `Backspace` | `B`, `Back`       |
 | Star a game            | `F`                | `Y`               |
+| Search                 | `/`, then type     | left trigger, on screen keyboard |
+| Next, previous letter  | `PageDown`, `PageUp` | `RB`, `LB`      |
+| First, last row        | `Home`, `End`      | none              |
 | Quit the shell         | `q`                | none              |
+
+`/` on a game list filters that list as you type: every word must appear in
+the title, titles starting with the first word come first, `Backspace` deletes,
+`Esc` clears the text and then closes the bar. `/` on the home menu or the
+systems list opens the whole collection, every system at once, to search
+across it. On a pad the left trigger opens the same bar with an on screen
+keyboard: d-pad to move, `A` types, `X` deletes, `Y` is space, `B` puts the
+keyboard away with the filter kept. The shoulder buttons jump to the next or
+previous initial letter, which is how a list of thousands is read without a
+keyboard.
 
 The left stick acts as a d-pad with key repeat: one step when it leaves the
 dead zone, then a step every 120 ms while held.

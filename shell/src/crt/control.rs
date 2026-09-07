@@ -15,6 +15,7 @@ use std::time::Duration;
 /// Canonical input names, in the order the help text lists them.
 pub const INPUTS: &[&str] = &[
     "up", "down", "left", "right", "fire", "back", "fav", "alt", "start", "home", "menu",
+    "search", "osk", "del", "next", "prev", "first", "last",
 ];
 
 pub fn path() -> PathBuf {
@@ -29,12 +30,19 @@ pub fn normalize(name: &str) -> Option<&'static str> {
         "left" | "h" => "left",
         "right" | "l" => "right",
         "fire" | "a" | "enter" | "return" | "space" | "ok" => "fire",
-        "back" | "b" | "esc" | "escape" | "backspace" => "back",
+        "back" | "b" | "esc" | "escape" => "back",
         "fav" | "y" | "f" => "fav",
         "alt" | "x" => "alt",
         "start" => "start",
         "home" => "home",
         "menu" | "pause" => "menu",
+        "search" | "find" | "/" => "search",
+        "osk" | "keyboard" | "lt" => "osk",
+        "del" | "delete" | "backspace" => "del",
+        "next" | "pagedown" | "rb" => "next",
+        "prev" | "pageup" | "lb" => "prev",
+        "first" => "first",
+        "last" | "end" => "last",
         _ => return None,
     })
 }
@@ -69,6 +77,12 @@ pub fn listen() -> std::io::Result<Receiver<String>> {
         }
     });
     Ok(rx)
+}
+
+/// Type text into the launcher's search bar (opened first when closed).
+pub fn send_text(text: &str) -> std::io::Result<()> {
+    let line = format!("type {}", text.replace(['\n', '\r'], " "));
+    send(&[line.as_str()])
 }
 
 /// Send inputs to the running launcher. Fails when nothing listens.

@@ -236,6 +236,8 @@ pub enum PauseOutcome {
 
 /// Rows per page in the systems list.
 const SYS_PAGE: usize = 11;
+/// On screen keyboard: four rows of ten keys the pad walks through.
+const OSK_ROWS: [&str; 4] = ["1234567890", "QWERTYUIOP", "ASDFGHJKL-", "ZXCVBNM ._"];
 
 /// About page, wrapped for 36 columns.
 const ABOUT: &[&str] = &[
@@ -347,6 +349,14 @@ pub struct Scene {
     favorites: Vec<(usize, PathBuf)>,
     pad: PadKind,
     bt: Bluetooth,
+    /// The text typed into the search bar of a game list, when it is open.
+    search: Option<String>,
+    /// The list before the search filter; `games` is the filtered view.
+    games_all: Vec<Entry>,
+    /// On screen keyboard cursor (row, column) while a pad types the search.
+    osk: Option<(i32, i32)>,
+    /// The open list is the whole collection, opened by a search.
+    search_global: bool,
     music: Music,
     /// Open music lists, innermost last: source, selected row, first shown row.
     music_path: Vec<(Source, usize, usize)>,
@@ -417,6 +427,10 @@ impl Scene {
             rng: 0x2545_f491,
             pad: PadKind::Keyboard,
             bt: Bluetooth::new(),
+            search: None,
+            games_all: Vec::new(),
+            osk: None,
+            search_global: false,
             music: Music::new(std::env::var("PULSE_SINK").ok()),
             music_path: Vec::new(),
             music_root_sel: 0,
@@ -804,7 +818,7 @@ impl Scene {
                     Screen::Games { sel, .. } => sel,
                     _ => 0,
                 };
-                self.games = self.entries_for(i);
+                self.set_games(self.entries_for(i));
                 if let Screen::Games { sel, .. } = &mut self.screen {
                     *sel = sel_keep.min(self.games.len().saturating_sub(1));
                 }
@@ -952,10 +966,12 @@ impl Scene {
 
     fn open_games(&mut self, sys: Option<usize>) {
         self.game_dir = None;
-        self.games = match sys {
+        self.search_global = false;
+        let list = match sys {
             Some(i) => self.entries_for(i),
             None => Vec::new(),
         };
+        self.set_games(list);
         self.screen = Screen::Games {
             sys,
             sel: 0,
@@ -997,7 +1013,7 @@ impl Scene {
     /// Step into a subfolder of the current system.
     fn enter_folder(&mut self, sys: usize, dir: PathBuf) {
         self.game_dir = Some(dir);
-        self.games = self.entries_for(sys);
+        self.set_games(self.entries_for(sys));
         self.screen = Screen::Games {
             sys: Some(sys),
             sel: 0,
@@ -1018,7 +1034,7 @@ impl Scene {
             Some(p) if p != root => Some(p),
             _ => None,
         };
-        self.games = self.entries_for(sys);
+        self.set_games(self.entries_for(sys));
         let sel = leaving
             .and_then(|name| {
                 self.games
@@ -1036,7 +1052,8 @@ impl Scene {
     }
 
     fn open_virtual(&mut self, list: &[(usize, PathBuf)]) {
-        self.games = list
+        self.search_global = false;
+        let entries: Vec<Entry> = list
             .iter()
             .filter(|(i, p)| *i < self.library.systems.len() && p.exists())
             .map(|(i, p)| Entry {
@@ -1052,11 +1069,254 @@ impl Scene {
                 sys: *i,
             })
             .collect();
+        self.set_games(entries);
         self.screen = Screen::Games {
             sys: None,
             sel: 0,
             top: 0,
         };
+    }
+
+    /// A new list: unfiltered copy kept, search bar closed.
+    fn set_games(&mut self, list: Vec<Entry>) {
+        self.games_all = list;
+        self.search = None;
+        self.osk = None;
+        self.apply_search();
+    }
+
+    // ------------------------------------------------------------ search
+
+    pub fn search_active(&self) -> bool {
+        self.search.is_some() && self.running.is_none()
+    }
+
+    pub fn osk_active(&self) -> bool {
+        self.osk.is_some() && self.search_active()
+    }
+
+    /// Rows a game list shows: the search bar and the on screen keyboard
+    /// take theirs.
+    fn page_rows(&self) -> usize {
+        let mut n = Self::ROWS_PER_PAGE;
+        if self.search.is_some() {
+            n -= 1;
+        }
+        if self.osk.is_some() {
+            n -= 4;
+        }
+        n
+    }
+
+    /// Open the search bar: on a game list it filters that list; anywhere
+    /// else it opens the whole collection to search across systems. With
+    /// `osk` a pad types through the on screen keyboard.
+    pub fn search_open(&mut self, osk: bool) {
+        if !self.menu_live || self.running.is_some() || self.launching.is_some() {
+            return;
+        }
+        match self.screen {
+            Screen::Games { .. } => {}
+            Screen::Menu | Screen::Systems { .. } | Screen::Collections { .. } => {
+                self.list_from_home = matches!(self.screen, Screen::Menu);
+                self.open_collection = None;
+                self.game_dir = None;
+                let mut all: Vec<Entry> = Vec::new();
+                for i in 0..self.library.systems.len() {
+                    if self.library.systems[i].is_video() {
+                        continue;
+                    }
+                    all.extend(self.entries_for(i));
+                }
+                all.sort_by(|a, b| a.game.title.to_lowercase().cmp(&b.game.title.to_lowercase()));
+                self.set_games(all);
+                self.search_global = true;
+                self.go(Screen::Games {
+                    sys: None,
+                    sel: 0,
+                    top: 0,
+                });
+            }
+            _ => return,
+        }
+        self.search = Some(String::new());
+        self.osk = if osk { Some((1, 0)) } else { None };
+        self.pending.push(Sound::Select);
+        self.apply_search();
+    }
+
+    pub fn search_type(&mut self, text: &str) {
+        let Some(s) = self.search.as_mut() else {
+            return;
+        };
+        for c in text.chars() {
+            if !c.is_control() {
+                s.push(c);
+            }
+        }
+        self.pending.push(Sound::Click);
+        self.apply_search();
+    }
+
+    /// One character back; an empty bar closes.
+    pub fn search_backspace(&mut self) {
+        let Some(s) = self.search.as_mut() else {
+            return;
+        };
+        if s.pop().is_none() {
+            self.search = None;
+            self.osk = None;
+        }
+        self.pending.push(Sound::Move);
+        self.apply_search();
+    }
+
+    /// Escape on a search: clear the text first, then close the bar.
+    fn search_clear_or_close(&mut self) {
+        match self.search.as_mut() {
+            Some(s) if !s.is_empty() => s.clear(),
+            _ => {
+                self.search = None;
+                self.osk = None;
+            }
+        }
+        self.pending.push(Sound::Move);
+        self.apply_search();
+    }
+
+    /// Every word typed must appear in the title; titles starting with the
+    /// first word come first, the list order holds otherwise.
+    fn apply_search(&mut self) {
+        let q = self.search.clone().unwrap_or_default().to_lowercase();
+        let words: Vec<&str> = q.split_whitespace().collect();
+        self.games = if words.is_empty() {
+            self.games_all.clone()
+        } else {
+            let mut hits: Vec<(bool, Entry)> = self
+                .games_all
+                .iter()
+                .filter(|e| {
+                    let t = e.game.title.to_lowercase();
+                    words.iter().all(|w| t.contains(w))
+                })
+                .map(|e| (e.game.title.to_lowercase().starts_with(words[0]), e.clone()))
+                .collect();
+            hits.sort_by(|a, b| b.0.cmp(&a.0));
+            hits.into_iter().map(|(_, e)| e).collect()
+        };
+        if let Screen::Games { sel, top, .. } = &mut self.screen {
+            *sel = 0;
+            *top = 0;
+        }
+    }
+
+    fn initial(e: &Entry) -> char {
+        e.game
+            .title
+            .chars()
+            .find(|c| c.is_alphanumeric())
+            .map(|c| if c.is_ascii_digit() { '#' } else { c.to_ascii_uppercase() })
+            .unwrap_or('#')
+    }
+
+    /// Jump to the first title of the next (or previous) initial letter.
+    pub fn jump_letter(&mut self, dir: i32) {
+        let Screen::Games { sel, .. } = self.screen else {
+            return;
+        };
+        let n = self.games.len();
+        if n == 0 {
+            return;
+        }
+        let key = Self::initial(&self.games[sel]);
+        let target = if dir > 0 {
+            (sel + 1..n)
+                .find(|&i| Self::initial(&self.games[i]) != key)
+                .unwrap_or(n - 1)
+        } else {
+            // Start of this letter's group, or of the previous group when
+            // already there.
+            let mut start = sel;
+            while start > 0 && Self::initial(&self.games[start - 1]) == key {
+                start -= 1;
+            }
+            if start < sel {
+                start
+            } else if start == 0 {
+                0
+            } else {
+                let prev = Self::initial(&self.games[start - 1]);
+                let mut s = start - 1;
+                while s > 0 && Self::initial(&self.games[s - 1]) == prev {
+                    s -= 1;
+                }
+                s
+            }
+        };
+        self.select_row(target);
+    }
+
+    /// First or last row of the list.
+    pub fn jump_end(&mut self, last: bool) {
+        if !matches!(self.screen, Screen::Games { .. }) || self.games.is_empty() {
+            return;
+        }
+        let target = if last { self.games.len() - 1 } else { 0 };
+        self.select_row(target);
+    }
+
+    /// Move the cursor to `target` and show it at the top of the page, so a
+    /// letter jump lands on the first titles of that letter.
+    fn select_row(&mut self, target: usize) {
+        let page = self.page_rows();
+        let n = self.games.len();
+        if let Screen::Games { sel, top, .. } = &mut self.screen {
+            if *sel != target {
+                *sel = target;
+                *top = target.min(n.saturating_sub(page));
+                self.pending.push(Sound::Move);
+            }
+        }
+    }
+
+    /// Pad input while the on screen keyboard is up: move, type, delete,
+    /// space; back puts the keyboard away and leaves the search as typed.
+    pub fn osk_input(&mut self, nav: Option<Nav>, fire: bool, fav: bool, alt: bool) {
+        let Some((r, c)) = self.osk else {
+            return;
+        };
+        let rows = OSK_ROWS.len() as i32;
+        let cols = OSK_ROWS[0].len() as i32;
+        match nav {
+            Some(Nav::Up) => self.osk = Some(((r - 1).rem_euclid(rows), c)),
+            Some(Nav::Down) => self.osk = Some(((r + 1).rem_euclid(rows), c)),
+            Some(Nav::Left) => self.osk = Some((r, (c - 1).rem_euclid(cols))),
+            Some(Nav::Right) => self.osk = Some((r, (c + 1).rem_euclid(cols))),
+            Some(Nav::Back) => {
+                self.osk = None;
+                self.pending.push(Sound::Move);
+                return;
+            }
+            None => {}
+        }
+        if nav.is_some() {
+            self.pending.push(Sound::Move);
+        }
+        if fire {
+            let ch = OSK_ROWS[r as usize].chars().nth(c as usize).unwrap_or(' ');
+            let s = ch.to_string();
+            self.search_type(&s);
+        }
+        if fav {
+            self.search_type(" ");
+        }
+        if alt {
+            if self.search.as_deref().is_some_and(|s| s.is_empty()) {
+                self.pending.push(Sound::Move);
+            } else {
+                self.search_backspace();
+            }
+        }
     }
 
     /// Rows of the systems screen: recent/, favorites/, then every system.
@@ -1069,6 +1329,11 @@ impl Scene {
         let system_rows = self.system_rows();
         let music_rows = self.music_rows().len();
         let music_items = self.music_current().map(|l| l.len()).unwrap_or(0);
+        let page_rows = self.page_rows();
+        if nav == Nav::Back && self.search.is_some() && matches!(self.screen, Screen::Games { .. }) {
+            self.search_clear_or_close();
+            return;
+        }
         match &mut self.screen {
             Screen::Systems { sel, top } => {
                 let mut back = false;
@@ -1125,7 +1390,7 @@ impl Scene {
             }
             Screen::Games { sel, top, .. } => {
                 let n = self.games.len();
-                let page = Self::ROWS_PER_PAGE;
+                let page = page_rows;
                 match nav {
                     Nav::Up if *sel > 0 => {
                         *sel -= 1;
@@ -1149,6 +1414,7 @@ impl Scene {
                                 return;
                             }
                         }
+                        self.search_global = false;
                         if self.list_from_home {
                             self.screen = Screen::Menu;
                             self.pending.push(Sound::Move);
@@ -2449,12 +2715,17 @@ impl Scene {
                             .get(ci)
                             .map(|(n, _)| n.clone())
                             .unwrap_or_else(|| "Collection".into()),
+                        None if self.search_global => "All games".to_string(),
                         None if self.virtual_row == 1 => "Favorites".to_string(),
                         None => "Recent".to_string(),
                     },
                 };
                 let n = self.games.len();
-                let y0 = self.draw_header(fb, &prompt);
+                let mut y0 = self.draw_header(fb, &prompt);
+                if let Some(q) = self.search.clone() {
+                    y0 = self.draw_search_bar(fb, y0, &q, n);
+                }
+                let page = self.page_rows();
                 // Box art of the selected game on the right, once the cursor
                 // rests; scrolling fast shows the frame and no downloads.
                 let cover_box = 84;
@@ -2541,7 +2812,9 @@ impl Scene {
                         ty += 10;
                     }
                 }
-                if n == 0 {
+                if n == 0 && self.search.as_deref().is_some_and(|q| !q.is_empty()) {
+                    fb.text(left, y0, "no title matches", self.theme.dim, 1);
+                } else if n == 0 {
                     match sys {
                         Some(i) => {
                             let dir = crate::library::expand(&self.library.systems[i].dir);
@@ -2557,7 +2830,7 @@ impl Scene {
                         None => fb.text(left, y0, "nothing here yet", self.theme.dim, 1),
                     }
                 } else {
-                    let end = (top + Self::ROWS_PER_PAGE).min(n);
+                    let end = (top + page).min(n);
                     for (row, i) in (top..end).enumerate() {
                         let y = y0 + row as i32 * row_h;
                         let entry = self.games[i].clone();
@@ -2613,10 +2886,18 @@ impl Scene {
                 let is_video = sys
                     .map(|i| self.library.systems[i].is_video())
                     .unwrap_or(false);
-                let hint = if is_video {
+                if self.osk.is_some() {
+                    self.draw_osk(fb);
+                }
+                let keyboard = self.pad == PadKind::Keyboard;
+                let hint = if self.osk.is_some() {
+                    self.hint(&[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")])
+                } else if is_video {
                     self.hint(&[("A", "play"), ("X", "convert"), ("Y", "fav"), ("B", "back")])
+                } else if keyboard {
+                    self.hint(&[("A", "run"), ("B", "back"), ("Y", "fav"), ("/", "find")])
                 } else {
-                    self.hint(&[("A", "run"), ("B", "back"), ("Y", "fav"), ("<>", "page")])
+                    self.hint(&[("A", "run"), ("B", "back"), ("Y", "fav"), ("LT", "find")])
                 };
                 fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
@@ -3218,8 +3499,8 @@ impl Scene {
         let (_, tag_y, _, tag_h) = self.tag_geometry(fb);
         let y0 = tag_y + tag_h + 4;
         fb.text(left + 4, y0, "Play...", scale(self.theme.dim, fade), 1);
-        let rows_y = y0 + 12;
-        let row_h = 14;
+        let rows_y = y0 + 11;
+        let row_h = 12;
         let band_y = self.band(rows_y + self.sel as i32 * row_h);
         if self.menu_live {
             fb.rect(
@@ -3879,6 +4160,72 @@ impl Scene {
         }
         let hint = self.hint(&[("A", "pause"), ("^v", "volume"), ("B", "back")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// The search bar under the header: the query with a blinking cursor and
+    /// the number of matches. Returns the y the list starts at.
+    fn draw_search_bar(&mut self, fb: &mut Framebuffer, y0: i32, q: &str, hits: usize) -> i32 {
+        let w = fb.w as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32 - self.row_shrink;
+        fb.rect(left, y0 - 2, width, 12, scale(self.theme.selection, 0.7));
+        let max_cols = ((width - 8) / 8) as usize;
+        let shown: String = if q.chars().count() + 2 > max_cols {
+            q.chars().skip(q.chars().count() + 2 - max_cols).collect()
+        } else {
+            q.to_string()
+        };
+        let text = format!("/ {shown}");
+        fb.text(left + 4, y0, &text, self.theme.accent, 1);
+        if (self.now * 2.0).floor() as i64 % 2 == 0 {
+            let cx = left + 4 + Framebuffer::text_width(&text, 1) + 1;
+            fb.rect(cx, y0, 6, 8, self.theme.accent);
+        }
+        let count = if q.trim().is_empty() {
+            "type to filter".to_string()
+        } else {
+            format!("{hits} found")
+        };
+        fb.text(
+            left + width - 4 - Framebuffer::text_width(&count, 1),
+            y0,
+            &count,
+            scale(self.theme.dim, 0.9),
+            1,
+        );
+        y0 + 14
+    }
+
+    /// Four rows of keys above the hints; the pad's cursor sits on a band.
+    fn draw_osk(&mut self, fb: &mut Framebuffer) {
+        let Some((cr, cc)) = self.osk else {
+            return;
+        };
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let key_w = 20;
+        let row_h = 11;
+        let top = h - 20 - OSK_ROWS.len() as i32 * row_h;
+        fb.rect(left, top - 3, key_w * 10 + 2, 1, scale(self.theme.dim, 0.5));
+        for (r, row) in OSK_ROWS.iter().enumerate() {
+            for (c, ch) in row.chars().enumerate() {
+                let x = left + c as i32 * key_w;
+                let y = top + r as i32 * row_h;
+                let on = (r as i32, c as i32) == (cr, cc);
+                if on {
+                    fb.rect(x, y - 1, key_w - 2, row_h - 1, self.theme.selection);
+                }
+                let label = if ch == ' ' { "sp".to_string() } else { ch.to_string() };
+                fb.text_centered(
+                    x + (key_w - 2) / 2,
+                    y + 1,
+                    &label,
+                    if on { self.theme.accent } else { self.theme.paper },
+                    1,
+                );
+            }
+        }
     }
 
     fn draw_saver(&mut self, fb: &mut Framebuffer) {

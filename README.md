@@ -117,6 +117,11 @@ scanlines or curvature. The tube provides those.
   state, volume, hints) that appears on every command and stays while paused,
   position saved on quit. Deinterlacing stays off so 480i sources reach the
   tube as fields.
+- **Search.** `/` filters the open list as you type, or, from the home menu,
+  searches the whole collection across systems (21,880 titles answer in a
+  frame). Every word must appear in the title, titles starting with the first
+  word come first. Pads get the same through the left trigger and an on
+  screen keyboard, and the shoulder buttons jump letter by letter.
 - **Music.** A `Music` entry turns the tube into a radio set on top of
   cliamp, Omarchy's music player, started as a daemon when needed: the
   stations of your country (Radio Browser, most voted first), every country

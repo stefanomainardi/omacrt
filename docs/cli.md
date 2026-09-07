@@ -13,6 +13,8 @@ omarchy-crt toggle
 omarchy-crt mode ntsc|pal|film [--lines N] [--shift-x X] [--shift-y Y]
 omarchy-crt shell start|stop|restart|focus
 omarchy-crt shell key <input>...   # home up down left right fire back fav alt start
+                                   # search osk del next prev first last
+omarchy-crt shell type <text>      # type into the search bar
 omarchy-crt focus
 omarchy-crt audio crt|desktop|all|apps
 omarchy-crt audio volume N           # TV sink volume, percent up to 150, kept in crt.toml

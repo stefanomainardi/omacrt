@@ -437,6 +437,11 @@ fn run(args: &Args) -> Result<(), String> {
     }
 
     let mut pump = sdl.event_pump()?;
+    // Typed characters arrive as text input events; the search bar uses them.
+    video.text_input().start();
+    // The "/" that opens the search also arrives as text: swallowed once.
+    let mut swallow_slash = false;
+    let mut trigger_held = false;
     let control = match omarchy_crt_shell::crt::control::listen() {
         Ok(rx) => Some(rx),
         Err(e) => {
@@ -483,25 +488,52 @@ fn run(args: &Args) -> Result<(), String> {
         let mut inputs: Vec<Input> = Vec::new();
         for ev in pump.poll_iter() {
             let mut inp = Input::default();
+            // While the search bar takes text, letters type instead of
+            // acting as vim keys; arrows, Enter and Escape keep working.
+            let typing = scene.search_active() && !scene.osk_active();
             match ev {
                 Event::Quit { .. } => inp.quit = true,
+                Event::TextInput { text, .. } => {
+                    if swallow_slash && text == "/" {
+                        swallow_slash = false;
+                    } else if typing {
+                        inp.text = Some(text);
+                    }
+                }
                 Event::KeyDown {
                     keycode: Some(k),
                     repeat: false,
                     ..
                 } => match k {
-                    Keycode::Q => break 'main,
-                    Keycode::Escape | Keycode::Backspace => inp.nav = Some(Nav::Back),
-                    Keycode::Space | Keycode::Return => {
+                    Keycode::Q if !typing => break 'main,
+                    Keycode::Slash if !typing => {
+                        inp.search = true;
+                        swallow_slash = true;
+                    }
+                    Keycode::Escape => inp.nav = Some(Nav::Back),
+                    Keycode::Backspace => inp.backspace = true,
+                    Keycode::Return => {
                         inp.start = true;
                         inp.fire = true;
                     }
-                    Keycode::Up | Keycode::K => inp.nav = Some(Nav::Up),
-                    Keycode::Down | Keycode::J => inp.nav = Some(Nav::Down),
-                    Keycode::Left | Keycode::H => inp.nav = Some(Nav::Left),
-                    Keycode::Right | Keycode::L => inp.nav = Some(Nav::Right),
-                    Keycode::F => inp.fav = true,
-                    Keycode::X => inp.alt = true,
+                    Keycode::Space if !typing => {
+                        inp.start = true;
+                        inp.fire = true;
+                    }
+                    Keycode::Up => inp.nav = Some(Nav::Up),
+                    Keycode::Down => inp.nav = Some(Nav::Down),
+                    Keycode::Left => inp.nav = Some(Nav::Left),
+                    Keycode::Right => inp.nav = Some(Nav::Right),
+                    Keycode::K if !typing => inp.nav = Some(Nav::Up),
+                    Keycode::J if !typing => inp.nav = Some(Nav::Down),
+                    Keycode::H if !typing => inp.nav = Some(Nav::Left),
+                    Keycode::L if !typing => inp.nav = Some(Nav::Right),
+                    Keycode::F if !typing => inp.fav = true,
+                    Keycode::X if !typing => inp.alt = true,
+                    Keycode::PageUp => inp.jump = -1,
+                    Keycode::PageDown => inp.jump = 1,
+                    Keycode::Home => inp.edge = Some(false),
+                    Keycode::End => inp.edge = Some(true),
                     _ => {}
                 },
                 Event::MouseButtonDown { .. } => inp.start = true,
@@ -518,7 +550,18 @@ fn run(args: &Args) -> Result<(), String> {
                         None => scene.set_pad(None),
                     }
                 }
-                Event::ControllerAxisMotion { axis, value, .. } => stick.set(axis, value),
+                Event::ControllerAxisMotion { axis, value, .. } => {
+                    if axis == sdl2::controller::Axis::TriggerLeft {
+                        // Left trigger: the search with the on screen keyboard.
+                        let on = value > 16000;
+                        if on && !trigger_held {
+                            inp.osk = true;
+                        }
+                        trigger_held = on;
+                    } else {
+                        stick.set(axis, value);
+                    }
+                }
                 Event::ControllerButtonUp { button, .. } => match button {
                     Button::Back => held_back = false,
                     Button::Start => held_start = false,
@@ -551,6 +594,8 @@ fn run(args: &Args) -> Result<(), String> {
                     }
                     Button::Y => inp.fav = true,
                     Button::X => inp.alt = true,
+                    Button::LeftShoulder => inp.jump = -1,
+                    Button::RightShoulder => inp.jump = 1,
                     _ => {}
                 },
                 _ => {}
@@ -569,6 +614,7 @@ fn run(args: &Args) -> Result<(), String> {
             if inp.quit {
                 break 'main;
             }
+            let is_input = inp.any();
             let Input {
                 start,
                 nav,
@@ -577,13 +623,12 @@ fn run(args: &Args) -> Result<(), String> {
                 alt,
                 home,
                 ..
-            } = inp;
+            } = inp.clone();
             if home {
                 scene.home();
                 continue;
             }
 
-            let is_input = start || nav.is_some() || fire || fav || alt || home;
             if scene.is_running() {
                 if inp.menu {
                     after_pause(scene.toggle_pause());
@@ -604,6 +649,37 @@ fn run(args: &Args) -> Result<(), String> {
                 continue;
             }
             if is_input && scene.touch(now()) {
+                continue;
+            }
+            // The search bar and the list jumps.
+            if inp.search || inp.osk {
+                if scene.boot_started() && !scene.booting() {
+                    scene.search_open(inp.osk);
+                }
+                continue;
+            }
+            if let Some(t) = &inp.text {
+                scene.search_type(t);
+                continue;
+            }
+            if inp.backspace {
+                if scene.search_active() {
+                    scene.search_backspace();
+                } else {
+                    scene.navigate(Nav::Back);
+                }
+                continue;
+            }
+            if inp.jump != 0 {
+                scene.jump_letter(inp.jump);
+                continue;
+            }
+            if let Some(last) = inp.edge {
+                scene.jump_end(last);
+                continue;
+            }
+            if scene.osk_active() && (nav.is_some() || fire || fav || alt) {
+                scene.osk_input(nav, fire, fav, alt);
                 continue;
             }
             if start && !scene.boot_started() {
@@ -718,7 +794,7 @@ fn run(args: &Args) -> Result<(), String> {
 }
 
 /// One user input, from a key, a pad button or the control pipe.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 struct Input {
     start: bool,
     nav: Option<Nav>,
@@ -729,11 +805,49 @@ struct Input {
     /// In-game menu of the running emulator.
     menu: bool,
     quit: bool,
+    /// Characters typed into the search bar.
+    text: Option<String>,
+    backspace: bool,
+    /// Open the search bar (keyboard), or with the on screen keyboard (pad).
+    search: bool,
+    osk: bool,
+    /// Jump to the next (+1) or previous (-1) initial letter of the list.
+    jump: i32,
+    /// First (false) or last (true) row.
+    edge: Option<bool>,
+}
+
+impl Input {
+    fn any(&self) -> bool {
+        self.start
+            || self.nav.is_some()
+            || self.fire
+            || self.fav
+            || self.alt
+            || self.home
+            || self.text.is_some()
+            || self.backspace
+            || self.search
+            || self.osk
+            || self.jump != 0
+            || self.edge.is_some()
+    }
 }
 
 fn control_input(line: &str) -> Option<Input> {
     let mut inp = Input::default();
+    if let Some(text) = line.strip_prefix("type ") {
+        inp.text = Some(text.to_string());
+        return Some(inp);
+    }
     match omarchy_crt_shell::crt::control::normalize(line)? {
+        "search" => inp.search = true,
+        "osk" => inp.osk = true,
+        "del" => inp.backspace = true,
+        "next" => inp.jump = 1,
+        "prev" => inp.jump = -1,
+        "first" => inp.edge = Some(false),
+        "last" => inp.edge = Some(true),
         "up" => inp.nav = Some(Nav::Up),
         "down" => inp.nav = Some(Nav::Down),
         "left" => inp.nav = Some(Nav::Left),

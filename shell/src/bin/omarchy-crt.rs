@@ -25,6 +25,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
                            standard, active lines, picture shift; no args = full frame
   shell start|stop|restart|focus
   shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
+                                 search osk del next prev first last
+  shell type <text>              type into the launcher's search bar
   game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
   shot <file.png>                what the tube shows right now (leased output)
   monitor on|off                 desktop window: live preview of the tube, keyboard to the tube when focused
@@ -1412,6 +1414,13 @@ fn main() {
                         die("shell key needs at least one input name");
                     }
                     crt::control::send(&names).unwrap_or_else(|e| die(&e.to_string()));
+                }
+                "type" => {
+                    let words: Vec<&str> = positional(args).iter().skip(1).map(|s| s.as_str()).collect();
+                    if words.is_empty() {
+                        die("shell type needs the text to type");
+                    }
+                    crt::control::send_text(&words.join(" ")).unwrap_or_else(|e| die(&e.to_string()));
                 }
                 _ => {
                     let pids = launcher::pids();
