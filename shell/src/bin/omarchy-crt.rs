@@ -1849,9 +1849,12 @@ fn main() {
             // that a 480 line game does not leave the launcher interlaced when
             // it ends.
             let applied = crt::applied_standard_with(std, lines.unwrap_or(0), cfg.output.interlace);
+            // The picture shift is a calibration of the television, not a
+            // parameter of this call: a game that asks for a line count must
+            // not undo it. Only an explicit flag changes it.
             let shift = (
-                flag("--shift-x").unwrap_or(0),
-                flag("--shift-y").unwrap_or(0),
+                flag("--shift-x").unwrap_or(state.shift_x),
+                flag("--shift-y").unwrap_or(state.shift_y),
             );
             let conn = connector(&cfg);
             if display::leaseable(&conn.name) && display::running() {
