@@ -18,7 +18,7 @@ mod menu;
 mod pad;
 mod scene;
 mod theme;
-use omarchy_crt_shell::{index, library, player, profile, settings, videofit};
+use omarchy_crt_shell::{index, library, music, player, profile, settings, videofit};
 
 use audio::Audio;
 use fb::Framebuffer;

@@ -14,6 +14,7 @@ use crate::etch::LaserEtch;
 use crate::fb::{Color, Framebuffer, scale};
 use crate::icons;
 use crate::library::{Game, Library};
+use crate::music::{self, Item as MusicItem, Music, Source};
 use crate::pad::PadKind;
 use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
@@ -85,6 +86,25 @@ enum Screen {
     VideoFit {
         sel: usize,
     },
+    /// Music through cliamp: the list of sources.
+    Music {
+        sel: usize,
+        top: usize,
+    },
+    /// One list of stations, playlists or tracks; `music_path` says which.
+    MusicList {
+        sel: usize,
+        top: usize,
+    },
+    /// What plays now, with the visualiser.
+    NowPlaying,
+}
+
+/// A row of the music screen.
+#[derive(Clone)]
+enum MusicRow {
+    Now,
+    Source(Source),
 }
 
 /// One row of a game list: the game and the system that runs it.
@@ -139,9 +159,10 @@ impl SysInfo {
 const MARK_SCALE: i32 = 3;
 const ETCH_START: f32 = 4.15;
 /// Home menu entries: icon, label, opens a submenu.
-const HOME: [(icons::Icon, &str, bool); 7] = [
+const HOME: [(icons::Icon, &str, bool); 8] = [
     (icons::GAMEPAD, "Games", true),
     (icons::FILM, "Videos", true),
+    (icons::NOTE, "Music", true),
     (icons::STAR, "Favorites", true),
     (icons::CLOCK, "Recent", true),
     (icons::GEAR, "Settings", true),
@@ -326,6 +347,12 @@ pub struct Scene {
     favorites: Vec<(usize, PathBuf)>,
     pad: PadKind,
     bt: Bluetooth,
+    music: Music,
+    /// Open music lists, innermost last: source, selected row, first shown row.
+    music_path: Vec<(Source, usize, usize)>,
+    music_root_sel: usize,
+    /// Visualiser bars eased toward the last spectrum frame.
+    vis: Vec<f32>,
 }
 
 impl Scene {
@@ -390,6 +417,10 @@ impl Scene {
             rng: 0x2545_f491,
             pad: PadKind::Keyboard,
             bt: Bluetooth::new(),
+            music: Music::new(std::env::var("PULSE_SINK").ok()),
+            music_path: Vec::new(),
+            music_root_sel: 0,
+            vis: vec![0.0; 10],
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
@@ -632,18 +663,19 @@ impl Scene {
                     self.message = Some(("no video folder in systems.toml".into(), self.now + 4.0))
                 }
             },
-            2 => {
+            2 => self.open_music(),
+            3 => {
                 let list = self.favorites.clone();
                 self.list_from_home = true;
                 self.open_virtual(&list);
             }
-            3 => {
+            4 => {
                 let list = self.recent.clone();
                 self.list_from_home = true;
                 self.open_virtual(&list);
             }
-            4 => self.go(Screen::Settings { sel: 0 }),
-            5 => self.go(Screen::About { top: 0 }),
+            5 => self.go(Screen::Settings { sel: 0 }),
+            6 => self.go(Screen::About { top: 0 }),
             _ => self.go(Screen::Power { sel: 0 }),
         }
         Action::None
@@ -703,8 +735,20 @@ impl Scene {
         }
     }
 
-    /// Start converting the selected video for the CRT (X button).
+    /// The X button: pause or play on the music screens, otherwise start
+    /// converting the selected video for the CRT.
     pub fn convert_selected(&mut self) {
+        match self.screen {
+            Screen::Music { .. } | Screen::NowPlaying => {
+                self.music_alt(None);
+                return;
+            }
+            Screen::MusicList { sel, .. } => {
+                self.music_alt(Some(sel));
+                return;
+            }
+            _ => {}
+        }
         let Screen::Games { sel, .. } = self.screen else {
             return;
         };
@@ -1023,6 +1067,8 @@ impl Scene {
     fn navigate_browser(&mut self, nav: Nav) {
         let mut moved = false;
         let system_rows = self.system_rows();
+        let music_rows = self.music_rows().len();
+        let music_items = self.music_current().map(|l| l.len()).unwrap_or(0);
         match &mut self.screen {
             Screen::Systems { sel, top } => {
                 let mut back = false;
@@ -1318,10 +1364,254 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::Music { sel, .. } => {
+                match nav {
+                    Nav::Up if *sel > 0 => {
+                        *sel -= 1;
+                        moved = true;
+                    }
+                    Nav::Down if *sel + 1 < music_rows => {
+                        *sel += 1;
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        self.music_root_sel = *sel;
+                        self.screen = Screen::Menu;
+                        moved = true;
+                    }
+                    _ => {}
+                }
+                if let Screen::Music { sel, top } = &mut self.screen {
+                    if *sel < *top {
+                        *top = *sel;
+                    } else if *sel >= *top + Self::ROWS_PER_PAGE {
+                        *top = *sel + 1 - Self::ROWS_PER_PAGE;
+                    }
+                }
+            }
+            Screen::MusicList { sel, top } => {
+                let page = Self::ROWS_PER_PAGE;
+                match nav {
+                    Nav::Up if *sel > 0 => {
+                        *sel -= 1;
+                        moved = true;
+                    }
+                    Nav::Down if *sel + 1 < music_items => {
+                        *sel += 1;
+                        moved = true;
+                    }
+                    Nav::Right if music_items > 0 => {
+                        *sel = (*sel + page).min(music_items - 1);
+                        moved = true;
+                    }
+                    Nav::Left if *sel > 0 => {
+                        *sel = sel.saturating_sub(page);
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        self.music_back();
+                        return;
+                    }
+                    _ => {}
+                }
+                if *sel < *top {
+                    *top = *sel;
+                } else if *sel >= *top + page {
+                    *top = *sel + 1 - page;
+                }
+            }
+            Screen::NowPlaying => match nav {
+                Nav::Left => {
+                    self.music.prev();
+                    moved = true;
+                }
+                Nav::Right => {
+                    self.music.next();
+                    moved = true;
+                }
+                Nav::Up => {
+                    self.music.volume_step(3.0);
+                    moved = true;
+                }
+                Nav::Down => {
+                    self.music.volume_step(-3.0);
+                    moved = true;
+                }
+                Nav::Back => {
+                    let sel = self.music_root_sel;
+                    self.screen = Screen::Music { sel, top: 0 };
+                    moved = true;
+                }
+            },
             Screen::Menu => {}
         }
         if moved {
             self.pending.push(Sound::Move);
+        }
+    }
+
+    // ------------------------------------------------------------ music
+
+    fn open_music(&mut self) {
+        if !Music::available() {
+            self.message = Some((
+                "cliamp not found: Omarchy's music player is needed".into(),
+                self.now + 4.0,
+            ));
+            return;
+        }
+        self.music.ensure();
+        self.music_path.clear();
+        let sel = self.music_root_sel;
+        self.go(Screen::Music { sel, top: 0 });
+    }
+
+    /// Rows of the music screen: what plays, the radio directory cuts,
+    /// every provider cliamp has configured, history and the live queue.
+    fn music_rows(&self) -> Vec<(icons::Icon, String, String, MusicRow)> {
+        let mut rows = Vec::new();
+        let st = &self.music.status;
+        if st.active() {
+            let label = st.track.as_ref().map(|t| t.label()).unwrap_or_default();
+            let right: String = label.chars().take(20).collect();
+            rows.push((icons::NOTE, "Now playing".into(), right, MusicRow::Now));
+        }
+        if let Some((code, name)) = music::home_country(&self.settings.music.country) {
+            rows.push((
+                icons::PULSE,
+                format!("Radio  {name}"),
+                String::new(),
+                MusicRow::Source(Source::Country(code, name)),
+            ));
+        }
+        rows.push((
+            icons::FOLDER,
+            "Radio by country".into(),
+            String::new(),
+            MusicRow::Source(Source::Countries),
+        ));
+        rows.push((
+            icons::FOLDER,
+            "Radio by genre".into(),
+            String::new(),
+            MusicRow::Source(Source::Tags),
+        ));
+        rows.push((
+            icons::STAR,
+            "cliamp picks".into(),
+            String::new(),
+            MusicRow::Source(Source::ProviderPlaylists("radio".into(), "cliamp picks".into())),
+        ));
+        for p in &self.music.providers {
+            if p.key == "radio" || p.key == "local" {
+                continue;
+            }
+            rows.push((
+                icons::FOLDER,
+                p.name.clone(),
+                String::new(),
+                MusicRow::Source(Source::ProviderPlaylists(p.key.clone(), p.name.clone())),
+            ));
+        }
+        rows.push((
+            icons::CLOCK,
+            "Recently played".into(),
+            String::new(),
+            MusicRow::Source(Source::History),
+        ));
+        rows.push((
+            icons::FOLDER,
+            "Queue".into(),
+            if st.total > 0 {
+                format!("{:>4}", st.total)
+            } else {
+                String::new()
+            },
+            MusicRow::Source(Source::Queue),
+        ));
+        rows
+    }
+
+    /// The list open on the music list screen, once it arrived.
+    fn music_current(&self) -> Option<&Vec<MusicItem>> {
+        let (src, _, _) = self.music_path.last()?;
+        self.music.lists.get(src).and_then(|r| r.as_ref().ok())
+    }
+
+    fn music_enter(&mut self, src: Source) {
+        self.pending.push(Sound::Select);
+        self.music.open(&src);
+        self.music_path.push((src, 0, 0));
+        self.go(Screen::MusicList { sel: 0, top: 0 });
+    }
+
+    fn music_back(&mut self) {
+        self.music_path.pop();
+        self.screen = match self.music_path.last() {
+            Some((_, sel, top)) => Screen::MusicList {
+                sel: *sel,
+                top: *top,
+            },
+            None => Screen::Music {
+                sel: self.music_root_sel,
+                top: 0,
+            },
+        };
+        self.pending.push(Sound::Move);
+    }
+
+    /// Selected item of the open music list.
+    fn music_selected(&self, sel: usize) -> Option<MusicItem> {
+        self.music_current().and_then(|l| l.get(sel).cloned())
+    }
+
+    fn music_play_item(&mut self, sel: usize, item: MusicItem) {
+        match item {
+            MusicItem::Track(t) => {
+                self.pending.push(Sound::Select);
+                let queue = matches!(self.music_path.last(), Some((Source::Queue, _, _)));
+                if queue {
+                    self.music.play_index(sel);
+                } else {
+                    self.music.play(&t);
+                }
+                self.message = Some((format!("playing {}", t.label()), self.now + 3.0));
+            }
+            MusicItem::Source(Source::ProviderPlaylist(provider, id, name), _) => {
+                self.pending.push(Sound::Select);
+                self.music.load(&provider, &id);
+                self.message = Some((format!("playing {name}"), self.now + 3.0));
+            }
+            MusicItem::Source(src, _) => {
+                if let Some(last) = self.music_path.last_mut() {
+                    last.1 = sel;
+                    if let Screen::MusicList { top, .. } = self.screen {
+                        last.2 = top;
+                    }
+                }
+                self.music_enter(src);
+            }
+        }
+    }
+
+    /// The X button on the music screens: play a whole playlist, else
+    /// pause or resume whatever plays.
+    fn music_alt(&mut self, sel: Option<usize>) {
+        if let Some(sel) = sel {
+            if let Some(MusicItem::Source(Source::ProviderPlaylist(provider, id, name), _)) =
+                self.music_selected(sel)
+            {
+                self.pending.push(Sound::Select);
+                self.music.load(&provider, &id);
+                self.message = Some((format!("playing {name}"), self.now + 3.0));
+                return;
+            }
+        }
+        if self.music.status.active() {
+            self.music.toggle();
+            self.pending.push(Sound::Select);
+        } else {
+            self.message = Some(("nothing is playing".into(), self.now + 2.0));
         }
     }
 
@@ -1437,6 +1727,32 @@ impl Scene {
                 Action::None
             }
             Screen::Diag { .. } | Screen::About { .. } => Action::None,
+            Screen::Music { sel, .. } => {
+                match self.music_rows().get(sel).map(|r| r.3.clone()) {
+                    Some(MusicRow::Now) => {
+                        self.pending.push(Sound::Select);
+                        self.music_root_sel = sel;
+                        self.go(Screen::NowPlaying);
+                    }
+                    Some(MusicRow::Source(src)) => {
+                        self.music_root_sel = sel;
+                        self.music_path.clear();
+                        self.music_enter(src);
+                    }
+                    None => {}
+                }
+                Action::None
+            }
+            Screen::MusicList { sel, .. } => {
+                if let Some(item) = self.music_selected(sel) {
+                    self.music_play_item(sel, item);
+                }
+                Action::None
+            }
+            Screen::NowPlaying => {
+                self.music_alt(None);
+                Action::None
+            }
             Screen::Menu => Action::None,
         }
     }
@@ -1530,6 +1846,7 @@ impl Scene {
         } else {
             None
         };
+        self.music.hush();
         match self.library.command(&system, &entry.game, &extra) {
             Ok(cmd) if system.is_video() => {
                 self.pending.push(Sound::Whoosh);
@@ -2396,6 +2713,18 @@ impl Scene {
                 self.draw_video_fit(fb, sel);
                 return;
             }
+            Screen::Music { sel, top } => {
+                self.draw_music(fb, sel, top);
+                return;
+            }
+            Screen::MusicList { sel, top } => {
+                self.draw_music_list(fb, sel, top);
+                return;
+            }
+            Screen::NowPlaying => {
+                self.draw_now_playing(fb);
+                return;
+            }
             Screen::Menu => {}
         }
         if let Some((msg, _)) = &self.message {
@@ -2538,6 +2867,7 @@ impl Scene {
         self.now = now;
         self.tick_theme();
         self.tick_conversion();
+        self.tick_music(now);
         fb.clear(self.theme.bg);
         if self.saver.is_some() {
             self.draw_saver(fb);
@@ -3313,6 +3643,241 @@ impl Scene {
             fb.text(left, y, line, c, 1);
         }
         let hint = self.hint(&[("^v", "scroll"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// Advance the music mirror and ease the visualiser toward the last frame.
+    fn tick_music(&mut self, now: f64) {
+        let vis = matches!(
+            self.screen,
+            Screen::Music { .. } | Screen::MusicList { .. } | Screen::NowPlaying
+        );
+        self.music.tick(now, vis && self.menu_live && self.running.is_none());
+        if let Some(e) = self.music.error.take() {
+            self.message = Some((e, now + 4.0));
+        }
+        for (b, target) in self.vis.iter_mut().zip(self.music.bands.iter()) {
+            *b += (target - *b) * 0.45;
+        }
+    }
+
+    /// Ten bars of the spectrum, bottom aligned in the given box.
+    fn draw_vis(&self, fb: &mut Framebuffer, x: i32, bottom: i32, width: i32, height: i32) {
+        let n = self.vis.len().max(1) as i32;
+        let gap = if width >= n * 6 { 2 } else { 1 };
+        let bar_w = ((width - (n - 1) * gap) / n).max(1);
+        for (i, v) in self.vis.iter().enumerate() {
+            let v = v.clamp(0.0, 1.0);
+            let h = ((v * height as f32) as i32).min(height);
+            let bx = x + i as i32 * (bar_w + gap);
+            fb.rect(bx, bottom - height, bar_w, height, scale(self.theme.selection, 0.8));
+            if h > 0 {
+                let c = crate::fb::lerp_color(self.theme.green, self.theme.yellow, v);
+                fb.rect(bx, bottom - h, bar_w, h, c);
+                fb.rect(bx, bottom - h, bar_w, 1, self.theme.paper);
+            }
+        }
+    }
+
+    /// What plays, in one line with a small spectrum, above the hints.
+    fn draw_music_strip(&self, fb: &mut Framebuffer, y: i32) {
+        let st = &self.music.status;
+        if !st.active() {
+            return;
+        }
+        let w = fb.w as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let width = w - 2 * left;
+        fb.rect(left, y - 3, width, 1, scale(self.theme.dim, 0.5));
+        let vis_w = 39;
+        self.draw_vis(fb, left, y + 8, vis_w, 8);
+        let label = st.track.as_ref().map(|t| t.label()).unwrap_or_default();
+        let state = if st.playing() { "" } else { "  paused" };
+        let text = format!("{label}{state}");
+        let room = ((width - vis_w - 8) / 8) as usize;
+        let text: String = text.chars().take(room).collect::<String>().trim_end().to_string();
+        fb.text(left + vis_w + 8, y, &text, self.theme.paper, 1);
+    }
+
+    fn draw_music(&mut self, fb: &mut Framebuffer, sel: usize, top: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, "Music");
+        let ox = self.slide();
+        let rows = self.music_rows();
+        let row_h = 12;
+        let end = (top + Self::ROWS_PER_PAGE).min(rows.len());
+        for (row, i) in (top..end).enumerate() {
+            let y = y0 + row as i32 * row_h;
+            let on = i == sel;
+            let (icon, label, right, _) = &rows[i];
+            self.draw_row(fb, y, label, right, on, self.theme.paper);
+            let c = if on { self.theme.accent } else { self.theme.dim };
+            fb.bitmap(left + ox + 4, y + 1, icon, c, 1, 8);
+        }
+        match &self.music.ready {
+            None => fb.text(left, h - 42, "starting cliamp", self.theme.dim, 1),
+            Some(Err(e)) => {
+                let m: String = e.chars().take(((w - 2 * left) / 8) as usize).collect();
+                fb.text(left, h - 42, &m, self.theme.red, 1);
+            }
+            Some(Ok(())) => {}
+        }
+        self.draw_music_strip(fb, h - 30);
+        let hint = self.hint(&[("A", "open"), ("X", "pause"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    fn draw_music_list(&mut self, fb: &mut Framebuffer, sel: usize, top: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let width = w - 2 * left;
+        let Some((src, _, _)) = self.music_path.last().cloned() else {
+            return;
+        };
+        let y0 = self.draw_header(fb, &src.title());
+        let row_h = 12;
+        let playing = self
+            .music
+            .status
+            .track
+            .as_ref()
+            .map(|t| t.path.clone())
+            .unwrap_or_default();
+        let max_cols = (width / 8) as usize;
+        match self.music.lists.get(&src) {
+            None => {
+                let dots = ".".repeat(1 + ((self.now * 3.0) as usize % 3));
+                fb.text(left, y0 + 8, &format!("fetching{dots}"), self.theme.dim, 1);
+            }
+            Some(Err(e)) => {
+                let m: String = e.chars().take(max_cols).collect();
+                fb.text(left, y0 + 8, &m, self.theme.red, 1);
+            }
+            Some(Ok(items)) if items.is_empty() => {
+                fb.text(left, y0 + 8, "nothing here yet", self.theme.dim, 1);
+            }
+            Some(Ok(items)) => {
+                let items = items.clone();
+                let end = (top + Self::ROWS_PER_PAGE).min(items.len());
+                for (row, i) in (top..end).enumerate() {
+                    let y = y0 + row as i32 * row_h;
+                    let on = i == sel;
+                    let item = &items[i];
+                    let now_playing = matches!(item, MusicItem::Track(t) if !playing.is_empty() && t.path == playing);
+                    let color = if now_playing {
+                        self.theme.bright_green
+                    } else {
+                        self.theme.paper
+                    };
+                    self.draw_row(fb, y, &item.label(), &item.right(), on, color);
+                    if now_playing {
+                        let c = if on { self.theme.accent } else { self.theme.bright_green };
+                        fb.bitmap(left + self.slide() + 4, y + 1, &icons::NOTE, c, 1, 8);
+                    }
+                }
+                let page = format!("{}/{}", sel + 1, items.len());
+                fb.text(
+                    w - left - Framebuffer::text_width(&page, 1),
+                    h - 14,
+                    &page,
+                    scale(self.theme.dim, 0.7),
+                    1,
+                );
+            }
+        }
+        self.draw_music_strip(fb, h - 30);
+        let playlist = matches!(
+            self.music_selected(sel),
+            Some(MusicItem::Source(Source::ProviderPlaylist(..), _))
+        );
+        let hint = if playlist {
+            self.hint(&[("A", "play"), ("B", "back")])
+        } else {
+            self.hint(&[("A", "play"), ("X", "pause"), ("B", "back")])
+        };
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    fn draw_now_playing(&mut self, fb: &mut Framebuffer) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let width = w - 2 * left;
+        let y0 = self.draw_header(fb, "Music");
+        let st = self.music.status.clone();
+        let track = st.track.clone().unwrap_or_default();
+        let title = if !track.title.is_empty() {
+            track.title.clone()
+        } else {
+            track.label()
+        };
+        let max_cols = (width / 8) as usize;
+        let big = title.chars().count() * 16 <= width as usize;
+        let cut = |s: &str, n: usize| -> String { s.chars().take(n).collect() };
+        fb.text(
+            left,
+            y0 + 6,
+            &cut(&title, if big { max_cols / 2 } else { max_cols }),
+            self.theme.bright_green,
+            if big { 2 } else { 1 },
+        );
+        let sub = if !track.artist.is_empty() && !track.station.is_empty() {
+            format!("{}  on {}", track.artist, track.station)
+        } else if !track.artist.is_empty() {
+            track.artist.clone()
+        } else if !track.station.is_empty() {
+            track.station.clone()
+        } else if track.stream {
+            "live stream".to_string()
+        } else {
+            track.album.clone()
+        };
+        fb.text(left, y0 + 28, &cut(&sub, max_cols), self.theme.paper, 1);
+        let bar_y = y0 + 46;
+        fb.rect(left, bar_y, width, 6, self.theme.selection);
+        let times = if st.duration > 0.0 {
+            let filled = ((st.position / st.duration).clamp(0.0, 1.0) * width as f64) as i32;
+            fb.rect(left, bar_y, filled, 6, self.theme.accent);
+            format!(
+                "{} / {}",
+                crate::player::clock(st.position),
+                crate::player::clock(st.duration)
+            )
+        } else {
+            // A live stream: a dot walks the bar while it plays.
+            if st.playing() {
+                let x = left + ((self.now * 40.0) as i32 % (width - 6).max(1));
+                fb.rect(x, bar_y, 6, 6, self.theme.accent);
+            }
+            crate::player::clock(st.position)
+        };
+        fb.text(left, bar_y + 12, &times, self.theme.paper, 1);
+        let state = match st.state {
+            Some(music::State::Playing) => "playing",
+            Some(music::State::Paused) => "paused",
+            _ => "stopped",
+        };
+        let right = format!("{state}  {:+.0} dB", st.volume);
+        fb.text(
+            w - left - Framebuffer::text_width(&right, 1),
+            bar_y + 12,
+            &right,
+            self.theme.dim,
+            1,
+        );
+        let vis_top = bar_y + 30;
+        let vis_bottom = h - 24;
+        if vis_bottom - vis_top > 20 {
+            self.draw_vis(fb, left, vis_bottom, width, vis_bottom - vis_top);
+        }
+        if st.state == Some(music::State::Paused) {
+            fb.rect(w / 2 - 8, (vis_top + vis_bottom) / 2 - 8, 5, 16, self.theme.paper);
+            fb.rect(w / 2 + 3, (vis_top + vis_bottom) / 2 - 8, 5, 16, self.theme.paper);
+        }
+        let hint = self.hint(&[("A", "pause"), ("^v", "volume"), ("B", "back")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 

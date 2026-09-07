@@ -117,6 +117,18 @@ scanlines or curvature. The tube provides those.
   state, volume, hints) that appears on every command and stays while paused,
   position saved on quit. Deinterlacing stays off so 480i sources reach the
   tube as fields.
+- **Music.** A `Music` entry turns the tube into a radio set on top of
+  cliamp, Omarchy's music player, started as a daemon when needed: the
+  stations of your country (Radio Browser, most voted first), every country
+  and genre of the directory, cliamp's own picks, the live queue and the
+  recently played list, plus any provider configured in cliamp (Spotify,
+  YouTube Music, Qobuz, Plex, Jellyfin: run `cliamp setup` once and their
+  playlists appear). A now playing screen shows the station or song, the
+  elapsed time and a ten band spectrum straight from cliamp's analyser; a
+  strip with a small spectrum follows the music on every music screen. Music
+  keeps playing while you browse, pauses by itself when a game or a video
+  starts, and follows the launcher's audio routing to the TV. `country` under
+  `[music]` in `settings.toml` picks the home country (the locale otherwise).
 - **Video fit.** Modern video adapted to the tube the way the analog world did
   it: 480i or 576i by frame rate, 3:2 pulldown or PAL speed-up for film,
   letterbox, crop or anamorphic, SD color with HDR tone mapping, a 5% safe

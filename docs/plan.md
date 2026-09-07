@@ -124,6 +124,15 @@ shell key menu` pauses and resumes the running game today. What is left is
   daemon: the same pad and keyboard language as the games, a visualiser built
   for 15 kHz, album art, radio dial. Its skin language (Winamp playlist,
   equaliser, retro chrome) is the reference for the mood.
+  *Landed 2026-09-07 (`shell/src/music.rs`):* the `Music` entry, radio by
+  country and genre through Radio Browser, cliamp's catalog, the live queue,
+  history, every configured provider's playlists, the now playing screen with
+  cliamp's spectrum, pause on game launch, audio following the TV routing.
+  cliamp 1.63 speaks the v1 socket protocol (`{"cmd": ...}`); the v2 envelope
+  of newer releases is not accepted yet, so the client sticks to v1 commands
+  (`status`, `bands`, `provider.*`, `track.play`, `queue.*`, `history`).
+  Still open: text search (needs an on screen keyboard for pads), album art
+  and station logos, favourites, an EQ page.
 - **Video.** YouTube and local video through mpv with the Video fit pipeline
   (already in), a "watch later" list, 480i when the KMS session lands.
 

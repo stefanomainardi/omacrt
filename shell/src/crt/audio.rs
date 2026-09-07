@@ -101,7 +101,7 @@ pub fn default_sink() -> Option<String> {
     run("pactl", &["get-default-sink"]).map(|s| s.trim().to_string())
 }
 
-/// Sink inputs of the launcher, RetroArch and mpv: (id, application).
+/// Sink inputs of the launcher, RetroArch, mpv and cliamp: (id, application).
 fn our_streams() -> Vec<(String, String)> {
     let Some(text) = run("pactl", &["list", "sink-inputs"]) else {
         return Vec::new();
@@ -114,7 +114,10 @@ fn our_streams() -> Vec<(String, String)> {
             id = rest.trim().to_string();
         } else if let Some(rest) = s.strip_prefix("application.name = ") {
             let app = rest.trim_matches('"').to_string();
-            if matches!(app.as_str(), "omarchy-crt-shell" | "RetroArch" | "mpv") {
+            if matches!(
+                app.as_str(),
+                "omarchy-crt-shell" | "RetroArch" | "mpv" | "PipeWire ALSA [cliamp]"
+            ) {
                 out.push((id.clone(), app));
             }
         }

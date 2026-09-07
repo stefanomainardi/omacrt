@@ -20,6 +20,11 @@ abstract layout, and pads can be plugged in or removed while the shell runs.
 The left stick acts as a d-pad with key repeat: one step when it leaves the
 dead zone, then a step every 120 ms while held.
 
+On the music screens `X` pauses or resumes what plays, or plays a whole
+playlist when one is selected. On the now playing screen `A` pauses, left and
+right skip tracks, up and down move the volume by 3 dB, `B` leaves the music
+playing and goes back to the list.
+
 Button hints at the bottom of each screen follow the pad family SDL reports.
 A PlayStation pad shows `X run  O back  ^ fav`; Xbox and Nintendo pads show
 letters. SDL names buttons by position, so on a Nintendo pad the letters match

@@ -39,6 +39,14 @@ impl Default for VideoFit {
     }
 }
 
+/// The music screen (cliamp).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Music {
+    /// ISO country code whose radio stations come first; empty follows the locale.
+    #[serde(default)]
+    pub country: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
     pub screensaver: Screensaver,
@@ -47,6 +55,8 @@ pub struct Settings {
     pub theme: String,
     #[serde(default)]
     pub video: VideoFit,
+    #[serde(default)]
+    pub music: Music,
 }
 
 fn default_theme() -> String {
@@ -63,6 +73,7 @@ impl Default for Settings {
             },
             theme: "system".into(),
             video: VideoFit::default(),
+            music: Music::default(),
         }
     }
 }
