@@ -1,284 +1,263 @@
-# omarchy-crt
+<p align="center">
+  <img src="docs/logo.png" alt="Omarchy CRT" width="504">
+</p>
 
-Plug an [Omarchy](https://omarchy.org) PC into a 15 kHz CRT television over
-RGB SCART and play retro games the way they were drawn: native resolutions,
-native refresh rates, real scanlines, no scaler in between.
+# Omarchy CRT
 
-The project has two halves. A hardware and kernel recipe that gets a 15 kHz
-signal out of a modern AMD GPU, and a native boot screen and launcher that
-brings the Omarchy look to a 320x240 tube, in the spirit of
-[crt.omarchy.org](https://crt.omarchy.org/).
+An [Omarchy](https://omarchy.org) PC plugged into a 15 kHz CRT television over
+RGB SCART, playing retro games the way they were drawn: native lines, native
+refresh, real scanlines, no scaler in between. A launcher on the tube in the
+Omarchy look, a bar plugin on the desktop, and a display process that owns the
+television outright. Written in Rust, drawn at 320x240.
 
-Status: early prototype. The launcher runs in a desktop window, browses a
-ROM library and starts games through RetroArch; the first real CRT test is
-pending hardware. Development happens on `develop`, `main` holds what works.
+> **Two things to know before you read on.**
+>
+> **This project is written with an AI.** Design, code, tests and this very
+> README are the work of a human directing Claude, commit after commit, on a
+> real television in a real living room. If a codebase built that way is not
+> for you, no hard feelings: there are many other repositories.
+>
+> **This project is for Omarchy.** It leans on Omarchy's shell, bar, theme
+> files, plugins and music player on purpose. It is not a generic Linux CRT
+> frontend and will not become one. If Omarchy is not your thing, this is not
+> either.
+>
+> Omarchy CRT is a fun project by one user. It is not affiliated with, endorsed
+> by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
+> every other name here belong to their owners.
 
-## Why
+## What it looks like
 
-Emulators can already output 240p on Linux. What is missing is an opinionated,
-Omarchy-flavoured setup that a user can install in one step: the right cable,
-the right kernel, a boot entry that does not touch the daily desktop, and a
-launcher that feels like a console rather than a file manager. This repository
-collects the research and builds that setup.
+<p align="center">
+  <img src="docs/screens/home.png" width="320" alt="Home menu on the tube">
+  <img src="docs/screens/coverflow.png" width="320" alt="Cover flow">
+  <img src="docs/screens/search.png" width="320" alt="Search across 21880 games">
+  <img src="docs/screens/deck-radio.png" width="320" alt="The music deck tuned to a radio">
+  <img src="docs/screens/visual-mode7.png" width="320" alt="Mode 7 equalizer visualizer">
+  <img src="docs/screens/pause.png" width="320" alt="Pause menu over a game">
+</p>
 
-## What "no compromises" means here
+Every picture above was captured from the tube's own framebuffer by
+`omarchy-crt shot`; the television adds the scanlines.
 
-- **Native modelines per game.** 224, 240, 256 or 288 lines, 60.00, 59.94, 57.5
-  or 50 Hz, chosen by the emulator at launch and on the fly, not one fixed mode
-  for everything.
-- **Real interlace.** 480i and 576i for the systems that used them.
-- **Analog RGB out of a modern GPU.** A DisplayPort DAC that accepts pixel
-  clocks down to a few MHz, into a SCART TV with proper composite sync and
-  blanking voltage.
-- **The desktop stays untouched.** A separate kernel and boot entry carry the
-  15 kHz patches. The default Omarchy kernel and Limine entry never change.
+## How it works
 
-## Signal chain
+```mermaid
+flowchart LR
+  subgraph desktop["Omarchy desktop (Hyprland)"]
+    bar["Bar plugin<br/>Quickshell panel + library overlay"]
+    cli["omarchy-crt<br/>CLI"]
+    cliamp["cliamp --daemon<br/>music engine"]
+    bar --> cli
+  end
 
-```text
-GPU (DisplayPort) -> DAC (Realtek RTD2166/2168) -> sync combiner (VGA to SCART RGBS) -> CRT TV
+  subgraph tube["The tube (leased DRM connector)"]
+    display["omarchy-crt-display<br/>own Wayland compositor (smithay)<br/>sets 15 kHz modelines through DRM"]
+    shell["omarchy-crt-shell<br/>launcher, 320x240"]
+    ra["RetroArch"]
+    mpv["mpv"]
+    display --- shell
+    display --- ra
+    display --- mpv
+  end
+
+  cli -- "on / off / mode<br/>lease + hotkeys" --> display
+  cli -- "control pipe:<br/>keys, type, watch" --> shell
+  shell -- "launch, pause menu<br/>(hotkeys pressed by the compositor)" --> ra
+  shell -- "JSON IPC" --> mpv
+  shell -- "Unix socket IPC<br/>status, spectrum, lyrics" --> cliamp
+  display -- "HDMI, 3520x240 @ 15.73 kHz<br/>+ audio" --> dac["RGB-Pi 2 DAC<br/>csync over I2C"]
+  dac -- "RGB SCART" --> tv["CRT television"]
+  shell -. "covers, radio directory,<br/>YouTube via yt-dlp" .-> net["Internet"]
 ```
 
-- **DAC.** Only adapters built on the Realtek RTD2166 or RTD2168 are known to
-  pass the low pixel clocks 15 kHz needs. HDMI is out for native 320x240: its
-  25 MHz floor makes it impossible. Validated units: CableDeconn DP to VGA
-  (non 4K, no audio), Cable Matters 102026, biaze ZH277.
-- **HDMI tier.** An HDMI to SCART DAC such as the RGB-Pi 2 works with wide
-  "super resolution" modelines (3520x240 at 72 MHz) and carries audio, but
-  needs its sync combiner configured over I2C first. See
-  [docs/rgb-pi-2.md](docs/rgb-pi-2.md) and `omarchy-crt dac`. First light
-  on the BeoCenter 1 came this way on 2026-09-06.
-- **The tube is ours.** The DAC's connector is marked non-desktop (an EDID
-  override installed at boot by `omarchy-crt-lease.service`), so the desktop
-  compositor leaves it alone and offers it through the DRM lease protocol.
-  `omarchy-crt-display` takes the lease, sets the timing straight through
-  DRM and runs a small Wayland compositor of its own on that output; the
-  launcher, RetroArch and mpv are its clients. No desktop bar, notification,
-  pointer or window can reach the tube, and any timing the kernel accepts
-  is available, interlace included. Working since 2026-09-07.
-- **Sync and SCART.** The VGA H and V sync must be combined into composite sync
-  at 0.3 to 1 V, and the TV needs 1 to 3 V on SCART pin 16 to switch to RGB.
-  Preferred: VideoAmp (also emulates an EDID), then UMSA, sirMagb F-15,
-  VGA2SCART. Passive VGA to SCART cables and MiSTer cables do not work.
-- **Kernel.** `amdgpu` refuses low dot clocks and mishandles interlace without
-  the 15 kHz patch set maintained in
-  [D0023R/linux_kernel_15khz](https://github.com/D0023R/linux_kernel_15khz).
-  The plan is a `linux-crt` package built from `linux-lts` with those patches,
-  living next to the stock kernels through Omarchy's Limine and UKI setup.
-- **Lines per system.** On the HDMI tier the launcher asks `omarchy-crt` to
-  switch the tube to a system's pinned line count before a game starts (224
-  lines for Super Nintendo) and back to the full frame after, so pixels land
-  one line per line without a kernel patch.
-- **Mode switching.** With the connector leased, modelines are set by our
-  own display process through DRM, live (`omarchy-crt mode`, or the launcher
-  before each game), with no compositor in between. The separate KMS
-  session with Switchres remains the plan for per-game timings on the
-  DisplayPort tier.
+The desktop never touches the television. At boot a systemd unit installs an
+EDID override that marks the DAC's connector *non-desktop*, so Hyprland leaves
+it alone and offers it through the DRM lease protocol. `omarchy-crt-display`
+takes the lease, programs the 15 kHz timing straight into the kernel and runs a
+small Wayland compositor of its own on that output. The launcher, RetroArch and
+mpv are its clients, forced fullscreen at the output's size. No bar,
+notification, pointer or stray window can reach the tube, and any timing the
+kernel accepts is one command away, live, including a different line count per
+system (224 lines for a Super Nintendo game, 240 for a NES one).
 
-The full study, with sources and the verification plan, is in
-[`docs/studio-15khz.md`](docs/studio-15khz.md) (Italian).
+The bar plugin and the CLI stay on the desktop and talk to the tube over a
+control pipe: the panel is the remote control, the overlay manages the
+collection, the CLI does everything from a terminal.
 
-## The launcher: `shell/`
+## Hardware
 
-A Rust and SDL2 program that renders a 320x240 framebuffer and shows it
-fullscreen on the CRT, or in a scaled window while developing. It does not fake
-scanlines or curvature. The tube provides those.
+| Part | What worked |
+| --- | --- |
+| GPU | AMD Radeon RX 7700/7800 XT, stock Omarchy kernel |
+| DAC | [RGB-Pi 2](docs/rgb-pi-2.md), HDMI in, SCART RGB out, composite sync selected over I2C, audio on SCART |
+| Television | Bang & Olufsen BeoCenter 1, RGB SCART |
+| Pads | Anything SDL knows; unknown pads get a mapping wizard on the tube |
 
-- **Boot sequence.** Power surge and vertical roll, a BIOS style POST with live
-  data (host, kernel, video mode, theme), the Omarchy icon revealed band by
-  band, a systems-online chime, and the wordmark etched by a laser.
-- **Laser etch.** A pixel port of the `laseretch` effect from
-  TerminalTextEffects, the same effect crt.omarchy.org runs: a depth-first
-  random walk decides the etch order, cells flash and cool from yellow to their
-  final gradient color, sparks fly along Bezier arcs and pile up on the
-  baseline.
-- **CRT tag.** Introduced SNES title screen style: a Mode 7 checkerboard
-  floor rushes toward the viewer, giant CRT letters rise from the horizon
-  spinning in fake 3D, slam into the foreground with a shake, a copper bar and
-  a burst of dust, then shrink and fly to their spot under the wordmark. Riser,
-  slam, chord stab and landing bells come from the same timeline.
-- **Menu.** Omarchy style: a vertical list with pixel icons, a selection band
-  in the theme's `selection` color, accent colored text, chevrons for
-  submenus, slide-in transitions and a whoosh. Home: Games, Favorites, Recent,
-  Settings, About, Power. Settings holds the TV profile, pads, the
-  screensaver (on/off, idle time, effect), Style and a diagnostics page;
-  About explains the goals and credits; Power goes back to the desktop or
-  powers off after a confirming second press.
-- **Style.** Every installed Omarchy theme, previewed live as the cursor
-  moves: icon, wordmark, bands and text blend to the new palette in a third of
-  a second. `system` follows the desktop theme.
-- **Launch ritual.** Selecting a game slides a cartridge into its slot (or
-  spins a disc up for CD systems) with a scrape and a click, then the picture
-  collapses to a line and the emulator takes over. System logos in the Games
-  list carry each console's signature color.
-- **Videos.** A `Videos` entry plays any folder of films through mpv with the
-  shell still in charge: keyboard and pad controls (pause, seek, volume, stop),
-  a themed on screen display drawn by mpv itself (title, progress, times,
-  state, volume, hints) that appears on every command and stays while paused,
-  position saved on quit. Deinterlacing stays off so 480i sources reach the
-  tube as fields.
-- **A console from login.** `shell.autostart = true` in `crt.toml` makes the
-  login reset switch the tube on when the DAC is connected: the television
-  boots into the launcher with the desktop.
-- **Details.** Region and revision tags under the box art, when a game was
-  last played, folder breadcrumbs in the header, a marquee for long titles,
-  the favourites star.
-- **Any pad.** Pads SDL knows just work; an unknown one gets a button by
-  button wizard on the tube the moment it is plugged in, and the mapping is
-  kept for next time. `X` on the Pads screen maps the current pad again.
-- **Save states in sight.** RetroArch saves on exit and resumes on start; the
-  launcher shows it: a small arrow on every game that has a state, "left
-  12:03" or "saved Sat 21:10" under the box art, the same line when the pause
-  menu opens. The pause menu (Select + Start, or the home button) offers
-  resume, save state, load state, fast forward, reset and back to the
-  launcher, all through real hotkeys pressed by the compositor.
-- **Search.** `/` filters the open list as you type, or, from the home menu,
-  searches the whole collection across systems (21,880 titles answer in a
-  frame). Every word must appear in the title, titles starting with the first
-  word come first. Pads get the same through the left trigger and an on
-  screen keyboard, and the shoulder buttons jump letter by letter.
-- **Music.** A `Music` entry turns the tube into a radio set on top of
-  cliamp, Omarchy's music player, started as a daemon when needed: the
-  stations of your country (Radio Browser, most voted first), every country
-  and genre of the directory, cliamp's own picks, the live queue and the
-  recently played list, plus any provider configured in cliamp (Spotify,
-  YouTube Music, Qobuz, Plex, Jellyfin: run `cliamp setup` once and their
-  playlists appear). A now playing screen shows the station or song, the
-  elapsed time and a ten band spectrum straight from cliamp's analyser; a
-  strip with a small spectrum follows the music on every music screen. `/`
-  (or the left trigger) filters any station list as you type, `Y` stars a
-  station into a favourites list. Music keeps playing while you browse,
-  pauses by itself when a game or a video starts, and follows the launcher's
-  audio routing to the TV. `country` under `[music]` in `settings.toml` picks
-  the home country (the locale otherwise).
-- **Watch anything.** `omarchy-crt watch URL` plays a YouTube link (or any
-  file) on the tube through mpv and yt-dlp; `--later` keeps it at the top of
-  the Videos list for the evening.
-- **Video fit.** Modern video adapted to the tube the way the analog world did
-  it: 480i or 576i by frame rate, 3:2 pulldown or PAL speed-up for film,
-  letterbox, crop or anamorphic, SD color with HDR tone mapping, a 5% safe
-  area, and a `retro 240p` mode that turns upscaled gameplay captures back
-  into 320x240 pixels. Applied live in mpv, or baked into a `CRT` ready file
-  by ffmpeg with field based scaling. See [`docs/video.md`](docs/video.md).
-- **Sound everywhere.** Clicks under the BIOS typewriter, whooshes on
-  submenus, crackle under the laser etch, a scrape and a click when a cartridge
-  goes in, all synthesized at startup. No background music.
-- **Game browser.** `games/` lists the systems from `systems.toml`, then the
-  ROMs of a system as a paged list. A game starts in RetroArch with a dedicated
-  config: no RetroArch menu, no notifications, save state on exit and resume on
-  start. The shell waits behind the game and comes back when it ends.
-- **Video policy.** Each system declares how the display mode follows the
-  game: `super` (wide frame, height and refresh follow the core), `native`, or
-  a pinned frame such as `512x224`. See
-  [`docs/video-policy.md`](docs/video-policy.md).
-- **Right on first launch.** Per system libretro core options, input device
-  types, run-ahead and rewind whitelists, written into RetroArch's config at
-  every launch. Built-in defaults cover the cores Arch ships. See
-  [`docs/systems.md`](docs/systems.md).
-- **Recent and favorites.** Two virtual folders on top of the systems list;
-  `F` or the `Y` button stars a game. Multi disc games appear once through
-  `.m3u` playlists.
-- **Controllers.** SDL game controller API in the shell (hotplug, left stick
-  as d-pad, button hints in the pad's own vocabulary, extra mappings from a
-  `gamecontrollerdb.txt`), udev autoconfig profiles in RetroArch, analog to
-  d-pad per system, and a `pair-pad` screen that drives `bluetoothctl`. See
-  [`docs/input.md`](docs/input.md).
-- **TV profile.** Monitor preset (`generic_15`, `ntsc`, `pal`, arcade
-  chassis), centering, horizontal size and sync polarity, saved as
-  `switchres.ini` plus RetroArch centering keys, with the 240p Test Suite one
-  press away as a test pattern.
-- **Screensaver.** After an idle period the wordmark cycles through text
-  effects (laser etch, rain, beams, burn, slide, decrypt, expand, unstable,
-  vhstape), like Omarchy's own screensaver does in the terminal. Nine of the
-  TerminalTextEffects catalog so far; effect and idle time are configurable
-  from Settings and saved in `settings.toml`.
-- **Theme aware.** Colors come from `~/.config/omarchy/current/colors.toml`.
-  Icon and wordmark are Omarchy's own assets.
+The HDMI path works with wide "super resolution" modelines (3520x240 at 72 MHz,
+15.73 kHz, 60.04 Hz for NTSC; 3840x288 for PAL). The tube turns the wide frame
+back into 4:3, the emulator fills it, and every game line lands on one TV line.
+A DisplayPort DAC tier (Realtek RTD2166 adapters plus a VGA to SCART sync
+combiner) for native 320x240 timings is documented in
+[`docs/studio-15khz.md`](docs/studio-15khz.md) (Italian) and has not been
+needed so far.
+
+## Install
 
 ```sh
-cd shell
-cargo build --release
-./target/release/omarchy-crt-shell              # 3x window, press Space
-./target/release/omarchy-crt-shell --auto-boot  # skip the gate
-./target/release/omarchy-crt-shell --screensaver laseretch
-./target/release/omarchy-crt-shell --fullscreen --stretch   # on the CRT output
+git clone https://github.com/stefanomainardi/omarchy-crt.git
+cd omarchy-crt
+bin/omarchy-crt-install                # builds, installs to ~/.local/bin, installs both plugins
+sudo bin/omarchy-crt-install --system  # once: the boot time EDID override that hands the tube over
+omarchy-crt library scan ~/Games       # index your collection, any folder layout
+omarchy-crt on                         # tube on: 15 kHz timing, DAC sync, audio, launcher
 ```
 
-See [`shell/README.md`](shell/README.md) for every flag, the menu file format
-and the timeline.
+Requirements: Omarchy with Hyprland 0.56 or later (the Lua configuration),
+RetroArch with libretro cores, mpv, cliamp (Omarchy's music player), yt-dlp
+for YouTube, ffmpeg, curl, a stable Rust toolchain. `omarchy-crt doctor`
+tells what is missing.
+
+After `--system` the tube is handed over at every boot. Set
+`shell.autostart = true` in `~/.config/omarchy-crt/crt.toml` and the
+television boots straight into the launcher along with the desktop.
+
+## The launcher
+
+A 320x240 framebuffer drawn sixty times a second, no shader faking a tube. The
+theme comes from Omarchy's own colors; every installed theme is available and
+switches with a blend.
+
+- **Boot.** Power surge and roll, a BIOS style POST with live data, the icon
+  revealed band by band, a chime, the wordmark etched by a laser
+  (TerminalTextEffects' `laseretch`, ported pixel by pixel), then the CRT tag
+  slams in SNES title screen style over a Mode 7 floor. Both logos glint
+  every few seconds afterwards.
+- **Games.** Systems with console pictures, games with box art from the
+  libretro thumbnails, collections, favourites, recent. `X` opens the **cover
+  flow**: the selected cover large on a shelf, the neighbours receding at an
+  angle, everything mirrored on the floor, sliding with inertia.
+- **Search.** `/` filters the open list as you type; from the home menu it
+  searches the whole collection (21,880 titles answer in a frame). Pads get
+  the same with the left trigger and an on screen keyboard, and jump letter
+  by letter with the shoulder buttons.
+- **Launch ritual.** A cartridge slides in (a disc spins up for CD systems),
+  scrape and click, the picture collapses to a line, the emulator takes over
+  with the line count the system wants. RetroArch runs with its own menu and
+  notifications off, save state on exit and resume on start.
+- **Pause menu.** Select + Start, or the home button: resume, save state, load
+  state, fast forward, reset, back to the launcher. The compositor presses
+  RetroArch's real hotkeys, so nothing depends on a network command. Every
+  game with a save state carries a small arrow and says when it was left.
+- **Music.** On top of cliamp, started as a daemon when needed: the radio
+  stations of your country, every country and genre of the Radio Browser
+  directory, favourites, history, and any provider set up in cliamp (Spotify,
+  YouTube Music, Qobuz, Plex, Jellyfin). The now playing screen is a **hi-fi
+  deck**: a cassette whose reels turn with the music, or a radio dial whose
+  needle glides to the station through a burst of static, two VU meters with
+  inertia. Six idle seconds later the screen becomes a **visualizer** driven
+  by cliamp's spectrum and a kick detector: Mode 7 equalizer, copper bars,
+  oscilloscope, starfield, plasma, pixel fire, spectrum tower. Synced lyrics
+  when cliamp has them, a sleep timer, and the selection band of every list
+  breathing with the beat.
+- **Videos.** Local films through mpv with a themed on screen display and a
+  fit pipeline for the tube (480i or 576i by frame rate, pulldown or PAL
+  speed-up for film, letterbox or crop, a safe area, a retro 240p mode).
+  **YouTube** on the television: search from the tube, watch later, recently
+  watched, the link in the clipboard, or `omarchy-crt watch URL` from a
+  terminal; streams are fetched at 480p, all a 240 line tube can show.
+- **Pads.** SDL's database plus a wizard on the tube for the pads it does not
+  know: press each control once and it is mapped for good.
+- **Sound.** Every click, whoosh, crackle and scrape is synthesized at
+  startup. No background music of its own.
+
+Keyboard and pad bindings are in [`docs/input.md`](docs/input.md); the
+launcher's flags and offline rendering in [`shell/README.md`](shell/README.md).
+
+## The bar plugin
+
+<p align="center">
+  <img src="docs/screens/panel.png" width="300" alt="The bar panel">
+  <img src="docs/screens/library-overlay.png" width="540" alt="The library overlay">
+</p>
+
+A television glyph in the Omarchy bar shows whether the tube is on the air
+and at how many lines. The panel is the remote control: power, NTSC or PAL,
+the keyboard to the launcher, DAC sync mode, audio to the TV, TV volume, a
+field to send a link to the television. The **Library** overlay manages the
+collection full screen: the folders the scan reads, disks that look like
+collections with one click "adopt and scan", every system with its games and
+core (a missing core offers its package, from the repositories or the AUR),
+the BIOS files the cores expect with import from any folder that holds them,
+and the folders the scan could not place with a system picker.
+
+See [`plugin/README.md`](plugin/README.md).
+
+## The CLI
+
+Everything the plugin and the launcher do can be typed:
+
+```text
+omarchy-crt on | off | status | mode ntsc|pal|film [--lines N]
+omarchy-crt shell start|stop|restart | shell key <input>... | shell type <text>
+omarchy-crt shot out.png | record start out.mp4 | record stop | monitor on|off
+omarchy-crt game menu|pause|save|load|reset|quit
+omarchy-crt watch <file|url> [--later [TITLE]]
+omarchy-crt library scan|discover|cores|set|assign|unknown | bios [import DIR|discover]
+omarchy-crt audio crt|desktop|all|apps | audio volume N | dac csync and|xor | doctor | config set KEY VALUE
+```
+
+Details in [`docs/cli.md`](docs/cli.md). `shell key` and `shell type` drive
+the launcher over its control pipe, which is how every screenshot and video in
+this repository was made.
 
 ## The library scans anything
 
 Point `omarchy-crt library scan` at a disk and it works out what every file
 is: extension, the words in the folder names, disc image signatures, the
 names inside zips. No renaming, no fixed folder scheme. Regional variants
-collapse onto one title, systems show up when they have games. Details in
-[docs/systems.md](docs/systems.md).
+collapse onto one title and systems show up when they have games. Details in
+[`docs/systems.md`](docs/systems.md), the display mode per system in
+[`docs/video-policy.md`](docs/video-policy.md).
 
 ## Repository layout
 
-- **`docs/`** research and decisions: the 15 kHz study, the video policy, the
-  systems file and TV profile, controllers, video on a CRT.
-- **`scripts/crt-probe.sh`** read-only probe of a DRM connector: status, EDID,
-  kernel mode list, Hyprland view, and the HDMI audio path (ELD pin, PipeWire
-  profile and sink for that connector). `--tone` plays a 2 s test tone on the
-  matching sink. Used to test DACs.
-- **`bin/omarchy-crt-install`** builds the launcher and the CLI, installs
-  them in `~/.local/bin` and installs the bar plugin.
-- **`plugin/`** the Omarchy bar plugin (`io.github.stefanomainardi.omarchy-crt`)
-  and, in `plugin/library/`, the full screen library overlay it summons:
-  a television glyph in the bar and a panel drawn like a TV on screen display
-  with power, NTSC or PAL, launcher focus, DAC sync, audio and library health.
-  See [plugin/README.md](plugin/README.md).
-- **`scripts/demo-video.sh`** renders the shell offline from `scripts/demo.txt`
-  (scripted input) and encodes an MP4 with the synthesized audio, frame exact.
-- **`scripts/vm.sh`** throwaway Omarchy VM for kernel packaging tests.
-- **`shell/`** the native launcher (`omarchy-crt-shell`) and the CLI
-  (`omarchy-crt`) that turns the desktop into a CRT station: modeline, DAC
-  composite sync, audio routing, launcher, window rules, the game index and
-  BIOS checks. See [docs/cli.md](docs/cli.md).
+| Path | What |
+| --- | --- |
+| `shell/` | The Rust workspace: `omarchy-crt-shell` (launcher), `omarchy-crt` (CLI), `omarchy-crt-display` (lease and compositor), shared library |
+| `plugin/` | The bar widget and panel; `plugin/library/` the library overlay |
+| `bin/omarchy-crt-install` | Build and install everything, `--system` for the boot time lease |
+| `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
+| `systemd/` | The oneshot unit that hands the tube over at boot |
+| `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting, state of the project |
 
-## Roadmap
+## State and what is next
 
-Done so far (see [`docs/plan.md`](docs/plan.md) for the phases):
-
-- **First light**, 2026-09-06: the launcher on the BeoCenter 1 through the
-  RGB-Pi 2 at 240p and 288p, audio over SCART.
-- **The tube is ours**, 2026-09-07: the DAC's connector leased from the
-  desktop and driven by `omarchy-crt-display`, a compositor of its own; live
-  line changes per system, screenshots and recordings of the tube, a desktop
-  monitor window with the keyboard.
-- **Playing well**: pause menu with save and load state, fast forward, reset;
-  save states in sight; pad mapping wizard; search across the collection;
-  music through cliamp; watch anything through mpv.
-- **The bar plugin**: power, standard, sync, audio and volume, the library
-  overlay with disks, cores, BIOS and unplaced folders.
-
-Next:
-
-1. **480i and 576i on the tube.** An interlaced modeline for the RGB-Pi 2 so
-   video plays as fields, the way the Video fit pipeline already prepares it.
-2. **More in the pause menu.** Rewind (RetroArch's rewind buffer costs CPU,
-   so per system), aspect and shader choices.
-3. **Album art and station logos** on the music screens; an equaliser page.
-4. **More effects.** Port the rest of the TerminalTextEffects catalog to the
-   screensaver.
-5. **A kernel with the 15 kHz patches** only if a mode the DAC needs turns
-   out unreachable from userspace; nothing so far has.
+[`docs/plan.md`](docs/plan.md) keeps the current state. In short: the tube is
+ours, games, music and video run on it, the collection is managed from the
+bar. Next: interlaced 480i and 576i modelines for video, smarter cover
+matching for collections whose file names carry no region tags, rewind and
+aspect in the pause menu, album art on the music screens.
 
 ## Contributing
 
-Work lands on `develop` and is merged to `main` when it runs. Commits follow
-Conventional Commits. The launcher builds with a stable Rust toolchain and
-SDL2; `cargo build --release` in `shell/` is all it takes.
+Work lands on `develop` and is merged to `main` when it runs on the
+television. Commits follow Conventional Commits. `cargo build --release` in
+`shell/` builds everything; `cargo test` runs the unit tests. Read the two
+notes at the top before opening an issue about either.
 
 ## Credits and licenses
 
-- Omarchy icon and wordmark: Omacom Foundation, MIT.
+- Omarchy icon and wordmark: Omacom Foundation, MIT. Used here as the theme
+  of a fan project; Omarchy CRT is not part of Omarchy.
 - `font8x8` bitmap font: Daniel Hepper, public domain, after the IBM VGA fonts.
 - `laseretch` and the effect catalog: inspired by
   [TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects) by
   ChrisBuilds.
+- Box art: the [libretro thumbnails](https://github.com/libretro-thumbnails)
+  repositories. Console pictures: RetroArch's `systematic` assets (CC BY).
+- Radio directory: [Radio Browser](https://www.radio-browser.info/). Music
+  engine: [cliamp](https://github.com/bjarneo/cliamp) by bjarneo.
 - 15 kHz kernel patches: Calamity and D0023R. Switchres and GroovyMAME:
   Antonio Giner and the GroovyArcade community.
 - Hardware research: the Batocera CRT Script wiki by ZFEbHVUE and the
