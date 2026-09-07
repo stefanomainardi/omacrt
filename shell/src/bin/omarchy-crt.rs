@@ -990,6 +990,21 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
 
 fn cmd_doctor(cfg: &Config) -> i32 {
     let mut rows: Vec<(String, bool, String)> = Vec::new();
+    for extra in omarchy_crt_shell::coredata::TABLE {
+        let there = !omarchy_crt_shell::coredata::missing(
+            extra.core,
+            &omarchy_crt_shell::coredata::system_dir(),
+        );
+        rows.push((
+            format!("{} core files", extra.core),
+            there,
+            if there {
+                extra.what.into()
+            } else {
+                format!("missing; fetched on the first launch ({})", extra.what)
+            },
+        ));
+    }
     let conn = output::pick(cfg);
     rows.push((
         "CRT connector found".into(),

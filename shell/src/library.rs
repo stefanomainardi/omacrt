@@ -141,7 +141,16 @@ impl VideoPolicy {
                 kv("crt_switch_resolution", if switching { "1" } else { "0" });
                 kv("crt_switch_resolution_super", "0");
                 kv("aspect_ratio_index", "22");
-                kv("video_scale_integer", "true");
+                // Integer scaling only means something when the emulator is
+                // picking the mode. When the host picks it the picture lands
+                // in a frame thousands of pixels wide that the tube squeezes
+                // back to 4:3, and asking for whole multiples there leaves the
+                // game in a strip in the middle of the screen with its top and
+                // bottom cut off.
+                kv(
+                    "video_scale_integer",
+                    if switching { "true" } else { "false" },
+                );
             }
             VideoPolicy::Fixed(w, h) => {
                 kv("crt_switch_resolution", "0");
@@ -453,7 +462,10 @@ fn default_systems() -> Vec<System> {
                 ("dolphin_widescreen_hack", "disabled"),
                 ("dolphin_progressive_scan", "disabled"),
                 ("dolphin_force_progressive", "disabled"),
-                ("dolphin_crop_overscan", "disabled"),
+                // A GameCube drew 640x480; the extra lines are the frame
+                // buffer's, not the picture's. Cropping them is what makes the
+                // core report the 480 lines the television is set to.
+                ("dolphin_crop_overscan", "enabled"),
                 ("dolphin_skip_gc_bios", "enabled"),
                 ("dolphin_osd_enabled", "disabled"),
                 ("dolphin_shader_compilation_mode", "sync"),
@@ -1003,6 +1015,10 @@ impl Library {
             cmd.args(fit_args);
             crate::player::add_target(&mut cmd, file);
             return Ok(cmd);
+        }
+        // A core that needs files nobody ships with it gets them now, once.
+        if let Some(note) = crate::coredata::ensure(&system.core, &crate::coredata::system_dir()) {
+            eprintln!("{note}");
         }
         let cfg = self.retroarch_config()?;
         let cores_cfg = self.config_dir.join("cores.cfg");
