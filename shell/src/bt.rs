@@ -152,8 +152,7 @@ impl Bluetooth {
                                 .then(|| (mac.to_string(), name.to_string()))
                         })
                         .collect();
-                    self.devices
-                        .sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+                    self.devices.sort_by_key(|a| a.1.to_lowercase());
                     self.status = if self.devices.is_empty() {
                         "no devices found, A to scan again".into()
                     } else {

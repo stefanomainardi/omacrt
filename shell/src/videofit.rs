@@ -45,12 +45,12 @@ pub fn probe(file: &Path) -> Probe {
     if let Some(s) = v.get("streams").and_then(|s| s.get(0)) {
         p.width = s.get("width").and_then(|x| x.as_u64()).unwrap_or(0) as u32;
         p.height = s.get("height").and_then(|x| x.as_u64()).unwrap_or(0) as u32;
-        if let Some(r) = s.get("r_frame_rate").and_then(|x| x.as_str()) {
-            if let Some((n, d)) = r.split_once('/') {
-                let (n, d): (f64, f64) = (n.parse().unwrap_or(0.0), d.parse().unwrap_or(1.0));
-                if d > 0.0 {
-                    p.fps = n / d;
-                }
+        if let Some(r) = s.get("r_frame_rate").and_then(|x| x.as_str())
+            && let Some((n, d)) = r.split_once('/')
+        {
+            let (n, d): (f64, f64) = (n.parse().unwrap_or(0.0), d.parse().unwrap_or(1.0));
+            if d > 0.0 {
+                p.fps = n / d;
             }
         }
         p.interlaced = matches!(
@@ -390,15 +390,14 @@ impl Conversion {
 
     /// Returns Some(success) when finished.
     pub fn poll(&mut self) -> Option<bool> {
-        if let Ok(text) = std::fs::read_to_string(&self.progress_file) {
-            if let Some(us) = text.lines().rev().find_map(|l| {
+        if let Ok(text) = std::fs::read_to_string(&self.progress_file)
+            && let Some(us) = text.lines().rev().find_map(|l| {
                 l.strip_prefix("out_time_us=")
                     .or(l.strip_prefix("out_time_ms="))
-            }) {
-                if let Ok(v) = us.trim().parse::<f64>() {
-                    self.done_secs = v / 1_000_000.0;
-                }
-            }
+            })
+            && let Ok(v) = us.trim().parse::<f64>()
+        {
+            self.done_secs = v / 1_000_000.0;
         }
         match self.child.try_wait() {
             Ok(Some(status)) => {

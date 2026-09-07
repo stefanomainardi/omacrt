@@ -183,10 +183,10 @@ pub fn report(systems: &[String]) -> Report {
 }
 
 fn copy_file(src: &Path, dst: &Path) -> std::io::Result<bool> {
-    if let (Ok(a), Ok(b)) = (src.metadata(), dst.metadata()) {
-        if a.len() == b.len() {
-            return Ok(false);
-        }
+    if let (Ok(a), Ok(b)) = (src.metadata(), dst.metadata())
+        && a.len() == b.len()
+    {
+        return Ok(false);
     }
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent)?;
@@ -250,7 +250,13 @@ pub fn import(src: &Path, all: bool) -> std::io::Result<(usize, usize)> {
 pub fn discover(places: &[PathBuf]) -> Vec<(PathBuf, usize)> {
     let known: Vec<String> = table()
         .iter()
-        .map(|e| e.file.rsplit('/').next().unwrap_or(e.file).to_ascii_lowercase())
+        .map(|e| {
+            e.file
+                .rsplit('/')
+                .next()
+                .unwrap_or(e.file)
+                .to_ascii_lowercase()
+        })
         .collect();
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -297,6 +303,6 @@ pub fn discover(places: &[PathBuf]) -> Vec<(PathBuf, usize)> {
             }
         }
     }
-    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.sort_by_key(|e| std::cmp::Reverse(e.1));
     out
 }

@@ -2,7 +2,7 @@
 //! launcher keeps drawing while it takes its few seconds. Playback goes
 //! through mpv like any other video (mpv resolves the link with yt-dlp too).
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 #[derive(Clone, Debug)]
 pub struct Hit {
@@ -38,7 +38,11 @@ fn run(query: &str, limit: usize) -> Result<Vec<Hit>, String> {
     let v: serde_json::Value =
         serde_json::from_slice(&out.stdout).map_err(|e| format!("yt-dlp: {e}"))?;
     let mut hits = Vec::new();
-    for e in v.get("entries").and_then(|e| e.as_array()).unwrap_or(&Vec::new()) {
+    for e in v
+        .get("entries")
+        .and_then(|e| e.as_array())
+        .unwrap_or(&Vec::new())
+    {
         let url = e
             .get("url")
             .or_else(|| e.get("webpage_url"))
@@ -49,7 +53,11 @@ fn run(query: &str, limit: usize) -> Result<Vec<Hit>, String> {
             continue;
         }
         hits.push(Hit {
-            title: e.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+            title: e
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string(),
             url: url.to_string(),
             duration: e.get("duration").and_then(|d| d.as_f64()).map(|d| d as u64),
             channel: e

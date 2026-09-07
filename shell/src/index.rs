@@ -620,10 +620,10 @@ pub fn detect(path: &Path, root: &Path, hints: &Hints) -> Option<String> {
             } else {
                 None
             };
-            if let Some(d) = data {
-                if let Some(s) = system_from_content(&d) {
-                    return Some(s.into());
-                }
+            if let Some(d) = data
+                && let Some(s) = system_from_content(&d)
+            {
+                return Some(s.into());
             }
             hint.map(str::to_string)
         }

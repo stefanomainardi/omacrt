@@ -22,9 +22,9 @@ use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
 use crate::states;
-use crate::yt;
 use crate::theme::Theme;
 use crate::videofit::{self, Conversion};
+use crate::yt;
 use std::path::{Path, PathBuf};
 
 fn clamp(v: f32, a: f32, b: f32) -> f32 {
@@ -894,8 +894,10 @@ impl Scene {
             }
             5 => {
                 let i = COUNTRIES.iter().position(|c| *c == m.country).unwrap_or(0) as i32;
-                m.country = COUNTRIES[(i + dir).rem_euclid(COUNTRIES.len() as i32) as usize].to_string();
-                self.art = crate::art::Art::new(crate::covers::regions_for(&self.settings.music.country));
+                m.country =
+                    COUNTRIES[(i + dir).rem_euclid(COUNTRIES.len() as i32) as usize].to_string();
+                self.art =
+                    crate::art::Art::new(crate::covers::regions_for(&self.settings.music.country));
             }
             6 => m.rumble = !m.rumble,
             r => {
@@ -1243,7 +1245,11 @@ impl Scene {
         let sys = self.video_system();
         self.set_games(entries);
         self.games_back = Some(back);
-        self.go(Screen::Games { sys, sel: 0, top: 0 });
+        self.go(Screen::Games {
+            sys,
+            sel: 0,
+            top: 0,
+        });
     }
 
     /// Links played before, newest first, from the recent list.
@@ -1285,7 +1291,11 @@ impl Scene {
             return;
         }
         self.message = Some((
-            if kept { format!("watch later: {}", entry.game.title) } else { format!("removed {}", entry.game.title) },
+            if kept {
+                format!("watch later: {}", entry.game.title)
+            } else {
+                format!("removed {}", entry.game.title)
+            },
             self.now + 2.5,
         ));
         self.pending.push(Sound::Select);
@@ -1407,7 +1417,12 @@ impl Scene {
         self.search_global = false;
         // The names of the systems, to turn an arcade set name into a title
         // the way the per system lists do.
-        let names: Vec<String> = self.library.systems.iter().map(|s| s.name.clone()).collect();
+        let names: Vec<String> = self
+            .library
+            .systems
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
         let entries: Vec<Entry> = list
             .iter()
             .filter(|(i, p)| *i < names.len() && p.exists())
@@ -1485,7 +1500,7 @@ impl Scene {
                     }
                     all.extend(self.entries_for(i));
                 }
-                all.sort_by(|a, b| a.game.title.to_lowercase().cmp(&b.game.title.to_lowercase()));
+                all.sort_by_key(|a| a.game.title.to_lowercase());
                 self.set_games(all);
                 self.search_global = true;
                 self.go(Screen::Games {
@@ -1562,7 +1577,7 @@ impl Scene {
                 })
                 .map(|e| (e.game.title.to_lowercase().starts_with(words[0]), e.clone()))
                 .collect();
-            hits.sort_by(|a, b| b.0.cmp(&a.0));
+            hits.sort_by_key(|h| std::cmp::Reverse(h.0));
             hits.into_iter().map(|(_, e)| e).collect()
         };
         match &mut self.screen {
@@ -1599,7 +1614,13 @@ impl Scene {
             .title
             .chars()
             .find(|c| c.is_alphanumeric())
-            .map(|c| if c.is_ascii_digit() { '#' } else { c.to_ascii_uppercase() })
+            .map(|c| {
+                if c.is_ascii_digit() {
+                    '#'
+                } else {
+                    c.to_ascii_uppercase()
+                }
+            })
             .unwrap_or('#')
     }
 
@@ -1678,12 +1699,12 @@ impl Scene {
     fn select_row(&mut self, target: usize) {
         let page = self.page_rows();
         let n = self.games.len();
-        if let Screen::Games { sel, top, .. } = &mut self.screen {
-            if *sel != target {
-                *sel = target;
-                *top = target.min(n.saturating_sub(page));
-                self.pending.push(Sound::Move);
-            }
+        if let Screen::Games { sel, top, .. } = &mut self.screen
+            && *sel != target
+        {
+            *sel = target;
+            *top = target.min(n.saturating_sub(page));
+            self.pending.push(Sound::Move);
         }
     }
 
@@ -1851,10 +1872,10 @@ impl Scene {
                         moved = true;
                     }
                     Nav::Back => {
-                        if let Screen::Games { sys: Some(i), .. } = self.screen {
-                            if self.leave_folder(i) {
-                                return;
-                            }
+                        if let Screen::Games { sys: Some(i), .. } = self.screen
+                            && self.leave_folder(i)
+                        {
+                            return;
                         }
                         if let Some(back) = self.games_back.take() {
                             self.screen = back;
@@ -2396,24 +2417,46 @@ impl Scene {
                         MusicRow::Source(Source::Country(code, name)),
                     ));
                 }
-                rows.push((icons::FOLDER, "By country".into(), String::new(), MusicRow::Source(Source::Countries)));
-                rows.push((icons::FOLDER, "By genre".into(), String::new(), MusicRow::Source(Source::Tags)));
+                rows.push((
+                    icons::FOLDER,
+                    "By country".into(),
+                    String::new(),
+                    MusicRow::Source(Source::Countries),
+                ));
+                rows.push((
+                    icons::FOLDER,
+                    "By genre".into(),
+                    String::new(),
+                    MusicRow::Source(Source::Tags),
+                ));
                 rows.push((
                     icons::STAR,
                     "cliamp picks".into(),
                     String::new(),
-                    MusicRow::Source(Source::ProviderPlaylists("radio".into(), "cliamp picks".into())),
+                    MusicRow::Source(Source::ProviderPlaylists(
+                        "radio".into(),
+                        "cliamp picks".into(),
+                    )),
                 ));
                 rows.push((
                     icons::STAR,
                     "Favourite stations".into(),
-                    if self.music.favorites.is_empty() { String::new() } else { format!("{:>4}", self.music.favorites.len()) },
+                    if self.music.favorites.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{:>4}", self.music.favorites.len())
+                    },
                     MusicRow::Source(Source::Favorites),
                 ));
                 return rows;
             }
             Some(Hub::Provider(key, name)) => {
-                rows.push((icons::NOTE, "Search".into(), String::new(), MusicRow::Search(key.clone())));
+                rows.push((
+                    icons::NOTE,
+                    "Search".into(),
+                    String::new(),
+                    MusicRow::Search(key.clone()),
+                ));
                 rows.push((
                     icons::FOLDER,
                     "Playlists and albums".into(),
@@ -2429,7 +2472,12 @@ impl Scene {
             let right: String = label.chars().take(20).collect();
             rows.push((icons::NOTE, "Now playing".into(), right, MusicRow::Now));
         }
-        rows.push((icons::PULSE, "Radio".into(), String::new(), MusicRow::Hub(Hub::Radio)));
+        rows.push((
+            icons::PULSE,
+            "Radio".into(),
+            String::new(),
+            MusicRow::Hub(Hub::Radio),
+        ));
         for p in &self.music.providers {
             if p.key == "radio" || p.key == "local" {
                 continue;
@@ -2439,13 +2487,27 @@ impl Scene {
                 "youtube" | "ytmusic" | "yt" => icons::RESUME,
                 _ => icons::FOLDER,
             };
-            rows.push((icon, p.name.clone(), String::new(), MusicRow::Hub(Hub::Provider(p.key.clone(), p.name.clone()))));
+            rows.push((
+                icon,
+                p.name.clone(),
+                String::new(),
+                MusicRow::Hub(Hub::Provider(p.key.clone(), p.name.clone())),
+            ));
         }
-        rows.push((icons::CLOCK, "Recently played".into(), String::new(), MusicRow::Source(Source::History)));
+        rows.push((
+            icons::CLOCK,
+            "Recently played".into(),
+            String::new(),
+            MusicRow::Source(Source::History),
+        ));
         rows.push((
             icons::FOLDER,
             "Queue".into(),
-            if st.total > 0 { format!("{:>4}", st.total) } else { String::new() },
+            if st.total > 0 {
+                format!("{:>4}", st.total)
+            } else {
+                String::new()
+            },
             MusicRow::Source(Source::Queue),
         ));
         rows.push((
@@ -2534,7 +2596,11 @@ impl Scene {
                 if queue {
                     let idx = self
                         .music_current()
-                        .and_then(|l| l.iter().position(|it| matches!(it, MusicItem::Track(x) if x.path == t.path)))
+                        .and_then(|l| {
+                            l.iter().position(
+                                |it| matches!(it, MusicItem::Track(x) if x.path == t.path),
+                            )
+                        })
                         .unwrap_or(sel);
                     self.music.play_index(idx);
                 } else {
@@ -2566,15 +2632,14 @@ impl Scene {
     /// The X button on the music screens: play a whole playlist, else
     /// pause or resume whatever plays.
     fn music_alt(&mut self, sel: Option<usize>) {
-        if let Some(sel) = sel {
-            if let Some(MusicItem::Source(Source::ProviderPlaylist(provider, id, name), _)) =
+        if let Some(sel) = sel
+            && let Some(MusicItem::Source(Source::ProviderPlaylist(provider, id, name), _)) =
                 self.music_selected(sel)
-            {
-                self.pending.push(Sound::Select);
-                self.music.load(&provider, &id);
-                self.message = Some((format!("playing {name}"), self.now + 3.0));
-                return;
-            }
+        {
+            self.pending.push(Sound::Select);
+            self.music.load(&provider, &id);
+            self.message = Some((format!("playing {name}"), self.now + 3.0));
+            return;
         }
         if self.music.status.active() {
             self.music.toggle();
@@ -2699,7 +2764,8 @@ impl Scene {
                             return self.run_entry(&e);
                         }
                         None => {
-                            self.message = Some(("no link in the clipboard".into(), self.now + 3.0));
+                            self.message =
+                                Some(("no link in the clipboard".into(), self.now + 3.0));
                             self.pending.push(Sound::Crunch);
                         }
                     },
@@ -2716,7 +2782,11 @@ impl Scene {
                         // An empty list with the bar asking for the query.
                         self.open_links(Vec::new(), Screen::YouTube { sel: 0 });
                         self.search = Some(String::new());
-                        self.osk = if self.pad == PadKind::Keyboard { None } else { Some((1, 0)) };
+                        self.osk = if self.pad == PadKind::Keyboard {
+                            None
+                        } else {
+                            Some((1, 0))
+                        };
                         self.yt_query = true;
                     }
                     1 => {
@@ -2805,7 +2875,11 @@ impl Scene {
                         self.music_path.push((src, 0, 0));
                         self.go(Screen::MusicList { sel: 0, top: 0 });
                         self.search = Some(String::new());
-                        self.osk = if self.pad == PadKind::Keyboard { None } else { Some((1, 0)) };
+                        self.osk = if self.pad == PadKind::Keyboard {
+                            None
+                        } else {
+                            Some((1, 0))
+                        };
                         self.music_query = Some(key);
                     }
                     None => {}
@@ -3088,7 +3162,11 @@ impl Scene {
                 let label = t.label();
                 let starred = self.music.toggle_favorite(&t);
                 self.message = Some((
-                    if starred { format!("favourite: {label}") } else { format!("removed {label}") },
+                    if starred {
+                        format!("favourite: {label}")
+                    } else {
+                        format!("removed {label}")
+                    },
                     self.now + 2.0,
                 ));
                 self.pending.push(Sound::Select);
@@ -3182,10 +3260,10 @@ impl Scene {
         if self.running.is_none() || self.player.is_some() {
             return PauseOutcome::None;
         }
-        if let Some(l) = &self.launching {
-            if !l.spawned {
-                return PauseOutcome::None;
-            }
+        if let Some(l) = &self.launching
+            && !l.spawned
+        {
+            return PauseOutcome::None;
         }
         if self.paused.is_some() {
             return self.resume_game();
@@ -3269,8 +3347,7 @@ impl Scene {
                 // override writes rewind_enable from that flag.
                 if !self.running_rewinds() {
                     self.pending.push(Sound::Crunch);
-                    self.message =
-                        Some(("rewind is off for this system".into(), self.now + 3.0));
+                    self.message = Some(("rewind is off for this system".into(), self.now + 3.0));
                     return PauseOutcome::None;
                 }
                 let _ = omarchy_crt_shell::game::rewind();
@@ -3386,7 +3463,15 @@ impl Scene {
         }
         // The same glint as the home logo, on its own rhythm.
         self.glint(fb, left, 8, 24, 24, 8.0, 3.0);
-        self.glint(fb, mx, 10, self.mark_small.cols, self.mark_small.rows * 2, 8.0, 2.6);
+        self.glint(
+            fb,
+            mx,
+            10,
+            self.mark_small.cols,
+            self.mark_small.rows * 2,
+            8.0,
+            2.6,
+        );
         fb.text(left, 40, prompt, self.theme.dim, 1);
         let clock = chrono::Local::now().format("%H:%M").to_string();
         fb.text(
@@ -3571,29 +3656,29 @@ impl Scene {
                         }
                     }
                 }
-                if sel >= Self::VIRTUAL {
-                    if let Some(sys) = systems.get(sel - Self::VIRTUAL) {
-                        let core = self.library.core_path(sys);
-                        let core_ok = core.exists();
-                        let info = format!(
-                            "{}{}  runahead {}  rewind {}",
-                            sys.core,
-                            if core_ok { "" } else { " (missing)" },
-                            sys.runahead,
-                            if sys.rewind { "on" } else { "off" }
-                        );
-                        fb.text(
-                            left,
-                            h - 28,
-                            &cut(&info, max_cols),
-                            if core_ok {
-                                self.theme.dim
-                            } else {
-                                self.theme.red
-                            },
-                            1,
-                        );
-                    }
+                if sel >= Self::VIRTUAL
+                    && let Some(sys) = systems.get(sel - Self::VIRTUAL)
+                {
+                    let core = self.library.core_path(sys);
+                    let core_ok = core.exists();
+                    let info = format!(
+                        "{}{}  runahead {}  rewind {}",
+                        sys.core,
+                        if core_ok { "" } else { " (missing)" },
+                        sys.runahead,
+                        if sys.rewind { "on" } else { "off" }
+                    );
+                    fb.text(
+                        left,
+                        h - 28,
+                        &cut(&info, max_cols),
+                        if core_ok {
+                            self.theme.dim
+                        } else {
+                            self.theme.red
+                        },
+                        1,
+                    );
                 }
                 if total > SYS_PAGE {
                     let pos = format!("{}/{}", sel + 1, total);
@@ -3680,7 +3765,11 @@ impl Scene {
                                         .collect()
                                 })
                                 .unwrap_or_else(|_| {
-                                    vec![d.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()]
+                                    vec![
+                                        d.file_name()
+                                            .map(|n| n.to_string_lossy().to_string())
+                                            .unwrap_or_default(),
+                                    ]
                                 });
                             format!("{} / {}", self.library.systems[i].name, crumbs.join(" / "))
                         }
@@ -3757,7 +3846,12 @@ impl Scene {
                                 fb.put(bx, by + i, frame);
                                 fb.put(bx + cover_box - 1, by + i, frame);
                             }
-                            let key = crate::art::Art::cover_key(&system, &entry.game.path, cover_box as usize, cover_box as usize);
+                            let key = crate::art::Art::cover_key(
+                                &system,
+                                &entry.game.path,
+                                cover_box as usize,
+                                cover_box as usize,
+                            );
                             if !settled || self.art.loading(&key) {
                                 if (self.now * 3.0) as i64 % 2 == 0 {
                                     fb.rect(
@@ -3794,12 +3888,14 @@ impl Scene {
                         ty += 10;
                     }
                     if let Some(st) = self.states.latest(&entry.game.path) {
-                        let label: String = st.label().chars().take((cover_box / 8) as usize).collect();
+                        let label: String =
+                            st.label().chars().take((cover_box / 8) as usize).collect();
                         fb.text(bx, ty + 2, &label, self.theme.green, 1);
                         ty += 10;
                     }
                     if let Some(at) = self.recent_at.get(&entry.game.path) {
-                        let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs((*at).max(0) as u64);
+                        let when = std::time::UNIX_EPOCH
+                            + std::time::Duration::from_secs((*at).max(0) as u64);
                         let label: String = format!("played {}", states::when_label(when))
                             .chars()
                             .take((cover_box / 8) as usize)
@@ -3808,7 +3904,11 @@ impl Scene {
                     }
                 }
                 if n == 0 && self.yt_query {
-                    let msg = if self.yt_search.is_some() { "searching YouTube" } else { "type what to look for, then Enter" };
+                    let msg = if self.yt_search.is_some() {
+                        "searching YouTube"
+                    } else {
+                        "type what to look for, then Enter"
+                    };
                     fb.text(left, y0, msg, self.theme.dim, 1);
                 } else if n == 0 && self.yt_results {
                     fb.text(left, y0, "no videos found", self.theme.dim, 1);
@@ -3883,7 +3983,11 @@ impl Scene {
                                 left + self.slide() + 6,
                                 y + 1,
                                 &icons::RESUME,
-                                if i == sel { self.theme.accent } else { self.theme.green },
+                                if i == sel {
+                                    self.theme.accent
+                                } else {
+                                    self.theme.green
+                                },
                                 1,
                                 8,
                             );
@@ -4053,10 +4157,10 @@ impl Scene {
             }
             Screen::Menu => {}
         }
-        if let Some((msg, _)) = &self.message {
-            if !matches!(self.screen, Screen::Pair { .. }) {
-                fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.cyan, 1);
-            }
+        if let Some((msg, _)) = &self.message
+            && !matches!(self.screen, Screen::Pair { .. })
+        {
+            fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.cyan, 1);
         }
     }
 
@@ -4201,10 +4305,9 @@ impl Scene {
             && self.launching.is_none()
             && self.wizard.is_none()
             && self.saver.is_none()
+            && let Some((name, guid, which)) = self.pending_wizard.take()
         {
-            if let Some((name, guid, which)) = self.pending_wizard.take() {
-                self.pad_wizard_start(&name, &guid, which);
-            }
+            self.pad_wizard_start(&name, &guid, which);
         }
         fb.clear(self.theme.bg);
         if self.saver.is_some() {
@@ -4235,10 +4338,10 @@ impl Scene {
                 self.pending.push(Sound::Lock);
             }
             self.draw_browser(fb);
-            if let Some((_, until)) = &self.message {
-                if self.now > *until {
-                    self.message = None;
-                }
+            if let Some((_, until)) = &self.message
+                && self.now > *until
+            {
+                self.message = None;
             }
             let limit = self.idle_limit();
             if limit > 0.0 && (now - self.last_input) as f32 > limit {
@@ -4274,10 +4377,10 @@ impl Scene {
             self.menu_live = true;
             self.last_input = now;
         }
-        if let Some((_, until)) = &self.message {
-            if self.now > *until {
-                self.message = None;
-            }
+        if let Some((_, until)) = &self.message
+            && self.now > *until
+        {
+            self.message = None;
         }
         let limit = self.idle_limit();
         if self.menu_live && limit > 0.0 && (now - self.last_input) as f32 > limit {
@@ -4359,7 +4462,7 @@ impl Scene {
             }
         }
         if shown >= 5 {
-            self.mem = ((t - start - 0.18 * 4.0) * 90_000.0).max(0.0).min(65_536.0) as u32;
+            self.mem = ((t - start - 0.18 * 4.0) * 90_000.0).clamp(0.0, 65_536.0) as u32;
         }
         let fade = 1.0 - ease(clamp((t - 1.75) / 0.28, 0.0, 1.0));
         if fade <= 0.0 {
@@ -4392,7 +4495,7 @@ impl Scene {
         }
         while self.post_clicks < clicks_due {
             self.post_clicks += 1;
-            if self.post_clicks % 2 == 0 {
+            if self.post_clicks.is_multiple_of(2) {
                 self.pending.push(Sound::Click);
             }
         }
@@ -4432,9 +4535,9 @@ impl Scene {
         let revealed = (bands as f32 * ease(appear)).ceil() as i32;
         let max_y = y + revealed * band;
         let green = self.theme.green;
-        for ry in 0..24 {
+        for (ry, row) in ICON_24.iter().enumerate() {
             for rx in 0..24 {
-                if ICON_24[ry].as_bytes()[rx] != b'#' {
+                if row.as_bytes()[rx] != b'#' {
                     continue;
                 }
                 let x0 = x + (rx as f32 * px).round() as i32;
@@ -4615,12 +4718,22 @@ impl Scene {
                 .as_ref()
                 .map(|t| t.label())
                 .unwrap_or_default();
-            let state = if self.music.status.playing() { "" } else { "  paused" };
+            let state = if self.music.status.playing() {
+                ""
+            } else {
+                "  paused"
+            };
             let text = format!("{label}{state}");
             let vis_w = 30;
             // Room between the row's own label and the chevron.
-            let room = ((width - 18 - vis_w - 30 - Framebuffer::text_width("Music", 1)) / 8).max(0) as usize;
-            let text: String = text.chars().take(room).collect::<String>().trim_end().to_string();
+            let room = ((width - 18 - vis_w - 30 - Framebuffer::text_width("Music", 1)) / 8).max(0)
+                as usize;
+            let text: String = text
+                .chars()
+                .take(room)
+                .collect::<String>()
+                .trim_end()
+                .to_string();
             let tw = Framebuffer::text_width(&text, 1);
             let tx = left + width - 16 - tw;
             fb.text(tx, y + 2, &text, scale(self.theme.dim, 1.0), 1);
@@ -4940,19 +5053,39 @@ impl Scene {
         for (i, (label, value)) in rows.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             let on = i == sel;
-            fb.text(left + 18, y + 2, label, if on { self.theme.accent } else { self.theme.paper }, 1);
+            fb.text(
+                left + 18,
+                y + 2,
+                label,
+                if on {
+                    self.theme.accent
+                } else {
+                    self.theme.paper
+                },
+                1,
+            );
             let right = format!("< {value} >");
             fb.text(
                 left + width - 8 - Framebuffer::text_width(&right, 1),
                 y + 2,
                 &right,
-                if on { self.theme.accent } else { self.theme.dim },
+                if on {
+                    self.theme.accent
+                } else {
+                    self.theme.dim
+                },
                 1,
             );
         }
         let max_cols = (width / 8) as usize;
         if let Some(note) = notes.get(sel) {
-            fb.text(left, h - 28, &note.chars().take(max_cols).collect::<String>(), scale(self.theme.dim, 0.8), 1);
+            fb.text(
+                left,
+                h - 28,
+                &note.chars().take(max_cols).collect::<String>(),
+                scale(self.theme.dim, 0.8),
+                1,
+            );
         }
         let hint = self.hint(&[("<>", "change"), ("B", "save")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
@@ -4960,15 +5093,41 @@ impl Scene {
 
     fn draw_music_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
         let m = self.settings.music.clone();
-        let onoff = |b: bool| if b { "on".to_string() } else { "off".to_string() };
-        let secs = |s: u32| if s == 0 { "never".to_string() } else { format!("{s} s") };
+        let onoff = |b: bool| {
+            if b {
+                "on".to_string()
+            } else {
+                "off".to_string()
+            }
+        };
+        let secs = |s: u32| {
+            if s == 0 {
+                "never".to_string()
+            } else {
+                format!("{s} s")
+            }
+        };
         let mut rows: Vec<(String, String)> = vec![
             ("visualizer after".into(), secs(m.idle_secs)),
-            ("change mode every".into(), if m.cycle_secs == 0 { "keep one".into() } else { format!("{} s", m.cycle_secs) }),
+            (
+                "change mode every".into(),
+                if m.cycle_secs == 0 {
+                    "keep one".into()
+                } else {
+                    format!("{} s", m.cycle_secs)
+                },
+            ),
             ("as screensaver".into(), onoff(m.saver)),
             ("lyrics".into(), onoff(m.lyrics)),
             ("deck".into(), m.look.clone()),
-            ("radio country".into(), if m.country.is_empty() { "locale".into() } else { m.country.clone() }),
+            (
+                "radio country".into(),
+                if m.country.is_empty() {
+                    "locale".into()
+                } else {
+                    m.country.clone()
+                },
+            ),
             ("pad rumble".into(), onoff(m.rumble)),
         ];
         for (i, name) in deck::MODE_NAMES.iter().enumerate() {
@@ -4984,9 +5143,10 @@ impl Scene {
             "a short rumble on the beat, pads that support it",
         ];
         let mut notes = notes;
-        for _ in 0..deck::MODES {
-            notes.push("in the rotation, or skipped");
-        }
+        notes.extend(std::iter::repeat_n(
+            "in the rotation, or skipped",
+            deck::MODES,
+        ));
         self.draw_settings_table(fb, "Music", &rows, &notes, sel, 11);
     }
 
@@ -5120,7 +5280,8 @@ impl Scene {
             self.screen,
             Screen::Music { .. } | Screen::MusicList { .. } | Screen::NowPlaying
         );
-        self.music.tick(now, vis && self.menu_live && self.running.is_none());
+        self.music
+            .tick(now, vis && self.menu_live && self.running.is_none());
         if let Some(e) = self.music.error.take() {
             self.message = Some((e, now + 4.0));
         }
@@ -5156,7 +5317,11 @@ impl Scene {
     /// The selection band breathes with the beat while music plays.
     fn band_color(&self) -> Color {
         if self.music.status.playing() {
-            crate::fb::lerp_color(self.theme.selection, self.theme.accent, self.deck.kick.hit * 0.3)
+            crate::fb::lerp_color(
+                self.theme.selection,
+                self.theme.accent,
+                self.deck.kick.hit * 0.3,
+            )
         } else {
             self.theme.selection
         }
@@ -5186,7 +5351,10 @@ impl Scene {
                 }
             }
         };
-        let restore = self.sleep.map(|(_, r)| r).unwrap_or(self.music.status.volume);
+        let restore = self
+            .sleep
+            .map(|(_, r)| r)
+            .unwrap_or(self.music.status.volume);
         self.sleep = mins.map(|m| (self.now + m * 60.0, restore));
         if mins.is_none() && self.music.status.volume != restore {
             self.music.volume_set(restore);
@@ -5228,7 +5396,13 @@ impl Scene {
             let v = v.clamp(0.0, 1.0);
             let h = ((v * height as f32) as i32).min(height);
             let bx = x + i as i32 * (bar_w + gap);
-            fb.rect(bx, bottom - height, bar_w, height, scale(self.theme.selection, 0.8));
+            fb.rect(
+                bx,
+                bottom - height,
+                bar_w,
+                height,
+                scale(self.theme.selection, 0.8),
+            );
             if h > 0 {
                 let c = crate::fb::lerp_color(self.theme.green, self.theme.yellow, v);
                 fb.rect(bx, bottom - h, bar_w, h, c);
@@ -5254,7 +5428,12 @@ impl Scene {
         let text = format!("{label}{state}");
         // The page counter sits at the right end of this line.
         let room = ((width - vis_w - 8) / 8).saturating_sub(10) as usize;
-        let text: String = text.chars().take(room).collect::<String>().trim_end().to_string();
+        let text: String = text
+            .chars()
+            .take(room)
+            .collect::<String>()
+            .trim_end()
+            .to_string();
         fb.text(left + vis_w + 8, y, &text, self.theme.paper, 1);
     }
 
@@ -5277,7 +5456,11 @@ impl Scene {
             let on = i == sel;
             let (icon, label, right, _) = &rows[i];
             self.draw_row(fb, y, label, right, on, self.theme.paper);
-            let c = if on { self.theme.accent } else { self.theme.dim };
+            let c = if on {
+                self.theme.accent
+            } else {
+                self.theme.dim
+            };
             fb.bitmap(left + ox + 4, y + 1, icon, c, 1, 8);
         }
         match &self.music.ready {
@@ -5402,7 +5585,13 @@ impl Scene {
             // Frequency under the slider, the picked one lit.
             let f = music::EQ_FREQS[i];
             let tx = cx - Framebuffer::text_width(f, 1) / 2;
-            fb.text(tx, top + plot_h + 4, f, if on { th.paper } else { scale(th.dim, 0.9) }, 1);
+            fb.text(
+                tx,
+                top + plot_h + 4,
+                f,
+                if on { th.paper } else { scale(th.dim, 0.9) },
+                1,
+            );
         }
         // The gain of the picked band, up on the preset's line.
         let db = bands[band.min(bands.len() - 1)];
@@ -5454,7 +5643,9 @@ impl Scene {
                 let mut yy = y0 + 8;
                 let mut line = String::new();
                 for word in e.split_whitespace() {
-                    if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > max_cols {
+                    if !line.is_empty()
+                        && line.chars().count() + 1 + word.chars().count() > max_cols
+                    {
                         fb.text(left, yy, &line, self.theme.red, 1);
                         yy += 10;
                         line.clear();
@@ -5469,7 +5660,13 @@ impl Scene {
                 }
             }
             Some(Ok(items)) if items.is_empty() && self.music_query.is_some() => {
-                fb.text(left, y0 + 8, "type what to look for, then Enter", self.theme.dim, 1);
+                fb.text(
+                    left,
+                    y0 + 8,
+                    "type what to look for, then Enter",
+                    self.theme.dim,
+                    1,
+                );
             }
             Some(Ok(items)) if items.is_empty() => {
                 fb.text(left, y0 + 8, "nothing here yet", self.theme.dim, 1);
@@ -5492,10 +5689,21 @@ impl Scene {
                     };
                     self.draw_row(fb, y, &item.label(), &item.right(), on, color);
                     if now_playing {
-                        let c = if on { self.theme.accent } else { self.theme.bright_green };
+                        let c = if on {
+                            self.theme.accent
+                        } else {
+                            self.theme.bright_green
+                        };
                         fb.bitmap(left + self.slide() + 4, y + 1, &icons::NOTE, c, 1, 8);
                     } else if matches!(item, MusicItem::Track(t) if self.music.is_favorite(t)) {
-                        fb.bitmap(left + self.slide() + 4, y + 1, &icons::STAR, self.theme.yellow, 1, 8);
+                        fb.bitmap(
+                            left + self.slide() + 4,
+                            y + 1,
+                            &icons::STAR,
+                            self.theme.yellow,
+                            1,
+                            8,
+                        );
                     }
                 }
                 let page = format!("{}/{}", sel + 1, items.len());
@@ -5536,7 +5744,11 @@ impl Scene {
         let left = (w as f32 * 0.05) as i32;
         let st = self.music.status.clone();
         let track = st.track.clone().unwrap_or_default();
-        let title = if !track.title.is_empty() { track.title.clone() } else { track.label() };
+        let title = if !track.title.is_empty() {
+            track.title.clone()
+        } else {
+            track.label()
+        };
         let sub = if !track.artist.is_empty() && !track.station.is_empty() {
             format!("{}  on {}", track.artist, track.station)
         } else if !track.artist.is_empty() {
@@ -5576,7 +5788,11 @@ impl Scene {
             fb.bitmap(bx, 39, &icons::SPOTIFY, theme.green, 1, 8);
             fb.text(bx + 11, 40, "SPOTIFY", theme.green, 1);
         }
-        let station = self.tuning.as_ref().filter(|_| track.stream).map(|(l, i)| (*i, l.len()));
+        let station = self
+            .tuning
+            .as_ref()
+            .filter(|_| track.stream)
+            .map(|(l, i)| (*i, l.len()));
         match &self.music.cover {
             Some(p) if self.cover_img.as_ref().map(|(q, _)| q) != Some(p) => {
                 let img = crate::art::decode(p).map(|i| crate::art::fit(&i, 22, 22));
@@ -5593,7 +5809,9 @@ impl Scene {
             duration: st.duration,
             playing: st.playing(),
             radio: track.stream && track.duration_secs == 0 && st.duration <= 0.0,
-            turntable: self.deck_look.unwrap_or(track.path.starts_with("spotify:") || (!track.stream && !track.album.is_empty())),
+            turntable: self.deck_look.unwrap_or(
+                track.path.starts_with("spotify:") || (!track.stream && !track.album.is_empty()),
+            ),
             spotify: track.path.starts_with("spotify:"),
             station,
             cover: cover.as_ref(),
@@ -5606,13 +5824,28 @@ impl Scene {
         if let Some((deadline, _)) = self.sleep {
             let m = ((deadline - now) / 60.0).ceil().max(0.0);
             let s = format!("sleep {m:.0}m");
-            fb.text(w - left - Framebuffer::text_width(&s, 1), y0 - 12, &s, theme.orange, 1);
+            fb.text(
+                w - left - Framebuffer::text_width(&s, 1),
+                y0 - 12,
+                &s,
+                theme.orange,
+                1,
+            );
         }
         // Two lines of hints: the deck has more controls than fit in one.
         let skip = if track.stream { "tune" } else { "track" };
         let hint1 = self.hint(&[("A", "pause"), ("<>", skip), ("^v", "volume")]);
-        let deck_key = if self.pad == PadKind::Keyboard { "PgUp" } else { "LB" };
-        let hint2 = self.hint(&[("X", "show"), (deck_key, "deck"), ("Y", "timer"), ("B", "back")]);
+        let deck_key = if self.pad == PadKind::Keyboard {
+            "PgUp"
+        } else {
+            "LB"
+        };
+        let hint2 = self.hint(&[
+            ("X", "show"),
+            (deck_key, "deck"),
+            ("Y", "timer"),
+            ("B", "back"),
+        ]);
         fb.text(left, h - 24, &hint1, scale(theme.dim, 0.7), 1);
         fb.text(left, h - 14, &hint2, scale(theme.dim, 0.7), 1);
     }
@@ -5708,13 +5941,25 @@ impl Scene {
         if let Some((_, what)) = wiz.current() {
             fb.text(left, y0 + 34, "Press", self.theme.dim, 1);
             let what: String = what.chars().take(max_cols).collect();
-            fb.text(left, y0 + 46, &what, self.theme.bright_green, 2.min(1 + (what.len() * 16 <= width as usize) as i32));
+            fb.text(
+                left,
+                y0 + 46,
+                &what,
+                self.theme.bright_green,
+                2.min(1 + (what.len() * 16 <= width as usize) as i32),
+            );
         }
         // What is set so far, newest last.
         let mut y = y0 + 74;
         let start = wiz.binds.len().saturating_sub(6);
         for (field, bind) in &wiz.binds[start..] {
-            fb.text(left, y, &format!("{field:<14} {bind}"), scale(self.theme.dim, 0.9), 1);
+            fb.text(
+                left,
+                y,
+                &format!("{field:<14} {bind}"),
+                scale(self.theme.dim, 0.9),
+                1,
+            );
             y += 10;
         }
         fb.text(
@@ -5731,7 +5976,16 @@ impl Scene {
     /// A glint: every `period` seconds a narrow diagonal highlight sweeps
     /// across the box in under a second, brightening only what is drawn
     /// there. The small movement that keeps a logo alive.
-    fn glint(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, period: f64, offset: f64) {
+    fn glint(
+        &self,
+        fb: &mut Framebuffer,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        period: f64,
+        offset: f64,
+    ) {
         const SWEEP: f64 = 1.1;
         if w <= 0 || h <= 0 {
             return;
@@ -5789,18 +6043,34 @@ impl Scene {
         // Sky: a quiet gradient and a few stars that twinkle.
         for y in 0..floor_y {
             let f = y as f32 / floor_y as f32;
-            fb.rect(0, y, w, 1, lerp_color(self.theme.bg, self.theme.selection, 0.25 * (1.0 - f)));
+            fb.rect(
+                0,
+                y,
+                w,
+                1,
+                lerp_color(self.theme.bg, self.theme.selection, 0.25 * (1.0 - f)),
+            );
         }
         for i in 0..70u32 {
             let x = (i * 97 + 13) as i32 % w;
             let y = (i * 53 + 7) as i32 % (floor_y - 10);
             let tw = 0.5 + 0.5 * ((now * 1.3 + i as f64 * 0.7).sin() as f32);
-            fb.put(x, y, lerp_color(self.theme.bg, self.theme.paper, 0.2 + 0.5 * tw));
+            fb.put(
+                x,
+                y,
+                lerp_color(self.theme.bg, self.theme.paper, 0.2 + 0.5 * tw),
+            );
         }
         // Floor: darker toward the bottom with a horizon line.
         for y in floor_y..h {
             let f = (y - floor_y) as f32 / (h - floor_y) as f32;
-            fb.rect(0, y, w, 1, lerp_color(self.theme.selection, self.theme.bg, 0.4 + 0.6 * f));
+            fb.rect(
+                0,
+                y,
+                w,
+                1,
+                lerp_color(self.theme.selection, self.theme.bg, 0.4 + 0.6 * f),
+            );
         }
         fb.rect(0, floor_y, w, 1, scale(self.theme.dim, 0.7));
         // Covers, far ones first.
@@ -5830,12 +6100,19 @@ impl Scene {
             let hh = (ch as f32 * sc) as i32;
             // The far edge is shorter: a cover turned toward the middle.
             let tilt = 0.82 + 0.18 * (1.0 - ad.min(1.0));
-            let (hl, hr) = if d < 0.0 { ((hh as f32 * tilt) as i32, hh) } else { (hh, (hh as f32 * tilt) as i32) };
+            let (hl, hr) = if d < 0.0 {
+                ((hh as f32 * tilt) as i32, hh)
+            } else {
+                (hh, (hh as f32 * tilt) as i32)
+            };
             let x0 = (x_c - ww as f32 / 2.0) as i32;
             let y0 = bottom - hh;
             let shade = 1.0 - 0.45 * ad.min(1.0);
             let system = self.library.systems[entry.sys].name.clone();
-            let img = self.art.cover(&system, &entry.game.path, cw as usize, ch as usize).cloned();
+            let img = self
+                .art
+                .cover(&system, &entry.game.path, cw as usize, ch as usize)
+                .cloned();
             match img {
                 Some(img) => {
                     // Keep the cover's own proportions inside the box.
@@ -5844,12 +6121,27 @@ impl Scene {
                     let ih = (img.h as f32 * f) as i32;
                     let ix = (x_c - iw as f32 / 2.0) as i32;
                     let iy = bottom - ih;
-                    let (il, ir) = ((hl as f32 * ih as f32 / hh as f32) as i32, (hr as f32 * ih as f32 / hh as f32) as i32);
+                    let (il, ir) = (
+                        (hl as f32 * ih as f32 / hh as f32) as i32,
+                        (hr as f32 * ih as f32 / hh as f32) as i32,
+                    );
                     fb.blit_trapezoid(&img, ix, iy, iw, il, ir, shade, 1.0, false, floor_y, 0);
                     // Reflection: the same cover upside down under the floor,
                     // fading out within a few rows.
                     let ry = floor_y + 1 + (floor_y - bottom);
-                    fb.blit_trapezoid(&img, ix, ry, iw, il, ir, shade * 0.6, 0.35, true, floor_y + 30, 30);
+                    fb.blit_trapezoid(
+                        &img,
+                        ix,
+                        ry,
+                        iw,
+                        il,
+                        ir,
+                        shade * 0.6,
+                        0.35,
+                        true,
+                        floor_y + 30,
+                        30,
+                    );
                     let _ = (x0, y0);
                 }
                 None => {
@@ -5864,7 +6156,14 @@ impl Scene {
                     }
                     if let Some((logo, c)) = icons::system_logo(&system) {
                         let s = if ad < 0.5 { 2 } else { 1 };
-                        fb.bitmap(x_c as i32 - 5 * s, bottom - hh / 2 - 5 * s, logo, scale(c, shade), s, 10);
+                        fb.bitmap(
+                            x_c as i32 - 5 * s,
+                            bottom - hh / 2 - 5 * s,
+                            logo,
+                            scale(c, shade),
+                            s,
+                            10,
+                        );
                     }
                     let _ = cy;
                 }
@@ -5882,7 +6181,12 @@ impl Scene {
         let centre = w / 2 + (reserve as i32 * 8) / 2;
         let title: String = entry.game.title.chars().take(room).collect();
         fb.text_centered(centre, floor_y + 34, &title, self.theme.bright_green, 1);
-        let stem = entry.game.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let stem = entry
+            .game
+            .path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
         let (_, tags, _, _) = crate::index::parse_name(stem);
         let system_label = crate::index::catalog(&self.library.systems[entry.sys].name)
             .map(|(l, _, _)| l.to_string())
@@ -5898,10 +6202,23 @@ impl Scene {
             fb.text(left, floor_y + 34, label, self.theme.green, 1);
         }
         if self.is_favorite(&entry) {
-            fb.bitmap(w - left - 8, floor_y + 35, &icons::STAR, self.theme.yellow, 1, 8);
+            fb.bitmap(
+                w - left - 8,
+                floor_y + 35,
+                &icons::STAR,
+                self.theme.yellow,
+                1,
+                8,
+            );
         }
         let pos = format!("{}/{}", sel + 1, n);
-        fb.text(w - left - Framebuffer::text_width(&pos, 1), 4, &pos, scale(self.theme.dim, 0.8), 1);
+        fb.text(
+            w - left - Framebuffer::text_width(&pos, 1),
+            4,
+            &pos,
+            scale(self.theme.dim, 0.8),
+            1,
+        );
         let p: String = prompt.chars().take(24).collect();
         fb.text(left, 4, &p, scale(self.theme.dim, 0.8), 1);
         let hint = self.hint(&[("A", "run"), ("X", "list"), ("Y", "fav"), ("B", "back")]);
@@ -5928,7 +6245,11 @@ impl Scene {
             fb.rect(cx, y0, 6, 8, self.theme.accent);
         }
         let count = if self.yt_query {
-            if self.yt_search.is_some() { "searching".to_string() } else { "Enter searches YouTube".to_string() }
+            if self.yt_search.is_some() {
+                "searching".to_string()
+            } else {
+                "Enter searches YouTube".to_string()
+            }
         } else if self.music_query.is_some() {
             "Enter searches".to_string()
         } else if q.trim().is_empty() {
@@ -5966,12 +6287,20 @@ impl Scene {
                 if on {
                     fb.rect(x, y - 1, key_w - 2, row_h - 1, self.theme.selection);
                 }
-                let label = if ch == ' ' { "sp".to_string() } else { ch.to_string() };
+                let label = if ch == ' ' {
+                    "sp".to_string()
+                } else {
+                    ch.to_string()
+                };
                 fb.text_centered(
                     x + (key_w - 2) / 2,
                     y + 1,
                     &label,
-                    if on { self.theme.accent } else { self.theme.paper },
+                    if on {
+                        self.theme.accent
+                    } else {
+                        self.theme.paper
+                    },
                     1,
                 );
             }
@@ -6087,7 +6416,10 @@ fn watch_title(target: &str, given: &str) -> String {
     if !given.is_empty() {
         return given.to_string();
     }
-    if let Some(rest) = target.strip_prefix("http://").or_else(|| target.strip_prefix("https://")) {
+    if let Some(rest) = target
+        .strip_prefix("http://")
+        .or_else(|| target.strip_prefix("https://"))
+    {
         let host = rest.split('/').next().unwrap_or(rest);
         if let Some(v) = rest.split("v=").nth(1) {
             let id: String = v.chars().take_while(|c| *c != '&').collect();

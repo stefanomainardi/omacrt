@@ -8,8 +8,8 @@ mod art;
 mod assets;
 mod audio;
 mod bt;
-mod deck;
 mod crt_tag;
+mod deck;
 mod effects;
 mod etch;
 mod fb;
@@ -20,7 +20,9 @@ mod pad;
 mod scene;
 mod theme;
 use omarchy_crt_shell::padmap::Raw;
-use omarchy_crt_shell::{covers, index, library, music, padmap, player, profile, settings, states, videofit, yt};
+use omarchy_crt_shell::{
+    covers, index, library, music, padmap, player, profile, settings, states, videofit, yt,
+};
 
 use audio::Audio;
 use fb::Framebuffer;
@@ -581,27 +583,35 @@ fn run(args: &Args) -> Result<(), String> {
                     }
                 }
                 Event::JoyDeviceAdded { which, .. } => {
-                    if !gcs.is_game_controller(which) {
-                        if let Ok(j) = js.open(which) {
-                            scene.pad_wizard_start(&j.name(), &j.guid().string(), j.instance_id());
-                            raw_joys.push(j);
-                        }
+                    if !gcs.is_game_controller(which)
+                        && let Ok(j) = js.open(which)
+                    {
+                        scene.pad_wizard_start(&j.name(), &j.guid().string(), j.instance_id());
+                        raw_joys.push(j);
                     }
                 }
                 Event::JoyDeviceRemoved { which, .. } => {
                     raw_joys.retain(|j| j.instance_id() != which);
                 }
-                Event::JoyButtonDown { which, button_idx, .. } if scene.pad_wizard_active() => {
+                Event::JoyButtonDown {
+                    which, button_idx, ..
+                } if scene.pad_wizard_active() => {
                     mapped = scene.pad_wizard_raw(which, Raw::Button(button_idx));
                 }
-                Event::JoyAxisMotion { which, axis_idx, value, .. }
-                    if scene.pad_wizard_active() && value.unsigned_abs() > 20000 =>
-                {
+                Event::JoyAxisMotion {
+                    which,
+                    axis_idx,
+                    value,
+                    ..
+                } if scene.pad_wizard_active() && value.unsigned_abs() > 20000 => {
                     mapped = scene.pad_wizard_raw(which, Raw::Axis(axis_idx, value > 0));
                 }
-                Event::JoyHatMotion { which, hat_idx, state, .. }
-                    if scene.pad_wizard_active() && state != sdl2::joystick::HatState::Centered =>
-                {
+                Event::JoyHatMotion {
+                    which,
+                    hat_idx,
+                    state,
+                    ..
+                } if scene.pad_wizard_active() && state != sdl2::joystick::HatState::Centered => {
                     mapped = scene.pad_wizard_raw(which, Raw::Hat(hat_idx, state as u8));
                 }
                 Event::ControllerDeviceRemoved { which, .. } => {
@@ -669,12 +679,14 @@ fn run(args: &Args) -> Result<(), String> {
                             if !gcs.is_game_controller(i) {
                                 continue;
                             }
-                            if let Ok(c) = gcs.open(i) {
-                                if !controllers.iter().any(|x| x.instance_id() == c.instance_id()) {
-                                    raw_joys.retain(|j| j.instance_id() != c.instance_id());
-                                    scene.set_pad(Some(&c.name()));
-                                    controllers.push(c);
-                                }
+                            if let Ok(c) = gcs.open(i)
+                                && !controllers
+                                    .iter()
+                                    .any(|x| x.instance_id() == c.instance_id())
+                            {
+                                raw_joys.retain(|j| j.instance_id() != c.instance_id());
+                                scene.set_pad(Some(&c.name()));
+                                controllers.push(c);
                             }
                         }
                     }
@@ -683,10 +695,10 @@ fn run(args: &Args) -> Result<(), String> {
             }
             inputs.push(inp);
         }
-        if scene.take_rumble() {
-            if let Some(c) = controllers.last_mut() {
-                let _ = c.set_rumble(0, 0x9000, 60);
-            }
+        if scene.take_rumble()
+            && let Some(c) = controllers.last_mut()
+        {
+            let _ = c.set_rumble(0, 0x9000, 60);
         }
         if scene.take_remap_request() {
             // Map the last pad again: its raw joystick answers the wizard.
@@ -694,12 +706,12 @@ fn run(args: &Args) -> Result<(), String> {
                 let id = c.instance_id();
                 let name = c.name();
                 for i in 0..js.num_joysticks().unwrap_or(0) {
-                    if let Ok(j) = js.open(i) {
-                        if j.instance_id() == id {
-                            scene.pad_wizard_start(&name, &j.guid().string(), id);
-                            raw_joys.push(j);
-                            break;
-                        }
+                    if let Ok(j) = js.open(i)
+                        && j.instance_id() == id
+                    {
+                        scene.pad_wizard_start(&name, &j.guid().string(), id);
+                        raw_joys.push(j);
+                        break;
                     }
                 }
             }
@@ -829,12 +841,12 @@ fn run(args: &Args) -> Result<(), String> {
         }
 
         if let Some((mut cmd, title, lines)) = scene.take_launch() {
-            if let Some(g) = lines {
-                if crt_mode(Some(g)) {
-                    lines_changed = true;
-                    if args.fullscreen {
-                        fit_output(canvas.window_mut());
-                    }
+            if let Some(g) = lines
+                && crt_mode(Some(g))
+            {
+                lines_changed = true;
+                if args.fullscreen {
+                    fit_output(canvas.window_mut());
                 }
             }
             // The game must land on the tube whatever has focus: flag the
@@ -854,10 +866,11 @@ fn run(args: &Args) -> Result<(), String> {
                 }
             }
         }
-        if let Some(n) = stick.poll(now()) {
-            if !scene.is_running() && !scene.touch(now()) {
-                scene.navigate(n);
-            }
+        if let Some(n) = stick.poll(now())
+            && !scene.is_running()
+            && !scene.touch(now())
+        {
+            scene.navigate(n);
         }
 
         let t = now();
@@ -1028,8 +1041,6 @@ fn main() {
     }
 }
 
-/// Ask the compositor for fullscreen again after another window took it.
-
 /// Ask the CLI to switch the CRT to a program's geometry, or back to the
 /// full frame. Returns true when the command ran and succeeded.
 fn crt_mode(geometry: Option<Geometry>) -> bool {
@@ -1115,10 +1126,11 @@ fn fit_output(window: &mut sdl2::video::Window) {
     let Ok(v) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
         return;
     };
-    if let (Some(w), Some(h)) = (v["mode"]["width"].as_u64(), v["mode"]["height"].as_u64()) {
-        if w > 0 && h > 0 {
-            let _ = window.set_size(w as u32, h as u32);
-        }
+    if let (Some(w), Some(h)) = (v["mode"]["width"].as_u64(), v["mode"]["height"].as_u64())
+        && w > 0
+        && h > 0
+    {
+        let _ = window.set_size(w as u32, h as u32);
     }
 }
 

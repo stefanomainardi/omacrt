@@ -96,7 +96,7 @@ fn main() {
     let text = cfg
         .modeline("ntsc")
         .unwrap_or_else(|| die("no ntsc modeline in crt.toml"));
-    let ml = Modeline::parse(&text).unwrap_or_else(|| die("bad modeline"));
+    let ml = Modeline::parse(text).unwrap_or_else(|| die("bad modeline"));
     let mode = drm_mode(&ml);
     let (w, h) = (ml.width(), ml.height());
     println!(
@@ -161,10 +161,10 @@ fn props(want: &str) {
             };
             let mut nd = String::from("?");
             for (pid, val) in props.iter() {
-                if let Ok(pi) = dev.get_property(*pid) {
-                    if pi.name().to_str().unwrap_or("") == "non-desktop" {
-                        nd = val.to_string();
-                    }
+                if let Ok(pi) = dev.get_property(*pid)
+                    && pi.name().to_str().unwrap_or("") == "non-desktop"
+                {
+                    nd = val.to_string();
                 }
             }
             println!(

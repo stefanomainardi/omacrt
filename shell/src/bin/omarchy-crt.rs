@@ -190,19 +190,21 @@ fn status(cfg: &Config) -> Value {
                 if st["active"] == json!(true) {
                     break;
                 }
-                if let Some(ml) = cfg.modeline(std).and_then(Modeline::parse) {
-                    if !disabled && ml.width() == w && (h == ml.height() || h == state.lines) {
-                        st["active"] = json!(true);
-                        st["standard"] = json!(std);
-                        let ml = if h == ml.height() {
-                            ml
-                        } else {
-                            ml.with_lines(h)
-                        };
-                        mode["hfreq_khz"] = json!((ml.hfreq_khz() * 1000.0).round() / 1000.0);
-                        mode["vfreq_hz"] = json!((ml.vfreq_hz() * 1000.0).round() / 1000.0);
-                        mode["lines"] = json!(format!("{h}p"));
-                    }
+                if let Some(ml) = cfg.modeline(std).and_then(Modeline::parse)
+                    && !disabled
+                    && ml.width() == w
+                    && (h == ml.height() || h == state.lines)
+                {
+                    st["active"] = json!(true);
+                    st["standard"] = json!(std);
+                    let ml = if h == ml.height() {
+                        ml
+                    } else {
+                        ml.with_lines(h)
+                    };
+                    mode["hfreq_khz"] = json!((ml.hfreq_khz() * 1000.0).round() / 1000.0);
+                    mode["vfreq_hz"] = json!((ml.vfreq_hz() * 1000.0).round() / 1000.0);
+                    mode["lines"] = json!(format!("{h}p"));
                 }
             }
             st["mode"] = mode;
@@ -525,18 +527,18 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
         Ok(note) => println!("display:    {note}"),
         Err(e) => die(&format!("display: {e}")),
     }
-    if let Some(text) = cfg.modeline(standard) {
-        if let Some(ml) = Modeline::parse(text) {
-            println!(
-                "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
-                standard.to_uppercase(),
-                ml.width(),
-                ml.height(),
-                ml.hfreq_khz(),
-                ml.vfreq_hz()
-            );
-            display::mode(text);
-        }
+    if let Some(text) = cfg.modeline(standard)
+        && let Some(ml) = Modeline::parse(text)
+    {
+        println!(
+            "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
+            standard.to_uppercase(),
+            ml.width(),
+            ml.height(),
+            ml.hfreq_khz(),
+            ml.vfreq_hz()
+        );
+        display::mode(text);
     }
     match set_csync(cfg, conn) {
         Ok(m) => println!("dac:        csync {m}"),
@@ -603,13 +605,12 @@ fn cmd_boot(cfg: &Config) {
     } else if let Some(conn) = output::pick(cfg) {
         // Nothing saved but the CRT sink may still be the default from an
         // unclean shutdown: fall back to any non CRT sink.
-        if let Some(t) = audio::target(&conn) {
-            if audio::default_sink().as_deref() == Some(t.sink.as_str()) {
-                if let Some(other) = audio::other_sink(&t.sink) {
-                    omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &other]);
-                    println!("audio:      {other}");
-                }
-            }
+        if let Some(t) = audio::target(&conn)
+            && audio::default_sink().as_deref() == Some(t.sink.as_str())
+            && let Some(other) = audio::other_sink(&t.sink)
+        {
+            omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &other]);
+            println!("audio:      {other}");
         }
     }
     if let Some(conn) = output::pick(cfg) {
@@ -952,7 +953,11 @@ fn cmd_library(args: &[String]) {
                 return;
             }
             for f in found {
-                let note = if roots.contains(&f) { "  (a root already)" } else { "" };
+                let note = if roots.contains(&f) {
+                    "  (a root already)"
+                } else {
+                    ""
+                };
                 println!("{}{note}", f.display());
             }
         }
@@ -972,7 +977,12 @@ fn cmd_library(args: &[String]) {
             let lib = library();
             let settings = omarchy_crt_shell::settings::Settings::load(&lib.config_dir);
             let regions = covers::regions_for(&settings.music.country);
-            let wanted: Vec<&String> = pos.iter().skip(1).filter(|s| !s.starts_with("--")).copied().collect();
+            let wanted: Vec<&String> = pos
+                .iter()
+                .skip(1)
+                .filter(|s| !s.starts_with("--"))
+                .copied()
+                .collect();
             let limit: usize = args
                 .iter()
                 .position(|a| a == "--limit")
@@ -1065,7 +1075,11 @@ fn cmd_library(args: &[String]) {
                     r["system"].as_str().unwrap_or(""),
                     r["core"].as_str().unwrap_or(""),
                     r["package"].as_str().unwrap_or(""),
-                    if r["aur"].as_bool().unwrap_or(false) { "  (AUR)" } else { "" },
+                    if r["aur"].as_bool().unwrap_or(false) {
+                        "  (AUR)"
+                    } else {
+                        ""
+                    },
                 );
             }
         }
@@ -1383,7 +1397,10 @@ fn main() {
             if !display::running() {
                 die("the display process is not running");
             }
-            let sub = positional(args).first().map(|s| s.to_string()).unwrap_or_default();
+            let sub = positional(args)
+                .first()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
             match sub.as_str() {
                 "start" => {
                     let given = positional(args)
@@ -1400,10 +1417,13 @@ fn main() {
                     };
                     let conn = connector(&cfg);
                     let sink = crt_sink(&cfg, &conn);
-                    display::record_start(&path, sink.as_deref()).unwrap_or_else(|e| die(&e.to_string()));
+                    display::record_start(&path, sink.as_deref())
+                        .unwrap_or_else(|e| die(&e.to_string()));
                     println!(
                         "recording the tube to {path}{} (omarchy-crt record stop)",
-                        sink.as_deref().map(|s| format!(" with audio from {s}")).unwrap_or_default()
+                        sink.as_deref()
+                            .map(|s| format!(" with audio from {s}"))
+                            .unwrap_or_default()
                     );
                 }
                 "stop" => {
@@ -1533,11 +1553,16 @@ fn main() {
                     crt::control::send(&names).unwrap_or_else(|e| die(&e.to_string()));
                 }
                 "type" => {
-                    let words: Vec<&str> = positional(args).iter().skip(1).map(|s| s.as_str()).collect();
+                    let words: Vec<&str> = positional(args)
+                        .iter()
+                        .skip(1)
+                        .map(|s| s.as_str())
+                        .collect();
                     if words.is_empty() {
                         die("shell type needs the text to type");
                     }
-                    crt::control::send_text(&words.join(" ")).unwrap_or_else(|e| die(&e.to_string()));
+                    crt::control::send_text(&words.join(" "))
+                        .unwrap_or_else(|e| die(&e.to_string()));
                 }
                 _ => {
                     let pids = launcher::pids();
@@ -1577,7 +1602,9 @@ fn main() {
                     let v = v.min(150);
                     omarchy_crt_shell::crt::set_value("audio.volume", &v.to_string())
                         .unwrap_or_else(|e| die(&e));
-                    if state.on || audio::active_profile(&target.card).is_some_and(|p| p == target.profile) {
+                    if state.on
+                        || audio::active_profile(&target.card).is_some_and(|p| p == target.profile)
+                    {
                         omarchy_crt_shell::crt::run(
                             "pactl",
                             &["set-sink-volume", &target.sink, &format!("{v}%")],
@@ -1586,12 +1613,11 @@ fn main() {
                     println!("TV volume {v}%");
                 }
                 Some("all") => {
-                    if state.previous_sink.is_empty() {
-                        if let Some(prev) = audio::default_sink() {
-                            if prev != target.sink {
-                                state.previous_sink = prev;
-                            }
-                        }
+                    if state.previous_sink.is_empty()
+                        && let Some(prev) = audio::default_sink()
+                        && prev != target.sink
+                    {
+                        state.previous_sink = prev;
                     }
                     omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &target.sink]);
                     println!("system default: {}", target.sink);
@@ -1674,7 +1700,10 @@ fn main() {
                 let title = pos.get(1).map(|s| s.as_str()).unwrap_or("");
                 let path = omarchy_crt_shell::crt::config_dir().join("watch-later.tsv");
                 let mut text = std::fs::read_to_string(&path).unwrap_or_default();
-                if text.lines().any(|l| l.split('\t').next() == Some(target.as_str())) {
+                if text
+                    .lines()
+                    .any(|l| l.split('\t').next() == Some(target.as_str()))
+                {
                     println!("already in the watch later list");
                     return;
                 }

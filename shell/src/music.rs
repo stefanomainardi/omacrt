@@ -7,12 +7,12 @@
 //! Everything slow runs on one worker thread. The scene posts requests, polls
 //! the replies once per frame and keeps drawing.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::time::Duration;
 
 const RADIO_BROWSER: &str = "https://all.api.radio-browser.info/json";
@@ -107,7 +107,11 @@ impl Track {
         } else if !self.title.is_empty() {
             self.title.clone()
         } else {
-            self.path.rsplit('/').next().unwrap_or(&self.path).to_string()
+            self.path
+                .rsplit('/')
+                .next()
+                .unwrap_or(&self.path)
+                .to_string()
         })
     }
 }
@@ -217,7 +221,11 @@ impl Source {
             Source::History => "Recently played".into(),
             Source::Favorites => "Favourite stations".into(),
             Source::ProviderSearch(_, q) => {
-                if q.is_empty() { "Search".into() } else { fold(q) }
+                if q.is_empty() {
+                    "Search".into()
+                } else {
+                    fold(q)
+                }
             }
         }
     }
@@ -559,7 +567,9 @@ impl Music {
     }
 
     pub fn load(&mut self, provider: &str, playlist: &str) {
-        let _ = self.tx.send(Request::Load(provider.into(), playlist.into()));
+        let _ = self
+            .tx
+            .send(Request::Load(provider.into(), playlist.into()));
     }
 
     pub fn toggle(&mut self) {
@@ -637,7 +647,11 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
                             a.iter()
                                 .map(|p| Provider {
                                     key: p.get("key").and_then(Value::as_str).unwrap_or("").into(),
-                                    name: p.get("name").and_then(Value::as_str).unwrap_or("").into(),
+                                    name: p
+                                        .get("name")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("")
+                                        .into(),
                                 })
                                 .filter(|p| !p.key.is_empty())
                                 .collect()
@@ -695,12 +709,10 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
                 Ok(_) => Reply::Played,
                 Err(e) => Reply::Error(e),
             },
-            Request::EqBand(i, db) => {
-                match call(json!({ "cmd": "eq", "band": i, "value": db })) {
-                    Ok(_) => Reply::Played,
-                    Err(e) => Reply::Error(e),
-                }
-            }
+            Request::EqBand(i, db) => match call(json!({ "cmd": "eq", "band": i, "value": db })) {
+                Ok(_) => Reply::Played,
+                Err(e) => Reply::Error(e),
+            },
             Request::Volume(v) => match call(json!({ "cmd": "volume", "value": v })) {
                 Ok(_) => Reply::Played,
                 Err(e) => Reply::Error(e),
@@ -755,8 +767,24 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
         let mut url = url.to_string();
         if let Some(id) = url.strip_prefix("spotify:track:") {
             let out = std::process::Command::new("curl")
-                .args(["-sL", "-m", "15", "-A", USER_AGENT, "--proto", "=http,https", "--proto-redir", "=http,https", "--max-filesize", "26214400", "--retry", "1"])
-                .arg(format!("https://open.spotify.com/oembed?url=spotify:track:{id}"))
+                .args([
+                    "-sL",
+                    "-m",
+                    "15",
+                    "-A",
+                    USER_AGENT,
+                    "--proto",
+                    "=http,https",
+                    "--proto-redir",
+                    "=http,https",
+                    "--max-filesize",
+                    "26214400",
+                    "--retry",
+                    "1",
+                ])
+                .arg(format!(
+                    "https://open.spotify.com/oembed?url=spotify:track:{id}"
+                ))
                 .output()
                 .ok()?;
             let v: Value = serde_json::from_slice(&out.stdout).ok()?;
@@ -764,7 +792,22 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
         }
         let raw = cache.join(format!("{hash:016x}.tmp"));
         let ok = std::process::Command::new("curl")
-            .args(["-sL", "-m", "15", "-A", USER_AGENT, "--proto", "=http,https", "--proto-redir", "=http,https", "--max-filesize", "26214400", "--retry", "1", "-o"])
+            .args([
+                "-sL",
+                "-m",
+                "15",
+                "-A",
+                USER_AGENT,
+                "--proto",
+                "=http,https",
+                "--proto-redir",
+                "=http,https",
+                "--max-filesize",
+                "26214400",
+                "--retry",
+                "1",
+                "-o",
+            ])
             .arg(&raw)
             .arg(&url)
             .status()
@@ -776,7 +819,12 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
         let ok = std::process::Command::new("ffmpeg")
             .args(["-v", "error", "-y", "-i"])
             .arg(&raw)
-            .args(["-vf", "scale=96:96:force_original_aspect_ratio=decrease", "-frames:v", "1"])
+            .args([
+                "-vf",
+                "scale=96:96:force_original_aspect_ratio=decrease",
+                "-frames:v",
+                "1",
+            ])
             .arg(&png)
             .status()
             .map(|s| s.success())
@@ -840,7 +888,8 @@ fn call(req: Value) -> Result<Value, String> {
     s.set_write_timeout(Some(Duration::from_secs(5))).ok();
     let mut line = serde_json::to_string(&req).map_err(|e| e.to_string())?;
     line.push('\n');
-    s.write_all(line.as_bytes()).map_err(|e| format!("cliamp: {e}"))?;
+    s.write_all(line.as_bytes())
+        .map_err(|e| format!("cliamp: {e}"))?;
     let mut reader = BufReader::new(s);
     let mut out = String::new();
     reader
@@ -864,7 +913,10 @@ fn parse_status(v: &Value) -> Status {
         Some(_) => Some(State::Stopped),
         None => None,
     };
-    let track = v.get("track").filter(|t| t.is_object()).map(Track::from_json);
+    let track = v
+        .get("track")
+        .filter(|t| t.is_object())
+        .map(Track::from_json);
     let num = |k: &str| v.get(k).and_then(Value::as_f64).unwrap_or(0.0);
     Status {
         state,
@@ -931,7 +983,11 @@ fn save_favorites(list: &[Track]) -> std::io::Result<()> {
     let text: String = list
         .iter()
         .map(|t| {
-            let title = if t.station.is_empty() { &t.title } else { &t.station };
+            let title = if t.station.is_empty() {
+                &t.title
+            } else {
+                &t.station
+            };
             format!("{}\t{}\t{}\n", title.replace('\t', " "), t.path, t.note)
         })
         .collect();
@@ -945,7 +1001,9 @@ fn list(src: &Source) -> Result<Vec<Item>, String> {
             if query.trim().is_empty() {
                 return Ok(Vec::new());
             }
-            let v = call(json!({ "cmd": "provider.search", "provider": provider, "query": query, "limit": 10 }))?;
+            let v = call(
+                json!({ "cmd": "provider.search", "provider": provider, "query": query, "limit": 10 }),
+            )?;
             Ok(tracks_of(&v))
         }
         Source::Country(code, _) => stations(&format!(
@@ -985,7 +1043,10 @@ fn list(src: &Source) -> Result<Vec<Item>, String> {
                 if !genre_like(name) {
                     continue;
                 }
-                out.push(Item::Source(Source::Tag(name.to_string()), format!("{n:>5}")));
+                out.push(Item::Source(
+                    Source::Tag(name.to_string()),
+                    format!("{n:>5}"),
+                ));
                 if out.len() >= 60 {
                     break;
                 }
@@ -995,7 +1056,11 @@ fn list(src: &Source) -> Result<Vec<Item>, String> {
         Source::ProviderPlaylists(provider, _) => {
             let v = call(json!({ "cmd": "provider.playlists", "provider": provider }))?;
             let mut out = Vec::new();
-            for p in v.get("playlists").and_then(Value::as_array).unwrap_or(&Vec::new()) {
+            for p in v
+                .get("playlists")
+                .and_then(Value::as_array)
+                .unwrap_or(&Vec::new())
+            {
                 let id = p.get("id").and_then(Value::as_str).unwrap_or("");
                 let name = p.get("name").and_then(Value::as_str).unwrap_or("");
                 if id.is_empty() {
@@ -1009,14 +1074,19 @@ fn list(src: &Source) -> Result<Vec<Item>, String> {
             Ok(out)
         }
         Source::ProviderPlaylist(provider, id, _) => {
-            let v = call(json!({ "cmd": "provider.tracks", "provider": provider, "playlist": id }))?;
+            let v =
+                call(json!({ "cmd": "provider.tracks", "provider": provider, "playlist": id }))?;
             Ok(tracks_of(&v))
         }
         Source::Queue => Ok(tracks_of(&call(json!({ "cmd": "queue.list" }))?)),
         Source::History => {
             let v = call(json!({ "cmd": "history", "limit": 100 }))?;
             let mut out = Vec::new();
-            for h in v.get("history").and_then(Value::as_array).unwrap_or(&Vec::new()) {
+            for h in v
+                .get("history")
+                .and_then(Value::as_array)
+                .unwrap_or(&Vec::new())
+            {
                 let mut t = Track::from_json(h);
                 if t.path.is_empty() {
                     continue;
@@ -1048,7 +1118,11 @@ fn stations(url: &str) -> Result<Vec<Item>, String> {
         {
             continue;
         }
-        let favicon = s.get("favicon").and_then(Value::as_str).unwrap_or("").to_string();
+        let favicon = s
+            .get("favicon")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         let codec = s.get("codec").and_then(Value::as_str).unwrap_or("");
         let kbps = s.get("bitrate").and_then(Value::as_u64).unwrap_or(0);
         let note = match (kbps, codec.is_empty()) {
@@ -1064,7 +1138,11 @@ fn stations(url: &str) -> Result<Vec<Item>, String> {
             realtime: true,
             station: name.to_string(),
             note,
-            art: if favicon.starts_with("http") { favicon } else { String::new() },
+            art: if favicon.starts_with("http") {
+                favicon
+            } else {
+                String::new()
+            },
             ..Track::default()
         }));
     }
@@ -1075,7 +1153,21 @@ fn stations(url: &str) -> Result<Vec<Item>, String> {
 /// directory is HTTPS.
 fn fetch(url: &str) -> Result<Value, String> {
     let out = std::process::Command::new("curl")
-        .args(["-sL", "-m", "12", "-A", USER_AGENT, "--proto", "=http,https", "--proto-redir", "=http,https", "--max-filesize", "26214400", "--retry", "1"])
+        .args([
+            "-sL",
+            "-m",
+            "12",
+            "-A",
+            USER_AGENT,
+            "--proto",
+            "=http,https",
+            "--proto-redir",
+            "=http,https",
+            "--max-filesize",
+            "26214400",
+            "--retry",
+            "1",
+        ])
         .arg(url)
         .output()
         .map_err(|e| format!("curl: {e}"))?;
@@ -1089,7 +1181,9 @@ fn urlencode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -1100,15 +1194,33 @@ fn urlencode(s: &str) -> String {
 /// that read as a genre or a format, drop the noise.
 fn genre_like(tag: &str) -> bool {
     const NOISE: [&str; 20] = [
-        "music", "radio", "fm", "am", "estación", "entretenimiento", "misc", "various",
-        "variety", "local", "community", "regional", "online", "web", "internet", "hits",
-        "station", "musica", "música", "moi merino",
+        "music",
+        "radio",
+        "fm",
+        "am",
+        "estación",
+        "entretenimiento",
+        "misc",
+        "various",
+        "variety",
+        "local",
+        "community",
+        "regional",
+        "online",
+        "web",
+        "internet",
+        "hits",
+        "station",
+        "musica",
+        "música",
+        "moi merino",
     ];
     let t = tag.trim();
     t.len() >= 3
         && t.len() <= 18
         && t.is_ascii()
-        && t.chars().all(|c| c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '&')
+        && t.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '&')
         && !NOISE.contains(&t)
 }
 

@@ -301,11 +301,11 @@ impl Player {
     /// Called every frame: if mpv ignored the quit (or never answered the
     /// socket at all) signal it instead.
     fn enforce_quit(&mut self, now: f64) {
-        if let Some(at) = self.quit_at {
-            if now - at > 1.5 {
-                self.quit_at = Some(now);
-                stop_all();
-            }
+        if let Some(at) = self.quit_at
+            && now - at > 1.5
+        {
+            self.quit_at = Some(now);
+            stop_all();
         }
     }
 
@@ -383,10 +383,10 @@ impl Player {
                 }
             }
             4 => {
-                if let Some(t) = data.and_then(|d| d.as_str()) {
-                    if !t.is_empty() {
-                        self.title = t.to_string();
-                    }
+                if let Some(t) = data.and_then(|d| d.as_str())
+                    && !t.is_empty()
+                {
+                    self.title = t.to_string();
                 }
             }
             _ => {}

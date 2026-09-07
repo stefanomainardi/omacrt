@@ -137,7 +137,7 @@ impl Framebuffer {
         for (ry, bits) in rows.iter().enumerate() {
             for rx in 0..8 {
                 if bits & (1 << rx) != 0 {
-                    self.rect(x + rx as i32 * s, y + ry as i32 * s, s, s, c);
+                    self.rect(x + rx * s, y + ry as i32 * s, s, s, c);
                 }
             }
         }
@@ -302,7 +302,9 @@ mod trapezoid_tests {
         fb.clear(0);
         // A cover bottom at row 10; the reflection starts at 12 and fades over 10 rows.
         fb.blit_trapezoid(&img, 2, 12, 8, 8, 8, 1.0, 0.5, true, 30, 10);
-        let drawn: Vec<usize> = (0..40).filter(|y| (0..20).any(|x| fb.px[y * 20 + x] != 0)).collect();
+        let drawn: Vec<usize> = (0..40)
+            .filter(|y| (0..20).any(|x| fb.px[y * 20 + x] != 0))
+            .collect();
         assert!(!drawn.is_empty(), "nothing drawn");
         assert_eq!(drawn[0], 12, "rows start at the box top, got {drawn:?}");
     }
@@ -314,12 +316,34 @@ mod reflection_scene_numbers {
 
     #[test]
     fn reflection_with_scene_numbers() {
-        let img = crate::art::Image { w: 100, h: 126, px: vec![0xffff_0000; 100 * 126] };
+        let img = crate::art::Image {
+            w: 100,
+            h: 126,
+            px: vec![0xffff_0000; 100 * 126],
+        };
         let mut fb = Framebuffer::new(320, 240);
         fb.clear(0);
         let floor_y = 162;
-        fb.blit_trapezoid(&img, 110, 171, 100, 126, 126, 0.6, 0.35, true, floor_y + 30, 30);
-        let drawn: Vec<usize> = (0..240).filter(|y| (0..320).any(|x| fb.px[y * 320 + x] != 0)).collect();
-        assert_eq!((drawn.first().copied(), drawn.last().copied()), (Some(171), Some(191)), "{drawn:?}");
+        fb.blit_trapezoid(
+            &img,
+            110,
+            171,
+            100,
+            126,
+            126,
+            0.6,
+            0.35,
+            true,
+            floor_y + 30,
+            30,
+        );
+        let drawn: Vec<usize> = (0..240)
+            .filter(|y| (0..320).any(|x| fb.px[y * 320 + x] != 0))
+            .collect();
+        assert_eq!(
+            (drawn.first().copied(), drawn.last().copied()),
+            (Some(171), Some(191)),
+            "{drawn:?}"
+        );
     }
 }

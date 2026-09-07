@@ -35,12 +35,11 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
         if let wl_registry::Event::Global {
             name, interface, ..
         } = event
+            && interface == "wp_drm_lease_device_v1"
         {
-            if interface == "wp_drm_lease_device_v1" {
-                let dev =
-                    registry.bind::<ldev::WpDrmLeaseDeviceV1, _, _>(name, 1, qh, st.devices.len());
-                st.devices.push(dev);
-            }
+            let dev =
+                registry.bind::<ldev::WpDrmLeaseDeviceV1, _, _>(name, 1, qh, st.devices.len());
+            st.devices.push(dev);
         }
     }
 }

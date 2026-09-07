@@ -39,6 +39,7 @@ pub fn state_dir() -> PathBuf {
 /// `~/.config/omarchy-crt/crt.toml`.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Config {
     pub output: Output,
     pub modelines: Modelines,
@@ -152,17 +153,6 @@ impl Default for Audio {
             route: true,
             system_default: false,
             volume: 125,
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            output: Output::default(),
-            modelines: Modelines::default(),
-            shell: Shell::default(),
-            audio: Audio::default(),
         }
     }
 }

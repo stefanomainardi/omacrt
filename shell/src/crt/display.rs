@@ -73,10 +73,10 @@ pub fn leaseable(connector: &str) -> bool {
                 continue;
             };
             for (pid, val) in props.iter() {
-                if let Ok(pi) = dev.get_property(*pid) {
-                    if pi.name().to_str().unwrap_or("") == "non-desktop" {
-                        return *val == 1;
-                    }
+                if let Ok(pi) = dev.get_property(*pid)
+                    && pi.name().to_str().unwrap_or("") == "non-desktop"
+                {
+                    return *val == 1;
                 }
             }
         }
@@ -232,7 +232,8 @@ pub fn monitor_focus() -> String {
             .unwrap_or(false);
         if listed {
             super::output::focus_class("omarchy-crt-monitor");
-            return "keyboard on the tube: the Omarchy CRT window has focus (close it to stop)".into();
+            return "keyboard on the tube: the Omarchy CRT window has focus (close it to stop)"
+                .into();
         }
     }
     "monitor window did not appear".into()
@@ -249,4 +250,3 @@ pub fn record_start(path: &str, sink: Option<&str>) -> std::io::Result<()> {
 pub fn record_stop() -> std::io::Result<()> {
     send("record stop")
 }
-
