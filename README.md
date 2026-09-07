@@ -25,19 +25,25 @@ television outright. Written in Rust, drawn at 320x240.
 > Omarchy CRT is a fun project by one user. It is not affiliated with, endorsed
 > by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
 > every other name here belong to their owners.
+>
+> **Tested on one setup so far:** Omarchy 4 with Hyprland 0.56, an AMD Radeon
+> RX 7700/7800 XT, an RGB-Pi 2 DAC and a Bang & Olufsen BeoCenter 1. Other
+> GPUs, DACs and televisions are uncharted; the code is written to cope, the
+> author has not seen them work.
 
 ## At a glance
 
 - **The television is a client of its own compositor.** The desktop hands the
   DAC's connector over at boot; `omarchy-crt-display` sets the 15 kHz timing
   and runs the tube. Nothing from the desktop can land on it.
-- **Games.** 21,880 titles indexed from disks in any layout, box art, console
-  pictures, a cover flow, search across everything, letter jumps, pads mapped
-  on the tube, save states in sight, a pause menu over the game, the line
-  count of each system set live.
+- **Games.** A collection indexed from any disk in any folder layout, box
+  art, console pictures, a cover flow, search across everything, letter
+  jumps, pads mapped on the tube, save states in sight, a pause menu over the
+  game, the line count of each system set live.
 - **Music.** cliamp as the engine: radio by country and genre, Spotify (and
   any provider cliamp knows) with search, a hi-fi deck with cassette,
-  turntable and VU meters, seven visualizers, synced lyrics, sleep timer.
+  turntable and VU meters, seven visualizers, synced lyrics, sleep timer, all
+  tuned from a Settings page on the tube.
 - **Video.** Local films fitted to the tube, YouTube searched and played from
   the television, a link sent from the desktop.
 - **Omarchy all the way.** Theme colours, the bar widget and its panel, a full
@@ -68,7 +74,7 @@ glass. Both are the point.
 <p align="center">
   <img src="docs/screens/home.png" width="320" alt="Home menu on the tube">
   <img src="docs/screens/coverflow.png" width="320" alt="Cover flow">
-  <img src="docs/screens/search.png" width="320" alt="Search across 21880 games">
+  <img src="docs/screens/search.png" width="320" alt="Search across the collection">
   <img src="docs/screens/deck-radio.png" width="320" alt="The music deck tuned to a radio">
   <img src="docs/screens/visual-mode7.png" width="320" alt="Mode 7 equalizer visualizer">
   <img src="docs/screens/pause.png" width="320" alt="Pause menu over a game">
@@ -209,7 +215,8 @@ switches with a blend.
   flow**: the selected cover large on a shelf, the neighbours receding at an
   angle, everything mirrored on the floor, sliding with inertia.
 - **Search.** `/` filters the open list as you type; from the home menu it
-  searches the whole collection (21,880 titles answer in a frame). Pads get
+  searches the whole collection, tens of thousands of titles answering within
+  a frame. Pads get
   the same with the left trigger and an on screen keyboard, and jump letter
   by letter with the shoulder buttons.
 - **Launch ritual.** A cartridge slides in (a disc spins up for CD systems),

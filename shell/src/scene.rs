@@ -91,6 +91,12 @@ enum Screen {
     VideoFit {
         sel: usize,
     },
+    MusicSettings {
+        sel: usize,
+    },
+    VideoSettings {
+        sel: usize,
+    },
     /// Music through cliamp: the list of sources.
     Music {
         sel: usize,
@@ -197,14 +203,23 @@ const HOME: [(icons::Icon, &str, bool); 8] = [
 ];
 
 /// Settings submenu entries.
-const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 6] = [
+const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 8] = [
     (icons::TV, "TV profile", true),
     (icons::FIT, "Video fit", true),
     (icons::PAD, "Pads", true),
     (icons::SAVER, "Screensaver", true),
     (icons::BRUSH, "Style", true),
     (icons::PULSE, "Diagnostics", true),
+    (icons::NOTE, "Music", true),
+    (icons::FILM, "Videos", true),
 ];
+
+/// Rows of the Music settings page before the one per visualizer.
+const MUSIC_ROWS: usize = 7;
+/// Rows of the Videos settings page.
+const VIDEOS_ROWS: usize = 3;
+/// Country codes the radio row cycles through; empty follows the locale.
+const COUNTRIES: [&str; 10] = ["", "IT", "US", "GB", "DE", "FR", "ES", "PT", "JP", "BR"];
 
 const FIT_ROWS: usize = 5;
 
@@ -834,12 +849,85 @@ impl Scene {
                 };
                 self.go(Screen::Style { sel });
             }
-            _ => {
+            5 => {
                 self.diag = self.gather_diagnostics();
                 self.go(Screen::Diag { top: 0 });
             }
+            6 => self.go(Screen::MusicSettings { sel: 0 }),
+            _ => self.go(Screen::VideoSettings { sel: 0 }),
         }
         Action::None
+    }
+
+    /// Music settings rows: how the deck and the visualizers behave.
+    fn adjust_music(&mut self, row: usize, dir: i32) {
+        fn step(cur: u32, opts: &[u32], dir: i32) -> u32 {
+            let i = opts.iter().position(|o| *o == cur).unwrap_or(0) as i32;
+            opts[(i + dir).rem_euclid(opts.len() as i32) as usize]
+        }
+        let m = &mut self.settings.music;
+        match row {
+            0 => m.idle_secs = step(m.idle_secs, &[0, 3, 6, 10, 20, 60], dir),
+            1 => m.cycle_secs = step(m.cycle_secs, &[0, 30, 45, 90, 180], dir),
+            2 => m.saver = !m.saver,
+            3 => m.lyrics = !m.lyrics,
+            4 => {
+                let looks = ["auto", "cassette", "turntable"];
+                let i = looks.iter().position(|l| *l == m.look).unwrap_or(0) as i32;
+                m.look = looks[(i + dir).rem_euclid(3) as usize].to_string();
+            }
+            5 => {
+                let i = COUNTRIES.iter().position(|c| *c == m.country).unwrap_or(0) as i32;
+                m.country = COUNTRIES[(i + dir).rem_euclid(COUNTRIES.len() as i32) as usize].to_string();
+                self.art = crate::art::Art::new(crate::covers::regions_for(&self.settings.music.country));
+            }
+            6 => m.rumble = !m.rumble,
+            r => {
+                let name = deck::MODE_NAMES[(r - MUSIC_ROWS).min(deck::MODES - 1)].to_string();
+                if let Some(i) = m.disabled_visualizers.iter().position(|d| *d == name) {
+                    m.disabled_visualizers.remove(i);
+                } else if m.disabled_visualizers.len() + 1 < deck::MODES {
+                    m.disabled_visualizers.push(name);
+                }
+            }
+        }
+    }
+
+    fn adjust_videos(&mut self, row: usize, dir: i32) {
+        fn step(cur: u32, opts: &[u32], dir: i32) -> u32 {
+            let i = opts.iter().position(|o| *o == cur).unwrap_or(0) as i32;
+            opts[(i + dir).rem_euclid(opts.len() as i32) as usize]
+        }
+        let v = &mut self.settings.videos;
+        match row {
+            0 => v.yt_quality = step(v.yt_quality, &[360, 480, 720, 1080], dir),
+            1 => v.yt_results = step(v.yt_results, &[10, 20, 40], dir),
+            _ => {}
+        }
+    }
+
+    fn visualizer_enabled(&self, mode: usize) -> bool {
+        !self
+            .settings
+            .music
+            .disabled_visualizers
+            .iter()
+            .any(|d| d == deck::MODE_NAMES[mode])
+    }
+
+    /// Next or previous visualizer among the ones switched on.
+    fn music_mode_step(&mut self, dir: i32) {
+        let now = self.now;
+        for _ in 0..deck::MODES {
+            if dir > 0 {
+                self.deck.next_mode(now);
+            } else {
+                self.deck.prev_mode(now);
+            }
+            if self.visualizer_enabled(self.deck.mode) {
+                return;
+            }
+        }
     }
 
     /// Video fit rows: standard, film 24, aspect, overscan, retro 240p.
@@ -868,23 +956,8 @@ impl Scene {
                 return;
             }
             Screen::NowPlaying => {
-                // Deck as the source suggests, the other look, the visualizer, round again.
-                if self.music_visual {
-                    self.music_visual = false;
-                    self.deck_look = None;
-                } else if self.deck_look.is_none() {
-                    let auto = self
-                        .music
-                        .status
-                        .track
-                        .as_ref()
-                        .map(|t| t.path.starts_with("spotify:") || (!t.stream && !t.album.is_empty()))
-                        .unwrap_or(false);
-                    self.deck_look = Some(!auto);
-                } else {
-                    self.deck_look = None;
-                    self.music_visual = true;
-                }
+                // The visualizer in and out; the shoulders pick the deck's look.
+                self.music_visual = !self.music_visual;
                 self.deck.mode_since = self.now;
                 self.pending.push(Sound::Whoosh);
                 return;
@@ -1209,7 +1282,8 @@ impl Scene {
         if q.trim().is_empty() {
             return;
         }
-        self.yt_search = Some(yt::search(&q, 20));
+        let n = self.settings.videos.yt_results as usize;
+        self.yt_search = Some(yt::search(&q, n));
         self.message = Some((format!("searching YouTube for {q}"), self.now + 8.0));
         self.pending.push(Sound::Select);
     }
@@ -1510,8 +1584,32 @@ impl Scene {
             .unwrap_or('#')
     }
 
+    /// Shoulder buttons on the deck: cassette or turntable; on the
+    /// visualizer: the previous or next mode.
+    fn music_view_step(&mut self, dir: i32) {
+        if self.music_visual {
+            self.music_mode_step(dir);
+        } else {
+            let auto = self
+                .music
+                .status
+                .track
+                .as_ref()
+                .map(|t| t.path.starts_with("spotify:") || (!t.stream && !t.album.is_empty()))
+                .unwrap_or(false);
+            let now_turntable = self.deck_look.unwrap_or(auto);
+            self.deck_look = Some(!now_turntable);
+            self.deck.insert_at = self.now;
+            self.pending.push(Sound::Whoosh);
+        }
+    }
+
     /// Jump to the first title of the next (or previous) initial letter.
     pub fn jump_letter(&mut self, dir: i32) {
+        if matches!(self.screen, Screen::NowPlaying) {
+            self.music_view_step(dir);
+            return;
+        }
         let Screen::Games { sel, .. } = self.screen else {
             return;
         };
@@ -1975,6 +2073,52 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::MusicSettings { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < MUSIC_ROWS + deck::MODES => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    let row = *sel;
+                    let dir = if nav == Nav::Right { 1 } else { -1 };
+                    self.adjust_music(row, dir);
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.save_settings();
+                    self.screen = Screen::Settings { sel: 6 };
+                    self.pending.push(Sound::Lock);
+                    return;
+                }
+                _ => {}
+            },
+            Screen::VideoSettings { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < VIDEOS_ROWS => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    let row = *sel;
+                    let dir = if nav == Nav::Right { 1 } else { -1 };
+                    self.adjust_videos(row, dir);
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.save_settings();
+                    self.screen = Screen::Settings { sel: 7 };
+                    self.pending.push(Sound::Lock);
+                    return;
+                }
+                _ => {}
+            },
             Screen::About { top } => match nav {
                 Nav::Up if *top > 0 => {
                     *top -= 1;
@@ -2062,12 +2206,7 @@ impl Scene {
             }
             Screen::NowPlaying => match nav {
                 Nav::Left | Nav::Right if self.music_visual => {
-                    let now = self.now;
-                    if nav == Nav::Left {
-                        self.deck.prev_mode(now);
-                    } else {
-                        self.deck.next_mode(now);
-                    }
+                    self.music_mode_step(if nav == Nav::Left { -1 } else { 1 });
                     moved = true;
                 }
                 Nav::Left => {
@@ -2307,6 +2446,11 @@ impl Scene {
                 }
                 self.music_root_sel = 0;
                 self.music_visual = false;
+                self.deck_look = match self.settings.music.look.as_str() {
+                    "cassette" => Some(false),
+                    "turntable" => Some(true),
+                    _ => None,
+                };
                 self.go(Screen::NowPlaying);
                 let queue = matches!(self.music_path.last(), Some((Source::Queue, _, _)));
                 if queue {
@@ -2535,6 +2679,21 @@ impl Scene {
                 self.pending.push(Sound::Move);
                 Action::None
             }
+            Screen::MusicSettings { sel } => {
+                self.adjust_music(sel, 1);
+                self.pending.push(Sound::Move);
+                Action::None
+            }
+            Screen::VideoSettings { sel } => {
+                if sel == 2 {
+                    self.pending.push(Sound::Select);
+                    self.go(Screen::VideoFit { sel: 0 });
+                } else {
+                    self.adjust_videos(sel, 1);
+                    self.pending.push(Sound::Move);
+                }
+                Action::None
+            }
             Screen::Diag { .. } | Screen::About { .. } => Action::None,
             Screen::Music { sel, .. } => {
                 match self.music_rows().get(sel).map(|r| r.3.clone()) {
@@ -2660,9 +2819,10 @@ impl Scene {
                 if is_url {
                     // The tube shows 240 lines: a 480p H.264 stream is all it
                     // needs, and it decodes without heating the room.
-                    lines.push(
-                        "--ytdl-format=bestvideo[height<=480][vcodec^=avc1]+bestaudio/best[height<=480]/best".into(),
-                    );
+                    let q = self.settings.videos.yt_quality;
+                    lines.push(format!(
+                        "--ytdl-format=bestvideo[height<={q}][vcodec^=avc1]+bestaudio/best[height<={q}]/best"
+                    ));
                 }
             }
             if self.wide_output() {
@@ -3700,6 +3860,14 @@ impl Scene {
                 self.draw_video_fit(fb, sel);
                 return;
             }
+            Screen::MusicSettings { sel } => {
+                self.draw_music_settings(fb, sel);
+                return;
+            }
+            Screen::VideoSettings { sel } => {
+                self.draw_video_settings(fb, sel);
+                return;
+            }
             Screen::Music { sel, top } => {
                 self.draw_music(fb, sel, top);
                 return;
@@ -3915,7 +4083,7 @@ impl Scene {
             }
             let limit = self.idle_limit();
             if limit > 0.0 && (now - self.last_input) as f32 > limit {
-                if self.music.status.playing() {
+                if self.music.status.playing() && self.settings.music.saver {
                     self.music_saver_start(now);
                 } else {
                     let kind = self.chosen_effect();
@@ -3954,7 +4122,7 @@ impl Scene {
         }
         let limit = self.idle_limit();
         if self.menu_live && limit > 0.0 && (now - self.last_input) as f32 > limit {
-            if self.music.status.playing() {
+            if self.music.status.playing() && self.settings.music.saver {
                 self.music_saver_start(now);
             } else {
                 let kind = self.chosen_effect();
@@ -4566,6 +4734,92 @@ impl Scene {
     }
 
     /// Video fit settings: how modern video is adapted to the tube.
+    /// A settings table: label left, `< value >` right, a note for the
+    /// selected row above the hints.
+    fn draw_settings_table(
+        &mut self,
+        fb: &mut Framebuffer,
+        title: &str,
+        rows: &[(String, String)],
+        notes: &[&str],
+        sel: usize,
+        row_h: i32,
+    ) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, title);
+        let band_y = self.band(y0 + sel as i32 * row_h);
+        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        for (i, (label, value)) in rows.iter().enumerate() {
+            let y = y0 + i as i32 * row_h;
+            let on = i == sel;
+            fb.text(left + 18, y + 2, label, if on { self.theme.accent } else { self.theme.paper }, 1);
+            let right = format!("< {value} >");
+            fb.text(
+                left + width - 8 - Framebuffer::text_width(&right, 1),
+                y + 2,
+                &right,
+                if on { self.theme.accent } else { self.theme.dim },
+                1,
+            );
+        }
+        let max_cols = (width / 8) as usize;
+        if let Some(note) = notes.get(sel) {
+            fb.text(left, h - 28, &note.chars().take(max_cols).collect::<String>(), scale(self.theme.dim, 0.8), 1);
+        }
+        let hint = self.hint(&[("<>", "change"), ("B", "save")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    fn draw_music_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let m = self.settings.music.clone();
+        let onoff = |b: bool| if b { "on".to_string() } else { "off".to_string() };
+        let secs = |s: u32| if s == 0 { "never".to_string() } else { format!("{s} s") };
+        let mut rows: Vec<(String, String)> = vec![
+            ("visualizer after".into(), secs(m.idle_secs)),
+            ("change mode every".into(), if m.cycle_secs == 0 { "keep one".into() } else { format!("{} s", m.cycle_secs) }),
+            ("as screensaver".into(), onoff(m.saver)),
+            ("lyrics".into(), onoff(m.lyrics)),
+            ("deck".into(), m.look.clone()),
+            ("radio country".into(), if m.country.is_empty() { "locale".into() } else { m.country.clone() }),
+            ("pad rumble".into(), onoff(m.rumble)),
+        ];
+        for (i, name) in deck::MODE_NAMES.iter().enumerate() {
+            rows.push((format!("  {name}"), onoff(self.visualizer_enabled(i))));
+        }
+        let notes: Vec<&str> = vec![
+            "idle time on the deck before the show starts",
+            "how long each visualizer plays before the next",
+            "with music on, the visualizer replaces the screensaver",
+            "synced lyrics from cliamp when a song has them",
+            "auto: turntable for albums and Spotify, cassette otherwise",
+            "whose stations come first, and which region's box art",
+            "a short rumble on the beat, pads that support it",
+        ];
+        let mut notes = notes;
+        for _ in 0..deck::MODES {
+            notes.push("in the rotation, or skipped");
+        }
+        self.draw_settings_table(fb, "Music", &rows, &notes, sel, 11);
+    }
+
+    fn draw_video_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let v = self.settings.videos.clone();
+        let rows: Vec<(String, String)> = vec![
+            ("youtube quality".into(), format!("{}p", v.yt_quality)),
+            ("youtube results".into(), format!("{}", v.yt_results)),
+            ("video fit".into(), "open".into()),
+        ];
+        let notes = [
+            "the tube shows 240 lines; 480p decodes cool, 1080p heats the room",
+            "hits per search from the tube",
+            "standard, pulldown, aspect, overscan, retro 240p",
+        ];
+        self.draw_settings_table(fb, "Videos", &rows, &notes, sel, 14);
+    }
+
     fn draw_video_fit(&mut self, fb: &mut Framebuffer, sel: usize) {
         let w = fb.w as i32;
         let h = fb.h as i32;
@@ -4981,18 +5235,22 @@ impl Scene {
         } else {
             track.album.clone()
         };
-        let idle = self.now - self.last_input > deck::IDLE_TO_VISUAL;
+        let idle_secs = self.settings.music.idle_secs;
+        let idle = idle_secs > 0 && self.now - self.last_input > idle_secs as f64;
         let visual = self.music_visual || self.music_saver.is_some() || (idle && st.playing());
         let now = self.now;
         let theme = self.theme.clone();
         if visual {
             // Cycle the modes while nobody touches anything.
-            if !self.music_visual && now - self.deck.mode_since > deck::MODE_SECS {
-                self.deck.next_mode(now);
+            let cycle = self.settings.music.cycle_secs;
+            if !self.visualizer_enabled(self.deck.mode)
+                || (!self.music_visual && cycle > 0 && now - self.deck.mode_since > cycle as f64)
+            {
+                self.music_mode_step(1);
             }
             self.deck.draw_visual(fb, &theme, now, &title);
             // Lyrics line up with a song's clock, not with a stream's.
-            if !self.music.lyrics.is_empty() && st.duration > 0.0 {
+            if self.settings.music.lyrics && !self.music.lyrics.is_empty() && st.duration > 0.0 {
                 // Lower third, shadowed glyphs straight on the picture.
                 deck::draw_lyrics(fb, &theme, &self.music.lyrics, st.position, h - 96, 70);
             }
@@ -5029,7 +5287,7 @@ impl Scene {
             volume_db: st.volume,
         };
         self.deck.draw(fb, &theme, y0, now, &info);
-        if !self.music.lyrics.is_empty() && st.duration > 0.0 {
+        if self.settings.music.lyrics && !self.music.lyrics.is_empty() && st.duration > 0.0 {
             deck::draw_lyrics(fb, &theme, &self.music.lyrics, st.position, h - 36, 10);
         }
         if let Some((deadline, _)) = self.sleep {
@@ -5040,7 +5298,8 @@ impl Scene {
         // Two lines of hints: the deck has more controls than fit in one.
         let skip = if track.stream { "tune" } else { "track" };
         let hint1 = self.hint(&[("A", "pause"), ("<>", skip), ("^v", "volume")]);
-        let hint2 = self.hint(&[("X", "view"), ("Y", "sleep timer"), ("B", "back")]);
+        let deck_key = if self.pad == PadKind::Keyboard { "PgUp" } else { "LB" };
+        let hint2 = self.hint(&[("X", "show"), (deck_key, "deck"), ("Y", "timer"), ("B", "back")]);
         fb.text(left, h - 24, &hint1, scale(theme.dim, 0.7), 1);
         fb.text(left, h - 14, &hint2, scale(theme.dim, 0.7), 1);
     }

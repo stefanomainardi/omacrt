@@ -40,7 +40,7 @@ impl Default for VideoFit {
 }
 
 /// The music screen (cliamp).
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Music {
     /// ISO country code whose radio stations come first; empty follows the locale.
     #[serde(default)]
@@ -48,6 +48,79 @@ pub struct Music {
     /// Pad rumble on the beat while the music screens are up.
     #[serde(default)]
     pub rumble: bool,
+    /// Idle seconds before the deck gives way to the visualizer; 0 never.
+    #[serde(default = "default_idle")]
+    pub idle_secs: u32,
+    /// Seconds a visualizer mode stays before the next; 0 keeps one.
+    #[serde(default = "default_cycle")]
+    pub cycle_secs: u32,
+    /// The visualizer stands in for the screensaver while music plays.
+    #[serde(default = "default_true")]
+    pub saver: bool,
+    /// Synced lyrics on the deck and over the visualizer.
+    #[serde(default = "default_true")]
+    pub lyrics: bool,
+    /// Deck look: `auto` (turntable for albums and Spotify), `cassette`, `turntable`.
+    #[serde(default = "default_look")]
+    pub look: String,
+    /// Visualizer modes switched off, by name.
+    #[serde(default)]
+    pub disabled_visualizers: Vec<String>,
+}
+
+impl Default for Music {
+    fn default() -> Self {
+        Self {
+            country: String::new(),
+            rumble: false,
+            idle_secs: 6,
+            cycle_secs: 45,
+            saver: true,
+            lyrics: true,
+            look: "auto".into(),
+            disabled_visualizers: Vec::new(),
+        }
+    }
+}
+
+fn default_idle() -> u32 {
+    6
+}
+fn default_cycle() -> u32 {
+    45
+}
+fn default_true() -> bool {
+    true
+}
+fn default_look() -> String {
+    "auto".into()
+}
+
+/// Video settings beyond the fit pipeline.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Videos {
+    /// Tallest YouTube stream to fetch, in lines (a 240 line tube needs no more than 480).
+    #[serde(default = "default_yt_quality")]
+    pub yt_quality: u32,
+    /// Hits a YouTube search lists.
+    #[serde(default = "default_yt_results")]
+    pub yt_results: u32,
+}
+
+fn default_yt_quality() -> u32 {
+    480
+}
+fn default_yt_results() -> u32 {
+    20
+}
+
+impl Default for Videos {
+    fn default() -> Self {
+        Self {
+            yt_quality: 480,
+            yt_results: 20,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -60,6 +133,8 @@ pub struct Settings {
     pub video: VideoFit,
     #[serde(default)]
     pub music: Music,
+    #[serde(default)]
+    pub videos: Videos,
 }
 
 fn default_theme() -> String {
@@ -77,6 +152,7 @@ impl Default for Settings {
             theme: "system".into(),
             video: VideoFit::default(),
             music: Music::default(),
+            videos: Videos::default(),
         }
     }
 }

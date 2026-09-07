@@ -25,10 +25,6 @@ pub const MODE_NAMES: [&str; MODES] = [
     "spectrum tower",
 ];
 
-/// Seconds without input before the deck gives way to the visualizer.
-pub const IDLE_TO_VISUAL: f64 = 6.0;
-/// Seconds a visualizer mode stays before the next, when cycling.
-pub const MODE_SECS: f64 = 45.0;
 
 /// Beat detection on the bass: a hit when the low bands jump above their
 /// running average. `hit` is 1.0 on the beat and decays.

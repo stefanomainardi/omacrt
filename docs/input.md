@@ -36,7 +36,17 @@ dead zone, then a step every 120 ms while held.
 On the music screens `X` pauses or resumes what plays, or plays a whole
 playlist when one is selected; `Y` stars a station (they gather under
 "Favourite stations"), `/` or the left trigger filters the list as in the game
-lists. On the now playing screen `A` pauses, left and
+lists.
+
+On the deck (now playing): `A`, `Enter` or `Space` pause; left and right tune
+to the next station or track; up and down move the volume by 3 dB; `X` shows
+or hides the visualizer; the shoulder buttons (`PageUp` and `PageDown` on a
+keyboard) switch between cassette and turntable, or between visualizer modes
+while one shows; `Y` (`F`) sets the sleep timer; `B` leaves the music playing.
+Settings, Music chooses when the visualizer starts, how often it changes,
+which modes take part, whether it replaces the screensaver, lyrics, the
+default deck look, the radio country and pad rumble. Settings, Videos sets
+the YouTube quality and the number of search hits. On the now playing screen `A` pauses, left and
 right skip tracks, up and down move the volume by 3 dB, `B` leaves the music
 playing and goes back to the list.
 
