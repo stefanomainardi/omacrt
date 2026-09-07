@@ -27,6 +27,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
                                  search osk del next prev first last
   shell type <text>              type into the launcher's search bar
+  watch <file|url> [--later [TITLE]]  play a video or a YouTube link on the tube, or keep it for later
   game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
   shot <file.png>                what the tube shows right now (leased output)
   monitor on|off                 desktop window: live preview of the tube, keyboard to the tube when focused
@@ -1556,6 +1557,36 @@ fn main() {
         }
         "bios" => cmd_bios(args),
         "library" => cmd_library(args),
+        "watch" => {
+            let pos = positional(args);
+            let Some(target) = pos.first() else {
+                die("watch needs a file or a URL");
+            };
+            let target = if target.starts_with("http://") || target.starts_with("https://") {
+                target.to_string()
+            } else {
+                std::fs::canonicalize(target)
+                    .unwrap_or_else(|_| die(&format!("{target} not found")))
+                    .display()
+                    .to_string()
+            };
+            if has(args, "--later") {
+                let title = pos.get(1).map(|s| s.as_str()).unwrap_or("");
+                let path = omarchy_crt_shell::crt::config_dir().join("watch-later.tsv");
+                let mut text = std::fs::read_to_string(&path).unwrap_or_default();
+                if text.lines().any(|l| l.split('\t').next() == Some(target.as_str())) {
+                    println!("already in the watch later list");
+                    return;
+                }
+                text.push_str(&format!("{target}\t{title}\n"));
+                std::fs::write(&path, text).unwrap_or_else(|e| die(&e.to_string()));
+                println!("kept for later: {target}");
+            } else {
+                let line = format!("watch {target}");
+                crt::control::send(&[line.as_str()]).unwrap_or_else(|e| die(&e.to_string()));
+                println!("playing on the tube: {target}");
+            }
+        }
         "doctor" => exit(cmd_doctor(&cfg)),
         "config" => {
             let pos = positional(args);

@@ -763,6 +763,10 @@ fn run(args: &Args) -> Result<(), String> {
                 scene.jump_end(last);
                 continue;
             }
+            if let Some(target) = &inp.watch {
+                scene.watch(target);
+                continue;
+            }
             if scene.osk_active() && (nav.is_some() || fire || fav || alt) {
                 scene.osk_input(nav, fire, fav, alt);
                 continue;
@@ -900,6 +904,8 @@ struct Input {
     jump: i32,
     /// First (false) or last (true) row.
     edge: Option<bool>,
+    /// A video file or URL to play now.
+    watch: Option<String>,
 }
 
 impl Input {
@@ -916,6 +922,7 @@ impl Input {
             || self.osk
             || self.jump != 0
             || self.edge.is_some()
+            || self.watch.is_some()
     }
 }
 
@@ -923,6 +930,10 @@ fn control_input(line: &str) -> Option<Input> {
     let mut inp = Input::default();
     if let Some(text) = line.strip_prefix("type ") {
         inp.text = Some(text.to_string());
+        return Some(inp);
+    }
+    if let Some(target) = line.strip_prefix("watch ") {
+        inp.watch = Some(target.trim().to_string());
         return Some(inp);
     }
     match omarchy_crt_shell::crt::control::normalize(line)? {

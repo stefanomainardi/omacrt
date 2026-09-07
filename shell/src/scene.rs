@@ -1018,10 +1018,16 @@ impl Scene {
                 .games_in(system, &crate::library::expand(&system.dir)),
             Some(dir) => self.library.games_in(system, dir),
         };
-        games
+        let mut entries: Vec<Entry> = games
             .into_iter()
             .map(|game| Entry { game, sys: i })
-            .collect()
+            .collect();
+        if system.is_video() && self.game_dir.is_none() {
+            let mut later = self.watch_later(i);
+            later.extend(entries);
+            entries = later;
+        }
+        entries
     }
 
     /// Counts for the systems screen, computed once per library read so the
@@ -1141,7 +1147,7 @@ impl Scene {
             return;
         }
         match self.screen {
-            Screen::Games { .. } => {}
+            Screen::Games { .. } | Screen::MusicList { .. } => {}
             Screen::Menu | Screen::Systems { .. } | Screen::Collections { .. } => {
                 self.list_from_home = matches!(self.screen, Screen::Menu);
                 self.open_collection = None;
@@ -1229,10 +1235,33 @@ impl Scene {
             hits.sort_by(|a, b| b.0.cmp(&a.0));
             hits.into_iter().map(|(_, e)| e).collect()
         };
-        if let Screen::Games { sel, top, .. } = &mut self.screen {
-            *sel = 0;
-            *top = 0;
+        match &mut self.screen {
+            Screen::Games { sel, top, .. } | Screen::MusicList { sel, top } => {
+                *sel = 0;
+                *top = 0;
+            }
+            _ => {}
         }
+    }
+
+    /// The music list as shown: the open source's items through the search.
+    fn music_visible(&self) -> Vec<MusicItem> {
+        let Some(items) = self.music_current() else {
+            return Vec::new();
+        };
+        let q = self.search.clone().unwrap_or_default().to_lowercase();
+        let words: Vec<&str> = q.split_whitespace().collect();
+        if words.is_empty() {
+            return items.clone();
+        }
+        items
+            .iter()
+            .filter(|it| {
+                let l = it.label().to_lowercase();
+                words.iter().all(|w| l.contains(w))
+            })
+            .cloned()
+            .collect()
     }
 
     fn initial(e: &Entry) -> char {
@@ -1353,9 +1382,12 @@ impl Scene {
         let mut moved = false;
         let system_rows = self.system_rows();
         let music_rows = self.music_rows().len();
-        let music_items = self.music_current().map(|l| l.len()).unwrap_or(0);
+        let music_items = self.music_visible().len();
         let page_rows = self.page_rows();
-        if nav == Nav::Back && self.search.is_some() && matches!(self.screen, Screen::Games { .. }) {
+        if nav == Nav::Back
+            && self.search.is_some()
+            && matches!(self.screen, Screen::Games { .. } | Screen::MusicList { .. })
+        {
             self.search_clear_or_close();
             return;
         }
@@ -1681,7 +1713,7 @@ impl Scene {
                 }
             }
             Screen::MusicList { sel, top } => {
-                let page = Self::ROWS_PER_PAGE;
+                let page = page_rows;
                 match nav {
                     Nav::Up if *sel > 0 => {
                         *sel -= 1;
@@ -1749,6 +1781,56 @@ impl Scene {
         }
     }
 
+    /// Play a video file or URL through the Videos system, from the control
+    /// pipe (`omarchy-crt watch`). A URL goes to mpv as it is; yt-dlp
+    /// resolves it.
+    pub fn watch(&mut self, target: &str) {
+        if !self.menu_live || self.running.is_some() || self.launching.is_some() {
+            self.message = Some(("busy: cannot start a video now".into(), self.now + 3.0));
+            return;
+        }
+        let Some(sys) = self.library.systems.iter().position(|s| s.is_video()) else {
+            self.message = Some(("no video system in systems.toml".into(), self.now + 4.0));
+            return;
+        };
+        let entry = Entry {
+            game: Game {
+                title: watch_title(target, ""),
+                path: PathBuf::from(target),
+                crt_path: None,
+                folder: false,
+            },
+            sys,
+        };
+        let _ = self.run_entry(&entry);
+    }
+
+    /// Entries kept with `omarchy-crt watch --later`, for the top of Videos.
+    fn watch_later(&self, sys: usize) -> Vec<Entry> {
+        let path = self.library.config_dir.join("watch-later.tsv");
+        std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let mut parts = l.split('\t');
+                let target = parts.next()?.trim();
+                if target.is_empty() {
+                    return None;
+                }
+                let title = parts.next().unwrap_or("").trim();
+                Some(Entry {
+                    game: Game {
+                        title: watch_title(target, title),
+                        path: PathBuf::from(target),
+                        crt_path: None,
+                        folder: false,
+                    },
+                    sys,
+                })
+            })
+            .collect()
+    }
+
     // ------------------------------------------------------------ music
 
     fn open_music(&mut self) {
@@ -1813,6 +1895,16 @@ impl Scene {
             ));
         }
         rows.push((
+            icons::STAR,
+            "Favourite stations".into(),
+            if self.music.favorites.is_empty() {
+                String::new()
+            } else {
+                format!("{:>4}", self.music.favorites.len())
+            },
+            MusicRow::Source(Source::Favorites),
+        ));
+        rows.push((
             icons::CLOCK,
             "Recently played".into(),
             String::new(),
@@ -1838,6 +1930,8 @@ impl Scene {
     }
 
     fn music_enter(&mut self, src: Source) {
+        self.search = None;
+        self.osk = None;
         self.pending.push(Sound::Select);
         self.music.open(&src);
         self.music_path.push((src, 0, 0));
@@ -1845,6 +1939,8 @@ impl Scene {
     }
 
     fn music_back(&mut self) {
+        self.search = None;
+        self.osk = None;
         self.music_path.pop();
         self.screen = match self.music_path.last() {
             Some((_, sel, top)) => Screen::MusicList {
@@ -1859,9 +1955,9 @@ impl Scene {
         self.pending.push(Sound::Move);
     }
 
-    /// Selected item of the open music list.
+    /// Selected item of the open music list, as filtered.
     fn music_selected(&self, sel: usize) -> Option<MusicItem> {
-        self.music_current().and_then(|l| l.get(sel).cloned())
+        self.music_visible().get(sel).cloned()
     }
 
     fn music_play_item(&mut self, sel: usize, item: MusicItem) {
@@ -1870,7 +1966,11 @@ impl Scene {
                 self.pending.push(Sound::Select);
                 let queue = matches!(self.music_path.last(), Some((Source::Queue, _, _)));
                 if queue {
-                    self.music.play_index(sel);
+                    let idx = self
+                        .music_current()
+                        .and_then(|l| l.iter().position(|it| matches!(it, MusicItem::Track(x) if x.path == t.path)))
+                        .unwrap_or(sel);
+                    self.music.play_index(idx);
                 } else {
                     self.music.play(&t);
                 }
@@ -2101,7 +2201,8 @@ impl Scene {
                 hex(self.theme.paper),
                 hex(self.theme.selection)
             )];
-            if entry.game.crt_path.is_none() {
+            let is_url = entry.game.path.to_string_lossy().starts_with("http");
+            if entry.game.crt_path.is_none() && !is_url {
                 let probe = videofit::probe(&entry.game.path);
                 let plan = videofit::plan(&probe, &self.settings.video);
                 self.message = Some((format!("fit: {}", plan.label()), self.now + 4.0));
@@ -2241,6 +2342,18 @@ impl Scene {
 
     /// Toggle the selected game in the favorites list.
     pub fn toggle_favorite(&mut self) {
+        if let Screen::MusicList { sel, .. } = self.screen {
+            if let Some(MusicItem::Track(t)) = self.music_selected(sel) {
+                let label = t.label();
+                let starred = self.music.toggle_favorite(&t);
+                self.message = Some((
+                    if starred { format!("favourite: {label}") } else { format!("removed {label}") },
+                    self.now + 2.0,
+                ));
+                self.pending.push(Sound::Select);
+            }
+            return;
+        }
         let Screen::Games { sel, .. } = self.screen else {
             return;
         };
@@ -4094,7 +4207,8 @@ impl Scene {
         let label = st.track.as_ref().map(|t| t.label()).unwrap_or_default();
         let state = if st.playing() { "" } else { "  paused" };
         let text = format!("{label}{state}");
-        let room = ((width - vis_w - 8) / 8) as usize;
+        // The page counter sits at the right end of this line.
+        let room = ((width - vis_w - 8) / 8).saturating_sub(10) as usize;
         let text: String = text.chars().take(room).collect::<String>().trim_end().to_string();
         fb.text(left + vis_w + 8, y, &text, self.theme.paper, 1);
     }
@@ -4137,7 +4251,12 @@ impl Scene {
         let Some((src, _, _)) = self.music_path.last().cloned() else {
             return;
         };
-        let y0 = self.draw_header(fb, &src.title());
+        let mut y0 = self.draw_header(fb, &src.title());
+        let visible = self.music_visible();
+        if let Some(q) = self.search.clone() {
+            y0 = self.draw_search_bar(fb, y0, &q, visible.len());
+        }
+        let page = self.page_rows();
         let row_h = 12;
         let playing = self
             .music
@@ -4159,9 +4278,12 @@ impl Scene {
             Some(Ok(items)) if items.is_empty() => {
                 fb.text(left, y0 + 8, "nothing here yet", self.theme.dim, 1);
             }
-            Some(Ok(items)) => {
-                let items = items.clone();
-                let end = (top + Self::ROWS_PER_PAGE).min(items.len());
+            Some(Ok(_)) if visible.is_empty() => {
+                fb.text(left, y0 + 8, "no title matches", self.theme.dim, 1);
+            }
+            Some(Ok(_)) => {
+                let items = visible;
+                let end = (top + page).min(items.len());
                 for (row, i) in (top..end).enumerate() {
                     let y = y0 + row as i32 * row_h;
                     let on = i == sel;
@@ -4176,27 +4298,38 @@ impl Scene {
                     if now_playing {
                         let c = if on { self.theme.accent } else { self.theme.bright_green };
                         fb.bitmap(left + self.slide() + 4, y + 1, &icons::NOTE, c, 1, 8);
+                    } else if matches!(item, MusicItem::Track(t) if self.music.is_favorite(t)) {
+                        fb.bitmap(left + self.slide() + 4, y + 1, &icons::STAR, self.theme.yellow, 1, 8);
                     }
                 }
                 let page = format!("{}/{}", sel + 1, items.len());
                 fb.text(
                     w - left - Framebuffer::text_width(&page, 1),
-                    h - 14,
+                    h - 30,
                     &page,
                     scale(self.theme.dim, 0.7),
                     1,
                 );
             }
         }
-        self.draw_music_strip(fb, h - 30);
+        if self.osk.is_some() {
+            self.draw_osk(fb);
+        } else {
+            self.draw_music_strip(fb, h - 30);
+        }
         let playlist = matches!(
             self.music_selected(sel),
             Some(MusicItem::Source(Source::ProviderPlaylist(..), _))
         );
-        let hint = if playlist {
+        let keyboard = self.pad == PadKind::Keyboard;
+        let hint = if self.osk.is_some() {
+            self.hint(&[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")])
+        } else if playlist {
             self.hint(&[("A", "play"), ("B", "back")])
+        } else if keyboard {
+            self.hint(&[("A", "play"), ("Y", "star"), ("/", "find"), ("B", "back")])
         } else {
-            self.hint(&[("A", "play"), ("X", "pause"), ("B", "back")])
+            self.hint(&[("A", "play"), ("Y", "star"), ("LT", "find"), ("B", "back")])
         };
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
@@ -4553,4 +4686,24 @@ fn save_list(path: &std::path::Path, list: &[(usize, PathBuf)], lib: &Library) {
     if let Err(e) = std::fs::write(path, text) {
         eprintln!("cannot write {}: {e}", path.display());
     }
+}
+
+/// A readable title for a watch target: the given one, else a YouTube id or
+/// the file name.
+fn watch_title(target: &str, given: &str) -> String {
+    if !given.is_empty() {
+        return given.to_string();
+    }
+    if let Some(rest) = target.strip_prefix("http://").or_else(|| target.strip_prefix("https://")) {
+        let host = rest.split('/').next().unwrap_or(rest);
+        if let Some(v) = rest.split("v=").nth(1) {
+            let id: String = v.chars().take_while(|c| *c != '&').collect();
+            return format!("YouTube {id}");
+        }
+        if let Some(id) = rest.strip_prefix("youtu.be/") {
+            return format!("YouTube {}", id.split(['?', '/']).next().unwrap_or(id));
+        }
+        return host.to_string();
+    }
+    crate::library::clean_title(Path::new(target))
 }

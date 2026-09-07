@@ -34,7 +34,9 @@ The left stick acts as a d-pad with key repeat: one step when it leaves the
 dead zone, then a step every 120 ms while held.
 
 On the music screens `X` pauses or resumes what plays, or plays a whole
-playlist when one is selected. On the now playing screen `A` pauses, left and
+playlist when one is selected; `Y` stars a station (they gather under
+"Favourite stations"), `/` or the left trigger filters the list as in the game
+lists. On the now playing screen `A` pauses, left and
 right skip tracks, up and down move the volume by 3 dB, `B` leaves the music
 playing and goes back to the list.
 

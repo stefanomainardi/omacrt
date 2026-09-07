@@ -145,10 +145,15 @@ scanlines or curvature. The tube provides those.
   YouTube Music, Qobuz, Plex, Jellyfin: run `cliamp setup` once and their
   playlists appear). A now playing screen shows the station or song, the
   elapsed time and a ten band spectrum straight from cliamp's analyser; a
-  strip with a small spectrum follows the music on every music screen. Music
-  keeps playing while you browse, pauses by itself when a game or a video
-  starts, and follows the launcher's audio routing to the TV. `country` under
-  `[music]` in `settings.toml` picks the home country (the locale otherwise).
+  strip with a small spectrum follows the music on every music screen. `/`
+  (or the left trigger) filters any station list as you type, `Y` stars a
+  station into a favourites list. Music keeps playing while you browse,
+  pauses by itself when a game or a video starts, and follows the launcher's
+  audio routing to the TV. `country` under `[music]` in `settings.toml` picks
+  the home country (the locale otherwise).
+- **Watch anything.** `omarchy-crt watch URL` plays a YouTube link (or any
+  file) on the tube through mpv and yt-dlp; `--later` keeps it at the top of
+  the Videos list for the evening.
 - **Video fit.** Modern video adapted to the tube the way the analog world did
   it: 480i or 576i by frame rate, 3:2 pulldown or PAL speed-up for film,
   letterbox, crop or anamorphic, SD color with HDR tone mapping, a 5% safe

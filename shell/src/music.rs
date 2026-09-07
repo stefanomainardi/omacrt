@@ -175,6 +175,8 @@ pub enum Source {
     Queue,
     /// Tracks played past the scrobble threshold.
     History,
+    /// Stations starred in the launcher (`radio-favorites.tsv`).
+    Favorites,
 }
 
 impl Source {
@@ -188,6 +190,7 @@ impl Source {
             Source::ProviderPlaylist(_, _, name) => fold(name),
             Source::Queue => "Queue".into(),
             Source::History => "Recently played".into(),
+            Source::Favorites => "Favourite stations".into(),
         }
     }
 }
@@ -275,6 +278,8 @@ pub struct Music {
     last_bands: f64,
     /// Pulse sink the launcher's own audio goes to; cliamp follows it.
     sink: Option<String>,
+    /// Stream URLs starred by the listener.
+    pub favorites: std::collections::HashSet<String>,
 }
 
 impl Music {
@@ -300,7 +305,31 @@ impl Music {
             last_status: 0.0,
             last_bands: 0.0,
             sink,
+            favorites: load_favorites().iter().map(|t| t.path.clone()).collect(),
         }
+    }
+
+    pub fn is_favorite(&self, t: &Track) -> bool {
+        self.favorites.contains(&t.path)
+    }
+
+    /// Star or unstar a station; the favourites list is refetched next time.
+    pub fn toggle_favorite(&mut self, t: &Track) -> bool {
+        let mut list = load_favorites();
+        let now_fav = if let Some(i) = list.iter().position(|x| x.path == t.path) {
+            list.remove(i);
+            self.favorites.remove(&t.path);
+            false
+        } else {
+            list.push(t.clone());
+            self.favorites.insert(t.path.clone());
+            true
+        };
+        if let Err(e) = save_favorites(&list) {
+            self.error = Some(format!("favourites: {e}"));
+        }
+        self.lists.remove(&Source::Favorites);
+        now_fav
     }
 
     pub fn available() -> bool {
@@ -614,8 +643,53 @@ fn tracks_of(v: &Value) -> Vec<Item> {
         .unwrap_or_default()
 }
 
+pub fn favorites_path() -> PathBuf {
+    crate::crt::config_dir().join("radio-favorites.tsv")
+}
+
+/// `title<TAB>url<TAB>note` per line.
+fn load_favorites() -> Vec<Track> {
+    std::fs::read_to_string(favorites_path())
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let mut parts = l.split('\t');
+            let title = parts.next()?.trim();
+            let path = parts.next()?.trim();
+            if title.is_empty() || path.is_empty() {
+                return None;
+            }
+            Some(Track {
+                title: title.to_string(),
+                path: path.to_string(),
+                stream: true,
+                realtime: true,
+                station: title.to_string(),
+                note: parts.next().unwrap_or("").trim().to_string(),
+                ..Track::default()
+            })
+        })
+        .collect()
+}
+
+fn save_favorites(list: &[Track]) -> std::io::Result<()> {
+    let path = favorites_path();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let text: String = list
+        .iter()
+        .map(|t| {
+            let title = if t.station.is_empty() { &t.title } else { &t.station };
+            format!("{}\t{}\t{}\n", title.replace('\t', " "), t.path, t.note)
+        })
+        .collect();
+    std::fs::write(path, text)
+}
+
 fn list(src: &Source) -> Result<Vec<Item>, String> {
     match src {
+        Source::Favorites => Ok(load_favorites().into_iter().map(Item::Track).collect()),
         Source::Country(code, _) => stations(&format!(
             "{RADIO_BROWSER}/stations/bycountrycodeexact/{code}?order=votes&reverse=true&hidebroken=true&limit={STATIONS}"
         )),
