@@ -2,6 +2,7 @@
 //! fitting logic, settings, the TV profile and the CRT output control used
 //! by both the launcher (`omarchy-crt-shell`) and the CLI (`omarchy-crt`).
 
+pub mod config;
 pub mod covers;
 pub mod crt;
 pub mod game;

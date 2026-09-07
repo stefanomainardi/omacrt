@@ -10,6 +10,7 @@ pub mod display;
 pub mod launcher;
 pub mod output;
 pub mod roms;
+pub mod watchdog;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

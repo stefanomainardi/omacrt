@@ -59,6 +59,9 @@ pub struct System {
 
 #[derive(Debug, Deserialize)]
 struct File {
+    /// The shape of this file. See `crate::config`.
+    #[serde(default)]
+    version: u32,
     #[serde(default)]
     system: Vec<System>,
     #[serde(default)]
@@ -430,9 +433,16 @@ impl Library {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| home().join(".config/omarchy-crt"));
-        let file = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|t| toml::from_str::<File>(&t).ok());
+        let file = crate::config::read(path).and_then(|t| toml::from_str::<File>(&t).ok());
+        if let Some(f) = &file
+            && f.version > crate::config::VERSION
+        {
+            eprintln!(
+                "omarchy-crt: {} comes from a newer version and may hold \
+                 settings this build does not know about",
+                path.display()
+            );
+        }
         let (systems, retroarch, core_dir, switching) = match file {
             Some(f) => (
                 if f.system.is_empty() {
@@ -1052,7 +1062,7 @@ pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), Stri
         return Err(format!("{key}: only core and dir can be set"));
     }
     let path = default_path();
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let text = crate::config::read(&path).unwrap_or_default();
     let mut root: toml::Value = if text.trim().is_empty() {
         toml::Value::Table(Default::default())
     } else {
@@ -1094,9 +1104,18 @@ pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), Stri
         .as_table_mut()
         .ok_or("systems.toml: bad system entry")?;
     t.insert(key.into(), toml::Value::String(value.into()));
+    // The version is written by hand at the top: a plain key has to come
+    // before the `[[system]]` tables, which is not the order the map would
+    // serialize it in.
+    if let Some(t) = root.as_table_mut() {
+        t.remove("version");
+    }
     let body = toml::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    let out =
-        format!("# Written by omarchy-crt. Each [[system]] maps a ROM folder to a core.\n{body}");
+    let out = format!(
+        "# Written by omarchy-crt. Each [[system]] maps a ROM folder to a core.\n\
+         version = {}\n{body}",
+        crate::config::VERSION
+    );
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }

@@ -125,6 +125,10 @@ impl Default for Videos {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
+    /// The shape of this file, so a build can tell an older one from a newer
+    /// one. See `crate::config`.
+    #[serde(default)]
+    pub version: u32,
     pub screensaver: Screensaver,
     /// Theme name from ~/.local/share/omarchy/themes, or `system` to follow Omarchy.
     #[serde(default = "default_theme")]
@@ -144,6 +148,7 @@ fn default_theme() -> String {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            version: crate::config::VERSION,
             screensaver: Screensaver {
                 enabled: true,
                 idle_secs: 60,
@@ -163,14 +168,16 @@ impl Settings {
     }
 
     pub fn load(config_dir: &Path) -> Self {
-        crate::store::load_string(&Self::path(config_dir))
+        crate::config::read(&Self::path(config_dir))
             .and_then(|t| toml::from_str(&t).ok())
             .unwrap_or_default()
     }
 
     pub fn save(&self, config_dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(config_dir)?;
-        let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        let mut stamped = self.clone();
+        stamped.version = crate::config::VERSION;
+        let text = toml::to_string_pretty(&stamped).map_err(std::io::Error::other)?;
         crate::store::save(&Self::path(config_dir), text)
     }
 }

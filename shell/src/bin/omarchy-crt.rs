@@ -7,7 +7,7 @@
 
 use omarchy_crt_shell::crt::dac::{Csync, Dac, Lock};
 use omarchy_crt_shell::crt::output::{self, Connector, Modeline};
-use omarchy_crt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms};
+use omarchy_crt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
 use omarchy_crt_shell::library::{self, Library};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -20,6 +20,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   on [ntsc|pal]            15 kHz modeline, DAC csync, audio to the TV, launcher
   off                      launcher closed, audio back, output disabled
   boot                     login reset: CRT output off, audio back to the desktop
+  watchdog                 put the display back if it dies; started by `on`, ends with `off`
   toggle
   mode [ntsc|pal|film|480i|576i] [--lines N] [--shift-x X] [--shift-y Y]
                            standard, active lines, picture shift; no args = full frame
@@ -571,9 +572,92 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
     let mut state = State::load();
     state.on = true;
     state.save();
+    match watchdog::start() {
+        Ok(()) => println!("watchdog:   up"),
+        Err(e) => println!("watchdog:   {e}"),
+    }
+}
+
+/// The watchdog process: `omarchy-crt watchdog`. Started by `on` when the
+/// tube is leased, it puts the display back when it dies with the state still
+/// saying the television is on. See `crt::watchdog`.
+fn cmd_watchdog(cfg: &Config) -> i32 {
+    watchdog::claim();
+    let t0 = std::time::Instant::now();
+    let now = || t0.elapsed().as_secs_f64();
+    let mut budget = watchdog::Budget::default();
+    // Only what was up when the display died is put back: quitting the
+    // launcher for the desktop leaves the tube on and must stay that way.
+    let mut had_launcher = !launcher::pids().is_empty();
+    let mut was_up = display::running();
+    loop {
+        std::thread::sleep(watchdog::TICK);
+        // A newer `on` has started its own watchdog, or `off` has cleared us.
+        if !watchdog::still_ours() {
+            return 0;
+        }
+        if !State::load().on {
+            eprintln!("the tube is off, standing down");
+            let _ = std::fs::remove_file(watchdog::pid_path());
+            return 0;
+        }
+        if display::running() {
+            was_up = true;
+            had_launcher = !launcher::pids().is_empty();
+            continue;
+        }
+        if !was_up {
+            continue;
+        }
+        was_up = false;
+        eprintln!("the display process is gone, putting the tube back");
+        if !budget.spend(now()) {
+            eprintln!(
+                "{} restarts inside {:.0} seconds: giving up, read {}",
+                watchdog::MAX_RESTARTS,
+                watchdog::WINDOW_SECS,
+                display::log_path().display()
+            );
+            let _ = std::fs::remove_file(watchdog::pid_path());
+            return 1;
+        }
+        let Some(conn) = output::pick(cfg) else {
+            eprintln!("no CRT output to restart on");
+            continue;
+        };
+        let state = State::load();
+        let standard = if state.standard.is_empty() {
+            cfg.output.standard.clone()
+        } else {
+            state.standard.clone()
+        };
+        match display::start_with_sink(&conn.name, crt_sink(cfg, &conn).as_deref()) {
+            Ok(note) => eprintln!("display: {note}"),
+            Err(e) => {
+                eprintln!("display: {e}");
+                continue;
+            }
+        }
+        if let Some(text) = cfg.modeline(&standard) {
+            display::mode(text);
+        }
+        match set_csync(cfg, &conn) {
+            Ok(m) => eprintln!("dac: csync {m}"),
+            Err(e) => eprintln!("dac: {e}"),
+        }
+        if had_launcher {
+            match launcher::start(cfg, &conn.name, crt_sink(cfg, &conn).as_deref()) {
+                Ok(note) => eprintln!("launcher: {note}"),
+                Err(e) => eprintln!("launcher: {e}"),
+            }
+        }
+        was_up = display::running();
+    }
 }
 
 fn cmd_off(cfg: &Config) {
+    // Before anything else: a deliberate shutdown must not look like a crash.
+    watchdog::stop();
     println!("launcher:   {}", launcher::stop());
     let mut state = State::load();
     if cfg.audio.route {
@@ -1358,6 +1442,7 @@ fn main() {
         }
         "on" => cmd_on(&cfg, positional(args).first().map(|s| s.as_str())),
         "off" => cmd_off(&cfg),
+        "watchdog" => exit(cmd_watchdog(&cfg)),
         "boot" => cmd_boot(&cfg),
         "toggle" => {
             if status(&cfg)["active"].as_bool().unwrap_or(false) {
