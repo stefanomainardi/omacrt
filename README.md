@@ -99,6 +99,12 @@ the scanlines.
 
 ## How it works
 
+<p align="center">
+  <img src="docs/architecture.png" width="720" alt="Omarchy CRT architecture, drawn as a 16 bit illustration">
+</p>
+
+The same thing as a flowchart, for the parts a picture cannot hold:
+
 ```mermaid
 flowchart LR
   subgraph desktop["Omarchy desktop (Hyprland)"]
