@@ -825,6 +825,14 @@ impl Library {
         let mut out = VideoPolicy::parse(&system.video).retroarch_keys(self.switching);
         {
             let mut kv = |k: &str, v: &str| out.push_str(&format!("{k} = \"{v}\"\n"));
+            // Pad profiles come from the directory the launcher keeps filled,
+            // written here rather than in `retroarch.cfg` so that a config
+            // from an older version cannot point somewhere empty. RetroArch
+            // adds the driver's own subdirectory to this path.
+            if let Some(dir) = crate::padmap::autoconfig_dir().parent() {
+                kv("joypad_autoconfig_dir", &dir.display().to_string());
+                kv("input_autodetect_enable", "true");
+            }
             if system.runahead > 0 {
                 kv("run_ahead_enabled", "true");
                 kv("run_ahead_frames", &system.runahead.to_string());
@@ -1074,7 +1082,7 @@ config_save_on_exit = "false"
 input_driver = "udev"
 input_joypad_driver = "udev"
 input_autodetect_enable = "true"
-joypad_autoconfig_dir = "/usr/share/libretro/autoconfig/udev"
+joypad_autoconfig_dir = "/usr/share/libretro/autoconfig"
 input_max_users = "4"
 "#;
 

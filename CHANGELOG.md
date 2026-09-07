@@ -9,6 +9,10 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- Pads are taught to RetroArch as well as to the launcher: the profile
+  directory RetroArch reads is kept filled from the profiles it ships or,
+  failing that, from a translation of SDL's own mapping. `omarchy-crt-shell
+  --pads` reports what SDL makes of every connected pad.
 - `omarchy-crt setup`: lists the DRM connectors with what their EDID says,
   picks the one the DAC is on, works out the television standard from the
   locale and writes both to `crt.toml`.

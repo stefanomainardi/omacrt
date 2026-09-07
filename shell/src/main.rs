@@ -45,6 +45,7 @@ struct Args {
     no_audio: bool,
     auto_boot: bool,
     headless: bool,
+    pads: bool,
     theme: Option<PathBuf>,
     systems: Option<PathBuf>,
     config_dir: Option<PathBuf>,
@@ -71,6 +72,7 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --systems PATH    systems.toml (default ~/.config/omarchy-crt/systems.toml)
   --config-dir DIR  where settings, profile, recent and RetroArch configs live
   --browse [SYSTEM] boot straight into the game browser (or settings, saver, diag, about, power, profile, pair)
+  --pads            what SDL sees on every connected pad, then exit
   --headless        render without a window; use with --dump
   --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
   --dump-dir DIR    where dumps go (default .)
@@ -107,6 +109,7 @@ fn parse_args() -> Result<Args, String> {
         no_audio: false,
         auto_boot: false,
         headless: false,
+        pads: false,
         theme: None,
         systems: None,
         config_dir: None,
@@ -136,6 +139,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-audio" => a.no_audio = true,
             "--auto-boot" => a.auto_boot = true,
             "--headless" => a.headless = true,
+            "--pads" => a.pads = true,
             "--theme" => a.theme = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--systems" => a.systems = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--config-dir" => a.config_dir = Some(PathBuf::from(take(&mut it, &arg)?)),
@@ -413,6 +417,7 @@ fn run(args: &Args) -> Result<(), String> {
     for i in 0..gcs.num_joysticks()? {
         if gcs.is_game_controller(i) {
             if let Ok(c) = gcs.open(i) {
+                teach_retroarch(&gcs, &js, i, &c.name());
                 controllers.push(c);
             }
         } else if let Ok(j) = js.open(i) {
@@ -606,6 +611,7 @@ fn run(args: &Args) -> Result<(), String> {
                 Event::ControllerDeviceAdded { which, .. } => {
                     if let Ok(c) = gcs.open(which) {
                         scene.set_pad(Some(&c.name()));
+                        teach_retroarch(&gcs, &js, which, &c.name());
                         controllers.push(c);
                     }
                 }
@@ -1034,6 +1040,104 @@ fn scene_t0(scene: &Scene) -> f64 {
     scene.t0()
 }
 
+/// `--pads`: what SDL makes of every pad plugged in. The answer to "the
+/// buttons are wrong" is almost always in here: whether SDL found a mapping
+/// for the pad at all, and, if it did, which mapping.
+fn report_pads() -> Result<(), String> {
+    let sdl = sdl2::init()?;
+    let gcs = sdl.game_controller().map_err(|e| e.to_string())?;
+    let js = sdl.joystick().map_err(|e| e.to_string())?;
+    if let Some(dir) = library::default_path().parent() {
+        let db = dir.join("gamecontrollerdb.txt");
+        if db.exists() {
+            match gcs.load_mappings(&db) {
+                Ok(n) => println!("{n} mappings from {}", db.display()),
+                Err(e) => println!("{}: {e}", db.display()),
+            }
+        }
+    }
+    let n = gcs.num_joysticks().map_err(|e| e.to_string())?;
+    if n == 0 {
+        println!("no pads connected");
+        return Ok(());
+    }
+    for i in 0..n {
+        let guid = js
+            .device_guid(i)
+            .map(|g| g.string())
+            .unwrap_or_else(|_| "?".into());
+        let name = js.name_for_index(i).unwrap_or_else(|_| "?".into());
+        println!("\npad {i}: {name}");
+        println!("  guid    {guid}");
+        if gcs.is_game_controller(i) {
+            println!("  known   yes, SDL has a mapping");
+            match gcs.mapping_for_guid(js.device_guid(i).map_err(|e| e.to_string())?) {
+                Ok(m) => {
+                    let start = m
+                        .split(',')
+                        .find(|f| f.starts_with("start:"))
+                        .unwrap_or("start: not mapped");
+                    println!("  start   {start}");
+                    println!("  mapping {m}");
+                    let ids = padmap::ids_from_guid(&guid);
+                    match ids {
+                        Some((v, p)) => {
+                            println!("  usb     vendor {v}, product {p}");
+                            match padmap::ensure_retroarch_profile(&name, v, p, &m) {
+                                Some(note) => println!("  games   {note}"),
+                                None => {
+                                    println!("  games   RetroArch already has a profile for it")
+                                }
+                            }
+                        }
+                        None => println!("  usb     no ids in the guid"),
+                    }
+                }
+                Err(e) => println!("  mapping unreadable: {e}"),
+            }
+        } else {
+            println!("  known   no: SDL sees numbered buttons, not a gamepad");
+            if let Ok(j) = js.open(i) {
+                println!(
+                    "  raw     {} buttons, {} axes, {} hats",
+                    j.num_buttons(),
+                    j.num_axes(),
+                    j.num_hats()
+                );
+            }
+            println!("  fix     the launcher offers the mapping wizard for this pad");
+        }
+    }
+    Ok(())
+}
+
+/// Give RetroArch the same pad SDL has.
+///
+/// The two keep separate databases in separate formats: SDL matches a pad by
+/// GUID, RetroArch by USB vendor and product, and a pad in one and not the
+/// other plays in the launcher and does nothing in a game, which is how a
+/// controller ends up with no Start button on a title screen. The launcher
+/// keeps the profile directory RetroArch reads filled: the profile the
+/// distribution ships when there is one, otherwise a profile written from
+/// SDL's own mapping. A file already there is never replaced.
+fn teach_retroarch(
+    gcs: &sdl2::GameControllerSubsystem,
+    js: &sdl2::JoystickSubsystem,
+    index: u32,
+    name: &str,
+) {
+    let Ok(guid) = js.device_guid(index) else {
+        return;
+    };
+    let Some((vendor, product)) = padmap::ids_from_guid(&guid.string()) else {
+        return;
+    };
+    let mapping = gcs.mapping_for_guid(guid).unwrap_or_default();
+    if let Some(note) = padmap::ensure_retroarch_profile(name, vendor, product, &mapping) {
+        eprintln!("{note}");
+    }
+}
+
 fn main() {
     let args = match parse_args() {
         Ok(a) => a,
@@ -1056,6 +1160,15 @@ fn main() {
             println!("{}", path.display());
         }
         return;
+    }
+    if args.pads {
+        std::process::exit(match report_pads() {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        });
     }
     let result = if let Some(dir) = &args.record {
         run_record(&args, dir)
