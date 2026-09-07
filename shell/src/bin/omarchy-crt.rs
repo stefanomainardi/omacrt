@@ -459,16 +459,37 @@ fn set_csync(cfg: &Config, conn: &Connector) -> Result<String, String> {
 
 /// Hyprland options that let RetroArch and mpv take the tube while they run
 /// and hand it back to the launcher when they exit.
+/// Hyprland's focus behaviour while the tube is ours, and putting it back
+/// afterwards. These are session wide settings on somebody's desktop, so what
+/// was there before is saved and restored rather than assumed.
 fn compositor_fullscreen_policy(on: bool) {
-    // 0: a window that opens under a fullscreen one stays behind it. The
-    // launcher keeps the tube while RetroArch starts; the launcher then moves
-    // RetroArch to the game workspace and nothing else is ever composited.
-    let code = if on {
-        "hl.config({ misc = { on_focus_under_fullscreen = 0, exit_window_retains_fullscreen = true } })"
+    let mut state = State::load();
+    if on {
+        // 0: a window that opens under a fullscreen one stays behind it, so
+        // the launcher keeps the tube while the emulator starts.
+        if state.previous_focus_under_fullscreen.is_none() {
+            state.previous_focus_under_fullscreen =
+                output::option_int("misc:on_focus_under_fullscreen");
+            state.save();
+        }
+        output::hypr_eval("hl.config({ misc = { on_focus_under_fullscreen = 0 } })");
     } else {
-        "hl.config({ misc = { on_focus_under_fullscreen = 0, exit_window_retains_fullscreen = false } })"
-    };
-    output::hypr_eval(code);
+        // 1 is what Omarchy sets, and what to fall back on when the tube was
+        // turned on by a version that saved nothing.
+        let back = state.previous_focus_under_fullscreen.take().unwrap_or(1);
+        state.save();
+        output::hypr_eval(&format!(
+            "hl.config({{ misc = {{ on_focus_under_fullscreen = {back} }} }})"
+        ));
+    }
+    // Always, in both directions: versions up to 0.2.0 turned this on for the
+    // whole session and never turned it off again. It makes the next window
+    // inherit the fullscreen of one that just closed, which on this desktop
+    // means the screensaver handing its own fullscreen to whatever comes back
+    // after the lock screen, on a machine that may not have had a television
+    // switched on for days. Nothing here needs it: every window on the tube is
+    // floating, pinned and sized to the output, never fullscreen.
+    output::hypr_eval("hl.config({ misc = { exit_window_retains_fullscreen = false } })");
 }
 
 fn cmd_on(cfg: &Config, standard: Option<&str>) {
@@ -674,6 +695,10 @@ fn cmd_off(cfg: &Config) {
     // Before anything else: a deliberate shutdown must not look like a crash.
     watchdog::stop();
     println!("launcher:   {}", launcher::stop());
+    // The compositor goes back to how it was whichever way the tube was
+    // driven, including a leased session that never changed it: a stale
+    // setting from an older version is cleared here too.
+    compositor_fullscreen_policy(false);
     let mut state = State::load();
     if cfg.audio.route {
         println!("audio:      {}", audio::route_back(&mut state));
@@ -684,7 +709,6 @@ fn cmd_off(cfg: &Config) {
         state.save();
         return;
     }
-    compositor_fullscreen_policy(false);
     output::unisolate();
     if let Some(conn) = output::pick(cfg) {
         output::disable(&conn.name);
@@ -698,6 +722,10 @@ fn cmd_off(cfg: &Config) {
 /// fallback mode and PipeWire remembers the CRT sink as default. Put the
 /// desktop back to normal without touching the launcher config.
 fn cmd_boot(cfg: &Config) {
+    // A login is the one moment nothing of ours is running, so it is the
+    // right place to clear whatever an unclean shutdown left on the
+    // compositor.
+    compositor_fullscreen_policy(false);
     let mut state = State::load();
     if cfg.audio.route && (!state.previous_sink.is_empty() || state.on) {
         println!("audio:      {}", audio::route_back(&mut state));

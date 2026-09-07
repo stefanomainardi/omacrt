@@ -241,6 +241,9 @@ pub struct State {
     pub previous_profile: String,
     pub previous_sink: String,
     pub audio_card: String,
+    /// What `misc:on_focus_under_fullscreen` was before the tube took it,
+    /// so that turning the television off puts the desktop back as it was.
+    pub previous_focus_under_fullscreen: Option<i64>,
 }
 
 impl State {

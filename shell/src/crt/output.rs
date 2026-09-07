@@ -215,6 +215,20 @@ pub fn hypr_eval(code: &str) -> (bool, String) {
     (ok && !out.to_ascii_lowercase().contains("error"), out)
 }
 
+/// One `hyprctl getoption` value, as the integer the compositor reports.
+/// Booleans come back as `bool`, everything else as `int`.
+pub fn option_int(name: &str) -> Option<i64> {
+    let text = run("hyprctl", &["getoption", name, "-j"])?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get("int")
+        .and_then(serde_json::Value::as_i64)
+        .or_else(|| {
+            v.get("bool")
+                .and_then(serde_json::Value::as_bool)
+                .map(i64::from)
+        })
+}
+
 pub fn hypr_monitor(name: &str) -> Option<serde_json::Value> {
     let text = run("hyprctl", &["monitors", "all", "-j"])?;
     let list: Vec<serde_json::Value> = serde_json::from_str(&text).ok()?;
