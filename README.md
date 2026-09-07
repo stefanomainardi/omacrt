@@ -43,11 +43,19 @@ GPU (DisplayPort) -> DAC (Realtek RTD2166/2168) -> sync combiner (VGA to SCART R
   pass the low pixel clocks 15 kHz needs. HDMI is out for native 320x240: its
   25 MHz floor makes it impossible. Validated units: CableDeconn DP to VGA
   (non 4K, no audio), Cable Matters 102026, biaze ZH277.
-- **HDMI tier.** An HDMI to SCART DAC such as the RGB-Pi 2 works from the
-  desktop with wide "super resolution" modelines (3520x240 at 72 MHz) and
-  carries audio, but needs its sync combiner configured over I2C first. See
-  [docs/rgb-pi-2.md](docs/rgb-pi-2.md) and `omarchy-crt dac`. First
-  light on the BeoCenter 1 came this way on 2026-09-06.
+- **HDMI tier.** An HDMI to SCART DAC such as the RGB-Pi 2 works with wide
+  "super resolution" modelines (3520x240 at 72 MHz) and carries audio, but
+  needs its sync combiner configured over I2C first. See
+  [docs/rgb-pi-2.md](docs/rgb-pi-2.md) and `omarchy-crt dac`. First light
+  on the BeoCenter 1 came this way on 2026-09-06.
+- **The tube is ours.** The DAC's connector is marked non-desktop (an EDID
+  override installed at boot by `omarchy-crt-lease.service`), so the desktop
+  compositor leaves it alone and offers it through the DRM lease protocol.
+  `omarchy-crt-display` takes the lease, sets the timing straight through
+  DRM and runs a small Wayland compositor of its own on that output; the
+  launcher, RetroArch and mpv are its clients. No desktop bar, notification,
+  pointer or window can reach the tube, and any timing the kernel accepts
+  is available, interlace included. Working since 2026-09-07.
 - **Sync and SCART.** The VGA H and V sync must be combined into composite sync
   at 0.3 to 1 V, and the TV needs 1 to 3 V on SCART pin 16 to switch to RGB.
   Preferred: VideoAmp (also emulates an EDID), then UMSA, sirMagb F-15,
@@ -61,10 +69,11 @@ GPU (DisplayPort) -> DAC (Realtek RTD2166/2168) -> sync combiner (VGA to SCART R
   switch the tube to a system's pinned line count before a game starts (224
   lines for Super Nintendo) and back to the full frame after, so pixels land
   one line per line without a kernel patch.
-- **Mode switching.** Wayland cannot set arbitrary modelines and Hyprland drops
-  the interlace flag. The desktop shows fixed progressive 15 kHz modes;
-  RetroArch and GroovyMAME run through KMS/DRM on a separate virtual terminal
-  with Switchres, which is where per-game switching happens.
+- **Mode switching.** With the connector leased, modelines are set by our
+  own display process through DRM, live (`omarchy-crt mode`, or the launcher
+  before each game), with no compositor in between. The separate KMS
+  session with Switchres remains the plan for per-game timings on the
+  DisplayPort tier.
 
 The full study, with sources and the verification plan, is in
 [`docs/studio-15khz.md`](docs/studio-15khz.md) (Italian).

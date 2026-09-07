@@ -59,15 +59,30 @@ the desktop monitor after every focus. Verify:
 hyprctl clients -j | jq '.[] | select(.workspace.name=="crt") | {class, pinned}'
 ```
 
-## Talking to the running emulator is unreliable
+## Talking to the running emulator over the network crashes it
 
-RetroArch's network commands (`omarchy-crt game save|load|reset|quit`, and
-the pause menu that uses them) reach the emulator only while its window is
-actually rendering. A Wayland client that is occluded or unfocused gets few
-or no frame callbacks, its run loop slows to a crawl, and commands queue or
-drop. Save and quit work when the game is on top; behind the pause overlay
-they are best effort. `GET_STATUS` does not answer at all on this build.
-Resuming (which raises the game again) always works.
+RetroArch 1.22.2 dies with SIGSEGV inside its input poll the moment it
+processes a network command (`network_cmd_enable`); an unknown command is
+logged and survives, a known one kills the process. The launcher does not
+use that interface any more: on the leased tube it presses the emulator's
+own hotkeys through the compositor (`omarchy-crt-display` control pipe,
+`key pause|save|load|reset|quit`), and RetroArch runs with
+`network_cmd_enable = false`. If you see `omarchy-crt game ...` misbehave
+outside the lease path, that is why.
+
+## Is the tube ours?
+
+```
+omarchy-crt-display props HDMI      # non-desktop = 1 means Hyprland leaves it alone
+omarchy-crt status --json | jq .connector
+systemctl status omarchy-crt-lease.service
+tail ~/.local/state/omarchy-crt/display.log
+```
+
+`hyprctl monitors` must not list the connector. If it does, the EDID
+override is not in place: `sudo bin/omarchy-crt-install --system` installs
+it for every boot, `sudo scripts/crt-lease-setup.sh on` for now. `off`
+gives the connector back to the desktop.
 
 ## The in-game menu (RGUI) is blank
 

@@ -392,6 +392,14 @@ Panel {
             valueColor: root.connected ? root.fg : root.muted
           }
           Row2 {
+            visible: !!root.conn
+            label: "Tube"
+            value: root.conn && root.conn.leaseable
+              ? (root.conn.display ? "ours: leased from the desktop, own compositor" : "leaseable, display process off")
+              : "shared with the desktop (pinned windows)"
+            valueColor: root.conn && root.conn.leaseable && root.conn.display ? root.fg : root.muted
+          }
+          Row2 {
             label: "Launcher"
             value: root.shellRunning ? ("running, pid " + root.shell.pid) : "stopped"
             valueColor: root.shellRunning ? root.fg : root.muted

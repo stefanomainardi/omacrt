@@ -5,6 +5,12 @@
 #
 #   bin/omarchy-crt-install            build and install
 #   bin/omarchy-crt-install --no-build install the binaries already built
+#   sudo bin/omarchy-crt-install --system
+#                                      one-time root part: mark the DAC's
+#                                      connector non-desktop at every boot so
+#                                      omarchy-crt can lease it (see docs/plan.md,
+#                                      phase A3); the connector name comes from
+#                                      OMARCHY_CRT_CONNECTOR (default HDMI-A-1)
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,6 +20,19 @@ plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
 build=1
 for arg in "$@"; do
   case "$arg" in
+    --system)
+      [ "$(id -u)" = 0 ] || { echo "--system needs root: sudo $0 --system" >&2; exit 1; }
+      conn="${OMARCHY_CRT_CONNECTOR:-HDMI-A-1}"
+      echo "== installing the lease setup for $conn (root)"
+      install -d -m 755 /usr/local/lib/omarchy-crt
+      install -m 755 "$repo/scripts/crt-lease-setup.sh" "$repo/scripts/edid-non-desktop.py" /usr/local/lib/omarchy-crt/
+      sed "s/^Environment=OMARCHY_CRT_CONNECTOR=.*/Environment=OMARCHY_CRT_CONNECTOR=$conn/" "$repo/systemd/omarchy-crt-lease.service" > /etc/systemd/system/omarchy-crt-lease.service
+      systemctl daemon-reload
+      systemctl enable --now omarchy-crt-lease.service
+      systemctl --no-pager --lines=3 status omarchy-crt-lease.service || true
+      echo "done: $conn is handed to omarchy-crt at boot (reverse: systemctl disable --now omarchy-crt-lease.service)"
+      exit 0
+      ;;
     --no-build) build=0 ;;
     -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
     *) echo "unknown option $arg" >&2; exit 1 ;;

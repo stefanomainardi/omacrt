@@ -137,3 +137,17 @@ Inputs: `home` (top of the main menu), `up`, `down`, `left`, `right`, `fire`
 too. This is how `scripts/shoot.sh` records the tour and how tests drive the
 menu; a game already running keeps the real keyboard and pad, nothing from
 the pipe reaches it.
+
+## The display process
+
+```
+omarchy-crt-display run [connector]       # lease the connector, hold the mode, host clients
+omarchy-crt-display probe [connector] [s] # take the lease, show a test card, release
+omarchy-crt-display props [connector]     # the kernel's view: state, modes, non-desktop
+```
+
+`omarchy-crt on` starts `run` itself when the connector is leaseable. Its
+control pipe, `~/.local/state/omarchy-crt/display.ctl`, takes one line at a
+time: `top <app_id>` (stacking), `mode <modeline>` (live timing change),
+`key <name>` (press a key on the tube's keyboard: pause, save, load, reset,
+quit, ff, menu, or an evdev code) and `quit`.

@@ -21,32 +21,41 @@ Romset`, `01 Other Romsets`, ...). The launcher browses folders inside a
 - **Audio levels.** CRT sink boost as one setting, RetroArch at 0 dB, mpv
   loudness normalised. A PipeWire limiter before the sink if clipping shows.
 
-## Phase A3, own the tube (now, the real fix)
+## Phase A3, own the tube (done 2026-09-07)
 
-Every problem fought on the tube so far had one cause: the desktop
-compositor owned the CRT output. Marking the DAC's connector non-desktop
-(a Microsoft "specialized display" block in an EDID override) makes
-Hyprland leave it alone and offer it through the DRM lease protocol.
-Proven on 2026-09-07: `omarchy-crt-display probe` takes the lease and
-sets the 15 kHz modeline straight through DRM, with nothing else drawn.
+Every problem fought on the tube had one cause: the desktop compositor
+owned the CRT output. Now it does not. The DAC's connector is marked
+non-desktop (a Microsoft "specialized display" block in an EDID override,
+installed at boot by `omarchy-crt-lease.service`), Hyprland leaves it alone
+and offers it through the DRM lease protocol, and `omarchy-crt-display`
+takes the lease:
 
-- **Display process.** `omarchy-crt-display` holds the lease for as long
-  as the tube is on: modeline, DAC sync, page flips of the launcher's
-  framebuffer (dumb buffers, scaled to the super resolution), any timing
-  the kernel accepts, interlace included. `omarchy-crt on/off` start and
-  stop it; no Hyprland monitor rules, no window rules, no workspace.
-- **A micro compositor for the programs.** RetroArch and mpv cannot take a
-  lease themselves, so the display process is also a small Wayland
-  compositor (smithay) on the leased output: one fullscreen client at a
-  time, dmabuf import, the launcher's overlay composited on top. The pad
-  reaches the programs through udev as today; the keyboard follows the
-  desktop's focus through a bind.
-- **Setup once, as root.** A systemd unit runs `crt-lease-setup.sh on` at
-  boot so the connector is non-desktop before the desktop starts. The
-  `monitors.lua` rule for the DAC goes away.
+- **The display process** sets the 15 kHz modeline straight through DRM
+  (any timing the kernel accepts, interlace included), keeps the mode up
+  (the HDMI audio pin lives only while a mode is up) and switches it live
+  (`mode`), so a 224 line system gets 224 lines.
+- **A small Wayland compositor** (smithay) on that output hosts the
+  launcher, RetroArch and mpv as ordinary clients
+  (`WAYLAND_DISPLAY=wayland-crt`): one fullscreen client at a time, dmabuf
+  import, GL rendering, frame callbacks to every mapped surface so a
+  program under the pause overlay keeps running. Stacking is a `top`
+  command on its control pipe.
+- **Hotkeys, not network commands.** RetroArch 1.22 crashes when it
+  processes a network command, so the pause menu presses the emulator's
+  own hotkeys (P, F2, F4, H, Escape) on the compositor's keyboard, held for
+  a frame. Pause, save state, load state, reset, resume and a clean exit
+  are verified on the tube.
 
-Until the compositor half lands, `crt-lease-setup.sh off` gives the
-connector back to Hyprland and the pinned-window path below keeps working.
+Nothing on the desktop is touched any more: no monitor, no window or
+workspace rules, no layers, no pointer on the tube. The pinned-window
+machinery from the night before stays as the fallback when the connector
+is not leaseable (`omarchy-crt on` picks the path by the kernel's
+non-desktop property).
+
+Left in this phase: keyboard for the tube's clients (a desktop bind that
+routes keys through `omarchy-crt-display key`), `omarchy-crt-display`
+started by `omarchy-crt boot` at login, and a screenshot command that reads
+the composited frame back (the desktop's tools cannot see the tube).
 
 ## Phase A2, playing well
 
