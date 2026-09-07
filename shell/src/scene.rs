@@ -253,6 +253,10 @@ pub struct Geometry {
     pub lines: Option<u32>,
     pub shift_x: i32,
     pub shift_y: i32,
+    /// Whether to follow the resolution the core reports while it runs. A
+    /// pinned frame is a deliberate choice for the whole session, so a core
+    /// that changes its mind about its own size is scaled into it instead.
+    pub follow: bool,
 }
 
 const LAUNCH_SECS: f32 = 1.15;
@@ -3090,6 +3094,7 @@ impl Scene {
                     lines: l,
                     shift_x: system.shift_x,
                     shift_y: system.shift_y,
+                    follow: pinned.is_none(),
                 })
             } else {
                 None

@@ -418,7 +418,11 @@ fn default_systems() -> Vec<System> {
             "scummvm",
             "scummvm",
             &["scummvm", "svm"],
-            "320x200",
+            // These games were drawn 320x200 and shown on 4:3 monitors, which
+            // stretched them to 240 lines: that is what they are supposed to
+            // look like. Pinning the frame at 240 also keeps the launcher's
+            // own screens, which are 240 lines, sharp over the game.
+            "320x240",
             0,
             false,
             // Point and click on a sofa: the left stick is the pointer, with

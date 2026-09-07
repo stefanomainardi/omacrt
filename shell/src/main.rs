@@ -531,6 +531,7 @@ fn run(args: &Args) -> Result<(), String> {
                                 lines: Some(h),
                                 shift_x: 0,
                                 shift_y: 0,
+                                follow: true,
                             }));
                             lines_changed = true;
                         }
@@ -890,7 +891,12 @@ fn run(args: &Args) -> Result<(), String> {
             if preview_was_up {
                 let _ = omarchy_crt_shell::crt::display::send("monitor off");
             }
-            follow_at = now() + 2.0;
+            // A pinned frame is not followed: it was chosen for the session.
+            follow_at = if lines.map(|g| g.follow).unwrap_or(true) {
+                now() + 2.0
+            } else {
+                f64::MAX
+            };
             following = lines.and_then(|g| g.lines);
             if let Some(g) = lines
                 && crt_mode(Some(g))
