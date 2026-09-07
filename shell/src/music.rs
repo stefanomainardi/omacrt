@@ -186,6 +186,8 @@ pub enum Source {
     History,
     /// Stations starred in the launcher (`radio-favorites.tsv`).
     Favorites,
+    /// A provider's search: (provider key, query).
+    ProviderSearch(String, String),
 }
 
 impl Source {
@@ -200,6 +202,9 @@ impl Source {
             Source::Queue => "Queue".into(),
             Source::History => "Recently played".into(),
             Source::Favorites => "Favourite stations".into(),
+            Source::ProviderSearch(_, q) => {
+                if q.is_empty() { "Search".into() } else { fold(q) }
+            }
         }
     }
 }
@@ -825,6 +830,13 @@ fn save_favorites(list: &[Track]) -> std::io::Result<()> {
 fn list(src: &Source) -> Result<Vec<Item>, String> {
     match src {
         Source::Favorites => Ok(load_favorites().into_iter().map(Item::Track).collect()),
+        Source::ProviderSearch(provider, query) => {
+            if query.trim().is_empty() {
+                return Ok(Vec::new());
+            }
+            let v = call(json!({ "cmd": "provider.search", "provider": provider, "query": query, "limit": 10 }))?;
+            Ok(tracks_of(&v))
+        }
         Source::Country(code, _) => stations(&format!(
             "{RADIO_BROWSER}/stations/bycountrycodeexact/{code}?order=votes&reverse=true&hidebroken=true&limit={STATIONS}"
         )),

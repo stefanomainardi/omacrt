@@ -17,7 +17,7 @@ use crate::theme::Theme;
 pub const MODES: usize = 7;
 pub const MODE_NAMES: [&str; MODES] = [
     "mode 7 equalizer",
-    "copper bars",
+    "silk ribbons",
     "oscilloscope",
     "starfield",
     "plasma",
@@ -75,6 +75,10 @@ pub struct Info<'a> {
     pub duration: f64,
     pub playing: bool,
     pub radio: bool,
+    /// A record on the turntable instead of a cassette (Spotify and albums).
+    pub turntable: bool,
+    /// The track comes from Spotify: its badge shows on the deck.
+    pub spotify: bool,
     /// Station index and count of the tuned list, for the dial position.
     pub station: Option<(usize, usize)>,
     pub cover: Option<&'a Image>,
@@ -237,6 +241,13 @@ impl Deck {
         if info.radio {
             let label = if info.station.is_some() { info.title } else { info.sub };
             self.draw_dial(fb, th, slot_x + 6, slot_y + 6, slot_w - 12, slot_h - 12, now, info.playing, label);
+        } else if info.turntable {
+            let progress = if info.duration > 0.0 {
+                (info.position / info.duration).clamp(0.0, 1.0) as f32
+            } else {
+                0.0
+            };
+            self.draw_turntable(fb, th, slot_x + 4, slot_y + 4, slot_w - 8, slot_h - 8, progress, info);
         } else {
             let progress = if info.duration > 0.0 {
                 (info.position / info.duration).clamp(0.0, 1.0) as f32
@@ -251,6 +262,10 @@ impl Deck {
             if cy + slot_h - 12 > y0 - 12 {
                 self.draw_cassette(fb, th, slot_x + 8, cy, slot_w - 16, slot_h - 12, progress, info);
             }
+        }
+        if info.spotify {
+            // The badge sits in the slot's corner, phosphor green.
+            fb.bitmap(slot_x + slot_w - 12, slot_y + 3, &crate::icons::SPOTIFY, th.green, 1, 8);
         }
         // VU meters on the right.
         let vx = slot_x + slot_w + 8;
@@ -382,6 +397,92 @@ impl Deck {
         }
     }
 
+    /// A record player: platter, a black record whose grooves catch a
+    /// rotating sheen, the label (album art when there is one) and a tonearm
+    /// that tracks inward with the position.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_turntable(
+        &mut self,
+        fb: &mut Framebuffer,
+        th: &Theme,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        progress: f32,
+        info: &Info,
+    ) {
+        let plinth = lerp_color(th.bg, th.fg, 0.14);
+        fb.rect(x, y, w, h, plinth);
+        fb.rect(x, y, w, 1, lerp_color(th.bg, th.fg, 0.3));
+        // Platter and record, off centre to leave room for the arm.
+        let cx = x + h / 2 + 4;
+        let cy = y + h / 2;
+        let r_platter = (h / 2 - 4) as f32;
+        let r_record = r_platter - 2.0;
+        draw_disc(fb, cx, cy, r_platter, lerp_color(th.bg, th.dim, 0.6));
+        draw_disc(fb, cx, cy, r_record, scale(th.bg, 0.6));
+        // Grooves: rings every three pixels, lit where a sheen passes as the
+        // record turns.
+        let sheen = self.reel * 0.9;
+        let mut r = r_record - 2.0;
+        while r > 12.0 {
+            let steps = (r * 6.0) as i32;
+            for k in 0..steps {
+                let a = k as f32 / steps as f32 * std::f32::consts::TAU;
+                let glint = ((a - sheen).cos()).max(0.0).powi(6);
+                let c = lerp_color(lerp_color(th.bg, th.fg, 0.10), th.paper, glint * 0.45);
+                fb.put(cx + (a.cos() * r) as i32, cy + (a.sin() * r) as i32, c);
+            }
+            r -= 3.0;
+        }
+        // Label: the album art clipped to a disc, or the accent.
+        let r_label = 11.0;
+        match info.cover {
+            Some(img) if img.w > 0 => {
+                let ri = r_label as i32;
+                for dy in -ri..=ri {
+                    for dx in -ri..=ri {
+                        if (dx * dx + dy * dy) as f32 > r_label * r_label {
+                            continue;
+                        }
+                        let sx = ((dx + ri) as usize * img.w / (2 * ri as usize + 1)).min(img.w - 1);
+                        let sy = ((dy + ri) as usize * img.h / (2 * ri as usize + 1)).min(img.h - 1);
+                        fb.put(cx + dx, cy + dy, img.px[sy * img.w + sx] & 0x00ff_ffff);
+                    }
+                }
+            }
+            _ => {
+                draw_disc(fb, cx, cy, r_label, th.accent);
+                draw_disc(fb, cx, cy, r_label - 4.0, lerp_color(th.accent, th.paper, 0.35));
+            }
+        }
+        // Spindle and a rotating mark on the label so the turn shows.
+        fb.rect(cx, cy, 1, 1, th.paper);
+        let (ms, mc) = (self.reel * 0.9).sin_cos();
+        fb.put(cx + (mc * 8.0) as i32, cy + (ms * 8.0) as i32, th.paper);
+        // Tonearm: pivot top right, the stylus moving from the edge inward.
+        let px = x + w - 12;
+        let py = y + 8;
+        fb.rect(px - 3, py - 3, 7, 7, lerp_color(th.bg, th.fg, 0.4));
+        let target_r = if info.playing || progress > 0.0 {
+            r_record - 4.0 - (r_record - 4.0 - r_label - 3.0) * progress
+        } else {
+            r_record + 10.0
+        };
+        // Stylus point on the record's radius toward the arm side.
+        let dir = ((py - cy) as f32).atan2((px - cx) as f32);
+        let sx = cx as f32 + dir.cos() * target_r;
+        let sy = cy as f32 + dir.sin() * target_r;
+        let arm = lerp_color(th.bg, th.paper, 0.75);
+        fb.line(px, py, sx as i32, sy as i32, arm);
+        fb.line(px + 1, py, sx as i32 + 1, sy as i32, scale(arm, 0.6));
+        fb.rect(sx as i32 - 1, sy as i32 - 1, 3, 3, th.paper);
+        // Speed lamp.
+        fb.rect(x + w - 8, y + h - 8, 3, 3, if info.playing { th.green } else { scale(th.green, 0.25) });
+        fb.text(x + w - 30, y + h - 10, "33", th.dim, 1);
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn draw_vu(&self, fb: &mut Framebuffer, th: &Theme, x: i32, y: i32, w: i32, h: i32, ch: usize, label: &str) {
         let face = lerp_color(th.bg, th.paper, 0.08);
@@ -484,7 +585,7 @@ impl Deck {
         fb.clear(th.bg);
         match self.mode {
             0 => self.mode7_eq(fb, th, now),
-            1 => self.copper(fb, th, now),
+            1 => self.ribbons(fb, th, now),
             2 => self.scope(fb, th, now),
             3 => self.starfield(fb, th),
             4 => self.plasma(fb, th, now),
@@ -569,39 +670,48 @@ impl Deck {
         }
     }
 
-    fn copper(&mut self, fb: &mut Framebuffer, th: &Theme, now: f64) {
+    /// Silk ribbons: five translucent sine waves drift across the frame,
+    /// each tied to a band that sets its amplitude and glow. Additive light,
+    /// soft edges, the theme's own hues, nothing else.
+    fn ribbons(&mut self, fb: &mut Framebuffer, th: &Theme, now: f64) {
         let w = fb.w as i32;
         let h = fb.h as i32;
-        let palette = [th.accent, th.magenta, th.cyan, th.yellow, th.green, th.orange, th.blue];
-        let mids = (self.smooth[3] + self.smooth[4] + self.smooth[5]) / 3.0;
-        let speed = 0.8 + mids as f64 * 2.5;
-        let mut bars: Vec<(i32, Color, f32)> = (0..palette.len())
-            .map(|i| {
-                let ph = i as f64 * 0.55;
-                let y = h as f64 / 2.0 + 78.0 * (now * speed + ph).sin() + 18.0 * (now * 1.7 + ph * 2.0).cos();
-                (y as i32, palette[i], self.smooth[(i * 3) % 10])
-            })
-            .collect();
-        bars.sort_by_key(|b| b.0);
-        for (yc, c, v) in bars {
-            let half = 7 + (v * 5.0) as i32;
-            for k in -half..=half {
-                let f = 1.0 - (k as f32 / half as f32).abs();
-                let col = if f > 0.85 {
-                    lerp_color(c, th.paper, (f - 0.85) / 0.15 * 0.9)
-                } else {
-                    lerp_color(th.bg, c, (f / 0.85).powf(0.8))
-                };
-                let col = lerp_color(col, th.paper, self.kick.hit * 0.25);
-                fb.rect(0, yc + k, w, 1, col);
+        let hues = [th.accent, th.magenta, th.cyan, th.green, th.yellow];
+        let t = now as f32;
+        for (k, hue) in hues.iter().enumerate() {
+            let band = self.smooth[(k * 2 + 1).min(9)];
+            let amp = 18.0 + 46.0 * band;
+            let thick = 3.0 + 9.0 * band + self.kick.hit * 3.0;
+            let speed = 0.35 + k as f32 * 0.11;
+            let phase = t * speed + k as f32 * 1.3;
+            let freq = 1.1 + k as f32 * 0.35;
+            let base_y = h as f32 * (0.32 + 0.09 * k as f32);
+            let glow = 0.18 + 0.32 * band;
+            for x in 0..w {
+                let u = x as f32 / w as f32;
+                let yc = base_y + amp * (u * freq * std::f32::consts::TAU + phase).sin()
+                    + 8.0 * (u * 3.0 + t * 0.7 + k as f32).cos();
+                let half = thick.max(1.0);
+                let y0 = (yc - half - 2.0) as i32;
+                let y1 = (yc + half + 2.0) as i32;
+                for y in y0.max(0)..=y1.min(h - 1) {
+                    let d = ((y as f32 - yc).abs() / half).min(1.2);
+                    // A bright core fading to a soft edge past the ribbon's width.
+                    let a = if d < 1.0 { (1.0 - d * d) * glow } else { (1.2 - d) * 0.5 * glow };
+                    if a <= 0.005 {
+                        continue;
+                    }
+                    let bg = fb.px[y as usize * fb.w + x as usize];
+                    let c = lerp_color(*hue, th.paper, (1.0 - d).max(0.0) * 0.35);
+                    fb.put(x, y, crate::fb::add(bg, scale(c, a)));
+                }
             }
         }
-        // Scanline shimmer.
-        for y in (0..h).step_by(3) {
-            for x in 0..w {
-                let c = fb_get(fb, x, y);
-                fb.put(x, y, scale(c, 0.82));
-            }
+        // A thin horizon that the ribbons seem to float over.
+        let hy = h - 40;
+        fb.rect(0, hy, w, 1, lerp_color(th.bg, th.dim, 0.35));
+        for x in (0..w).step_by(2) {
+            fb.put(x, hy + 6, lerp_color(th.bg, th.dim, 0.18));
         }
     }
 
@@ -803,18 +913,18 @@ fn fb_get(fb: &Framebuffer, x: i32, y: i32) -> Color {
     fb.px[y as usize * fb.w + x as usize]
 }
 
-/// Synced lyrics: the line for `position` large in the middle, the next one
-/// dim underneath. Lines wrap to the width.
+/// Synced lyrics over the picture: the current line large and lit, the next
+/// one small and dim, each glyph shadowed so it reads on any background.
+/// Lines wrap to the width; `y` is the top of the block, `height` its room.
 pub fn draw_lyrics(fb: &mut Framebuffer, th: &Theme, lines: &[(f64, String)], position: f64, y: i32, height: i32) {
     let w = fb.w as i32;
     let left = (w as f32 * 0.05) as i32;
-    let max_cols = ((w - 2 * left) / 8) as usize;
     let idx = lines.iter().rposition(|(s, _)| *s <= position);
-    let wrap = |s: &str| -> Vec<String> {
+    let wrap = |s: &str, cols: usize| -> Vec<String> {
         let mut out = Vec::new();
         let mut line = String::new();
         for word in s.split_whitespace() {
-            if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > max_cols {
+            if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > cols {
                 out.push(std::mem::take(&mut line));
             }
             if !line.is_empty() {
@@ -825,35 +935,52 @@ pub fn draw_lyrics(fb: &mut Framebuffer, th: &Theme, lines: &[(f64, String)], po
         if !line.is_empty() {
             out.push(line);
         }
-        out.into_iter().take(3).collect()
+        out
     };
+    let shadow = scale(th.bg, 0.6);
     let mut yy = y;
     match idx {
         Some(i) => {
-            for l in wrap(&crate::music::fold(&lines[i].1)) {
-                if yy + 8 > y + height {
+            let cur = crate::music::fold(&lines[i].1);
+            // Big when it fits in two lines, small otherwise.
+            let big_cols = ((w - 2 * left) / 16) as usize;
+            let big = wrap(&cur, big_cols);
+            let (rows, sc, step) = if big.len() <= 2 {
+                (big, 2, 18)
+            } else {
+                (wrap(&cur, ((w - 2 * left) / 8) as usize), 1, 10)
+            };
+            for l in rows.iter().take(3) {
+                if yy + 8 * sc > y + height {
                     break;
                 }
-                fb.text_centered(w / 2, yy, &l, th.bright_green, 1);
-                yy += 10;
+                text_shadow(fb, w / 2, yy, l, th.paper, shadow, sc);
+                yy += step;
             }
             if let Some((_, next)) = lines.get(i + 1) {
                 yy += 4;
-                for l in wrap(&crate::music::fold(next)) {
+                for l in wrap(&crate::music::fold(next), ((w - 2 * left) / 8) as usize).iter().take(2) {
                     if yy + 8 > y + height {
                         break;
                     }
-                    fb.text_centered(w / 2, yy, &l, th.dim, 1);
+                    text_shadow(fb, w / 2, yy, l, th.dim, shadow, 1);
                     yy += 10;
                 }
             }
         }
         None => {
-            if let Some((start, first)) = lines.first() {
-                let dots = format!("lyrics in {}", crate::player::clock((start - position).max(0.0)));
-                fb.text_centered(w / 2, yy, &dots, th.dim, 1);
-                let _ = first;
+            if let Some((start, _)) = lines.first() {
+                let s = format!("lyrics in {}", crate::player::clock((start - position).max(0.0)));
+                text_shadow(fb, w / 2, yy, &s, th.dim, shadow, 1);
             }
         }
     }
+}
+
+/// Centred text with a one pixel shadow down and right.
+fn text_shadow(fb: &mut Framebuffer, cx: i32, y: i32, s: &str, c: Color, shadow: Color, sc: i32) {
+    let tw = Framebuffer::text_width(s, sc);
+    let x = cx - tw / 2;
+    fb.text(x + sc, y + sc, s, shadow, sc);
+    fb.text(x, y, s, c, sc);
 }

@@ -120,6 +120,17 @@ enum Screen {
 enum MusicRow {
     Now,
     Source(Source),
+    Hub(Hub),
+    /// A provider's search: the bar asks for the query.
+    Search(String),
+}
+
+/// The two worlds of cliamp, each with its own screen: the radio directory
+/// and every streaming provider the listener set up.
+#[derive(Clone, PartialEq, Eq)]
+enum Hub {
+    Radio,
+    Provider(String, String),
 }
 
 /// One row of a game list: the game and the system that runs it.
@@ -425,6 +436,11 @@ pub struct Scene {
     /// Open music lists, innermost last: source, selected row, first shown row.
     music_path: Vec<(Source, usize, usize)>,
     music_root_sel: usize,
+    /// The hub open on the music screen, None at the root.
+    music_hub: Option<Hub>,
+    music_hub_sel: usize,
+    /// A provider search waiting for its query (provider key).
+    music_query: Option<String>,
     /// Visualiser bars eased toward the last spectrum frame.
     vis: Vec<f32>,
 }
@@ -516,6 +532,9 @@ impl Scene {
             music: Music::new(std::env::var("PULSE_SINK").ok()),
             music_path: Vec::new(),
             music_root_sel: 0,
+            music_hub: None,
+            music_hub_sel: 0,
+            music_query: None,
             vis: vec![0.0; 10],
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
@@ -1412,7 +1431,7 @@ impl Scene {
     /// Every word typed must appear in the title; titles starting with the
     /// first word come first, the list order holds otherwise.
     fn apply_search(&mut self) {
-        if self.yt_query {
+        if self.yt_query || self.music_query.is_some() {
             // The bar collects a YouTube query; the list stays as it is.
             return;
         }
@@ -1962,8 +1981,14 @@ impl Scene {
                         moved = true;
                     }
                     Nav::Back => {
-                        self.music_root_sel = *sel;
-                        self.screen = Screen::Menu;
+                        if self.music_hub.is_some() {
+                            self.music_hub = None;
+                            let back = self.music_hub_sel;
+                            self.screen = Screen::Music { sel: back, top: 0 };
+                        } else {
+                            self.music_root_sel = *sel;
+                            self.screen = Screen::Menu;
+                        }
                         moved = true;
                     }
                     _ => {}
@@ -2128,77 +2153,72 @@ impl Scene {
         self.go(Screen::Music { sel, top: 0 });
     }
 
-    /// Rows of the music screen: what plays, the radio directory cuts,
-    /// every provider cliamp has configured, history and the live queue.
+    /// Rows of the music screen. At the root: what plays, the radio hub, one
+    /// hub per provider cliamp has configured, history and the live queue.
+    /// Inside a hub: its own cuts.
     fn music_rows(&self) -> Vec<(icons::Icon, String, String, MusicRow)> {
         let mut rows = Vec::new();
         let st = &self.music.status;
+        match &self.music_hub {
+            Some(Hub::Radio) => {
+                if let Some((code, name)) = music::home_country(&self.settings.music.country) {
+                    rows.push((
+                        icons::PULSE,
+                        format!("Radio  {name}"),
+                        String::new(),
+                        MusicRow::Source(Source::Country(code, name)),
+                    ));
+                }
+                rows.push((icons::FOLDER, "By country".into(), String::new(), MusicRow::Source(Source::Countries)));
+                rows.push((icons::FOLDER, "By genre".into(), String::new(), MusicRow::Source(Source::Tags)));
+                rows.push((
+                    icons::STAR,
+                    "cliamp picks".into(),
+                    String::new(),
+                    MusicRow::Source(Source::ProviderPlaylists("radio".into(), "cliamp picks".into())),
+                ));
+                rows.push((
+                    icons::STAR,
+                    "Favourite stations".into(),
+                    if self.music.favorites.is_empty() { String::new() } else { format!("{:>4}", self.music.favorites.len()) },
+                    MusicRow::Source(Source::Favorites),
+                ));
+                return rows;
+            }
+            Some(Hub::Provider(key, name)) => {
+                rows.push((icons::NOTE, "Search".into(), String::new(), MusicRow::Search(key.clone())));
+                rows.push((
+                    icons::FOLDER,
+                    "Playlists and albums".into(),
+                    String::new(),
+                    MusicRow::Source(Source::ProviderPlaylists(key.clone(), name.clone())),
+                ));
+                return rows;
+            }
+            None => {}
+        }
         if st.active() {
             let label = st.track.as_ref().map(|t| t.label()).unwrap_or_default();
             let right: String = label.chars().take(20).collect();
             rows.push((icons::NOTE, "Now playing".into(), right, MusicRow::Now));
         }
-        if let Some((code, name)) = music::home_country(&self.settings.music.country) {
-            rows.push((
-                icons::PULSE,
-                format!("Radio  {name}"),
-                String::new(),
-                MusicRow::Source(Source::Country(code, name)),
-            ));
-        }
-        rows.push((
-            icons::FOLDER,
-            "Radio by country".into(),
-            String::new(),
-            MusicRow::Source(Source::Countries),
-        ));
-        rows.push((
-            icons::FOLDER,
-            "Radio by genre".into(),
-            String::new(),
-            MusicRow::Source(Source::Tags),
-        ));
-        rows.push((
-            icons::STAR,
-            "cliamp picks".into(),
-            String::new(),
-            MusicRow::Source(Source::ProviderPlaylists("radio".into(), "cliamp picks".into())),
-        ));
+        rows.push((icons::PULSE, "Radio".into(), String::new(), MusicRow::Hub(Hub::Radio)));
         for p in &self.music.providers {
             if p.key == "radio" || p.key == "local" {
                 continue;
             }
-            rows.push((
-                icons::FOLDER,
-                p.name.clone(),
-                String::new(),
-                MusicRow::Source(Source::ProviderPlaylists(p.key.clone(), p.name.clone())),
-            ));
+            let icon = match p.key.as_str() {
+                "spotify" => icons::SPOTIFY,
+                "youtube" | "ytmusic" | "yt" => icons::RESUME,
+                _ => icons::FOLDER,
+            };
+            rows.push((icon, p.name.clone(), String::new(), MusicRow::Hub(Hub::Provider(p.key.clone(), p.name.clone()))));
         }
-        rows.push((
-            icons::STAR,
-            "Favourite stations".into(),
-            if self.music.favorites.is_empty() {
-                String::new()
-            } else {
-                format!("{:>4}", self.music.favorites.len())
-            },
-            MusicRow::Source(Source::Favorites),
-        ));
-        rows.push((
-            icons::CLOCK,
-            "Recently played".into(),
-            String::new(),
-            MusicRow::Source(Source::History),
-        ));
+        rows.push((icons::CLOCK, "Recently played".into(), String::new(), MusicRow::Source(Source::History)));
         rows.push((
             icons::FOLDER,
             "Queue".into(),
-            if st.total > 0 {
-                format!("{:>4}", st.total)
-            } else {
-                String::new()
-            },
+            if st.total > 0 { format!("{:>4}", st.total) } else { String::new() },
             MusicRow::Source(Source::Queue),
         ));
         rows
@@ -2213,6 +2233,7 @@ impl Scene {
     fn music_enter(&mut self, src: Source) {
         self.search = None;
         self.osk = None;
+        self.music_query = None;
         self.pending.push(Sound::Select);
         self.music.open(&src);
         self.music_path.push((src, 0, 0));
@@ -2222,6 +2243,7 @@ impl Scene {
     fn music_back(&mut self) {
         self.search = None;
         self.osk = None;
+        self.music_query = None;
         self.music_path.pop();
         self.screen = match self.music_path.last() {
             Some((_, sel, top)) => Screen::MusicList {
@@ -2279,9 +2301,13 @@ impl Scene {
                 self.message = Some((format!("playing {}", t.label()), self.now + 3.0));
             }
             MusicItem::Source(Source::ProviderPlaylist(provider, id, name), _) => {
-                self.pending.push(Sound::Select);
                 self.music.load(&provider, &id);
                 self.message = Some((format!("playing {name}"), self.now + 3.0));
+                self.tuning = None;
+                self.deck.insert_at = self.now;
+                self.pending.push(Sound::Insert);
+                self.music_visual = false;
+                self.go(Screen::NowPlaying);
             }
             MusicItem::Source(src, _) => {
                 if let Some(last) = self.music_path.last_mut() {
@@ -2502,11 +2528,38 @@ impl Scene {
                         self.music_path.clear();
                         self.music_enter(src);
                     }
+                    Some(MusicRow::Hub(hub)) => {
+                        self.music_hub_sel = sel;
+                        self.music_hub = Some(hub);
+                        self.pending.push(Sound::Select);
+                        self.go(Screen::Music { sel: 0, top: 0 });
+                    }
+                    Some(MusicRow::Search(key)) => {
+                        // An empty list with the bar asking for the query.
+                        self.music_root_sel = sel;
+                        self.music_path.clear();
+                        let src = Source::ProviderSearch(key.clone(), String::new());
+                        self.music.lists.insert(src.clone(), Ok(Vec::new()));
+                        self.music_path.push((src, 0, 0));
+                        self.go(Screen::MusicList { sel: 0, top: 0 });
+                        self.search = Some(String::new());
+                        self.osk = if self.pad == PadKind::Keyboard { None } else { Some((1, 0)) };
+                        self.music_query = Some(key);
+                    }
                     None => {}
                 }
                 Action::None
             }
             Screen::MusicList { sel, .. } => {
+                if let Some(key) = self.music_query.clone() {
+                    let q = self.search.clone().unwrap_or_default();
+                    if !q.trim().is_empty() {
+                        self.music_path.pop();
+                        self.music_query = None;
+                        self.music_enter(Source::ProviderSearch(key, q.trim().to_string()));
+                    }
+                    return Action::None;
+                }
                 if let Some(item) = self.music_selected(sel) {
                     self.music_play_item(sel, item);
                 }
@@ -4750,7 +4803,12 @@ impl Scene {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32;
-        let y0 = self.draw_header(fb, "Music");
+        let title = match &self.music_hub {
+            Some(Hub::Radio) => "Radio".to_string(),
+            Some(Hub::Provider(_, name)) => name.clone(),
+            None => "Music".to_string(),
+        };
+        let y0 = self.draw_header(fb, &title);
         let ox = self.slide();
         let rows = self.music_rows();
         let row_h = 12;
@@ -4805,8 +4863,26 @@ impl Scene {
                 fb.text(left, y0 + 8, &format!("fetching{dots}"), self.theme.dim, 1);
             }
             Some(Err(e)) => {
-                let m: String = e.chars().take(max_cols).collect();
-                fb.text(left, y0 + 8, &m, self.theme.red, 1);
+                // Wrapped, so cliamp's whole explanation reads.
+                let mut yy = y0 + 8;
+                let mut line = String::new();
+                for word in e.split_whitespace() {
+                    if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > max_cols {
+                        fb.text(left, yy, &line, self.theme.red, 1);
+                        yy += 10;
+                        line.clear();
+                    }
+                    if !line.is_empty() {
+                        line.push(' ');
+                    }
+                    line.push_str(word);
+                }
+                if !line.is_empty() {
+                    fb.text(left, yy, &line, self.theme.red, 1);
+                }
+            }
+            Some(Ok(items)) if items.is_empty() && self.music_query.is_some() => {
+                fb.text(left, y0 + 8, "type what to look for, then Enter", self.theme.dim, 1);
             }
             Some(Ok(items)) if items.is_empty() => {
                 fb.text(left, y0 + 8, "nothing here yet", self.theme.dim, 1);
@@ -4897,9 +4973,8 @@ impl Scene {
             self.deck.draw_visual(fb, &theme, now, &title);
             // Lyrics line up with a song's clock, not with a stream's.
             if !self.music.lyrics.is_empty() && st.duration > 0.0 {
-                let band_y = h / 2 - 24;
-                fb.rect(0, band_y - 4, w, 46, scale(theme.bg, 0.55));
-                deck::draw_lyrics(fb, &theme, &self.music.lyrics, st.position, band_y, 40);
+                // Lower third, shadowed glyphs straight on the picture.
+                deck::draw_lyrics(fb, &theme, &self.music.lyrics, st.position, h - 96, 70);
             }
             return;
         }
@@ -4921,21 +4996,27 @@ impl Scene {
             duration: st.duration,
             playing: st.playing(),
             radio: track.stream && track.duration_secs == 0 && st.duration <= 0.0,
+            turntable: track.path.starts_with("spotify:") || (!track.stream && !track.album.is_empty()),
+            spotify: track.path.starts_with("spotify:"),
             station,
             cover: cover.as_ref(),
             volume_db: st.volume,
         };
         self.deck.draw(fb, &theme, y0, now, &info);
         if !self.music.lyrics.is_empty() && st.duration > 0.0 {
-            deck::draw_lyrics(fb, &theme, &self.music.lyrics, st.position, h - 26, 10);
+            deck::draw_lyrics(fb, &theme, &self.music.lyrics, st.position, h - 36, 10);
         }
         if let Some((deadline, _)) = self.sleep {
             let m = ((deadline - now) / 60.0).ceil().max(0.0);
             let s = format!("sleep {m:.0}m");
             fb.text(w - left - Framebuffer::text_width(&s, 1), y0 - 12, &s, theme.orange, 1);
         }
-        let hint = self.hint(&[("<>", "tune"), ("X", "visual"), ("Y", "sleep"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(theme.dim, 0.7), 1);
+        // Two lines of hints: the deck has more controls than fit in one.
+        let skip = if track.stream { "tune" } else { "track" };
+        let hint1 = self.hint(&[("A", "pause"), ("<>", skip), ("^v", "volume")]);
+        let hint2 = self.hint(&[("X", "visualizer"), ("Y", "sleep timer"), ("B", "back")]);
+        fb.text(left, h - 24, &hint1, scale(theme.dim, 0.7), 1);
+        fb.text(left, h - 14, &hint2, scale(theme.dim, 0.7), 1);
     }
 
     // --------------------------------------------------------- pad wizard
@@ -5231,6 +5312,8 @@ impl Scene {
         }
         let count = if self.yt_query {
             if self.yt_search.is_some() { "searching".to_string() } else { "Enter searches YouTube".to_string() }
+        } else if self.music_query.is_some() {
+            "Enter searches".to_string()
         } else if q.trim().is_empty() {
             "type to filter".to_string()
         } else {
