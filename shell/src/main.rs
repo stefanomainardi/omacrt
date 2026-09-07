@@ -907,6 +907,25 @@ fn run(args: &Args) -> Result<(), String> {
                 if args.fullscreen {
                     fit_output(canvas.window_mut());
                 }
+                // Wait for the television to be in the new mode before the
+                // emulator is started. Asking for the mode only sends the
+                // request: the compositor applies it a moment later and tells
+                // its clients afterwards. An emulator that connects in that
+                // moment is told the old size, works its picture out for a
+                // frame half as tall as the one it ends up in, and spends the
+                // whole game in a narrow column in the middle of the screen.
+                // We are a client of the same compositor, so our own window
+                // being resized is the signal that the mode has landed.
+                if let Some(want) = g.lines {
+                    let deadline = now() + 1.0;
+                    while now() < deadline {
+                        pump.pump_events();
+                        if canvas.output_size().map(|(_, h)| h == want).unwrap_or(true) {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(16));
+                    }
+                }
             }
             // The game must land on the tube whatever has focus: flag the
             // compositor handler, and take focus ourselves as well.

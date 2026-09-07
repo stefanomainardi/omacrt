@@ -3073,7 +3073,12 @@ impl Scene {
                     }
                 }
                 keys.push_str(&format!(
-                    "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\nvideo_windowed_position_width = \"{w}\"\nvideo_windowed_position_height = \"{h}\"\nvideo_window_auto_width_max = \"{w}\"\nvideo_window_auto_height_max = \"{h}\"\n",
+                    // `video_fullscreen_x/y` as well as the viewport: it is
+                    // the size the emulator lays its picture out for, and
+                    // without it a mode change that lands late leaves the game
+                    // in a column in the middle of a frame it thinks is
+                    // smaller than it is.
+                    "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\nvideo_fullscreen_x = \"{w}\"\nvideo_fullscreen_y = \"{h}\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\nvideo_windowed_position_width = \"{w}\"\nvideo_windowed_position_height = \"{h}\"\nvideo_window_auto_width_max = \"{w}\"\nvideo_window_auto_height_max = \"{h}\"\n",
                     w as f32 / h as f32
                 ));
             }
