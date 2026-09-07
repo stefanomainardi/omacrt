@@ -840,7 +840,20 @@ fn crt_mode(geometry: Option<Geometry>) -> bool {
 /// the paused game, resuming puts the game back in front. Both windows stay
 /// mapped and rendered throughout.
 fn after_pause(outcome: PauseOutcome) {
+    use omarchy_crt_shell::crt::display;
     use omarchy_crt_shell::crt::output::raise;
+    if display::on_tube() {
+        match outcome {
+            PauseOutcome::Shown => {
+                display::raise(omarchy_crt_shell::crt::SHELL_CLASS);
+            }
+            PauseOutcome::Resumed => {
+                display::raise("com.libretro.RetroArch");
+            }
+            _ => {}
+        }
+        return;
+    }
     match outcome {
         PauseOutcome::Shown => {
             raise(omarchy_crt_shell::crt::SHELL_CLASS);
@@ -855,6 +868,10 @@ fn after_pause(outcome: PauseOutcome) {
 /// Size our window to the tube's current mode: a pinned floating window
 /// keeps its size when the modeline changes under it.
 fn fit_output(window: &mut sdl2::video::Window) {
+    // On the tube our own compositor sizes every client to the mode.
+    if omarchy_crt_shell::crt::display::on_tube() {
+        return;
+    }
     let name = "omarchy-crt";
     let bin = std::env::current_exe()
         .ok()

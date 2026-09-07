@@ -80,6 +80,11 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
     if let Some(s) = sink {
         cmd.env("PULSE_SINK", s).env("PIPEWIRE_NODE", s);
     }
+    // With the display process up the launcher (and everything it starts)
+    // is a client of our own compositor on the tube.
+    if super::display::running() {
+        super::display::env(&mut cmd);
+    }
     // SDL's PipeWire backend loads module-rt into the launcher, which sets a
     // 200 ms RLIMIT_RTTIME on the process so rtkit grants it realtime. Every
     // game inherits that limit (an unprivileged process cannot raise it
@@ -137,6 +142,14 @@ pub fn stop() -> String {
 /// the game's workspace, and a hidden fullscreen client blocks on its next
 /// frame until the compositor calls it unresponsive.
 pub fn focus() -> (bool, String) {
+    if super::display::running() {
+        let who = match playing() {
+            Some("retroarch") => "com.libretro.RetroArch",
+            Some("mpv") => "omarchy-crt-player",
+            _ => SHELL_CLASS,
+        };
+        return (super::display::raise(who), format!("raised {who} on the tube"));
+    }
     match playing() {
         Some("retroarch") => output::focus_class("com.libretro.RetroArch"),
         Some("mpv") => output::focus_class("omarchy-crt-player"),

@@ -7,7 +7,7 @@
 
 use omarchy_crt_shell::crt::dac::{Csync, Dac, Lock};
 use omarchy_crt_shell::crt::output::{self, Connector, Modeline};
-use omarchy_crt_shell::crt::{self, Config, State, audio, bios, launcher, roms};
+use omarchy_crt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms};
 use omarchy_crt_shell::library::{self, Library};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -120,11 +120,27 @@ fn status(cfg: &Config) -> Value {
         "library": Value::Null,
     });
     if let Some(c) = &conn {
+        let leased = display::leaseable(&c.name);
         st["connector"] = json!({
             "drm": c.drm, "name": c.name, "connected": c.connected,
             "edid_name": c.edid_name, "edid_audio": c.edid_audio, "rgbpi2": c.is_rgbpi2(),
+            "leaseable": leased, "display": display::running(),
         });
-        if let Some(m) = output::hypr_monitor(&c.name) {
+        if leased {
+            if display::running() {
+                let standard = st["standard"].as_str().unwrap_or("ntsc").to_string();
+                if let Some(ml) = cfg.modeline(&standard).and_then(Modeline::parse) {
+                    let ml = if state.lines > 0 && state.lines != ml.height() { ml.with_lines(state.lines) } else { ml };
+                    st["active"] = json!(true);
+                    st["mode"] = json!({
+                        "width": ml.width(), "height": ml.height(), "refresh_hz": ml.vfreq_hz(), "disabled": false,
+                        "hfreq_khz": (ml.hfreq_khz() * 1000.0).round() / 1000.0,
+                        "vfreq_hz": (ml.vfreq_hz() * 1000.0).round() / 1000.0,
+                        "lines": format!("{}p", ml.height()),
+                    });
+                }
+            }
+        } else if let Some(m) = output::hypr_monitor(&c.name) {
             let w = m["width"].as_u64().unwrap_or(0) as u32;
             let h = m["height"].as_u64().unwrap_or(0) as u32;
             let disabled = m["disabled"].as_bool().unwrap_or(false);
@@ -418,6 +434,10 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
             state.standard.clone()
         }
     });
+    if display::leaseable(&conn.name) {
+        cmd_on_leased(cfg, &conn, &standard);
+        return;
+    }
     // Rules first: the output must come up already bound to the `crt`
     // workspace, or Hyprland hands it the next free numbered desktop one.
     compositor_fullscreen_policy(true);
@@ -464,11 +484,74 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
     state.save();
 }
 
+/// The tube is ours: the display process leases the connector, sets the
+/// timing and hosts the launcher and the programs as Wayland clients. No
+/// compositor rules, no workspace, nothing else on the output.
+fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
+    let mut state = State::load();
+    state.standard = standard.into();
+    state.lines = 0;
+    state.save();
+    match display::start(&conn.name) {
+        Ok(note) => println!("display:    {note}"),
+        Err(e) => die(&format!("display: {e}")),
+    }
+    if let Some(text) = cfg.modeline(standard) {
+        if let Some(ml) = Modeline::parse(text) {
+            println!(
+                "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
+                standard.to_uppercase(),
+                ml.width(),
+                ml.height(),
+                ml.hfreq_khz(),
+                ml.vfreq_hz()
+            );
+            display::mode(text);
+        }
+    }
+    match set_csync(cfg, conn) {
+        Ok(m) => println!("dac:        csync {m}"),
+        Err(e) => println!("dac:        {e}"),
+    }
+    if cfg.audio.route {
+        // The HDMI audio pin exists only while a mode is up; give PipeWire a
+        // moment to notice the sink.
+        let mut routed = false;
+        for _ in 0..30 {
+            if let Some(t) = audio::target(conn) {
+                let mut state = State::load();
+                let note = audio::route_to_crt(&t, cfg.audio.volume, cfg.audio.system_default, &mut state);
+                state.save();
+                println!("audio:      {note}");
+                routed = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        if !routed {
+            println!("audio:      no HDMI audio pin for this output");
+        }
+    }
+    match launcher::start(cfg, &conn.name, crt_sink(cfg, conn).as_deref()) {
+        Ok(note) => println!("launcher:   {note}"),
+        Err(e) => println!("launcher:   {e}"),
+    }
+    let mut state = State::load();
+    state.on = true;
+    state.save();
+}
+
 fn cmd_off(cfg: &Config) {
     println!("launcher:   {}", launcher::stop());
     let mut state = State::load();
     if cfg.audio.route {
         println!("audio:      {}", audio::route_back(&mut state));
+    }
+    if display::running() {
+        println!("display:    {}", display::stop());
+        state.on = false;
+        state.save();
+        return;
     }
     compositor_fullscreen_policy(false);
     output::unisolate();
@@ -1020,6 +1103,26 @@ fn main() {
                 flag("--shift-y").unwrap_or(0),
             );
             let conn = connector(&cfg);
+            if display::leaseable(&conn.name) && display::running() {
+                let text = cfg.modeline(std).unwrap_or_else(|| die("no modeline for that standard"));
+                let mut ml = Modeline::parse(text).unwrap_or_else(|| die("bad modeline"));
+                if let Some(l) = lines {
+                    ml = ml.with_lines(l);
+                }
+                if shift != (0, 0) {
+                    let scale = ml.width() as f32 / 320.0;
+                    ml = ml.shifted((shift.0 as f32 * scale) as i32, shift.1);
+                }
+                display::mode(&ml.to_hypr());
+                let mut state = State::load();
+                state.standard = std.into();
+                state.lines = lines.unwrap_or(0);
+                state.shift_x = shift.0;
+                state.shift_y = shift.1;
+                state.save();
+                println!("{} {}x{} {:.3} kHz {:.3} Hz", std.to_uppercase(), ml.width(), ml.height(), ml.hfreq_khz(), ml.vfreq_hz());
+                return;
+            }
             match apply_mode(&cfg, &conn, std, lines, shift) {
                 Ok(ml) => println!(
                     "{} {}x{} {:.3} kHz {:.3} Hz",

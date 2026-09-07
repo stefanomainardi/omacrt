@@ -1765,8 +1765,7 @@ impl Scene {
                 self.resume_game()
             }
             _ => {
-                // A paused RetroArch sat on QUIT once; let it run, then ask.
-                let _ = omarchy_crt_shell::game::pause_toggle();
+                // Escape quits RetroArch (quit_press_twice is off).
                 let _ = omarchy_crt_shell::game::quit();
                 self.paused = None;
                 self.pending.push(Sound::Select);

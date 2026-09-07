@@ -25,7 +25,7 @@ if [ "$build" = 1 ]; then
   (cd "$repo/shell" && cargo build --release)
 fi
 
-for b in omarchy-crt omarchy-crt-shell; do
+for b in omarchy-crt omarchy-crt-shell omarchy-crt-display; do
   [ -x "$repo/shell/target/release/$b" ] || { echo "missing $repo/shell/target/release/$b" >&2; exit 1; }
 done
 
@@ -33,6 +33,7 @@ echo "== installing binaries into $bin_dir"
 mkdir -p "$bin_dir"
 install -m 755 "$repo/shell/target/release/omarchy-crt" "$bin_dir/omarchy-crt"
 install -m 755 "$repo/shell/target/release/omarchy-crt-shell" "$bin_dir/omarchy-crt-shell"
+install -m 755 "$repo/shell/target/release/omarchy-crt-display" "$bin_dir/omarchy-crt-display"
 case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) echo "note: $bin_dir is not in PATH" ;;

@@ -114,7 +114,11 @@ pub struct Modeline {
 
 impl Modeline {
     pub fn parse(text: &str) -> Option<Self> {
-        let parts: Vec<&str> = text.split_whitespace().collect();
+        // With or without Hyprland's leading "modeline" word.
+        let parts: Vec<&str> = text
+            .split_whitespace()
+            .filter(|p| !p.eq_ignore_ascii_case("modeline"))
+            .collect();
         if parts.len() < 9 {
             return None;
         }

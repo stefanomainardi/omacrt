@@ -10,34 +10,17 @@ use std::time::Duration;
 /// Port from `launch.cfg`; RetroArch's default.
 pub const PORT: u16 = 55355;
 
-/// Send one command. RetroArch's own sender (`retroarch --command`) is what
-/// gets through: datagrams from a plain socket were ignored on this setup
-/// while the identical bytes from `--command` acted, so the CLI does the
-/// sending. Fire and forget.
+/// Send one command as a UDP datagram to the running emulator.
+///
+/// Not `retroarch --command`: that starts a whole second RetroArch, window
+/// included, to send the same datagram.
 pub fn send(cmd: &str) -> std::io::Result<()> {
-    let status = std::process::Command::new("retroarch")
-        .arg("--command")
-        .arg(cmd)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(std::io::Error::other(format!(
-            "retroarch --command {cmd}: {status}"
-        )))
-    }
-}
-
-/// Raw datagram to the command port, for experiments.
-pub fn send_udp(cmd: &str) -> std::io::Result<()> {
     let sock = UdpSocket::bind("127.0.0.1:0")?;
     sock.set_write_timeout(Some(Duration::from_millis(200)))?;
     sock.send_to(cmd.as_bytes(), ("127.0.0.1", PORT))?;
     Ok(())
 }
+
 
 /// Ask RetroArch something and read the reply, for example `GET_STATUS`
 /// returns `GET_STATUS PLAYING snes9x,Chrono Trigger,crc32=...` or
@@ -51,24 +34,33 @@ pub fn query(cmd: &str) -> std::io::Result<String> {
     Ok(String::from_utf8_lossy(&buf[..n]).trim().to_string())
 }
 
+/// On the tube the display process presses the emulator's hotkey for us
+/// (real key events on its keyboard); elsewhere the network command goes.
+fn act(key: &str, net: &str) -> std::io::Result<()> {
+    if crate::crt::display::on_tube() || crate::crt::display::running() {
+        return crate::crt::display::send(&format!("key {key}"));
+    }
+    send(net)
+}
+
 pub fn pause_toggle() -> std::io::Result<()> {
-    send("PAUSE_TOGGLE")
+    act("pause", "PAUSE_TOGGLE")
 }
 
 pub fn save_state() -> std::io::Result<()> {
-    send("SAVE_STATE")
+    act("save", "SAVE_STATE")
 }
 
 pub fn load_state() -> std::io::Result<()> {
-    send("LOAD_STATE")
+    act("load", "LOAD_STATE")
 }
 
 pub fn reset() -> std::io::Result<()> {
-    send("RESET")
+    act("reset", "RESET")
 }
 
 pub fn quit() -> std::io::Result<()> {
-    send("QUIT")
+    act("quit", "QUIT")
 }
 
 /// True when RetroArch reports a paused game.

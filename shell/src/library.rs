@@ -794,10 +794,10 @@ impl Library {
             } else {
                 kv("run_ahead_enabled", "false");
             }
-            // The launcher's pause menu drives RetroArch over its UDP command
-            // interface on the loopback (PAUSE_TOGGLE, SAVE_STATE, QUIT, ...).
-            kv("network_cmd_enable", "true");
-            kv("network_cmd_port", &crate::game::PORT.to_string());
+            // No network command interface: processing a datagram crashes
+            // RetroArch 1.22 (SIGSEGV in the input poll). The launcher
+            // presses hotkeys through the tube's compositor instead.
+            kv("network_cmd_enable", "false");
             // Auto load and save of the per game state: a game resumes where
             // it was left, and the pause menu's save is an explicit copy.
             kv("savestate_auto_save", "true");
