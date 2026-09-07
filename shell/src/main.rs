@@ -1430,6 +1430,14 @@ fn fit_output(window: &mut sdl2::video::Window) {
 }
 
 fn crt_focus() {
+    // On the tube, taking focus means telling our own compositor which of its
+    // clients is in front. `omarchy-crt focus` is the desk's version of the
+    // same idea and opens the preview window on the way, which is right when a
+    // person asks for the keyboard and wrong every time a game starts.
+    if omarchy_crt_shell::crt::display::on_tube() {
+        omarchy_crt_shell::crt::display::raise(omarchy_crt_shell::crt::SHELL_CLASS);
+        return;
+    }
     let name = "omarchy-crt";
     let bin = std::env::current_exe()
         .ok()

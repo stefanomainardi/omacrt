@@ -576,8 +576,25 @@ impl Library {
         let index = crate::index::Index::load();
         let mut systems = systems;
         if let Some(ix) = &index {
+            // A system the scan found but `systems.toml` does not mention.
+            // It gets the built-in definition when there is one, which is
+            // where the tuning lives: the picture a console drew, the core
+            // options that make it look right, the buttons a game needs. Only
+            // a system nobody has tuned falls back to the catalogue, which
+            // knows a core and a list of extensions and nothing else.
+            let builtin: std::collections::HashMap<String, System> = default_systems()
+                .into_iter()
+                .map(|s| (s.name.clone(), s))
+                .collect();
             for (name, _) in ix.systems() {
                 if systems.iter().any(|s| s.name == name) {
+                    continue;
+                }
+                if let Some(mut tuned) = builtin.get(&name).cloned() {
+                    // The folder comes from the index, not from the built-in
+                    // guess at where a collection lives.
+                    tuned.dir = String::new();
+                    systems.push(tuned);
                     continue;
                 }
                 let (core, exts) = crate::index::catalog(&name)
