@@ -10,16 +10,32 @@
 #   scripts/shoot.sh restore           NTSC timing
 #
 # The tour uses the collection "0 Tour" (~/.config/omarchy-crt/collections),
-# whose first rows are: Yie Ar Kung-Fu, Chrono Trigger, Sonic 2, Pac-Man,
-# Super Metroid, Streets of Rage 2, Metal Slug, Super Mario Bros. 3.
+# one famous game per system, oldest hardware first: Pac-Man, Super Mario
+# Bros. 3, Super Metroid, Sonic 2, Metal Slug, Tekken 3, Super Mario 64,
+# Virtua Fighter 2, Crazy Taxi and Marvel vs. Capcom 2 on Naomi. Discs and
+# 3D systems need longer before there is anything to film, so each row is
+# given its own waiting time.
 set -u
 id="io.github.stefanomainardi.omarchy-crt"
 key() { omarchy-crt shell key "$1"; sleep "${2:-0.3}"; }
+# A key inside the running game: RetroArch's own bindings, start is enter,
+# select (the arcade coin) rshift, A is x. Games sit on their title or attract
+# screen otherwise, and a film of title screens says nothing.
+# `pad enter` presses briefly; `pad 106:2500` holds that evdev code for two
+# and a half seconds, which is how a car accelerates or Sonic runs.
+pad() {
+  case "$1" in
+    *:*) omarchy-crt game key "${1%%:*}" "${1##*:}" >/dev/null 2>&1; sleep "$(awk "BEGIN{print ${1##*:}/1000+0.3}")" ;;
+    *) omarchy-crt game key "$1" >/dev/null 2>&1; sleep "${2:-1.1}" ;;
+  esac
+}
 say() { printf '\n\033[1;32m>> %s\033[0m\n' "$*"; }
 wait_game() { for _ in $(seq 1 40); do sleep 0.5; pgrep -x retroarch >/dev/null && break; done; sleep "${1:-6}"; }
 wait_no_game() { for _ in $(seq 1 30); do pgrep -x retroarch >/dev/null || break; sleep 0.5; done; sleep 1.5; }
-play_row() {  # $1 = row in "0 Tour" (0 based), $2 = seconds to play, $3 = label
-  say "$3"
+play_row() {  # $1 = row in "0 Tour" (0 based), $2 = seconds to wait before
+              # pressing, $3 = keys to press in the game, $4 = seconds to
+              # play after them, $5 = label
+  say "$5"
   omarchy-crt shell key home; sleep 0.6
   key fire 1.6                       # Games
   key down 0.3; key down 0.5         # Collections row
@@ -29,25 +45,34 @@ play_row() {  # $1 = row in "0 Tour" (0 based), $2 = seconds to play, $3 = label
   sleep 1.2
   key fire 1
   wait_game "$2"
+  for k in $3; do pad "$k"; done
+  for k in ${6:-}; do pad "$k"; done
+  sleep "$4"
 }
 # The pause menu has eight rows; "Back to launcher" is the last one.
 quit_game() { omarchy-crt shell key menu; sleep 2.2; for _ in 1 2 3 4 5 6 7; do key down 0.35; done; key fire 1; wait_no_game; }
 
 case "${1:-}" in
   desktop)
-    # A clean take of the main monitor: an empty workspace, the bar with the
-    # widget, the pointer arriving on it, the panel, power off and on, a live
-    # line standard switch. Captured with wf-recorder (screencopy, the picture
-    # the compositor shows): gpu-screen-recorder reads one DRM plane and this
-    # Hyprland spreads wallpaper, bar and popups over several. The pointer
-    # waits at the bottom edge first so it visibly travels to the widget. The
-    # shell's idle screensaver would otherwise take the workspace mid-take.
+    # A short clean take of the main monitor: an empty workspace, the bar
+    # with the widget, the panel, power off and on, a live line standard
+    # switch. Nothing waits around: the montage speeds this up and pushes in
+    # on the panel, so every beat only needs to be legible for a moment.
+    #
+    # Captured with wf-recorder (screencopy, the picture the compositor
+    # shows): gpu-screen-recorder reads one DRM plane and this Hyprland
+    # spreads wallpaper, bar and popups over several. This build of
+    # wf-recorder does not draw the pointer, so the choreography does not
+    # rely on it. The idle screensaver would otherwise take the workspace
+    # mid-take, and a notification arriving would end up in the film.
     out="${2:?output file}"
     command -v wf-recorder >/dev/null || { echo "wf-recorder missing (pacman -S wf-recorder)" >&2; exit 1; }
     read -r mon mx my mw mh <<<"$(hyprctl monitors -j | python3 -c 'import json,sys; m=[m for m in json.load(sys.stdin) if m["focused"]][0]; print(m["name"], m["x"], m["y"], m["width"], m["height"])')"
     widget_x=$((mx + mw - 332)); widget_y=$((my + 14))   # the CRT widget in the bar's right group
     idle_before="$(omarchy toggle idle status | grep -c '"enabled":true' || true)"
     omarchy toggle idle stay-awake >/dev/null
+    dnd_before="$(omarchy-shell notifications dndState 2>/dev/null || echo off)"
+    omarchy-shell -q notifications setDnd on >/dev/null 2>&1
     was_ws="$(hyprctl activeworkspace -j | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
     # A named workspace of our own: an empty one by construction. Numbered
     # workspaces may hold windows, and a take with someone's terminals in it
@@ -61,6 +86,7 @@ case "${1:-}" in
     if [ "$open_windows" != "0" ]; then
       echo "the workspace is not empty ($open_windows windows): not recording" >&2
       hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \"$was_ws\" }))" >/dev/null
+      [ "$dnd_before" = "on" ] || omarchy-shell -q notifications setDnd off >/dev/null 2>&1
       [ "$idle_before" = 1 ] || omarchy toggle idle allow-idle >/dev/null
       exit 1
     fi
@@ -69,18 +95,18 @@ case "${1:-}" in
     say "recording $mon"
     wf-recorder -o "$mon" -r 60 -c libx264 -p preset=ultrafast -p crf=16 -x yuv420p -f "$out" >/dev/null 2>&1 &
     rec=$!
-    sleep 3.5
-    say "pointer on the widget"; hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $widget_x, y = $widget_y }))" >/dev/null; sleep 4
-    say "panel"; omarchy-shell shell summon "$id" '{}' >/dev/null 2>&1; sleep 5
-    say "power off"; omarchy-shell -q "$id" off >/dev/null 2>&1; sleep 7
-    say "power on"; omarchy-shell -q "$id" on >/dev/null 2>&1; sleep 17
-    say "PAL 50"; omarchy-shell -q "$id" pal >/dev/null 2>&1; sleep 6
-    say "NTSC 60"; omarchy-shell -q "$id" ntsc >/dev/null 2>&1; sleep 6
+    sleep 2
+    say "panel"; omarchy-shell shell summon "$id" '{}' >/dev/null 2>&1; sleep 3
+    say "power off"; omarchy-shell -q "$id" off >/dev/null 2>&1; sleep 4
+    say "power on"; omarchy-shell -q "$id" on >/dev/null 2>&1; sleep 8
+    say "PAL 50"; omarchy-shell -q "$id" pal >/dev/null 2>&1; sleep 3.5
+    say "NTSC 60"; omarchy-shell -q "$id" ntsc >/dev/null 2>&1; sleep 3.5
     omarchy-shell shell hide "$id" >/dev/null 2>&1
-    sleep 2.5
+    sleep 1
     kill -INT "$rec"; wait "$rec" 2>/dev/null
     hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $((mx + mw / 2)), y = $((my + mh / 2)) }))" >/dev/null
     hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \"$was_ws\" }))" >/dev/null
+    [ "$dnd_before" = "on" ] || omarchy-shell -q notifications setDnd off >/dev/null 2>&1
     [ "$idle_before" = 1 ] || omarchy toggle idle allow-idle >/dev/null
     say "desktop take: $out"
     ;;
@@ -114,18 +140,39 @@ case "${1:-}" in
     for _ in 1 2 3 4 5 6 7; do key down 1.3; done
     for _ in 1 2 3 4 5 6 7; do key up 0.35; done
     sleep 1
-    say "Yie Ar Kung-Fu (arcade)"
-    key fire 1; wait_game 28
+    say "Pac-Man (arcade, 1980)"
+    key fire 1; wait_game 6
+    pad rshift; pad enter            # a coin, then start
+    for k in 105:1800 108:1800 106:1800 103:1500; do pad "$k"; done
+    sleep 8
     say "pause menu: save state, resume"
     omarchy-crt shell key menu; sleep 3
     key down 0.5; key fire 2.5
-    key up 0.5; key fire 1; sleep 6
+    key up 0.5; key fire 1; sleep 5
     quit_game
-    play_row 1 22 "Chrono Trigger (Super Nintendo, 224 lines)"
+    play_row 1 5  "enter enter 45" 8 "Super Mario Bros. 3 (NES)" \
+             "106:3000 45:300 106:2500"
     quit_game
-    play_row 2 20 "Sonic The Hedgehog 2 (Mega Drive)"
+    play_row 2 7  "enter 45 45 45" 8 "Super Metroid (Super Nintendo, 224 lines)" \
+             "106:2500 45:250 106:2000"
     quit_game
-    play_row 6 18 "Metal Slug (Neo Geo)"
+    play_row 3 8  "enter enter" 8 "Sonic The Hedgehog 2 (Mega Drive)" \
+             "106:4000 45:250 106:3000"
+    quit_game
+    play_row 4 8  "rshift enter" 8 "Metal Slug (Neo Geo)" \
+             "106:2000 45:400 106:2000 45:400"
+    quit_game
+    play_row 5 18 "enter 45 45 45 45" 8 "Super Mario 64 (Nintendo 64)" \
+             "106:2500 45:300 103:2000"
+    quit_game
+    play_row 6 32 "enter enter 45 45" 8 "Sega Rally Championship (Saturn)" \
+             "45:5000 106:700 45:5000"
+    quit_game
+    play_row 7 36 "enter enter 45 45" 8 "Crazy Taxi (Dreamcast)" \
+             "45:5000 106:600 45:5000"
+    quit_game
+    play_row 8 24 "rshift enter 45" 8 "Marvel vs. Capcom 2 (Naomi)" \
+             "45:400 44:400 45:400 106:1500 45:400"
     quit_game
     say "Videos: the Omarchy intro"
     omarchy-crt shell key home; sleep 0.6

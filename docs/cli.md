@@ -15,6 +15,8 @@ omarchy-crt shell start|stop|restart|focus
 omarchy-crt shell key <input>...   # home up down left right fire back fav alt start
                                    # search osk del next prev first last
 omarchy-crt shell type <text>      # type into the search bar
+omarchy-crt game key <key> [ms]    # press a key inside the running game, held that long
+                                   # (enter is start, rshift the coin, or an evdev code)
 omarchy-crt watch <file|url> [--later [TITLE]]   # play on the tube now, or keep it in Videos
 omarchy-crt focus
 omarchy-crt audio crt|desktop|all|apps

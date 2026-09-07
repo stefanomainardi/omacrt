@@ -541,6 +541,12 @@ fn run(args: &Args) -> Result<(), String> {
                         inp.search = true;
                         swallow_slash = true;
                     }
+                    // The pause menu over a running game. The pad has
+                    // Select + Start and the home button; on a keyboard this
+                    // is the only way in, and it works while a game runs as
+                    // long as the launcher holds the keyboard (the panel's
+                    // "Keys to the launcher" button, or `omarchy-crt focus`).
+                    Keycode::F1 => inp.menu = true,
                     Keycode::Escape => inp.nav = Some(Nav::Back),
                     Keycode::Backspace => inp.backspace = true,
                     Keycode::Return => {

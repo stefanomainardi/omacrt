@@ -27,6 +27,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
                                  search osk del next prev first last
   shell type <text>              type into the launcher's search bar
+  game key <key> [ms]            press a key inside the running game (enter, rshift, or an
+                                 evdev code), held for that many milliseconds
   watch <file|url> [--later [TITLE]]  play a video or a YouTube link on the tube, or keep it for later
   game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
   shot <file.png>                what the tube shows right now (leased output)
@@ -1454,6 +1456,21 @@ fn main() {
                 "load" => game::load_state(),
                 "reset" => game::reset(),
                 "quit" => game::quit(),
+                // A key pressed inside the game, held as long as asked: the
+                // compositor presses it, RetroArch reads its own bindings
+                // (start is enter, select rshift, A x, B z).
+                "key" => {
+                    let pos = positional(args);
+                    let name = pos
+                        .get(1)
+                        .map(|s| s.as_str())
+                        .unwrap_or_else(|| die("game key needs a key name or an evdev code"));
+                    let line = match pos.get(2) {
+                        Some(ms) => format!("key {name} {ms}"),
+                        None => format!("key {name}"),
+                    };
+                    crt::display::send(&line)
+                }
                 "cmd" => match positional(args).get(1) {
                     Some(c) => game::send(c),
                     None => die("game cmd needs a RetroArch command"),

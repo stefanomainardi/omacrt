@@ -18,6 +18,7 @@ abstract layout, and pads can be plugged in or removed while the shell runs.
 | Search                 | `/`, then type     | left trigger, on screen keyboard |
 | Next, previous letter  | `PageDown`, `PageUp` | `RB`, `LB`      |
 | First, last row        | `Home`, `End`      | none              |
+| Pause menu in a game   | `F1`               | `Select`+`Start`, home |
 | Quit the shell         | `q`                | none              |
 
 `/` on a game list filters that list as you type: every word must appear in
@@ -77,14 +78,17 @@ own autoconfig profiles; the wizard is for the launcher.
 
 ## In a game
 
-`Select` plus `Start` on the pad, the home button, or `omarchy-crt shell key
-menu` pauses the game and raises the launcher's pause menu over it: resume,
+`Select` plus `Start` on the pad, the home button, `F1` on the keyboard, or
+`omarchy-crt shell key menu` pauses the game and raises the launcher's pause menu over it: resume,
 save state, load state, rewind two seconds, fast forward (toggles RetroArch's
 speed and resumes), slow motion (toggles it too), reset, back to the
 launcher. Rewind needs the system to allow it, since it costs memory and CPU
 and is off for the 3D consoles; the menu says so rather than doing nothing.
 The menu shows when the game's latest save state was written. `B` or `Esc`
-resumes.
+resumes. `F1` reaches the launcher only while the launcher holds the
+keyboard, which is what the panel's "Keys to the launcher" button (and
+`omarchy-crt focus`) does: the game keeps running and the keys go to the
+launcher. With the game itself focused, use the pad or the CLI.
 
 ## In RetroArch
 
