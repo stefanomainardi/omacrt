@@ -1660,6 +1660,33 @@ impl Scene {
             self.music_view_step(dir);
             return;
         }
+        // The list of consoles has no letters worth jumping between, so the
+        // shoulders move it a page at a time, which is what they are for on
+        // every other screen.
+        if let Screen::Systems { sel, top } = &mut self.screen {
+            let rows = Self::VIRTUAL
+                + self
+                    .library
+                    .systems
+                    .iter()
+                    .filter(|s| !s.is_video())
+                    .count();
+            if rows == 0 {
+                return;
+            }
+            let step = SYS_PAGE as i32 - 1;
+            let next = (*sel as i32 + dir.signum() * step).clamp(0, rows as i32 - 1) as usize;
+            if next == *sel {
+                return;
+            }
+            *sel = next;
+            *top = next.saturating_sub(SYS_PAGE - 1).min(next);
+            if next < *top {
+                *top = next;
+            }
+            self.pending.push(Sound::Move);
+            return;
+        }
         let Screen::Games { sel, .. } = self.screen else {
             return;
         };

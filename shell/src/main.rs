@@ -503,6 +503,7 @@ fn run(args: &Args) -> Result<(), String> {
                     scene.game_finished(status.success() || library::exited_after_unload());
                     omarchy_crt_shell::crt::output::expect_game_clear();
                     following = None;
+                    stick.release();
                     if preview_was_up {
                         preview_was_up = false;
                         let _ = omarchy_crt_shell::crt::display::send("monitor on");
@@ -606,10 +607,26 @@ fn run(args: &Args) -> Result<(), String> {
                         inp.start = true;
                         inp.fire = true;
                     }
-                    Keycode::Up => inp.nav = Some(Nav::Up),
-                    Keycode::Down => inp.nav = Some(Nav::Down),
-                    Keycode::Left => inp.nav = Some(Nav::Left),
-                    Keycode::Right => inp.nav = Some(Nav::Right),
+                    // The arrows and the d-pad hold down to keep moving, and
+                    // the longer they are held the faster the list runs: see
+                    // `pad::Stick`. The press itself is acted on here, the
+                    // repeats come from the poll below.
+                    Keycode::Up => {
+                        inp.nav = Some(Nav::Up);
+                        stick.set_pressed(Nav::Up, true, now());
+                    }
+                    Keycode::Down => {
+                        inp.nav = Some(Nav::Down);
+                        stick.set_pressed(Nav::Down, true, now());
+                    }
+                    Keycode::Left => {
+                        inp.nav = Some(Nav::Left);
+                        stick.set_pressed(Nav::Left, true, now());
+                    }
+                    Keycode::Right => {
+                        inp.nav = Some(Nav::Right);
+                        stick.set_pressed(Nav::Right, true, now());
+                    }
                     Keycode::K if !typing => inp.nav = Some(Nav::Up),
                     Keycode::J if !typing => inp.nav = Some(Nav::Down),
                     Keycode::H if !typing => inp.nav = Some(Nav::Left),
@@ -681,9 +698,22 @@ fn run(args: &Args) -> Result<(), String> {
                         stick.set(axis, value);
                     }
                 }
+                Event::KeyUp {
+                    keycode: Some(k), ..
+                } => match k {
+                    Keycode::Up => stick.set_pressed(Nav::Up, false, now()),
+                    Keycode::Down => stick.set_pressed(Nav::Down, false, now()),
+                    Keycode::Left => stick.set_pressed(Nav::Left, false, now()),
+                    Keycode::Right => stick.set_pressed(Nav::Right, false, now()),
+                    _ => {}
+                },
                 Event::ControllerButtonUp { button, .. } => match button {
                     Button::Back => held_back = false,
                     Button::Start => held_start = false,
+                    Button::DPadUp => stick.set_pressed(Nav::Up, false, now()),
+                    Button::DPadDown => stick.set_pressed(Nav::Down, false, now()),
+                    Button::DPadLeft => stick.set_pressed(Nav::Left, false, now()),
+                    Button::DPadRight => stick.set_pressed(Nav::Right, false, now()),
                     _ => {}
                 },
                 Event::ControllerButtonDown { button, .. } => match button {
@@ -703,10 +733,22 @@ fn run(args: &Args) -> Result<(), String> {
                         inp.start = true;
                         inp.fire = true;
                     }
-                    Button::DPadUp => inp.nav = Some(Nav::Up),
-                    Button::DPadDown => inp.nav = Some(Nav::Down),
-                    Button::DPadLeft => inp.nav = Some(Nav::Left),
-                    Button::DPadRight => inp.nav = Some(Nav::Right),
+                    Button::DPadUp => {
+                        inp.nav = Some(Nav::Up);
+                        stick.set_pressed(Nav::Up, true, now());
+                    }
+                    Button::DPadDown => {
+                        inp.nav = Some(Nav::Down);
+                        stick.set_pressed(Nav::Down, true, now());
+                    }
+                    Button::DPadLeft => {
+                        inp.nav = Some(Nav::Left);
+                        stick.set_pressed(Nav::Left, true, now());
+                    }
+                    Button::DPadRight => {
+                        inp.nav = Some(Nav::Right);
+                        stick.set_pressed(Nav::Right, true, now());
+                    }
                     Button::B | Button::Back => {
                         held_back = button == Button::Back;
                         inp.nav = Some(Nav::Back);

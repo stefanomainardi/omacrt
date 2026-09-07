@@ -444,6 +444,23 @@ fn default_systems() -> Vec<System> {
                 ("scummvm_video_hw_acceleration", "disabled"),
                 ("scummvm_autosave", "enabled"),
                 ("scummvm_samplerate", "48000"),
+                // A point and click game on a pad needs the two mouse buttons
+                // and the handful of keys these games were written around:
+                // Enter for a dialogue box, Escape to skip a cutscene, the
+                // full stop to skip a line, F5 for the save menu, and the
+                // virtual keyboard for the one game that asks you to type.
+                ("scummvm_mapper_a", "RETROKE_LEFT_BUTTON"),
+                ("scummvm_mapper_b", "RETROKE_RIGHT_BUTTON"),
+                ("scummvm_mapper_x", "RETROK_ESCAPE"),
+                ("scummvm_mapper_y", "RETROK_PERIOD"),
+                ("scummvm_mapper_start", "RETROK_RETURN"),
+                ("scummvm_mapper_select", "RETROKE_SCUMMVM_GUI"),
+                ("scummvm_mapper_l", "RETROKE_VKBD"),
+                ("scummvm_mapper_r", "RETROKE_FINE_CONTROL"),
+                ("scummvm_mapper_l2", "RETROK_F5"),
+                ("scummvm_mapper_r2", "RETROK_SPACE"),
+                ("scummvm_mapper_l3", "RETROK_BACKSPACE"),
+                ("scummvm_mapper_r3", "RETROK_RETURN"),
             ]),
         ),
         sys(
