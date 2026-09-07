@@ -110,6 +110,19 @@ Item {
 
   function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
 
+  // What a source folder is called on screen. The full path is what the
+  // commands take, but it carries the user's name and the label of whatever
+  // disk the collection sits on, and this overlay ends up in screenshots.
+  // Home becomes `~`, a removable disk becomes its own name.
+  function short(p) {
+    var path = String(p)
+    var home = Quickshell.env("HOME") || ""
+    if (home.length > 0 && path.indexOf(home + "/") === 0) return "~" + path.slice(home.length)
+    var m = path.match(/^\/(?:run\/media|media)\/[^/]+\/(.+)$/)
+    if (m) return m[1]
+    return path
+  }
+
   // The scan in the background, with the folder it reads shown as it goes.
   function scan(dir) {
     if (scanProc.running) return
@@ -358,7 +371,7 @@ Item {
                     width: parent.width
                     spacing: Style.space(8)
                     Mono {
-                      text: modelData.path
+                      text: root.short(modelData.path)
                       color: modelData.mounted ? root.fg : root.muted
                       width: parent.width - Style.space(220)
                       anchors.verticalCenter: parent.verticalCenter
@@ -374,7 +387,7 @@ Item {
                     width: parent.width
                     spacing: Style.space(8)
                     Mono {
-                      text: modelData.path
+                      text: root.short(modelData.path)
                       color: root.accent
                       width: parent.width - Style.space(220)
                       anchors.verticalCenter: parent.verticalCenter
@@ -550,7 +563,7 @@ Item {
                     width: parent.width
                     spacing: Style.space(8)
                     Mono {
-                      text: modelData.path
+                      text: root.short(modelData.path)
                       width: parent.width - Style.space(330)
                       anchors.verticalCenter: parent.verticalCenter
                     }
