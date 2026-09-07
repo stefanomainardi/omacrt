@@ -24,7 +24,7 @@ replug() {
 case "${1:-}" in
   on)
     # Start from the sink's own EDID, whatever override is in place now.
-    echo reset > "$dbg/edid_override"; echo detect > "$status"; sleep 1
+    printf reset > "$dbg/edid_override"; echo detect > "$status"; sleep 1
     out="/run/omarchy-crt-$conn.edid"
     python3 "$here/edid-non-desktop.py" "$edid" "$out"
     cat "$out" > "$dbg/edid_override"
@@ -33,7 +33,7 @@ case "${1:-}" in
     echo "live EDID Microsoft blocks: $(edid-decode "$edid" 2>/dev/null | grep -c 'Microsoft')"
     ;;
   off)
-    echo reset > "$dbg/edid_override"; echo detect > "$status"; sleep 1
+    printf reset > "$dbg/edid_override"; echo detect > "$status"; sleep 1
     replug
     ;;
   *) sed -n '2,8p' "$0"; exit 1 ;;
