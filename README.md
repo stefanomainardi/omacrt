@@ -82,10 +82,7 @@ glass. Both are the point.
 ## What it looks like
 
 <p align="center">
-  <img src="docs/screens/home.png" width="420" alt="Home menu on the tube">
-</p>
-<p align="center">
-  <img src="docs/screens/boot.gif" width="420" alt="The launcher booting on the tube">
+  <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
 </p>
 <p align="center">
   <img src="docs/screens/coverflow.png" width="270" alt="Cover flow on the tube">
