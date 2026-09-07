@@ -82,10 +82,20 @@ shell key menu` pauses and resumes the running game today. What is left is
   bind.
 - **Save states.** One slot per game with a timestamp, quick save and load
   from the pause menu, "resume where you left" on the game row.
+  *Landed 2026-09-07:* `shell/src/states.rs` reads RetroArch's states per
+  game (manual slot and the automatic one), rows carry an arrow, the box art
+  panel and the pause menu say when the state was written; fast forward
+  joined the pause menu. Rewind stays off (RetroArch's buffer costs CPU).
 - **Pad recognition.** Identify the pad family and layout on plug (SDL
   database plus vendor and product ids), map RetroPad buttons per family,
   show the right glyphs everywhere, remember per pad. Unknown pads get a
   short mapping wizard on the tube.
+  *Landed 2026-09-07:* `shell/src/padmap.rs`, the wizard on the tube for any
+  joystick SDL has no mapping for, saved to `gamecontrollerdb.txt`; `X` on
+  the Pads screen maps the current pad again.
+- **Search.** *Landed 2026-09-07:* `/` filters any list as you type, from
+  the home menu it searches the whole collection; pads use the left trigger
+  and an on screen keyboard, shoulders jump by initial letter.
 
 ## Phase B, a launcher worth looking at
 
@@ -99,6 +109,9 @@ shell key menu` pauses and resumes the running game today. What is left is
 - **Details that make it feel finished.** Region and player count from the
   file name tags, "last played", favourites star, a slow marquee for long
   titles, folder breadcrumbs.
+  *Landed 2026-09-07:* tags, last played, marquee, star and breadcrumbs.
+  Player count is not in the file names the collection uses (No-Intro,
+  MAME short names), so it waits for a metadata source.
 
 ## Phase C, manage the collection from the bar
 
@@ -143,8 +156,11 @@ while the session is locked (Quickshell aborts on its lock surfaces).
   cliamp 1.63 speaks the v1 socket protocol (`{"cmd": ...}`); the v2 envelope
   of newer releases is not accepted yet, so the client sticks to v1 commands
   (`status`, `bands`, `provider.*`, `track.play`, `queue.*`, `history`).
-  Still open: text search (needs an on screen keyboard for pads), album art
-  and station logos, favourites, an EQ page.
+  *Later the same day:* search with the on screen keyboard on the music
+  lists, favourite stations (`radio-favorites.tsv`), `omarchy-crt watch` for
+  files and links with a watch later list in Videos. Still open: album art
+  and station logos, an EQ page, Spotify and YouTube sign in (the user runs
+  `cliamp setup` once; the providers then appear by themselves).
 - **Video.** YouTube and local video through mpv with the Video fit pipeline
   (already in), a "watch later" list, 480i when the KMS session lands.
 

@@ -240,20 +240,31 @@ collapse onto one title, systems show up when they have games. Details in
 
 ## Roadmap
 
-1. **First light.** Done on 2026-09-06: the launcher runs on the BeoCenter 1
-   through the RGB-Pi 2 at 240p and 288p with audio over SCART. Next: centering
-   and overscan safe area, color levels, per game modes.
-2. **Kernel.** Package `linux-crt` from `linux-lts` with the 15 kHz patches;
-   automate rebuilds.
-3. **Real DAC.** RTD2166 adapter plus VideoAmp or UMSA on a SCART TV; verify
-   240p, 288p and 480i with `switchres`.
-4. **Game launch on the CRT.** RetroArch in KMS/DRM on a second virtual
-   terminal with mode switching on, GroovyMAME next; the desktop launch path
-   already works.
-5. **Omarchy integration.** `omarchy-crt-install`, menu entries, TV profiles
-   (NTSC, PAL, generic 15 kHz), geometry test patterns.
-6. **More effects.** Port the rest of the TerminalTextEffects catalog to the
+Done so far (see [`docs/plan.md`](docs/plan.md) for the phases):
+
+- **First light**, 2026-09-06: the launcher on the BeoCenter 1 through the
+  RGB-Pi 2 at 240p and 288p, audio over SCART.
+- **The tube is ours**, 2026-09-07: the DAC's connector leased from the
+  desktop and driven by `omarchy-crt-display`, a compositor of its own; live
+  line changes per system, screenshots and recordings of the tube, a desktop
+  monitor window with the keyboard.
+- **Playing well**: pause menu with save and load state, fast forward, reset;
+  save states in sight; pad mapping wizard; search across the collection;
+  music through cliamp; watch anything through mpv.
+- **The bar plugin**: power, standard, sync, audio and volume, the library
+  overlay with disks, cores, BIOS and unplaced folders.
+
+Next:
+
+1. **480i and 576i on the tube.** An interlaced modeline for the RGB-Pi 2 so
+   video plays as fields, the way the Video fit pipeline already prepares it.
+2. **More in the pause menu.** Rewind (RetroArch's rewind buffer costs CPU,
+   so per system), aspect and shader choices.
+3. **Album art and station logos** on the music screens; an equaliser page.
+4. **More effects.** Port the rest of the TerminalTextEffects catalog to the
    screensaver.
+5. **A kernel with the 15 kHz patches** only if a mode the DAC needs turns
+   out unreachable from userspace; nothing so far has.
 
 ## Contributing
 
