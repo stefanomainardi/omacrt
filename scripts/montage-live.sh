@@ -10,10 +10,11 @@
 #                     it starts at the same instant as the capture
 #   tube-live-1.mp4   the capture (1280x960 with the TV's audio)
 #
-# The film is 2.39:1 inside a 1920x1080 frame: wide shots of the set fill it,
-# pictures of the screen stand in the middle with the frame dark either side.
-# Every clip carries its own sound. Cuts are hard, the two dissolves are where
-# the subject changes.
+# The film is 2.39:1 inside a 1920x1080 frame. It is the television that is
+# being filmed, so nearly every shot is the whole set, held still; the tighter
+# framing on the screen alone is kept for a few moments of play. The picture
+# always comes from the phone, the sound always from the capture, at the same
+# instant: the two takes were aligned to within four hundredths of a second.
 set -eu
 dir="${1:?takes dir}"; out="${2:?output}"
 P="$dir/phone-proxy.mp4"; T="$dir/tube-live-1.mp4"
@@ -52,6 +53,7 @@ wide() {  # start, seconds, caption
   local vf="crop=1920:${H}:0:138,setsar=1"
   [ "$cap" = "null" ] || vf="$vf,$cap"
   ffmpeg -hide_banner -loglevel error -y -ss "$1" -t "$d" -i "$P" \
+    -ss "$1" -t "$d" -i "$T" -map 0:v:0 -map 1:a:0 \
     -vf "$vf,$(pad),$(fades "$d")" -af "$(afades "$d")" "${common[@]}" "$f"
   echo "file '$f'" >> "$list"
 }
@@ -65,11 +67,13 @@ screen() {  # start, seconds, caption
   vf="$vf,pad=1920:${H}:(ow-iw)/2:0:color=$bg"
   [ "$cap" = "null" ] || vf="$vf,$cap"
   ffmpeg -hide_banner -loglevel error -y -ss "$1" -t "$d" -i "$P" \
+    -ss "$1" -t "$d" -i "$T" -map 0:v:0 -map 1:a:0 \
     -vf "$vf,$(pad),$(fades "$d")" -af "$(afades "$d")" "${common[@]}" "$f"
   echo "file '$f'" >> "$list"
 }
 
-# The framebuffer itself, for everything made of text: menus, lists, the deck.
+# The framebuffer itself. Kept for the record: this cut does not use it,
+# because the point of the film is the television, not the pixels.
 clean() {  # start, seconds, caption
   n=$((n+1)); local f="$work/$(printf '%02d' $n)-clean.mp4"
   local d="$2" cap; cap="$(caption "${3:-}" "$2")"
@@ -92,30 +96,27 @@ card() {  # title, subtitle, seconds
 }
 
 # ---------------------------------------------------------------- the film
-# Timestamps read off both takes frame by frame: the phone for anything with
-# a picture in it, the capture for anything made of text.
-wide    20  4.0 "A Bang & Olufsen television from 1998, driven by an Omarchy PC"
-card    "OMARCHY CRT" "an Omarchy version for retro gaming on CRT" 2.6
-clean  10.6 4.6 "the launcher boots on the tube"
-clean  18.4 2.6 "320x240, in the Omarchy look"
-clean   29  3.4 "the collection: box art matched by title"
-clean  33.2 2.8 "a game left in the middle asks before it starts"
-screen  55  2.2 ""
-screen  70  2.4 ""
-screen 100  5.0 "Sega Rally Championship · Saturn"
-clean 107.5 3.4 "save, load, rewind, slow motion: hotkeys the compositor presses"
-screen 145  2.6 ""
-screen 176  4.2 "Marvel vs. Capcom 2 · Naomi"
-screen 190  3.8 "Super Mario 64 · Nintendo 64"
-screen 221  3.8 "Super Metroid · 224 lines, one for each line of the tube"
-screen 281  2.6 ""
-clean  318  3.2 "any disk, any folder layout, every system with its core"
-clean  364  3.4 "radio and Spotify through cliamp, on a hi-fi deck"
-screen 401  3.8 ""
-clean 404.5 3.0 "the album art comes from Spotify itself"
-clean 416.2 2.4 "ten bands, moved from the sofa"
-wide   505  4.0 ""
-card   "github.com/stefanomainardi/omarchy-crt" "#omarchyCRT" 3.2
+# Every shot is the television in the room, held still: the subject is the set,
+# not the pixels. The boot starts 27 seconds into the phone's own file, which
+# is 7.4 here because the head was trimmed to match the capture.
+wide  20.5 3.2 "A Bang & Olufsen television from 1998, driven by an Omarchy PC"
+card  "OMARCHY CRT" "an Omarchy version for retro gaming on CRT" 2.4
+wide   7.4 10.5 "the launcher boots on the tube: BIOS, wordmark, Mode 7 floor"
+wide    28 3.5 "the collection, with box art matched by title"
+wide    34 3.0 "a game left in the middle asks before it starts"
+wide    46 3.0 ""
+wide   100 5.0 "Sega Rally Championship · Saturn"
+wide   108 3.0 "save, load, rewind, slow motion: hotkeys the compositor presses"
+wide   145 3.0 ""
+wide   176 4.0 "Marvel vs. Capcom 2 · Naomi"
+wide   190 3.5 "Super Mario 64 · Nintendo 64"
+wide   221 3.5 "Super Metroid · 224 lines, one for each line of the tube"
+wide   328 3.0 "any disk, any folder layout, every system with its core"
+wide   370 3.5 "radio and Spotify through cliamp, on a hi-fi deck"
+wide   401 4.0 ""
+wide   415 3.0 "the album art comes from Spotify itself"
+wide   505 3.5 ""
+card  "github.com/stefanomainardi/omarchy-crt" "#omarchyCRT" 3.0
 
 ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$list" -c copy "$out"
 echo "$out"
