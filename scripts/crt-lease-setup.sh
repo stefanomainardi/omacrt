@@ -18,13 +18,15 @@ case "${1:-}" in
     out="/run/omarchy-crt-$conn.edid"
     python3 "$here/edid-non-desktop.py" "$edid" "$out"
     cat "$out" > "$dbg/edid_override"
-    echo off > "$status"; sleep 1; echo detect > "$status"
-    sleep 1
+    # The compositor re-reads the non-desktop property only when the
+    # connector comes back from disconnected, so give it a real gap.
+    echo off > "$status"; sleep 5; echo detect > "$status"
+    sleep 2
     echo "override in place: $(edid-decode "$edid" 2>/dev/null | grep -c 'Microsoft') Microsoft block(s) in the live EDID"
     ;;
   off)
     echo reset > "$dbg/edid_override"
-    echo off > "$status"; sleep 1; echo detect > "$status"
+    echo off > "$status"; sleep 5; echo detect > "$status"
     ;;
   *) sed -n '2,8p' "$0"; exit 1 ;;
 esac

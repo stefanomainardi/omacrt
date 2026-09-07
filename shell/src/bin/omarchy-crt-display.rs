@@ -146,8 +146,12 @@ impl Dispatch<wl_display::WlDisplay, ()> for State {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(|s| s.as_str()) == Some("props") {
+        props(args.get(1).map(|s| s.as_str()).unwrap_or("HDMI-A-1"));
+        return;
+    }
     if args.first().map(|s| s.as_str()) != Some("probe") {
-        eprintln!("usage: omarchy-crt-display probe [connector] [seconds]");
+        eprintln!("usage: omarchy-crt-display probe|props [connector] [seconds]");
         std::process::exit(2);
     }
     let cfg = Config::load();
@@ -275,6 +279,53 @@ fn main() {
     let _ = card.destroy_framebuffer(fb);
     let _ = card.destroy_dumb_buffer(db);
     println!("done, releasing the lease");
+}
+
+/// Print the kernel's view of a connector (no master needed): status,
+/// EDID size and the non-desktop property the lease path depends on.
+fn props(want: &str) {
+    for card in ["/dev/dri/card1", "/dev/dri/card0", "/dev/dri/card2"] {
+        let Ok(f) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(card)
+        else {
+            continue;
+        };
+        let dev = Leased(OwnedFd::from(f));
+        let Ok(res) = dev.resource_handles() else {
+            continue;
+        };
+        for h in res.connectors() {
+            let Ok(info) = dev.get_connector(*h, false) else {
+                continue;
+            };
+            let name = format!("{:?}-{}", info.interface(), info.interface_id());
+            if !name.contains(
+                want.trim_start_matches("HDMI-A-")
+                    .trim_start_matches(|c: char| !c.is_ascii_digit()),
+            ) && !name.starts_with(want.split('-').next().unwrap_or(""))
+            {
+                continue;
+            }
+            let Ok(props) = dev.get_properties(*h) else {
+                continue;
+            };
+            let mut nd = String::from("?");
+            for (pid, val) in props.iter() {
+                if let Ok(pi) = dev.get_property(*pid) {
+                    if pi.name().to_str().unwrap_or("") == "non-desktop" {
+                        nd = val.to_string();
+                    }
+                }
+            }
+            println!(
+                "{card} {name}: state {:?}, {} modes, non-desktop = {nd}",
+                info.state(),
+                info.modes().len()
+            );
+        }
+    }
 }
 
 /// Our modeline as the kernel wants it.
