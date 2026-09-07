@@ -9,6 +9,9 @@
 use crate::comp::Crt;
 use smithay::backend::input::KeyState;
 use smithay::input::keyboard::Keycode;
+
+/// F1 in the Wayland numbering: evdev 59 plus the eight of the X11 offset.
+const F1: u32 = 67;
 use smithay::reexports::calloop::LoopHandle;
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool,
@@ -478,6 +481,16 @@ impl Crt {
     /// seen to stay false when the enter event was missed, which swallowed
     /// every key typed in the window (Escape over a video, for one).
     fn forward_key(&mut self, code: Keycode, state: KeyState) {
+        // F1 belongs to the launcher, not to the program on the tube: while a
+        // game runs the keyboard goes to RetroArch, so a launcher shortcut
+        // would never arrive. It is turned into the launcher's own `menu`
+        // input, which is what the pad's Select + Start sends.
+        if code.raw() == F1 {
+            if matches!(state, KeyState::Pressed) {
+                let _ = omarchy_crt_shell::crt::control::send(&["menu"]);
+            }
+            return;
+        }
         self.focus_top();
         self.key_event(code, state);
     }
