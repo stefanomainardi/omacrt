@@ -82,10 +82,13 @@ glass. Both are the point.
 ## What it looks like
 
 <p align="center">
-  <img src="docs/screens/coverflow.png" width="420" alt="Cover flow on the tube">
+  <img src="docs/screens/home.png" width="420" alt="Home menu on the tube">
 </p>
 <p align="center">
-  <img src="docs/screens/home.png" width="270" alt="Home menu on the tube">
+  <img src="docs/screens/boot.gif" width="420" alt="The launcher booting on the tube">
+</p>
+<p align="center">
+  <img src="docs/screens/coverflow.png" width="270" alt="Cover flow on the tube">
   <img src="docs/screens/systems.png" width="270" alt="Systems with console pictures">
   <img src="docs/screens/pause.png" width="270" alt="Pause menu over a game">
   <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
@@ -94,7 +97,8 @@ glass. Both are the point.
 </p>
 
 Every picture above was captured from the tube's own framebuffer by
-`omarchy-crt shot`; the television adds the scanlines.
+`omarchy-crt shot`, and the boot by `omarchy-crt record`; the television adds
+the scanlines.
 
 ## How it works
 
