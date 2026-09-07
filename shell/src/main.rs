@@ -519,7 +519,9 @@ fn run(args: &Args) -> Result<(), String> {
                 Ok(None) => {
                     // While it runs: read the tail of its log and follow the
                     // resolution the core reports.
-                    if now() >= follow_at {
+                    // Not while the pause menu is up: the tube is showing the
+                    // launcher then, not the game.
+                    if now() >= follow_at && !scene.is_paused() {
                         follow_at = now() + 0.75;
                         if let Some((_, h)) = library::core_geometry(&tail_of_game_log())
                             && (180..=1200).contains(&h)
@@ -786,12 +788,12 @@ fn run(args: &Args) -> Result<(), String> {
 
             if scene.is_running() {
                 if inp.menu {
-                    after_pause(scene.toggle_pause());
+                    after_pause(scene.toggle_pause(), following, fb.h as u32);
                     continue;
                 }
                 if scene.is_paused() {
                     if is_input {
-                        after_pause(scene.pause_input(nav, fire));
+                        after_pause(scene.pause_input(nav, fire), following, fb.h as u32);
                     }
                     continue;
                 }
@@ -1241,15 +1243,36 @@ fn crt_mode(geometry: Option<Geometry>) -> bool {
 /// Compositor side of a pause action: the launcher comes to the front over
 /// the paused game, resuming puts the game back in front. Both windows stay
 /// mapped and rendered throughout.
-fn after_pause(outcome: PauseOutcome) {
+///
+/// The television follows whichever of the two is being looked at. A console
+/// that draws 224 lines gets 224 lines while it is playing, and the launcher's
+/// own screens are 240, so the pause menu over a Super Nintendo would be five
+/// rows of text squeezed into four and a half. `game_lines` is what the game
+/// is drawing and `own_lines` what the launcher draws; when they differ the
+/// mode changes with the picture and changes back on the way out. It costs the
+/// television a moment to lock again, which is what a real console did between
+/// its menu and its game.
+fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
     use omarchy_crt_shell::crt::display;
     use omarchy_crt_shell::crt::output::raise;
+    let differs = game_lines.is_some_and(|l| l != own_lines);
     if display::on_tube() {
         match outcome {
             PauseOutcome::Shown => {
+                if differs {
+                    crt_mode_async(None);
+                }
                 display::raise(omarchy_crt_shell::crt::SHELL_CLASS);
             }
             PauseOutcome::Resumed => {
+                if differs {
+                    crt_mode_async(Some(Geometry {
+                        lines: game_lines,
+                        shift_x: 0,
+                        shift_y: 0,
+                        follow: true,
+                    }));
+                }
                 display::raise("com.libretro.RetroArch");
             }
             _ => {}

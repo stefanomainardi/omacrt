@@ -39,6 +39,9 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The television follows whichever picture is being looked at: a console
+  drawing 224 lines gets 224 lines while it plays, and the tube goes back to
+  the launcher's own 240 for as long as the pause menu is up.
 - The Games browser no longer lists the videos folder as if it were a
   console; it has its own row on the home menu.
 - The television follows the resolution the core is drawing. Every system has
