@@ -109,6 +109,10 @@ enum Screen {
     },
     /// What plays now, with the visualiser.
     NowPlaying,
+    /// The ten band equaliser of the engine, one slider per band.
+    Equalizer {
+        band: usize,
+    },
     /// Button by button mapping of a pad SDL does not know.
     PadWizard,
     /// Videos hub: local films, YouTube, the clipboard link.
@@ -129,6 +133,8 @@ enum MusicRow {
     Hub(Hub),
     /// A provider's search: the bar asks for the query.
     Search(String),
+    /// The ten band equaliser.
+    Equalizer,
 }
 
 /// The two worlds of cliamp, each with its own screen: the radio directory
@@ -2075,6 +2081,34 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::Equalizer { band } => {
+                let b = *band;
+                match nav {
+                    Nav::Left if b > 0 => {
+                        *band = b - 1;
+                        moved = true;
+                    }
+                    Nav::Right if b + 1 < music::EQ_BANDS => {
+                        *band = b + 1;
+                        moved = true;
+                    }
+                    Nav::Up | Nav::Down => {
+                        let step = if nav == Nav::Up { 1.0 } else { -1.0 };
+                        let now = self.music.eq_bands()[b];
+                        self.music.eq_set_band(b, now + step);
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        self.screen = Screen::Music {
+                            sel: self.music_root_sel,
+                            top: 0,
+                        };
+                        self.pending.push(Sound::Lock);
+                        return;
+                    }
+                    _ => {}
+                }
+            }
             Screen::MusicSettings { sel } => match nav {
                 Nav::Up if *sel > 0 => {
                     *sel -= 1;
@@ -2381,6 +2415,16 @@ impl Scene {
             "Queue".into(),
             if st.total > 0 { format!("{:>4}", st.total) } else { String::new() },
             MusicRow::Source(Source::Queue),
+        ));
+        rows.push((
+            icons::PULSE,
+            "Equalizer".into(),
+            if self.music.status.eq_preset.is_empty() {
+                String::new()
+            } else {
+                self.music.status.eq_preset.clone()
+            },
+            MusicRow::Equalizer,
         ));
         rows
     }
@@ -2715,6 +2759,11 @@ impl Scene {
                         self.pending.push(Sound::Select);
                         self.go(Screen::Music { sel: 0, top: 0 });
                     }
+                    Some(MusicRow::Equalizer) => {
+                        self.music_root_sel = sel;
+                        self.pending.push(Sound::Select);
+                        self.go(Screen::Equalizer { band: 0 });
+                    }
                     Some(MusicRow::Search(key)) => {
                         // An empty list with the bar asking for the query.
                         self.music_root_sel = sel;
@@ -2748,6 +2797,19 @@ impl Scene {
             }
             Screen::NowPlaying => {
                 self.music_alt(None);
+                Action::None
+            }
+            Screen::Equalizer { .. } => {
+                // A walks the presets; Flat follows Custom.
+                let now = self.music.status.eq_preset.clone();
+                let i = music::EQ_PRESETS.iter().position(|p| *p == now);
+                let next = match i {
+                    Some(k) => music::EQ_PRESETS[(k + 1) % music::EQ_PRESETS.len()],
+                    None => music::EQ_PRESETS[0],
+                };
+                self.music.eq_set_preset(next);
+                self.pending.push(Sound::Select);
+                self.message = Some((format!("equaliser: {next}"), self.now + 2.0));
                 Action::None
             }
             Screen::PadWizard => {
@@ -3913,6 +3975,10 @@ impl Scene {
                 self.draw_now_playing(fb);
                 return;
             }
+            Screen::Equalizer { band } => {
+                self.draw_equalizer(fb, band);
+                return;
+            }
             Screen::PadWizard => {
                 self.draw_pad_wizard(fb);
                 return;
@@ -4473,6 +4539,10 @@ impl Scene {
                 self.menu_live && i == self.sel,
                 fade,
             );
+        }
+        // What plays keeps its line at the foot of the home screen.
+        if fade > 0.9 {
+            self.draw_music_strip(fb, h - 44);
         }
         let max_cols = (width / 8) as usize;
         let cut = |s: &str| -> String { s.chars().take(max_cols).collect() };
@@ -5139,6 +5209,88 @@ impl Scene {
         self.draw_music_strip(fb, h - 30);
         let hint = self.hint(&[("A", "open"), ("X", "pause"), ("B", "back")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// The ten bands as vertical sliders, the picked one lit, with the
+    /// preset's name and the gain in dB of the band under the cursor.
+    fn draw_equalizer(&mut self, fb: &mut Framebuffer, band: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let width = w - 2 * left;
+        let y0 = self.draw_header(fb, "Equalizer");
+        let th = self.theme.clone();
+        let preset = if self.music.status.eq_preset.is_empty() {
+            "Custom".to_string()
+        } else {
+            self.music.status.eq_preset.clone()
+        };
+        fb.text(left, y0, &format!("preset  {preset}"), th.paper, 1);
+        // The plot: zero in the middle, the range of the engine top to bottom.
+        let top = y0 + 18;
+        let plot_h = h - 52 - top;
+        let mid = top + plot_h / 2;
+        let bands = self.music.eq_bands();
+        let step = width / music::EQ_BANDS as i32;
+        let slot = (step - 6).max(4);
+        // Grid: zero line and the two extremes, each labelled once.
+        fb.rect(left, mid, width, 1, lerp_color(th.bg, th.dim, 0.7));
+        for (dy, lab) in [(-plot_h / 2, "+12"), (plot_h / 2, "-12")] {
+            let y = mid + dy;
+            for x in (left..left + width).step_by(4) {
+                fb.put(x, y, lerp_color(th.bg, th.dim, 0.35));
+            }
+            fb.text(left - 2, y - 4, lab, scale(th.dim, 0.8), 1);
+        }
+        for (i, db) in bands.iter().enumerate() {
+            let cx = left + i as i32 * step + step / 2;
+            let on = i == band;
+            // Track.
+            fb.rect(cx - 1, top, 2, plot_h, lerp_color(th.bg, th.dim, 0.25));
+            // Bar from the zero line to the gain.
+            let span = ((db / music::EQ_MAX) as f32 * (plot_h / 2) as f32) as i32;
+            let c = if on {
+                th.accent
+            } else if *db >= 0.0 {
+                lerp_color(th.cyan, th.bg, 0.25)
+            } else {
+                lerp_color(th.magenta, th.bg, 0.25)
+            };
+            let (by, bh) = if span >= 0 {
+                (mid - span, span)
+            } else {
+                (mid, -span)
+            };
+            if bh > 0 {
+                fb.rect(cx - slot / 2, by, slot, bh, scale(c, 0.55));
+            }
+            // Handle.
+            let hy = mid - span;
+            fb.rect(cx - slot / 2 - 1, hy - 1, slot + 2, 3, c);
+            if on {
+                fb.rect(cx - slot / 2 - 2, hy - 2, slot + 4, 5, th.paper);
+                fb.rect(cx - slot / 2 - 1, hy - 1, slot + 2, 3, c);
+            }
+            // Frequency under the slider, the picked one lit.
+            let f = music::EQ_FREQS[i];
+            let tx = cx - Framebuffer::text_width(f, 1) / 2;
+            fb.text(tx, top + plot_h + 4, f, if on { th.paper } else { scale(th.dim, 0.9) }, 1);
+        }
+        // The gain of the picked band, up on the preset's line.
+        let db = bands[band.min(bands.len() - 1)];
+        let read = format!("{}Hz  {db:+.0} dB", music::EQ_FREQS[band]);
+        fb.text(
+            left + width - Framebuffer::text_width(&read, 1),
+            y0,
+            &read,
+            th.bright_green,
+            1,
+        );
+        // Four controls do not fit on one line at this width.
+        let hint1 = self.hint(&[("<>", "band"), ("^v", "gain")]);
+        let hint2 = self.hint(&[("A", "preset"), ("B", "back")]);
+        fb.text(left, h - 24, &hint1, scale(th.dim, 0.7), 1);
+        fb.text(left, h - 14, &hint2, scale(th.dim, 0.7), 1);
     }
 
     fn draw_music_list(&mut self, fb: &mut Framebuffer, sel: usize, top: usize) {

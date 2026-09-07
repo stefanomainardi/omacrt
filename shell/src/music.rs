@@ -152,6 +152,10 @@ pub struct Status {
     pub volume: f64,
     pub index: usize,
     pub total: usize,
+    /// Name of the equaliser preset in force, "Custom" once a band moved.
+    pub eq_preset: String,
+    /// Gain of the ten bands in dB, as cliamp reports them.
+    pub eq_bands: Vec<f64>,
 }
 
 impl Status {
@@ -163,6 +167,16 @@ impl Status {
         matches!(self.state, Some(State::Playing) | Some(State::Paused))
     }
 }
+
+/// The equaliser: ten bands, cliamp's own gain range, and the presets it
+/// knows by name (it answers "Custom" once a band was moved by hand).
+pub const EQ_BANDS: usize = 10;
+pub const EQ_MIN: f64 = -12.0;
+pub const EQ_MAX: f64 = 12.0;
+pub const EQ_FREQS: [&str; EQ_BANDS] = [
+    "31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k",
+];
+pub const EQ_PRESETS: [&str; 4] = ["Flat", "Rock", "Pop", "Jazz"];
 
 /// Where a list comes from. Each opens a list of items; playable ones are
 /// tracks, the others are sources again.
@@ -265,6 +279,8 @@ enum Request {
     Prev,
     Stop,
     Volume(f64),
+    EqPreset(String),
+    EqBand(usize, f64),
 }
 
 enum Reply {
@@ -304,6 +320,9 @@ pub struct Music {
     /// Album art of what plays as a 96 px PNG in the cache, once fetched.
     pub cover: Option<PathBuf>,
     cover_for: String,
+    /// Art of what we asked to play: a station's logo, which cliamp's status
+    /// does not carry back.
+    played_art: (String, String),
 }
 
 impl Music {
@@ -334,6 +353,7 @@ impl Music {
             lyrics_for: String::new(),
             cover: None,
             cover_for: String::new(),
+            played_art: (String::new(), String::new()),
         }
     }
 
@@ -346,6 +366,33 @@ impl Music {
         self.cover_for = art.to_string();
         self.cover = None;
         let _ = self.tx.send(Request::Cover(art.to_string()));
+    }
+
+    /// The ten band gains, always ten long even before the first status.
+    pub fn eq_bands(&self) -> Vec<f64> {
+        let mut b = self.status.eq_bands.clone();
+        b.resize(EQ_BANDS, 0.0);
+        b
+    }
+
+    /// One of cliamp's presets, by name.
+    pub fn eq_set_preset(&mut self, name: &str) {
+        self.status.eq_preset = name.to_string();
+        self.status.eq_bands.clear();
+        let _ = self.tx.send(Request::EqPreset(name.to_string()));
+    }
+
+    /// Move one band; the preset becomes Custom, as cliamp reports it.
+    pub fn eq_set_band(&mut self, i: usize, db: f64) {
+        let db = db.clamp(EQ_MIN, EQ_MAX);
+        let mut bands = self.eq_bands();
+        if i >= bands.len() {
+            return;
+        }
+        bands[i] = db;
+        self.status.eq_bands = bands;
+        self.status.eq_preset = "Custom".into();
+        let _ = self.tx.send(Request::EqBand(i, db));
     }
 
     /// Absolute volume in dB.
@@ -426,11 +473,17 @@ impl Music {
                             self.lyrics.clear();
                             let _ = self.tx.send(Request::Lyrics);
                         }
-                        // Spotify gives no art over the socket; its public oEmbed does.
-                        let art = if t.art.is_empty() && t.path.starts_with("spotify:track:") {
-                            t.path.clone()
-                        } else {
+                        // Spotify gives no art over the socket; its public
+                        // oEmbed does. A station's logo came with the list we
+                        // played from and is remembered here.
+                        let art = if !t.art.is_empty() {
                             t.art.clone()
+                        } else if t.path.starts_with("spotify:track:") {
+                            t.path.clone()
+                        } else if self.played_art.0 == t.path {
+                            self.played_art.1.clone()
+                        } else {
+                            String::new()
                         };
                         if !art.is_empty() && art != self.cover_for {
                             self.cover_for = art.clone();
@@ -482,6 +535,7 @@ impl Music {
     }
 
     pub fn play(&mut self, t: &Track) {
+        self.played_art = (t.path.clone(), t.art.clone());
         self.status.track = Some(t.clone());
         self.status.state = Some(State::Playing);
         self.status.position = 0.0;
@@ -627,6 +681,16 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
             Request::Next => simple("next"),
             Request::Prev => simple("prev"),
             Request::Stop => simple("stop"),
+            Request::EqPreset(name) => match call(json!({ "cmd": "eq", "name": name })) {
+                Ok(_) => Reply::Played,
+                Err(e) => Reply::Error(e),
+            },
+            Request::EqBand(i, db) => {
+                match call(json!({ "cmd": "eq", "band": i, "value": db })) {
+                    Ok(_) => Reply::Played,
+                    Err(e) => Reply::Error(e),
+                }
+            }
             Request::Volume(v) => match call(json!({ "cmd": "volume", "value": v })) {
                 Ok(_) => Reply::Played,
                 Err(e) => Reply::Error(e),
@@ -800,6 +864,16 @@ fn parse_status(v: &Value) -> Status {
         volume: num("volume"),
         index: v.get("index").and_then(Value::as_u64).unwrap_or(0) as usize,
         total: v.get("total").and_then(Value::as_u64).unwrap_or(0) as usize,
+        eq_preset: v
+            .get("eq_preset")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        eq_bands: v
+            .get("eq_bands")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_f64).collect())
+            .unwrap_or_default(),
     }
 }
 

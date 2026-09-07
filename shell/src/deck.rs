@@ -255,7 +255,7 @@ impl Deck {
         fb.rect(slot_x, slot_y + slot_h - 1, slot_w, 1, scale(th.fg, 0.15));
         if info.radio {
             let label = if info.station.is_some() { info.title } else { info.sub };
-            self.draw_dial(fb, th, slot_x + 6, slot_y + 6, slot_w - 12, slot_h - 12, now, info.playing, label);
+            self.draw_dial(fb, th, slot_x + 6, slot_y + 6, slot_w - 12, slot_h - 12, now, label, info);
         } else if info.turntable {
             let progress = if info.duration > 0.0 {
                 (info.position / info.duration).clamp(0.0, 1.0) as f32
@@ -622,7 +622,9 @@ impl Deck {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn draw_dial(&mut self, fb: &mut Framebuffer, th: &Theme, x: i32, y: i32, w: i32, h: i32, now: f64, playing: bool, label: &str) {
+    #[allow(clippy::too_many_arguments)]
+    fn draw_dial(&mut self, fb: &mut Framebuffer, th: &Theme, x: i32, y: i32, w: i32, h: i32, now: f64, label: &str, info: &Info) {
+        let playing = info.playing;
         let glass = lerp_color(th.bg, th.orange, 0.10);
         fb.rect(x, y, w, h, glass);
         fb.rect(x, y, w, 1, scale(th.fg, 0.25));
@@ -658,7 +660,17 @@ impl Deck {
         fb.rect(nx, y + 8, 1, h - 16, th.red);
         fb.rect(nx - 1, y + 8, 3, 2, th.red);
         // Station name and the lamps.
-        let room = ((w - 8) / 8) as usize;
+        // The station's own logo, in a lit frame on the right of the glass.
+        let mut room_w = w - 8;
+        if let Some(img) = info.cover.filter(|i| i.w > 0 && !tuning) {
+            let side = (img.w as i32).min(img.h as i32).min(24);
+            let bx = x + w - side - 6;
+            let by = y + h - side - 12;
+            fb.rect(bx - 1, by - 1, side + 2, side + 2, lerp_color(th.bg, th.fg, 0.3));
+            fb.blit(bx, by, img);
+            room_w = bx - 10 - (x + 4);
+        }
+        let room = (room_w / 8).max(4) as usize;
         let name: String = if tuning {
             "tuning".into()
         } else {
