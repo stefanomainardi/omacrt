@@ -200,7 +200,8 @@ collapse onto one title, systems show up when they have games. Details in
   matching sink. Used to test DACs.
 - **`bin/omarchy-crt-install`** builds the launcher and the CLI, installs
   them in `~/.local/bin` and installs the bar plugin.
-- **`plugin/`** the Omarchy bar plugin (`io.github.stefanomainardi.omarchy-crt`):
+- **`plugin/`** the Omarchy bar plugin (`io.github.stefanomainardi.omarchy-crt`)
+  and, in `plugin/library/`, the full screen library overlay it summons:
   a television glyph in the bar and a panel drawn like a TV on screen display
   with power, NTSC or PAL, launcher focus, DAC sync, audio and library health.
   See [plugin/README.md](plugin/README.md).

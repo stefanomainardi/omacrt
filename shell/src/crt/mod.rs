@@ -267,3 +267,84 @@ pub fn run_loose(cmd: &str, args: &[&str]) -> (bool, String) {
         Err(e) => (false, format!("{cmd}: {e}")),
     }
 }
+
+/// Change one `section.key` of `crt.toml` in place, keeping the comments.
+/// The value is written as TOML: quoted unless it is a number or a bool.
+pub fn set_value(key: &str, value: &str) -> Result<(), String> {
+    let (section, name) = key
+        .split_once('.')
+        .ok_or_else(|| format!("{key}: expected section.key, e.g. audio.volume"))?;
+    let allowed: &[(&str, &[&str])] = &[
+        ("output", &["connector", "position", "csync", "standard"]),
+        ("audio", &["route", "system_default", "volume"]),
+        ("modelines", &["ntsc", "pal", "film"]),
+    ];
+    let ok = allowed
+        .iter()
+        .any(|(s, keys)| *s == section && keys.contains(&name));
+    if !ok {
+        return Err(format!("{key} is not a setting this command changes"));
+    }
+    let literal = if value.parse::<f64>().is_ok() || value == "true" || value == "false" {
+        value.to_string()
+    } else {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    };
+    let path = Config::path();
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut out: Vec<String> = Vec::new();
+    let mut in_section = false;
+    let mut written = false;
+    let mut section_end: Option<usize> = None;
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            if in_section && !written {
+                section_end = Some(out.len());
+            }
+            in_section = t == format!("[{section}]");
+        } else if in_section && !written {
+            let head = t.split('=').next().unwrap_or("").trim();
+            if head == name {
+                // Keep a trailing comment if the line has one after the value.
+                let comment = comment_of(line);
+                out.push(format!("{name} = {literal}{comment}"));
+                written = true;
+                continue;
+            }
+        }
+        out.push(line.to_string());
+    }
+    if !written {
+        match section_end {
+            Some(i) => out.insert(i, format!("{name} = {literal}")),
+            None if in_section => out.push(format!("{name} = {literal}")),
+            None => {
+                if !out.is_empty() && !out.last().is_some_and(|l| l.trim().is_empty()) {
+                    out.push(String::new());
+                }
+                out.push(format!("[{section}]"));
+                out.push(format!("{name} = {literal}"));
+            }
+        }
+    }
+    let mut joined = out.join("\n");
+    joined.push('\n');
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, joined).map_err(|e| e.to_string())
+}
+
+/// The `  # comment` tail of a TOML line, if any, outside of quotes.
+fn comment_of(line: &str) -> String {
+    let mut in_str = false;
+    for (i, c) in line.char_indices() {
+        match c {
+            '"' => in_str = !in_str,
+            '#' if !in_str => return format!("  {}", &line[i..]),
+            _ => {}
+        }
+    }
+    String::new()
+}

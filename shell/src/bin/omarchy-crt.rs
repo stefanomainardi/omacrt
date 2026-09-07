@@ -31,12 +31,15 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   record start <file.mp4>|stop   capture the tube, picture and sound, into a video
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
+  audio volume N           TV sink volume in percent (up to 150), kept in the config
   dac status|reset|csync and|xor|separate|watch
   bios [--json]            BIOS files the cores expect
   bios import DIR [--all]  copy BIOS files from another collection
+  bios discover [--json]   folders on the roots and disks that hold BIOS files
   library [--json]         systems, sources, game counts, cores
+  library cores [--json]   the core each system needs, installed or not, and its package
   library scan [DIR...]    index every game under the roots (any layout)
-  library discover         mounted places that look like collections
+  library discover [--json]  mounted places that look like collections
   library roots add|remove DIR
   library assign DIR SYS   tell the scan what a folder holds
   library unknown          files the scan could not place
@@ -44,6 +47,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library collections [import DIR]  curated lists (RePlayOS _favorites folders import)
   doctor                   checks with plain answers
   config                   config file path and contents
+  config set KEY VALUE     change one setting (output.csync, output.standard, audio.volume, ...)
 
 Config: ~/.config/omarchy-crt/crt.toml (written with defaults on first run)";
 
@@ -222,6 +226,7 @@ fn status(cfg: &Config) -> Value {
                 "card": t.card, "profile": t.profile, "sink": t.sink, "pin": t.pin,
                 "routed": prof.as_deref() == Some(t.profile.as_str()),
                 "default": audio::default_sink().as_deref() == Some(t.sink.as_str()),
+                "volume": cfg.audio.volume,
             });
         }
     }
@@ -767,6 +772,31 @@ fn cmd_bios(args: &[String]) {
         .map(|s| s.name.clone())
         .collect();
     let pos = positional(args);
+    if pos.first().map(|s| s.as_str()) == Some("discover") {
+        use omarchy_crt_shell::index::{self, LibraryConfig};
+        let mut places = LibraryConfig::load().roots;
+        for d in index::discover() {
+            if !places.contains(&d) {
+                places.push(d);
+            }
+        }
+        let found = bios::discover(&places);
+        if has(args, "--json") {
+            let rows: Vec<Value> = found
+                .iter()
+                .map(|(p, n)| json!({ "path": p, "files": n }))
+                .collect();
+            println!("{}", Value::Array(rows));
+            return;
+        }
+        if found.is_empty() {
+            println!("no folder with known BIOS files under the roots or the mounted disks");
+        }
+        for (p, n) in &found {
+            println!("{:>4} known file(s)  {}", n, p.display());
+        }
+        return;
+    }
     if pos.first().map(|s| s.as_str()) == Some("import") {
         let Some(dir) = pos.get(1) else {
             die("bios import needs a directory")
@@ -890,8 +920,49 @@ fn cmd_library(args: &[String]) {
             }
         }
         Some("discover") => {
-            for f in index::discover() {
-                println!("{}", f.display());
+            let roots = LibraryConfig::load().roots;
+            let found = index::discover();
+            if has(args, "--json") {
+                let rows: Vec<Value> = found
+                    .iter()
+                    .map(|f| json!({ "path": f, "root": roots.contains(f) }))
+                    .collect();
+                println!("{}", Value::Array(rows));
+                return;
+            }
+            for f in found {
+                let note = if roots.contains(&f) { "  (a root already)" } else { "" };
+                println!("{}{note}", f.display());
+            }
+        }
+        Some("cores") => {
+            let lib = library();
+            let mut rows: Vec<Value> = Vec::new();
+            for s in lib.systems.iter().filter(|s| !s.is_video()) {
+                let path = lib.core_path(s);
+                let (package, aur) = index::core_package(&s.core);
+                let label = index::catalog(&s.name)
+                    .map(|(l, _, _)| l.to_string())
+                    .unwrap_or_else(|| s.name.clone());
+                rows.push(json!({
+                    "system": s.name, "label": label, "core": s.core,
+                    "installed": path.is_file(), "path": path, "package": package, "aur": aur,
+                }));
+            }
+            if has(args, "--json") {
+                println!("{}", Value::Array(rows));
+                return;
+            }
+            for r in &rows {
+                let installed = r["installed"].as_bool().unwrap_or(false);
+                println!(
+                    "{:<4} {:<12} {:<20} {}{}",
+                    if installed { "OK" } else { "MISS" },
+                    r["system"].as_str().unwrap_or(""),
+                    r["core"].as_str().unwrap_or(""),
+                    r["package"].as_str().unwrap_or(""),
+                    if r["aur"].as_bool().unwrap_or(false) { "  (AUR)" } else { "" },
+                );
             }
         }
         Some("roots") => {
@@ -1035,9 +1106,28 @@ fn cmd_library(args: &[String]) {
             if has(args, "--json") {
                 let rows: Vec<Value> = scan
                     .iter()
-                    .map(|s| json!({ "name": s.name, "dir": s.dir, "exists": s.exists, "games": s.games, "unknown": s.unknown, "core": s.core_present }))
+                    .map(|s| {
+                        let sys = lib.systems.iter().find(|x| x.name == s.name);
+                        let core = sys.map(|x| x.core.clone()).unwrap_or_default();
+                        let (package, aur) = index::core_package(&core);
+                        let label = index::catalog(&s.name)
+                            .map(|(l, _, _)| l.to_string())
+                            .unwrap_or_else(|| s.name.clone());
+                        json!({
+                            "name": s.name, "label": label, "dir": s.dir, "exists": s.exists,
+                            "games": s.games, "unknown": s.unknown, "core": s.core_present,
+                            "core_name": core, "package": package, "aur": aur,
+                            "video": sys.map(|x| x.is_video()).unwrap_or(false),
+                        })
+                    })
                     .collect();
-                println!("{}", Value::Array(rows));
+                let roots = LibraryConfig::load().roots;
+                let out = json!({
+                    "systems": rows,
+                    "roots": roots.iter().map(|r| json!({ "path": r, "mounted": r.is_dir() })).collect::<Vec<_>>(),
+                    "index": Index::load().map(|ix| json!({ "games": ix.items.len(), "scanned_at": ix.scanned_at, "unknown": ix.unknown.len() })).unwrap_or(Value::Null),
+                });
+                println!("{out}");
                 return;
             }
             let ix = Index::load();
@@ -1353,6 +1443,22 @@ fn main() {
                     )
                 ),
                 Some("desktop") => println!("{}", audio::route_back(&mut state)),
+                Some("volume") => {
+                    let v: u32 = positional(args)
+                        .get(1)
+                        .and_then(|s| s.trim_end_matches('%').parse().ok())
+                        .unwrap_or_else(|| die("audio volume needs a percent, 0 to 150"));
+                    let v = v.min(150);
+                    omarchy_crt_shell::crt::set_value("audio.volume", &v.to_string())
+                        .unwrap_or_else(|e| die(&e));
+                    if state.on || audio::active_profile(&target.card).is_some_and(|p| p == target.profile) {
+                        omarchy_crt_shell::crt::run(
+                            "pactl",
+                            &["set-sink-volume", &target.sink, &format!("{v}%")],
+                        );
+                    }
+                    println!("TV volume {v}%");
+                }
                 Some("all") => {
                     if state.previous_sink.is_empty() {
                         if let Some(prev) = audio::default_sink() {
@@ -1427,6 +1533,15 @@ fn main() {
         "library" => cmd_library(args),
         "doctor" => exit(cmd_doctor(&cfg)),
         "config" => {
+            let pos = positional(args);
+            if pos.first().map(|s| s.as_str()) == Some("set") {
+                let (Some(key), Some(value)) = (pos.get(1), pos.get(2)) else {
+                    die("config set needs a key and a value, e.g. config set audio.volume 110")
+                };
+                omarchy_crt_shell::crt::set_value(key, value).unwrap_or_else(|e| die(&e));
+                println!("{key} = {value}");
+                return;
+            }
             println!("{}", Config::path().display());
             if let Ok(t) = std::fs::read_to_string(Config::path()) {
                 print!("{t}");

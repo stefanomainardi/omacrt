@@ -33,10 +33,21 @@ and enables it in the right section of the bar.
   Power off undoes all of it.
 - `Keys to the launcher` gives the keyboard back to the tube when the desktop
   stole it.
+- `TV volume` sets the sink volume of the television (up to 150%) and keeps
+  it in `crt.toml`.
+- `Library` opens the full screen library overlay (a second plugin,
+  `io.github.stefanomainardi.omarchy-crt.library`, installed and enabled by
+  the installer): the folders the scan reads and disks that look like
+  collections with one click "adopt and scan", every system with its games
+  and core (a missing core offers its package, from the repositories or the
+  AUR, in a floating terminal), the BIOS files the cores expect with "import
+  from here" for any folder holding them, and the folders the scan could not
+  place with a system picker. `Esc` or the scrim closes it. Everything runs
+  `omarchy-crt` commands, so the same can be typed in a terminal.
 
 IPC for keybindings, all through `omarchy-shell -q <id> <method>`:
-`power`, `on`, `off`, `ntsc`, `pal`, `focus`, `restart`, `audio crt|desktop`,
-`csync and|xor`, `toggle` (panel), `refresh`.
+`power`, `on`, `off`, `ntsc`, `pal`, `focus`, `restart`, `library`,
+`audio crt|desktop`, `csync and|xor`, `toggle` (panel), `refresh`.
 
 ```lua
 -- ~/.config/omarchy/hypr/bindings.lua

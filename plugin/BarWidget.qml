@@ -39,6 +39,8 @@ BarWidget {
     if (panelLoader.item) panelLoader.item.runAction(args)
   }
 
+  function library() { if (panelLoader.item) panelLoader.item.openLibrary() }
+
   function injectPanel() {
     if (!panelLoader.item) return
     panelLoader.item.bar = root.bar
@@ -104,6 +106,7 @@ BarWidget {
     function ntsc(): void { root.act(["mode", "ntsc"]) }
     function pal(): void { root.act(["mode", "pal"]) }
     function focus(): void { root.act(["focus"]) }
+    function library(): void { root.library() }
     function restart(): void { root.act(["shell", "restart"]) }
     function audio(where: string): void { root.act(["audio", where]) }
     function csync(mode: string): void { root.act(["dac", "csync", mode]) }

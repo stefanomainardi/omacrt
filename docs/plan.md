@@ -115,6 +115,18 @@ shell key menu` pauses and resumes the running game today. What is left is
 - **Output settings in the panel.** Connector, workspace, standard, csync and
   volume editable from the panel and stored in `crt.toml`.
 
+*Landed 2026-09-07:* the library overlay as its own `overlay` plugin
+(`plugin/library/`, summoned by the panel's `Library` button): sources with
+disk adoption, systems with core state and an install offer (`library cores`
+names the package, repository or AUR), BIOS report with import from any
+folder that holds the files (`bios discover`), unplaced folders with a system
+picker (`library assign`). `TV volume` slider in the panel (`audio volume`,
+`config set`). Not done: per system folder and core editing beyond
+assignment, and the connector picker (single DAC setups have nothing to pick).
+Lesson from the day: a full screen surface cannot live inside a bar widget's
+panel (it maps as a plain window), and plugin code must never be hot reloaded
+while the session is locked (Quickshell aborts on its lock surfaces).
+
 ## Phase D, a television, not only a console
 
 - **cliamp as the engine.** Omarchy's default music player, cliamp (a

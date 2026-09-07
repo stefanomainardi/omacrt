@@ -15,8 +15,10 @@ set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 plugin_id="io.github.stefanomainardi.omarchy-crt"
+library_id="${plugin_id}.library"
 bin_dir="${HOME}/.local/bin"
 plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
+library_dir="${HOME}/.config/omarchy/plugins/${library_id}"
 build=1
 for arg in "$@"; do
   case "$arg" in
@@ -67,17 +69,33 @@ for f in "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$repo/plugin/README.
 done
 install -m 755 "$repo/shell/target/release/omarchy-crt" "$plugin_dir/bin/omarchy-crt"
 
-if command -v omarchy >/dev/null 2>&1; then
+# The library overlay is a second plugin (kind overlay) the panel summons.
+echo "== installing the library overlay into $library_dir"
+mkdir -p "$library_dir"
+for f in "$repo/plugin/library/manifest.json" "$repo/plugin/library/"*.qml; do
+  [ -f "$f" ] && install -m 644 "$f" "$library_dir/$(basename "$f")"
+done
+
+# Hot reloading plugin code while the session is locked makes the shell's
+# lock plugin re-create its surfaces without an active lock, which Quickshell
+# treats as fatal: the shell crashes and restarts on top of the lock screen.
+# The files are in place already; the reload waits for an unlocked desktop.
+if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
+  echo "note: the session is locked, the shell keeps the old plugin code until you run this again unlocked"
+elif command -v omarchy >/dev/null 2>&1; then
   omarchy plugin validate "$plugin_dir"
-  if ! omarchy plugin list --json 2>/dev/null | grep -q "\"$plugin_id\""; then
+  omarchy plugin validate "$library_dir"
+  if ! omarchy plugin list --json 2>/dev/null | grep -q "\"$library_id\""; then
     omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
   fi
-  if omarchy plugin list --json 2>/dev/null | python3 -c '
+  enabled() {  # $1 = plugin id; true when listed and enabled
+    omarchy plugin list --json 2>/dev/null | python3 -c '
 import json,sys
-pl=[p for p in json.load(sys.stdin) if p.get("id")=="'"$plugin_id"'"]
-sys.exit(0 if pl and not pl[0].get("enabled") else 1)'; then
-    omarchy plugin enable "$plugin_id" right
-  fi
+pl=[p for p in json.load(sys.stdin) if p.get("id")==sys.argv[1]]
+sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
+  }
+  enabled "$plugin_id" || omarchy plugin enable "$plugin_id" right
+  enabled "$library_id" || omarchy plugin enable "$library_id"
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
 fi
 

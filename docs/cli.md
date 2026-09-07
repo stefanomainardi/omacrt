@@ -15,15 +15,25 @@ omarchy-crt shell start|stop|restart|focus
 omarchy-crt shell key <input>...   # home up down left right fire back fav alt start
 omarchy-crt focus
 omarchy-crt audio crt|desktop|all|apps
+omarchy-crt audio volume N           # TV sink volume, percent up to 150, kept in crt.toml
 omarchy-crt dac status|reset|csync and|xor|separate|watch
 omarchy-crt bios [--json]
 omarchy-crt bios import DIR [--all]
+omarchy-crt bios discover [--json]   # folders on the roots and disks that hold BIOS files
 omarchy-crt library [--json]
+omarchy-crt library cores [--json]   # the core each system needs, installed or not, its package
 omarchy-crt library scan [DIR...]
-omarchy-crt library discover | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
+omarchy-crt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
 omarchy-crt doctor
 omarchy-crt config
+omarchy-crt config set KEY VALUE     # output.csync, output.standard, audio.volume, ...
 ```
+
+`--json` answers are what the bar plugin and its library overlay render.
+`library cores` names the package for a missing core (`libretro-mesen` from the
+Arch repositories, `libretro-mame2003-plus-git` from the AUR) so the overlay
+can offer the install through `omarchy pkg add` or `omarchy pkg aur add`.
+`config set` edits one key of `crt.toml` in place and keeps the comments.
 
 ## What `on` does, in order
 

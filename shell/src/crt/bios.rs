@@ -243,3 +243,60 @@ pub fn import(src: &Path, all: bool) -> std::io::Result<(usize, usize)> {
     }
     Ok((copied, skipped))
 }
+
+/// Folders that look like a BIOS collection: `bios`, `BIOS` or `system`
+/// under the given places (library roots, discovered disks), holding at
+/// least one file the table knows. `(folder, known files in it)`.
+pub fn discover(places: &[PathBuf]) -> Vec<(PathBuf, usize)> {
+    let known: Vec<String> = table()
+        .iter()
+        .map(|e| e.file.rsplit('/').next().unwrap_or(e.file).to_ascii_lowercase())
+        .collect();
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for place in places {
+        let mut cands = vec![place.clone()];
+        for name in ["bios", "BIOS", "Bios", "system", "System", "systems"] {
+            cands.push(place.join(name));
+            cands.push(place.join("roms").join(name));
+        }
+        if let Some(parent) = place.parent() {
+            for name in ["bios", "BIOS", "system"] {
+                cands.push(parent.join(name));
+            }
+        }
+        for c in cands {
+            let Ok(canon) = std::fs::canonicalize(&c) else {
+                continue;
+            };
+            // Case insensitive disks answer to `bios` and `BIOS` alike: one
+            // folder, counted once, by device and inode.
+            let Ok(meta) = std::fs::metadata(&canon) else {
+                continue;
+            };
+            let id = {
+                use std::os::unix::fs::MetadataExt;
+                (meta.dev(), meta.ino())
+            };
+            if canon == system_dir() || !seen.insert(id) {
+                continue;
+            }
+            let Ok(rd) = std::fs::read_dir(&canon) else {
+                continue;
+            };
+            let hits = rd
+                .flatten()
+                .take(2000)
+                .filter(|e| {
+                    let n = e.file_name().to_string_lossy().to_ascii_lowercase();
+                    known.contains(&n)
+                })
+                .count();
+            if hits > 0 {
+                out.push((canon, hits));
+            }
+        }
+    }
+    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out
+}

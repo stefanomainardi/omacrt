@@ -48,6 +48,13 @@ Panel {
   readonly property bool shellRunning: shell.running === true
   readonly property int biosMissing: Number(bios.missing || 0)
   readonly property var missingCores: (library.missing_cores || [])
+  readonly property int volume: Number((audio && audio.volume) || 100)
+  property int volumeShown: -1
+
+  function openLibrary() {
+    root.close()
+    Quickshell.execDetached(["omarchy-shell", "shell", "summon", root.moduleName + ".library", JSON.stringify({ helper: root.helper })])
+  }
 
   function open() {
     root.controller.show()
@@ -150,6 +157,8 @@ Panel {
   }
 
   Timer { interval: 2000; running: root.opened; repeat: true; onTriggered: root.refresh() }
+
+
   Timer { interval: 530; running: root.opened; repeat: true; onTriggered: root.cursorOn = !root.cursorOn }
 
   component Mono: Text {
@@ -434,6 +443,33 @@ Panel {
             foreground: root.fg
             onClicked: root.runAction(["audio", root.audioOnTv ? "desktop" : "crt"])
           }
+          Row {
+            width: parent.width
+            spacing: Style.space(8)
+            visible: !!root.audio
+            Key { text: "TV volume"; width: Style.space(84); anchors.verticalCenter: parent.verticalCenter }
+            PanelSlider {
+              width: parent.width - Style.space(84) - Style.space(60) - Style.space(16)
+              bar: root.bar
+              minimum: 0
+              maximum: 150
+              step: 5
+              integer: true
+              value: root.volumeShown >= 0 ? root.volumeShown : root.volume
+              onMoved: function(v) { root.volumeShown = Math.round(v) }
+              onReleased: function(v) {
+                root.volumeShown = -1
+                root.runAction(["audio", "volume", String(Math.round(v))])
+              }
+              anchors.verticalCenter: parent.verticalCenter
+            }
+            Mono {
+              text: (root.volumeShown >= 0 ? root.volumeShown : root.volume) + "%"
+              width: Style.space(60)
+              horizontalAlignment: Text.AlignRight
+              anchors.verticalCenter: parent.verticalCenter
+            }
+          }
           Toggle {
             width: parent.width
             visible: !!root.audio && root.audioOnTv
@@ -473,7 +509,11 @@ Panel {
           Row {
             width: parent.width
             spacing: Style.space(6)
-            Act { text: "BIOS list"; onClicked: root.inTerminal(root.helper + " bios") }
+            Act {
+              text: "▤  Library"
+              tooltipText: "sources, systems, cores, BIOS and unplaced folders, full screen"
+              onClicked: root.openLibrary()
+            }
             Act { text: "Scan library"; onClicked: root.inTerminal(root.helper + " library scan") }
             Act { text: "Doctor"; onClicked: root.inTerminal(root.helper + " doctor") }
           }

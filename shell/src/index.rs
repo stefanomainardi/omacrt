@@ -1084,3 +1084,59 @@ pub fn catalog(system: &str) -> Option<(&'static str, &'static str, &'static [&'
         .find(|(s, _, _, _)| *s == system)
         .map(|(_, label, core, exts)| (*label, *core, *exts))
 }
+
+/// Package that ships a libretro core: Arch repository names first, the AUR
+/// `-git` builds for the rest. `(package, aur)`.
+pub fn core_package(core: &str) -> (String, bool) {
+    const REPO: &[(&str, &str)] = &[
+        ("mesen", "libretro-mesen"),
+        ("mesen-s", "libretro-mesen-s"),
+        ("nestopia", "libretro-nestopia"),
+        ("snes9x", "libretro-snes9x"),
+        ("bsnes", "libretro-bsnes"),
+        ("bsnes_hd_beta", "libretro-bsnes-hd"),
+        ("genesis_plus_gx", "libretro-genesis-plus-gx"),
+        ("picodrive", "libretro-picodrive"),
+        ("blastem", "libretro-blastem"),
+        ("kronos", "libretro-kronos"),
+        ("yabause", "libretro-yabause"),
+        ("flycast", "libretro-flycast"),
+        ("mednafen_pce_fast", "libretro-beetle-pce-fast"),
+        ("mednafen_pce", "libretro-beetle-pce"),
+        ("mednafen_supergrafx", "libretro-beetle-supergrafx"),
+        ("mednafen_psx_hw", "libretro-beetle-psx-hw"),
+        ("mednafen_psx", "libretro-beetle-psx"),
+        ("mupen64plus_next", "libretro-mupen64plus-next"),
+        ("parallel_n64", "libretro-parallel-n64"),
+        ("mgba", "libretro-mgba"),
+        ("gambatte", "libretro-gambatte"),
+        ("sameboy", "libretro-sameboy"),
+        ("melonds", "libretro-melonds"),
+        ("desmume", "libretro-desmume"),
+        ("ppsspp", "libretro-ppsspp"),
+        ("play", "libretro-play"),
+        ("mame", "libretro-mame"),
+        ("scummvm", "libretro-scummvm"),
+        ("dolphin", "libretro-dolphin"),
+    ];
+    const AUR: &[(&str, &str)] = &[
+        ("mame2003_plus", "libretro-mame2003-plus-git"),
+        ("mame2003", "libretro-mame2003-git"),
+        ("fbneo", "libretro-fbneo-git"),
+        ("neocd", "libretro-neocd-git"),
+        ("mednafen_ngp", "libretro-beetle-ngp-git"),
+        ("puae", "libretro-puae-git"),
+        ("cap32", "libretro-cap32-git"),
+    ];
+    if let Some((_, p)) = REPO.iter().find(|(c, _)| *c == core) {
+        return (p.to_string(), false);
+    }
+    if let Some((_, p)) = AUR.iter().find(|(c, _)| *c == core) {
+        return (p.to_string(), true);
+    }
+    // VICE ships every machine in one package.
+    if core.starts_with("vice_") {
+        return ("libretro-vice-git".into(), true);
+    }
+    (format!("libretro-{}-git", core.replace('_', "-")), true)
+}
