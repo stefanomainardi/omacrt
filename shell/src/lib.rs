@@ -7,6 +7,7 @@ pub mod crt;
 pub mod game;
 pub mod index;
 pub mod library;
+pub mod logfile;
 pub mod music;
 pub mod padmap;
 pub mod player;

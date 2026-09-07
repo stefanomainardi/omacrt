@@ -115,11 +115,7 @@ pub fn start_with_sink(connector: &str, sink: Option<&str>) -> Result<String, St
         return Ok("already running".into());
     }
     let _ = std::fs::create_dir_all(super::state_dir());
-    let log = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path())
-        .map_err(|e| e.to_string())?;
+    let log = crate::logfile::open(&log_path()).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(binary());
     if let Some(s) = sink {

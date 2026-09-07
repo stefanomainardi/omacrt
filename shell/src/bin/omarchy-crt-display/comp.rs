@@ -894,11 +894,18 @@ impl Crt {
                 .map(|(k, v)| format!("{k}:{v}"))
                 .collect();
             self.commits.clear();
-            println!(
-                "{} frames so far, {} client window(s) mapped, commits in 5 s: {}",
-                self.frames,
-                self.space.elements().count(),
-                commits.join(" ")
+            if omarchy_crt_shell::logfile::debug_enabled() {
+                println!(
+                    "{} frames so far, {} client window(s) mapped, commits in 5 s: {}",
+                    self.frames,
+                    self.space.elements().count(),
+                    commits.join(" ")
+                );
+            }
+            // While it runs, keep the file from growing without end.
+            omarchy_crt_shell::logfile::rotate_if_big(
+                &display::log_path(),
+                omarchy_crt_shell::logfile::CAP_BYTES,
             );
         }
         let t = self.start.elapsed();
