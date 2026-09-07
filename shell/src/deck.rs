@@ -98,6 +98,8 @@ pub struct Deck {
     pub kick: Kick,
     /// True on the frame a beat was detected.
     pub beat: bool,
+    /// The record on the turntable is a single: it spins at 45, not 33.
+    rpm45: bool,
     smooth: [f32; 10],
     energy: f32,
     stars: Vec<Star>,
@@ -126,6 +128,7 @@ impl Deck {
             insert_at: -10.0,
             kick: Kick::new(),
             beat: false,
+            rpm45: false,
             smooth: [0.0; 10],
             energy: 0.0,
             stars: Vec::new(),
@@ -178,7 +181,9 @@ impl Deck {
         self.energy = self.smooth.iter().sum::<f32>() / 10.0;
         self.beat = self.kick.update(&self.smooth, now, dt);
         if playing {
-            self.reel += dt * (2.2 + self.energy * 1.5);
+            // Cassette reels pace with the music; a record turns at its speed.
+            let speed = if self.rpm45 { 45.0 / 33.3 } else { 1.0 };
+            self.reel += dt * (2.2 + self.energy * 1.5) * speed;
         }
         // Two channels from interleaved bands, weighted so the bass does not
         // pin the needle, then compressed the way a VU meter's ballistics do:
@@ -512,38 +517,65 @@ impl Deck {
         // Spindle.
         fb.rect(cx - 1, cy - 1, 3, 3, scale(th.bg, 0.8));
         fb.put(cx, cy, th.paper);
-        // Tonearm: a round base at the top right, a counterweight behind the
-        // pivot, the arm bending to a headshell whose stylus rides the groove.
-        let px = x + w - 16;
-        let py = y + 14;
+        // Tonearm: a fixed length arm on a pivot at the top right. The
+        // stylus rides the groove, so the arm swings as the song plays: it
+        // comes off the rest at the start, reaches the lead-out at the end.
+        let px = x + w - 14;
+        let py = y + 12;
         draw_disc(fb, px, py, 6.0, lerp_color(th.bg, th.fg, 0.35));
         draw_disc(fb, px, py, 3.0, lerp_color(th.bg, th.paper, 0.6));
-        let target_r = if info.playing || progress > 0.0 {
-            r_record - 3.0 - (r_record - 3.0 - r_label - 3.0) * progress
+        let d = (((px - cx) * (px - cx) + (py - cy) * (py - cy)) as f32).sqrt();
+        // Groove radius under the stylus: outer edge to the label's rim.
+        let r_start = r_record - 3.0;
+        let r_end = r_label + 3.0;
+        // Cue: in the first second after the insert the arm travels from its
+        // rest, outside the record, to the first groove.
+        let cue = ((self.last - self.insert_at) / 1.1).clamp(0.0, 1.0) as f32;
+        let cue = cue * cue * (3.0 - 2.0 * cue);
+        let rest_r = r_record + 9.0;
+        let groove_r = r_start - (r_start - r_end) * progress;
+        let target_r = if progress >= 0.995 {
+            rest_r
         } else {
-            r_record + 9.0
+            rest_r + (groove_r - rest_r) * cue
         };
-        let dir = ((py - cy) as f32).atan2((px - cx) as f32);
-        let sx = cx as f32 + dir.cos() * target_r;
-        let sy = cy as f32 + dir.sin() * target_r;
-        // Counterweight: a stub on the far side of the pivot.
-        let bx = px as f32 + (px as f32 - sx) * 0.22;
-        let by = py as f32 + (py as f32 - sy) * 0.22;
+        // Arm length: reaches the record's edge with some overhang.
+        let arm_len = d + 6.0;
+        // Where a circle of arm_len around the pivot meets the circle of
+        // target_r around the spindle: the stylus.
+        let base = ((cy - py) as f32).atan2((cx - px) as f32);
+        let cosang = ((arm_len * arm_len + d * d - target_r * target_r) / (2.0 * arm_len * d)).clamp(-1.0, 1.0);
+        let ang = base - cosang.acos();
+        let sx = px as f32 + ang.cos() * arm_len;
+        let sy = py as f32 + ang.sin() * arm_len;
+        // Counterweight behind the pivot, on the arm's line.
+        let bx = px as f32 - ang.cos() * 9.0;
+        let by = py as f32 - ang.sin() * 9.0;
         fb.line(px, py, bx as i32, by as i32, lerp_color(th.bg, th.paper, 0.7));
         fb.rect(bx as i32 - 2, by as i32 - 2, 5, 5, lerp_color(th.bg, th.fg, 0.55));
-        // The arm itself, two pixels wide with a lit edge.
+        // The arm, an S shape: straight to two thirds, then the headshell offset.
+        let ex = px as f32 + ang.cos() * arm_len * 0.7;
+        let ey = py as f32 + ang.sin() * arm_len * 0.7;
         let arm = lerp_color(th.bg, th.paper, 0.85);
-        fb.line(px, py, sx as i32, sy as i32, arm);
-        fb.line(px, py + 1, sx as i32, sy as i32 + 1, scale(arm, 0.55));
+        fb.line(px, py, ex as i32, ey as i32, arm);
+        fb.line(px, py + 1, ex as i32, ey as i32 + 1, scale(arm, 0.55));
+        fb.line(ex as i32, ey as i32, sx as i32, sy as i32, arm);
+        fb.line(ex as i32, ey as i32 + 1, sx as i32, sy as i32 + 1, scale(arm, 0.55));
         // Headshell and stylus.
         fb.rect(sx as i32 - 2, sy as i32 - 2, 5, 4, lerp_color(th.bg, th.fg, 0.6));
-        fb.rect(sx as i32 - 3, sy as i32, 2, 2, th.paper);
-        // Controls on the plinth: speed selector and the power lamp.
+        fb.rect(sx as i32 - 3, sy as i32 + 1, 2, 2, th.paper);
+        // Arm rest, where the stylus sits between records.
+        let rx = px as f32 + base.cos() * (d - rest_r) + (base + std::f32::consts::FRAC_PI_2).cos() * 0.0;
+        let ry = py as f32 + base.sin() * (d - rest_r);
+        fb.rect(rx as i32 - 1, ry as i32 + 3, 3, 4, lerp_color(th.bg, th.fg, 0.45));
+        // Speed selector: singles (under five minutes) spin at 45, albums at 33.
+        self.rpm45 = info.duration > 0.0 && info.duration < 300.0;
         let sel_x = x + w - 44;
         let sel_y = y + h - 12;
-        fb.text(sel_x, sel_y - 1, "33", th.paper, 1);
-        fb.text(sel_x + 20, sel_y - 1, "45", th.dim, 1);
-        fb.rect(sel_x, sel_y + 8, 14, 1, th.accent);
+        let (c33, c45) = if self.rpm45 { (th.dim, th.paper) } else { (th.paper, th.dim) };
+        fb.text(sel_x, sel_y - 1, "33", c33, 1);
+        fb.text(sel_x + 20, sel_y - 1, "45", c45, 1);
+        fb.rect(if self.rpm45 { sel_x + 20 } else { sel_x }, sel_y + 8, 14, 1, th.accent);
         fb.rect(x + 6, y + h - 12, 4, 4, if info.playing { th.green } else { scale(th.green, 0.25) });
         fb.text(x + 13, y + h - 13, "ON", th.dim, 1);
     }
