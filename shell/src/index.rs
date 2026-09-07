@@ -195,7 +195,7 @@ const BY_EXTENSION: &[(&str, &str)] = &[
 /// Extensions of things that are games but need more evidence.
 const AMBIGUOUS: &[&str] = &[
     "zip", "7z", "bin", "cue", "chd", "iso", "img", "m3u", "rom", "dsk", "tap", "cdt", "sna",
-    "ccd", "mds", "toc", "exe", "elf", "crt", "cpr",
+    "ccd", "mds", "toc", "exe", "elf", "crt", "cpr", "ciso", "wbfs", "wia",
 ];
 
 /// Extensions that are never games, even in a game folder.
@@ -796,6 +796,31 @@ pub fn scan(roots: &[PathBuf], hints: &Hints, mut progress: impl FnMut(&str)) ->
             for f in files.iter().filter(|f| ext_of(f) == "m3u") {
                 for o in m3u_files(f) {
                     owned.insert(o);
+                }
+            }
+            // An archive that has been unpacked next to itself is not a game
+            // of its own any more: a disc image the emulator can open beats
+            // the same disc still inside a `.7z`, which several of them
+            // cannot read at all and the rest have to unpack first.
+            {
+                let unpacked: HashSet<String> = files
+                    .iter()
+                    .filter(|f| {
+                        matches!(
+                            ext_of(f).as_str(),
+                            "iso" | "ciso" | "rvz" | "gcz" | "gcm" | "wbfs" | "wia" | "chd"
+                        )
+                    })
+                    .filter_map(|f| f.file_stem().and_then(|s| s.to_str()).map(str::to_string))
+                    .collect();
+                for f in &files {
+                    if !matches!(ext_of(f).as_str(), "7z" | "zip" | "rar") {
+                        continue;
+                    }
+                    let stem = f.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    if unpacked.contains(stem) {
+                        owned.insert(f.clone());
+                    }
                 }
             }
             // A ScummVM game is a folder of data files with one `.scummvm`
