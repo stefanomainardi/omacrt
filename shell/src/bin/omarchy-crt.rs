@@ -16,6 +16,8 @@ use std::process::exit;
 const HELP: &str = "\
 omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
 
+  setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
+                           first run: find the DAC's connector, write crt.toml
   status [--json]          output, mode, DAC, audio, launcher, BIOS at a glance
   on [ntsc|pal]            15 kHz modeline, DAC csync, audio to the TV, launcher
   off                      launcher closed, audio back, output disabled
@@ -78,6 +80,14 @@ fn has(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+/// The value after a `--flag`, when it is there.
+fn value(args: &[String], flag: &str) -> Option<String> {
+    let i = args.iter().position(|a| a == flag)?;
+    args.get(i + 1)
+        .filter(|v| !v.starts_with("--"))
+        .map(|v| v.to_string())
+}
+
 /// Arguments that are neither flags nor the value of a flag taking one.
 fn positional(args: &[String]) -> Vec<&String> {
     let mut out = Vec::new();
@@ -87,7 +97,12 @@ fn positional(args: &[String]) -> Vec<&String> {
             skip = false;
             continue;
         }
-        if a == "--lines" || a == "--shift-x" || a == "--shift-y" {
+        if a == "--lines"
+            || a == "--shift-x"
+            || a == "--shift-y"
+            || a == "--connector"
+            || a == "--standard"
+        {
             skip = true;
             continue;
         }
@@ -712,6 +727,236 @@ fn cmd_boot(cfg: &Config) {
         println!("autostart: the DAC is connected, switching the tube on");
         cmd_on(cfg, None);
     }
+}
+
+/// Known DACs, by the product name their EDID carries. The first field is
+/// what shows up in `edid_name`, uppercased; the second is what to call it;
+/// the third says whether the sync mode can be set over I2C, which is a
+/// thing only the RGB-Pi 2 does so far.
+const KNOWN_DACS: &[(&str, &str, bool)] = &[
+    ("MORTACA", "RGB-Pi 2", true),
+    ("RGB-PI", "RGB-Pi", false),
+    ("RETROTINK", "RetroTINK", false),
+    ("OSSC", "OSSC", false),
+];
+
+fn known_dac(edid_name: &str) -> Option<(&'static str, bool)> {
+    let up = edid_name.to_ascii_uppercase();
+    KNOWN_DACS
+        .iter()
+        .find(|(needle, _, _)| up.contains(needle))
+        .map(|(_, label, csync)| (*label, *csync))
+}
+
+/// The television standard the locale suggests. The line count of a country
+/// is not something to ask about when the environment already says it.
+fn standard_for_locale() -> &'static str {
+    let locale = ["LC_ALL", "LC_MEASUREMENT", "LANG"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok())
+        .unwrap_or_default();
+    standard_for(&locale)
+}
+
+/// The standard of a locale string such as `it_IT.UTF-8`. Nothing to go on
+/// means NTSC, which is what most DACs are set to when they arrive.
+fn standard_for(locale: &str) -> &'static str {
+    let locale = locale.to_ascii_uppercase();
+    // The 60 Hz half of the world, by the country code of the locale.
+    const SIXTY: &[&str] = &[
+        "_US", "_CA", "_JP", "_KR", "_TW", "_MX", "_PH", "_CL", "_CO", "_PE", "_VE", "_EC", "_CR",
+        "_PA", "_GT", "_DO", "_HN", "_NI", "_SV", "_BO", "_MM",
+    ];
+    if SIXTY.iter().any(|c| locale.contains(c)) {
+        return "ntsc";
+    }
+    if locale.is_empty() { "ntsc" } else { "pal" }
+}
+
+/// `omarchy-crt setup`: look at the machine and write the two things that
+/// change from one to the next, the connector the DAC is on and the standard
+/// of the television. Everything else has a default that works.
+fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
+    let dry = has(args, "--dry-run");
+    let force = has(args, "--force");
+    let want = value(args, "--connector");
+    let want_standard = value(args, "--standard");
+
+    let all = output::connectors();
+    if all.is_empty() {
+        println!("no DRM connectors: is this machine running a graphics driver?");
+        return 1;
+    }
+
+    println!("outputs");
+    for c in &all {
+        if !c.connected && c.edid_name.is_empty() {
+            continue;
+        }
+        let dac = known_dac(&c.edid_name)
+            .map(|(l, _)| format!("  {l}"))
+            .unwrap_or_default();
+        let desktop = output::hypr_monitor(&c.name)
+            .map(|m| !m["disabled"].as_bool().unwrap_or(true))
+            .unwrap_or(false);
+        println!(
+            "  {:<16} {:<10} {:<16}{}{}{}",
+            c.name,
+            if c.connected {
+                "connected"
+            } else {
+                "disconnected"
+            },
+            if c.edid_name.is_empty() {
+                "no EDID name"
+            } else {
+                &c.edid_name
+            },
+            if c.edid_audio { "  audio" } else { "" },
+            if display::leaseable(&c.drm) {
+                "  non-desktop"
+            } else {
+                ""
+            },
+            if desktop {
+                "  in use by the desktop"
+            } else {
+                &dac
+            },
+        );
+    }
+
+    // The connector: what was asked for, else a known DAC, else a connected
+    // HDMI output the desktop is not already drawing on.
+    let chosen = match want.as_deref() {
+        Some(name) => match all.iter().find(|c| c.name == name || c.drm == name) {
+            Some(c) => c.clone(),
+            None => {
+                println!("\n{name}: no such connector");
+                return 1;
+            }
+        },
+        None => {
+            let by_dac = all
+                .iter()
+                .find(|c| c.connected && known_dac(&c.edid_name).is_some());
+            let free_hdmi = all.iter().find(|c| {
+                c.connected
+                    && c.name.contains("HDMI")
+                    && !output::hypr_monitor(&c.name)
+                        .map(|m| !m["disabled"].as_bool().unwrap_or(true))
+                        .unwrap_or(false)
+            });
+            match by_dac.or(free_hdmi) {
+                Some(c) => c.clone(),
+                None => {
+                    println!(
+                        "\nno candidate: plug the DAC into an HDMI port the desktop is not \
+                         using, or name one with --connector"
+                    );
+                    return 1;
+                }
+            }
+        }
+    };
+
+    let dac = known_dac(&chosen.edid_name);
+    let standard = want_standard
+        .as_deref()
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            if cfg.output.standard.trim().is_empty() {
+                standard_for_locale().to_string()
+            } else {
+                cfg.output.standard.clone()
+            }
+        });
+    if !matches!(standard.as_str(), "ntsc" | "pal") {
+        println!("\n{standard}: the standard is ntsc or pal");
+        return 1;
+    }
+
+    println!("\nchosen");
+    println!("  connector   {} ({})", chosen.name, chosen.drm);
+    match dac {
+        Some((label, true)) => println!("  DAC         {label}, sync selected over I2C"),
+        Some((label, false)) => {
+            println!("  DAC         {label}: sync is set on the device itself, not from here")
+        }
+        None => println!(
+            "  DAC         unknown ({}): the timings still apply, the sync mode does not",
+            if chosen.edid_name.is_empty() {
+                "no EDID name"
+            } else {
+                &chosen.edid_name
+            }
+        ),
+    }
+    println!("  standard    {} ({})", standard.to_uppercase(), {
+        if want_standard.is_some() {
+            "asked for"
+        } else if cfg.output.standard.trim().is_empty() {
+            "from the locale"
+        } else {
+            "already configured"
+        }
+    });
+    println!(
+        "  audio       {}",
+        if chosen.edid_audio {
+            "advertised by the EDID, routed to the tube while it is on"
+        } else {
+            "not advertised by this EDID: keep the sound on the desktop"
+        }
+    );
+
+    let configured = cfg.output.connector.trim();
+    if !configured.is_empty() && configured != chosen.name && configured != chosen.drm && !force {
+        println!(
+            "\n{} already names {configured}. Run with --force to change it.",
+            Config::path().display()
+        );
+        return 1;
+    }
+    if dry {
+        println!("\nnothing written (--dry-run)");
+        return 0;
+    }
+
+    let mut wrote = Vec::new();
+    for (key, val) in [
+        ("output.connector", chosen.name.as_str()),
+        ("output.standard", standard.as_str()),
+    ] {
+        match crt::set_value(key, val) {
+            Ok(()) => wrote.push(format!("{key} = {val}")),
+            Err(e) => {
+                println!("\n{key}: {e}");
+                return 1;
+            }
+        }
+    }
+    if !chosen.edid_audio && cfg.audio.route {
+        match crt::set_value("audio.route", "false") {
+            Ok(()) => wrote.push("audio.route = false".into()),
+            Err(e) => println!("audio.route: {e}"),
+        }
+    }
+    println!("\nwritten to {}", Config::path().display());
+    for line in &wrote {
+        println!("  {line}");
+    }
+
+    // What is left is the same for everyone, and doctor is the one that
+    // knows whether it has been done.
+    println!("\nnext");
+    if !display::leaseable(&chosen.drm) {
+        println!("  sudo bin/omarchy-crt-install --system   hand the connector over at boot");
+    }
+    println!("  omarchy-crt doctor                     what is still missing");
+    println!("  omarchy-crt library scan ~/Games       index the collection");
+    println!("  omarchy-crt on                         tube on");
+    0
 }
 
 fn cmd_doctor(cfg: &Config) -> i32 {
@@ -1443,6 +1688,7 @@ fn main() {
         "on" => cmd_on(&cfg, positional(args).first().map(|s| s.as_str())),
         "off" => cmd_off(&cfg),
         "watchdog" => exit(cmd_watchdog(&cfg)),
+        "setup" => exit(cmd_setup(&cfg, args)),
         "boot" => cmd_boot(&cfg),
         "toggle" => {
             if status(&cfg)["active"].as_bool().unwrap_or(false) {
@@ -1879,5 +2125,38 @@ fn main() {
             }
         }
         other => die(&format!("unknown command {other}\n\n{HELP}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_locale_says_which_half_of_the_world_the_television_is_in() {
+        assert_eq!(standard_for("it_IT.UTF-8"), "pal");
+        assert_eq!(standard_for("en_GB.UTF-8"), "pal");
+        assert_eq!(standard_for("en_US.UTF-8"), "ntsc");
+        assert_eq!(standard_for("ja_JP.UTF-8"), "ntsc");
+        assert_eq!(standard_for(""), "ntsc");
+    }
+
+    #[test]
+    fn a_dac_is_recognised_by_the_name_in_its_edid() {
+        assert_eq!(known_dac("MORTACA DEV00"), Some(("RGB-Pi 2", true)));
+        assert_eq!(known_dac("ossc"), Some(("OSSC", false)));
+        assert_eq!(known_dac("B24W-7 LED"), None);
+        assert_eq!(known_dac(""), None);
+    }
+
+    #[test]
+    fn a_flag_value_is_read_and_a_following_flag_is_not() {
+        let args: Vec<String> = ["--connector", "HDMI-A-1", "--dry-run", "--standard"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(value(&args, "--connector").as_deref(), Some("HDMI-A-1"));
+        assert_eq!(value(&args, "--standard"), None, "no value after it");
+        assert_eq!(value(&args, "--force"), None);
     }
 }

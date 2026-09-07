@@ -7,6 +7,28 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- `omarchy-crt setup`: lists the DRM connectors with what their EDID says,
+  picks the one the DAC is on, works out the television standard from the
+  locale and writes both to `crt.toml`.
+- A watchdog started by `omarchy-crt on` that puts the display process, the
+  timing, the DAC and the launcher back when the display dies, and stands
+  down after three restarts in two minutes.
+- A `version` key in `settings.toml` and `systems.toml`, with a file written
+  by a newer build copied aside before it is touched.
+- A hardware compatibility table in the README.
+
+### Changed
+
+- Log files rotate past 8 MB, keeping one older generation; the per-second
+  display bookkeeping is behind `OMARCHY_CRT_LOG=debug`.
+- `crt.toml` and `systems.toml` are written atomically and read through the
+  durable store, falling back to their backup.
+- The library overlay writes a source folder as `~/...`, or from the name of
+  the removable disk it sits on, rather than as a full path carrying the
+  user's name.
+
 ## [0.2.0] - 2026-09-07
 
 The first release meant for somebody else's machine.
