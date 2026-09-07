@@ -129,12 +129,21 @@ impl Recorder {
             // shot and drifts away from its own sound, seconds of it over a
             // quarter of an hour.
             .args(["-use_wallclock_as_timestamps", "1"])
-            .args(["-s", &format!("{REC_W}x{REC_H}"), "-r", "30", "-i", "pipe:0"]);
+            .args([
+                "-s",
+                &format!("{REC_W}x{REC_H}"),
+                "-r",
+                "30",
+                "-i",
+                "pipe:0",
+            ]);
         if let Some(sink) = &sink {
             cmd.args(["-f", "pulse", "-i", &format!("{sink}.monitor")]);
         }
-        cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"])
-            .args(["-fps_mode", "cfr", "-r", "30"]);
+        cmd.args([
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+        ])
+        .args(["-fps_mode", "cfr", "-r", "30"]);
         if sink.is_some() {
             cmd.args(["-c:a", "aac", "-b:a", "192k", "-shortest"]);
         }
@@ -348,17 +357,16 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     if let Some(conn) = output::connectors()
         .into_iter()
         .find(|c| c.name == lease.name)
+        && let Some(bus) = dac::Dac::bus_of(&conn.path)
     {
-        if let Some(bus) = dac::Dac::bus_of(&conn.path) {
-            match dac::Dac::open(&bus) {
-                Ok(d) => {
-                    let cs = dac::Csync::parse(&cfg.output.csync).unwrap_or(dac::Csync::Xor);
-                    if let Err(e) = d.set_csync(cs) {
-                        eprintln!("dac csync: {e}");
-                    }
+        match dac::Dac::open(&bus) {
+            Ok(d) => {
+                let cs = dac::Csync::parse(&cfg.output.csync).unwrap_or(dac::Csync::Xor);
+                if let Err(e) = d.set_csync(cs) {
+                    eprintln!("dac csync: {e}");
                 }
-                Err(e) => eprintln!("dac: {e}"),
             }
+            Err(e) => eprintln!("dac: {e}"),
         }
     }
 
@@ -531,7 +539,9 @@ impl Crt {
                 let (what, rest) = arg.trim().split_once(' ').unwrap_or((arg.trim(), ""));
                 // `record start <file> [sink]`: the sink's monitor is the audio track.
                 let (path, sink_arg) = rest.trim().rsplit_once(' ').unwrap_or((rest.trim(), ""));
-                let (path, sink_arg) = if sink_arg.starts_with("alsa_") || sink_arg.contains('.') && !sink_arg.contains('/') {
+                let (path, sink_arg) = if sink_arg.starts_with("alsa_")
+                    || sink_arg.contains('.') && !sink_arg.contains('/')
+                {
                     (path, Some(sink_arg.to_string()))
                 } else {
                     (rest.trim(), None)
@@ -541,7 +551,11 @@ impl Crt {
                         if let Some(r) = self.recorder.take() {
                             println!("record: {}", r.stop());
                         }
-                        let sink = sink_arg.or_else(|| std::env::var("OMARCHY_CRT_SINK").ok().filter(|s| !s.is_empty()));
+                        let sink = sink_arg.or_else(|| {
+                            std::env::var("OMARCHY_CRT_SINK")
+                                .ok()
+                                .filter(|s| !s.is_empty())
+                        });
                         match Recorder::start(path.trim(), sink) {
                             Ok(r) => {
                                 println!("record: started {}", path.trim());
@@ -613,7 +627,10 @@ impl Crt {
     fn inject_key(&mut self, arg: &str) {
         // `key r 2000`: the key stays down for that many milliseconds.
         let (name, hold_ms) = match arg.split_once(' ') {
-            Some((n, ms)) => (n.trim(), ms.trim().parse::<u64>().unwrap_or(45).clamp(20, 10_000)),
+            Some((n, ms)) => (
+                n.trim(),
+                ms.trim().parse::<u64>().unwrap_or(45).clamp(20, 10_000),
+            ),
             None => (arg, 45),
         };
         let evdev: u32 = match name {
@@ -862,12 +879,12 @@ impl Crt {
         }
         self.frame_queued = false;
         self.frames += 1;
-        if self.recorder.is_some() && self.frames % 2 == 0 {
-            if let Ok((bgra, w, h)) = self.capture() {
-                if let Some(r) = self.recorder.as_mut() {
-                    r.push(&bgra, w, h);
-                }
-            }
+        if self.recorder.is_some()
+            && self.frames.is_multiple_of(2)
+            && let Ok((bgra, w, h)) = self.capture()
+            && let Some(r) = self.recorder.as_mut()
+        {
+            r.push(&bgra, w, h);
         }
         if self.last_stats.elapsed() >= Duration::from_secs(5) {
             self.last_stats = Instant::now();
@@ -877,11 +894,18 @@ impl Crt {
                 .map(|(k, v)| format!("{k}:{v}"))
                 .collect();
             self.commits.clear();
-            println!(
-                "{} frames so far, {} client window(s) mapped, commits in 5 s: {}",
-                self.frames,
-                self.space.elements().count(),
-                commits.join(" ")
+            if omarchy_crt_shell::logfile::debug_enabled() {
+                println!(
+                    "{} frames so far, {} client window(s) mapped, commits in 5 s: {}",
+                    self.frames,
+                    self.space.elements().count(),
+                    commits.join(" ")
+                );
+            }
+            // While it runs, keep the file from growing without end.
+            omarchy_crt_shell::logfile::rotate_if_big(
+                &display::log_path(),
+                omarchy_crt_shell::logfile::CAP_BYTES,
             );
         }
         let t = self.start.elapsed();
@@ -919,30 +943,30 @@ impl CompositorHandler for Crt {
     }
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
-        if !is_sync_subsurface(surface) {
-            if let Some(window) = self.window_for(surface) {
-                window.on_commit();
-                if let Some(t) = window.toplevel() {
-                    let app = with_states(t.wl_surface(), |s| {
-                        s.data_map
-                            .get::<XdgToplevelSurfaceData>()
-                            .and_then(|d| d.lock().unwrap().app_id.clone())
-                    })
-                    .unwrap_or_default();
-                    *self.commits.entry(app).or_insert(0) += 1;
-                }
-                if let Some(t) = window.toplevel() {
-                    if t.wl_surface() == surface {
-                        let sent = with_states(surface, |s| {
-                            s.data_map
-                                .get::<XdgToplevelSurfaceData>()
-                                .map(|d| d.lock().unwrap().initial_configure_sent)
-                                .unwrap_or(true)
-                        });
-                        if !sent {
-                            t.send_configure();
-                        }
-                    }
+        if !is_sync_subsurface(surface)
+            && let Some(window) = self.window_for(surface)
+        {
+            window.on_commit();
+            if let Some(t) = window.toplevel() {
+                let app = with_states(t.wl_surface(), |s| {
+                    s.data_map
+                        .get::<XdgToplevelSurfaceData>()
+                        .and_then(|d| d.lock().unwrap().app_id.clone())
+                })
+                .unwrap_or_default();
+                *self.commits.entry(app).or_insert(0) += 1;
+            }
+            if let Some(t) = window.toplevel()
+                && t.wl_surface() == surface
+            {
+                let sent = with_states(surface, |s| {
+                    s.data_map
+                        .get::<XdgToplevelSurfaceData>()
+                        .map(|d| d.lock().unwrap().initial_configure_sent)
+                        .unwrap_or(true)
+                });
+                if !sent {
+                    t.send_configure();
                 }
             }
         }

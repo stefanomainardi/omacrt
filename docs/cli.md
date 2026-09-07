@@ -5,6 +5,8 @@ back. The bar plugin is a face over it, the launcher is started by it, and
 everything it does can be typed in a terminal.
 
 ```text
+omarchy-crt setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
+                                     first run: the DAC's connector and the standard
 omarchy-crt status [--json]          output, mode, DAC, audio, launcher, library, BIOS
 omarchy-crt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
 omarchy-crt off                      launcher closed, audio back, output disabled
@@ -31,6 +33,7 @@ omarchy-crt library set SYS core=X|dir=D   # change a system's core or folder in
 omarchy-crt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
 omarchy-crt library scan [DIR...] [--progress]   # --progress: one plain line per folder
 omarchy-crt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
+omarchy-crt watchdog                 put the display back if it dies; `on` starts it, `off` stops it
 omarchy-crt doctor
 omarchy-crt config
 omarchy-crt config set KEY VALUE     # output.csync, output.standard, audio.volume, ...
@@ -41,6 +44,30 @@ omarchy-crt config set KEY VALUE     # output.csync, output.standard, audio.volu
 Arch repositories, `libretro-mame2003-plus-git` from the AUR) so the overlay
 can offer the install through `omarchy pkg add` or `omarchy pkg aur add`.
 `config set` edits one key of `crt.toml` in place and keeps the comments.
+
+`setup` is the first run on a machine that is not the author's. It lists the
+DRM connectors with their EDID name, whether the kernel already marks them
+non-desktop, and whether the desktop is drawing on them; picks the one with a
+DAC it recognises, or a connected HDMI output the desktop is not using; takes
+the standard from `--standard`, else from what is already configured, else
+from the country in the locale; and writes `output.connector` and
+`output.standard`. `--dry-run` only looks. A connector already named in
+`crt.toml` is not replaced without `--force`.
+
+## Files, and what happens to them
+
+`settings.toml` and `systems.toml` carry a `version` key. An older file is
+read as it is, since every key added so far has a default. A file written by a
+*newer* build is copied aside as `<name>.v<N>` before anything touches it,
+because saving it would drop the keys this build does not know about. Every
+durable file is written through a temporary file and a rename, with the copy
+being replaced kept as `.bak`, and read back through the backup when the
+current one is unreadable.
+
+Logs live in `~/.local/state/omarchy-crt`. They rotate past 8 MB, keeping one
+generation as `<name>.1`. The display process writes a line per second about
+frames and timing only when `OMARCHY_CRT_LOG=debug` is set; otherwise its log
+holds warnings, errors and what it is doing.
 
 Arcade collections name their files after the emulated set, `mslug.zip` for
 Metal Slug, while both the lists and the thumbnail repository work in titles.

@@ -72,10 +72,10 @@ pub fn active_profile(card: &str) -> Option<String> {
         let s = line.trim();
         if let Some(n) = s.strip_prefix("Name:") {
             current = n.trim();
-        } else if let Some(p) = s.strip_prefix("Active Profile:") {
-            if current == card {
-                return Some(p.trim().to_string());
-            }
+        } else if let Some(p) = s.strip_prefix("Active Profile:")
+            && current == card
+        {
+            return Some(p.trim().to_string());
         }
     }
     None
@@ -145,10 +145,11 @@ pub fn move_streams(sink: &str) -> usize {
 /// Card profile to the DAC pin, sink volume, our streams moved there. With
 /// `system_default` the CRT also becomes the default sink for everything.
 pub fn route_to_crt(t: &Target, volume: u32, system_default: bool, state: &mut State) -> String {
-    if let Some(prev) = active_profile(&t.card) {
-        if prev != t.profile && state.previous_profile.is_empty() {
-            state.previous_profile = prev;
-        }
+    if let Some(prev) = active_profile(&t.card)
+        && prev != t.profile
+        && state.previous_profile.is_empty()
+    {
+        state.previous_profile = prev;
     }
     state.audio_card = t.card.clone();
     run("pactl", &["set-card-profile", &t.card, &t.profile]);
@@ -159,12 +160,11 @@ pub fn route_to_crt(t: &Target, volume: u32, system_default: bool, state: &mut S
     );
     run("pactl", &["set-sink-mute", &t.sink, "0"]);
     if system_default {
-        if state.previous_sink.is_empty() {
-            if let Some(prev) = default_sink() {
-                if prev != t.sink {
-                    state.previous_sink = prev;
-                }
-            }
+        if state.previous_sink.is_empty()
+            && let Some(prev) = default_sink()
+            && prev != t.sink
+        {
+            state.previous_sink = prev;
         }
         run("pactl", &["set-default-sink", &t.sink]);
     }

@@ -11,6 +11,10 @@
 # `trigger_hotplug` simulates an unplug (0) and a plug (1) with the events.
 set -eu
 conn="${2:-HDMI-A-1}"
+case "$conn" in
+  *[!A-Za-z0-9-]*|"") echo "not a connector name: $conn" >&2; exit 1 ;;
+esac
+[ -e "/sys/class/drm/card"*"-$conn" ] || { echo "no such connector: $conn" >&2; exit 1; }
 card="$(basename "$(dirname "$(readlink -f /sys/class/drm/card*-"$conn")")")"
 minor="${card#card}"
 dbg="/sys/kernel/debug/dri/$minor/$conn"

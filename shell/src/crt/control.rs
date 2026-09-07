@@ -14,8 +14,8 @@ use std::time::Duration;
 
 /// Canonical input names, in the order the help text lists them.
 pub const INPUTS: &[&str] = &[
-    "up", "down", "left", "right", "fire", "back", "fav", "alt", "start", "home", "menu",
-    "search", "osk", "del", "next", "prev", "first", "last",
+    "up", "down", "left", "right", "fire", "back", "fav", "alt", "start", "home", "menu", "search",
+    "osk", "del", "next", "prev", "first", "last",
 ];
 
 pub fn path() -> PathBuf {

@@ -70,11 +70,7 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
     }
     output::window_rules(output_name);
     let _ = std::fs::create_dir_all(state_dir());
-    let log = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(state_dir().join("shell.log"))
-        .map_err(|e| e.to_string())?;
+    let log = crate::logfile::open(&state_dir().join("shell.log")).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(bin);
     if let Some(s) = sink {

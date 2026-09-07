@@ -77,7 +77,7 @@ pub fn connectors() -> Vec<Connector> {
         }
         let connected = read_trim(&path.join("status")) == "connected";
         let (edid_name, edid_audio) = edid_info(&path);
-        let name = drm.splitn(2, '-').nth(1).unwrap_or(&drm).to_string();
+        let name = drm.split_once('-').map(|x| x.1).unwrap_or(&drm).to_string();
         out.push(Connector {
             path,
             drm,

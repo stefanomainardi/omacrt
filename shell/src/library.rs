@@ -59,6 +59,9 @@ pub struct System {
 
 #[derive(Debug, Deserialize)]
 struct File {
+    /// The shape of this file. See `crate::config`.
+    #[serde(default)]
+    version: u32,
     #[serde(default)]
     system: Vec<System>,
     #[serde(default)]
@@ -104,10 +107,10 @@ impl VideoPolicy {
         if s == "native" {
             return VideoPolicy::Native;
         }
-        if let Some((w, h)) = s.split_once('x') {
-            if let (Ok(w), Ok(h)) = (w.parse(), h.parse()) {
-                return VideoPolicy::Fixed(w, h);
-            }
+        if let Some((w, h)) = s.split_once('x')
+            && let (Ok(w), Ok(h)) = (w.parse(), h.parse())
+        {
+            return VideoPolicy::Fixed(w, h);
         }
         VideoPolicy::Super(2560)
     }
@@ -430,9 +433,16 @@ impl Library {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| home().join(".config/omarchy-crt"));
-        let file = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|t| toml::from_str::<File>(&t).ok());
+        let file = crate::config::read(path).and_then(|t| toml::from_str::<File>(&t).ok());
+        if let Some(f) = &file
+            && f.version > crate::config::VERSION
+        {
+            eprintln!(
+                "omarchy-crt: {} comes from a newer version and may hold \
+                 settings this build does not know about",
+                path.display()
+            );
+        }
         let (systems, retroarch, core_dir, switching) = match file {
             Some(f) => (
                 if f.system.is_empty() {
@@ -564,7 +574,7 @@ impl Library {
                 folder: false,
             })
             .collect();
-        games.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        games.sort_by_key(|a| a.title.to_lowercase());
         Some(games)
     }
 
@@ -612,7 +622,7 @@ impl Library {
                 .collect();
             out.push((name, items));
         }
-        out.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+        out.sort_by_key(|a| a.0.to_lowercase());
         out
     }
 
@@ -691,7 +701,7 @@ impl Library {
                 folder: true,
             })
             .collect();
-        folders.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        folders.sort_by_key(|a| a.title.to_lowercase());
         let dir = dir.to_path_buf();
         let entries = entries.into_iter();
         // `file_type` comes free with the directory entry; a stat per file
@@ -752,13 +762,13 @@ impl Library {
             *counts.entry(g.title.to_lowercase()).or_default() += 1;
         }
         for g in games.iter_mut() {
-            if counts[&g.title.to_lowercase()] > 1 {
-                if let Some(tag) = first_tag(&g.path) {
-                    g.title = format!("{} ({tag})", g.title);
-                }
+            if counts[&g.title.to_lowercase()] > 1
+                && let Some(tag) = first_tag(&g.path)
+            {
+                g.title = format!("{} ({tag})", g.title);
             }
         }
-        games.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        games.sort_by_key(|a| a.title.to_lowercase());
         folders.extend(games);
         folders
     }
@@ -888,8 +898,9 @@ impl Library {
                 None => (game.path.as_path(), fit_args),
             };
             let mut cmd =
-                crate::player::command("mpv", file, &self.mpv_socket(), &input_conf, &osd, colors);
+                crate::player::command("mpv", &self.mpv_socket(), &input_conf, &osd, colors);
             cmd.args(fit_args);
+            crate::player::add_target(&mut cmd, file);
             return Ok(cmd);
         }
         let cfg = self.retroarch_config()?;
@@ -900,7 +911,10 @@ impl Library {
         }
         std::fs::write(&cores_cfg, options)?;
         let launch_cfg = self.config_dir.join("launch.cfg");
-        std::fs::write(&launch_cfg, self.launch_keys(system, &cores_cfg, extra, resume))?;
+        std::fs::write(
+            &launch_cfg,
+            self.launch_keys(system, &cores_cfg, extra, resume),
+        )?;
         let mut cmd = std::process::Command::new(&self.retroarch);
         cmd.arg("--config")
             .arg(cfg)
@@ -1048,22 +1062,22 @@ pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), Stri
         return Err(format!("{key}: only core and dir can be set"));
     }
     let path = default_path();
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let text = crate::config::read(&path).unwrap_or_default();
     let mut root: toml::Value = if text.trim().is_empty() {
         toml::Value::Table(Default::default())
     } else {
         toml::from_str(&text).map_err(|e| format!("systems.toml: {e}"))?
     };
-    let table = root
-        .as_table_mut()
-        .ok_or("systems.toml: not a table")?;
+    let table = root.as_table_mut().ok_or("systems.toml: not a table")?;
     let list = table
         .entry("system")
         .or_insert_with(|| toml::Value::Array(Vec::new()));
-    let arr = list.as_array_mut().ok_or("systems.toml: system is not a list")?;
-    let found = arr.iter_mut().find(|v| {
-        v.get("name").and_then(toml::Value::as_str) == Some(system)
-    });
+    let arr = list
+        .as_array_mut()
+        .ok_or("systems.toml: system is not a list")?;
+    let found = arr
+        .iter_mut()
+        .find(|v| v.get("name").and_then(toml::Value::as_str) == Some(system));
     let entry = match found {
         Some(e) => e,
         None => {
@@ -1075,23 +1089,37 @@ pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), Stri
             t.insert("core".into(), toml::Value::String(core.into()));
             t.insert(
                 "extensions".into(),
-                toml::Value::Array(exts.iter().map(|e| toml::Value::String(e.to_string())).collect()),
+                toml::Value::Array(
+                    exts.iter()
+                        .map(|e| toml::Value::String(e.to_string()))
+                        .collect(),
+                ),
             );
             t.insert("video".into(), toml::Value::String("super".into()));
             arr.push(toml::Value::Table(t));
             arr.last_mut().unwrap()
         }
     };
-    let t = entry.as_table_mut().ok_or("systems.toml: bad system entry")?;
+    let t = entry
+        .as_table_mut()
+        .ok_or("systems.toml: bad system entry")?;
     t.insert(key.into(), toml::Value::String(value.into()));
+    // The version is written by hand at the top: a plain key has to come
+    // before the `[[system]]` tables, which is not the order the map would
+    // serialize it in.
+    if let Some(t) = root.as_table_mut() {
+        t.remove("version");
+    }
     let body = toml::to_string_pretty(&root).map_err(|e| e.to_string())?;
     let out = format!(
-        "# Written by omarchy-crt. Each [[system]] maps a ROM folder to a core.\n{body}"
+        "# Written by omarchy-crt. Each [[system]] maps a ROM folder to a core.\n\
+         version = {}\n{body}",
+        crate::config::VERSION
     );
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, out).map_err(|e| e.to_string())
+    crate::store::save(&path, out).map_err(|e| e.to_string())
 }
 
 /// Cores installed in the core directory, by their short names.

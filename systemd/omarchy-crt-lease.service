@@ -9,6 +9,23 @@ ConditionPathExists=/sys/kernel/debug
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# It needs debugfs, the connector's sysfs files and /run; nothing else.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectHome=yes
+ProtectClock=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_SYS_ADMIN
+ProtectSystem=strict
+ReadWritePaths=/sys/kernel/debug /sys/class/drm /run
 Environment=OMARCHY_CRT_CONNECTOR=HDMI-A-1
 ExecStart=/usr/local/lib/omarchy-crt/crt-lease-setup.sh on ${OMARCHY_CRT_CONNECTOR}
 ExecStop=/usr/local/lib/omarchy-crt/crt-lease-setup.sh off ${OMARCHY_CRT_CONNECTOR}

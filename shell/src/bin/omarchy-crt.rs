@@ -7,7 +7,7 @@
 
 use omarchy_crt_shell::crt::dac::{Csync, Dac, Lock};
 use omarchy_crt_shell::crt::output::{self, Connector, Modeline};
-use omarchy_crt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms};
+use omarchy_crt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
 use omarchy_crt_shell::library::{self, Library};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -16,10 +16,13 @@ use std::process::exit;
 const HELP: &str = "\
 omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
 
+  setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
+                           first run: find the DAC's connector, write crt.toml
   status [--json]          output, mode, DAC, audio, launcher, BIOS at a glance
   on [ntsc|pal]            15 kHz modeline, DAC csync, audio to the TV, launcher
   off                      launcher closed, audio back, output disabled
   boot                     login reset: CRT output off, audio back to the desktop
+  watchdog                 put the display back if it dies; started by `on`, ends with `off`
   toggle
   mode [ntsc|pal|film|480i|576i] [--lines N] [--shift-x X] [--shift-y Y]
                            standard, active lines, picture shift; no args = full frame
@@ -77,6 +80,14 @@ fn has(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+/// The value after a `--flag`, when it is there.
+fn value(args: &[String], flag: &str) -> Option<String> {
+    let i = args.iter().position(|a| a == flag)?;
+    args.get(i + 1)
+        .filter(|v| !v.starts_with("--"))
+        .map(|v| v.to_string())
+}
+
 /// Arguments that are neither flags nor the value of a flag taking one.
 fn positional(args: &[String]) -> Vec<&String> {
     let mut out = Vec::new();
@@ -86,7 +97,12 @@ fn positional(args: &[String]) -> Vec<&String> {
             skip = false;
             continue;
         }
-        if a == "--lines" || a == "--shift-x" || a == "--shift-y" {
+        if a == "--lines"
+            || a == "--shift-x"
+            || a == "--shift-y"
+            || a == "--connector"
+            || a == "--standard"
+        {
             skip = true;
             continue;
         }
@@ -190,19 +206,21 @@ fn status(cfg: &Config) -> Value {
                 if st["active"] == json!(true) {
                     break;
                 }
-                if let Some(ml) = cfg.modeline(std).and_then(Modeline::parse) {
-                    if !disabled && ml.width() == w && (h == ml.height() || h == state.lines) {
-                        st["active"] = json!(true);
-                        st["standard"] = json!(std);
-                        let ml = if h == ml.height() {
-                            ml
-                        } else {
-                            ml.with_lines(h)
-                        };
-                        mode["hfreq_khz"] = json!((ml.hfreq_khz() * 1000.0).round() / 1000.0);
-                        mode["vfreq_hz"] = json!((ml.vfreq_hz() * 1000.0).round() / 1000.0);
-                        mode["lines"] = json!(format!("{h}p"));
-                    }
+                if let Some(ml) = cfg.modeline(std).and_then(Modeline::parse)
+                    && !disabled
+                    && ml.width() == w
+                    && (h == ml.height() || h == state.lines)
+                {
+                    st["active"] = json!(true);
+                    st["standard"] = json!(std);
+                    let ml = if h == ml.height() {
+                        ml
+                    } else {
+                        ml.with_lines(h)
+                    };
+                    mode["hfreq_khz"] = json!((ml.hfreq_khz() * 1000.0).round() / 1000.0);
+                    mode["vfreq_hz"] = json!((ml.vfreq_hz() * 1000.0).round() / 1000.0);
+                    mode["lines"] = json!(format!("{h}p"));
                 }
             }
             st["mode"] = mode;
@@ -525,18 +543,18 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
         Ok(note) => println!("display:    {note}"),
         Err(e) => die(&format!("display: {e}")),
     }
-    if let Some(text) = cfg.modeline(standard) {
-        if let Some(ml) = Modeline::parse(text) {
-            println!(
-                "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
-                standard.to_uppercase(),
-                ml.width(),
-                ml.height(),
-                ml.hfreq_khz(),
-                ml.vfreq_hz()
-            );
-            display::mode(text);
-        }
+    if let Some(text) = cfg.modeline(standard)
+        && let Some(ml) = Modeline::parse(text)
+    {
+        println!(
+            "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
+            standard.to_uppercase(),
+            ml.width(),
+            ml.height(),
+            ml.hfreq_khz(),
+            ml.vfreq_hz()
+        );
+        display::mode(text);
     }
     match set_csync(cfg, conn) {
         Ok(m) => println!("dac:        csync {m}"),
@@ -569,9 +587,92 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
     let mut state = State::load();
     state.on = true;
     state.save();
+    match watchdog::start() {
+        Ok(()) => println!("watchdog:   up"),
+        Err(e) => println!("watchdog:   {e}"),
+    }
+}
+
+/// The watchdog process: `omarchy-crt watchdog`. Started by `on` when the
+/// tube is leased, it puts the display back when it dies with the state still
+/// saying the television is on. See `crt::watchdog`.
+fn cmd_watchdog(cfg: &Config) -> i32 {
+    watchdog::claim();
+    let t0 = std::time::Instant::now();
+    let now = || t0.elapsed().as_secs_f64();
+    let mut budget = watchdog::Budget::default();
+    // Only what was up when the display died is put back: quitting the
+    // launcher for the desktop leaves the tube on and must stay that way.
+    let mut had_launcher = !launcher::pids().is_empty();
+    let mut was_up = display::running();
+    loop {
+        std::thread::sleep(watchdog::TICK);
+        // A newer `on` has started its own watchdog, or `off` has cleared us.
+        if !watchdog::still_ours() {
+            return 0;
+        }
+        if !State::load().on {
+            eprintln!("the tube is off, standing down");
+            let _ = std::fs::remove_file(watchdog::pid_path());
+            return 0;
+        }
+        if display::running() {
+            was_up = true;
+            had_launcher = !launcher::pids().is_empty();
+            continue;
+        }
+        if !was_up {
+            continue;
+        }
+        was_up = false;
+        eprintln!("the display process is gone, putting the tube back");
+        if !budget.spend(now()) {
+            eprintln!(
+                "{} restarts inside {:.0} seconds: giving up, read {}",
+                watchdog::MAX_RESTARTS,
+                watchdog::WINDOW_SECS,
+                display::log_path().display()
+            );
+            let _ = std::fs::remove_file(watchdog::pid_path());
+            return 1;
+        }
+        let Some(conn) = output::pick(cfg) else {
+            eprintln!("no CRT output to restart on");
+            continue;
+        };
+        let state = State::load();
+        let standard = if state.standard.is_empty() {
+            cfg.output.standard.clone()
+        } else {
+            state.standard.clone()
+        };
+        match display::start_with_sink(&conn.name, crt_sink(cfg, &conn).as_deref()) {
+            Ok(note) => eprintln!("display: {note}"),
+            Err(e) => {
+                eprintln!("display: {e}");
+                continue;
+            }
+        }
+        if let Some(text) = cfg.modeline(&standard) {
+            display::mode(text);
+        }
+        match set_csync(cfg, &conn) {
+            Ok(m) => eprintln!("dac: csync {m}"),
+            Err(e) => eprintln!("dac: {e}"),
+        }
+        if had_launcher {
+            match launcher::start(cfg, &conn.name, crt_sink(cfg, &conn).as_deref()) {
+                Ok(note) => eprintln!("launcher: {note}"),
+                Err(e) => eprintln!("launcher: {e}"),
+            }
+        }
+        was_up = display::running();
+    }
 }
 
 fn cmd_off(cfg: &Config) {
+    // Before anything else: a deliberate shutdown must not look like a crash.
+    watchdog::stop();
     println!("launcher:   {}", launcher::stop());
     let mut state = State::load();
     if cfg.audio.route {
@@ -603,13 +704,12 @@ fn cmd_boot(cfg: &Config) {
     } else if let Some(conn) = output::pick(cfg) {
         // Nothing saved but the CRT sink may still be the default from an
         // unclean shutdown: fall back to any non CRT sink.
-        if let Some(t) = audio::target(&conn) {
-            if audio::default_sink().as_deref() == Some(t.sink.as_str()) {
-                if let Some(other) = audio::other_sink(&t.sink) {
-                    omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &other]);
-                    println!("audio:      {other}");
-                }
-            }
+        if let Some(t) = audio::target(&conn)
+            && audio::default_sink().as_deref() == Some(t.sink.as_str())
+            && let Some(other) = audio::other_sink(&t.sink)
+        {
+            omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &other]);
+            println!("audio:      {other}");
         }
     }
     if let Some(conn) = output::pick(cfg) {
@@ -627,6 +727,236 @@ fn cmd_boot(cfg: &Config) {
         println!("autostart: the DAC is connected, switching the tube on");
         cmd_on(cfg, None);
     }
+}
+
+/// Known DACs, by the product name their EDID carries. The first field is
+/// what shows up in `edid_name`, uppercased; the second is what to call it;
+/// the third says whether the sync mode can be set over I2C, which is a
+/// thing only the RGB-Pi 2 does so far.
+const KNOWN_DACS: &[(&str, &str, bool)] = &[
+    ("MORTACA", "RGB-Pi 2", true),
+    ("RGB-PI", "RGB-Pi", false),
+    ("RETROTINK", "RetroTINK", false),
+    ("OSSC", "OSSC", false),
+];
+
+fn known_dac(edid_name: &str) -> Option<(&'static str, bool)> {
+    let up = edid_name.to_ascii_uppercase();
+    KNOWN_DACS
+        .iter()
+        .find(|(needle, _, _)| up.contains(needle))
+        .map(|(_, label, csync)| (*label, *csync))
+}
+
+/// The television standard the locale suggests. The line count of a country
+/// is not something to ask about when the environment already says it.
+fn standard_for_locale() -> &'static str {
+    let locale = ["LC_ALL", "LC_MEASUREMENT", "LANG"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok())
+        .unwrap_or_default();
+    standard_for(&locale)
+}
+
+/// The standard of a locale string such as `it_IT.UTF-8`. Nothing to go on
+/// means NTSC, which is what most DACs are set to when they arrive.
+fn standard_for(locale: &str) -> &'static str {
+    let locale = locale.to_ascii_uppercase();
+    // The 60 Hz half of the world, by the country code of the locale.
+    const SIXTY: &[&str] = &[
+        "_US", "_CA", "_JP", "_KR", "_TW", "_MX", "_PH", "_CL", "_CO", "_PE", "_VE", "_EC", "_CR",
+        "_PA", "_GT", "_DO", "_HN", "_NI", "_SV", "_BO", "_MM",
+    ];
+    if SIXTY.iter().any(|c| locale.contains(c)) {
+        return "ntsc";
+    }
+    if locale.is_empty() { "ntsc" } else { "pal" }
+}
+
+/// `omarchy-crt setup`: look at the machine and write the two things that
+/// change from one to the next, the connector the DAC is on and the standard
+/// of the television. Everything else has a default that works.
+fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
+    let dry = has(args, "--dry-run");
+    let force = has(args, "--force");
+    let want = value(args, "--connector");
+    let want_standard = value(args, "--standard");
+
+    let all = output::connectors();
+    if all.is_empty() {
+        println!("no DRM connectors: is this machine running a graphics driver?");
+        return 1;
+    }
+
+    println!("outputs");
+    for c in &all {
+        if !c.connected && c.edid_name.is_empty() {
+            continue;
+        }
+        let dac = known_dac(&c.edid_name)
+            .map(|(l, _)| format!("  {l}"))
+            .unwrap_or_default();
+        let desktop = output::hypr_monitor(&c.name)
+            .map(|m| !m["disabled"].as_bool().unwrap_or(true))
+            .unwrap_or(false);
+        println!(
+            "  {:<16} {:<10} {:<16}{}{}{}",
+            c.name,
+            if c.connected {
+                "connected"
+            } else {
+                "disconnected"
+            },
+            if c.edid_name.is_empty() {
+                "no EDID name"
+            } else {
+                &c.edid_name
+            },
+            if c.edid_audio { "  audio" } else { "" },
+            if display::leaseable(&c.drm) {
+                "  non-desktop"
+            } else {
+                ""
+            },
+            if desktop {
+                "  in use by the desktop"
+            } else {
+                &dac
+            },
+        );
+    }
+
+    // The connector: what was asked for, else a known DAC, else a connected
+    // HDMI output the desktop is not already drawing on.
+    let chosen = match want.as_deref() {
+        Some(name) => match all.iter().find(|c| c.name == name || c.drm == name) {
+            Some(c) => c.clone(),
+            None => {
+                println!("\n{name}: no such connector");
+                return 1;
+            }
+        },
+        None => {
+            let by_dac = all
+                .iter()
+                .find(|c| c.connected && known_dac(&c.edid_name).is_some());
+            let free_hdmi = all.iter().find(|c| {
+                c.connected
+                    && c.name.contains("HDMI")
+                    && !output::hypr_monitor(&c.name)
+                        .map(|m| !m["disabled"].as_bool().unwrap_or(true))
+                        .unwrap_or(false)
+            });
+            match by_dac.or(free_hdmi) {
+                Some(c) => c.clone(),
+                None => {
+                    println!(
+                        "\nno candidate: plug the DAC into an HDMI port the desktop is not \
+                         using, or name one with --connector"
+                    );
+                    return 1;
+                }
+            }
+        }
+    };
+
+    let dac = known_dac(&chosen.edid_name);
+    let standard = want_standard
+        .as_deref()
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            if cfg.output.standard.trim().is_empty() {
+                standard_for_locale().to_string()
+            } else {
+                cfg.output.standard.clone()
+            }
+        });
+    if !matches!(standard.as_str(), "ntsc" | "pal") {
+        println!("\n{standard}: the standard is ntsc or pal");
+        return 1;
+    }
+
+    println!("\nchosen");
+    println!("  connector   {} ({})", chosen.name, chosen.drm);
+    match dac {
+        Some((label, true)) => println!("  DAC         {label}, sync selected over I2C"),
+        Some((label, false)) => {
+            println!("  DAC         {label}: sync is set on the device itself, not from here")
+        }
+        None => println!(
+            "  DAC         unknown ({}): the timings still apply, the sync mode does not",
+            if chosen.edid_name.is_empty() {
+                "no EDID name"
+            } else {
+                &chosen.edid_name
+            }
+        ),
+    }
+    println!("  standard    {} ({})", standard.to_uppercase(), {
+        if want_standard.is_some() {
+            "asked for"
+        } else if cfg.output.standard.trim().is_empty() {
+            "from the locale"
+        } else {
+            "already configured"
+        }
+    });
+    println!(
+        "  audio       {}",
+        if chosen.edid_audio {
+            "advertised by the EDID, routed to the tube while it is on"
+        } else {
+            "not advertised by this EDID: keep the sound on the desktop"
+        }
+    );
+
+    let configured = cfg.output.connector.trim();
+    if !configured.is_empty() && configured != chosen.name && configured != chosen.drm && !force {
+        println!(
+            "\n{} already names {configured}. Run with --force to change it.",
+            Config::path().display()
+        );
+        return 1;
+    }
+    if dry {
+        println!("\nnothing written (--dry-run)");
+        return 0;
+    }
+
+    let mut wrote = Vec::new();
+    for (key, val) in [
+        ("output.connector", chosen.name.as_str()),
+        ("output.standard", standard.as_str()),
+    ] {
+        match crt::set_value(key, val) {
+            Ok(()) => wrote.push(format!("{key} = {val}")),
+            Err(e) => {
+                println!("\n{key}: {e}");
+                return 1;
+            }
+        }
+    }
+    if !chosen.edid_audio && cfg.audio.route {
+        match crt::set_value("audio.route", "false") {
+            Ok(()) => wrote.push("audio.route = false".into()),
+            Err(e) => println!("audio.route: {e}"),
+        }
+    }
+    println!("\nwritten to {}", Config::path().display());
+    for line in &wrote {
+        println!("  {line}");
+    }
+
+    // What is left is the same for everyone, and doctor is the one that
+    // knows whether it has been done.
+    println!("\nnext");
+    if !display::leaseable(&chosen.drm) {
+        println!("  sudo bin/omarchy-crt-install --system   hand the connector over at boot");
+    }
+    println!("  omarchy-crt doctor                     what is still missing");
+    println!("  omarchy-crt library scan ~/Games       index the collection");
+    println!("  omarchy-crt on                         tube on");
+    0
 }
 
 fn cmd_doctor(cfg: &Config) -> i32 {
@@ -695,6 +1025,9 @@ fn cmd_doctor(cfg: &Config) -> i32 {
         ("retroarch", "retroarch"),
         ("mpv", "mpv"),
         ("ffmpeg", "ffmpeg"),
+        ("curl", "curl"),
+        ("yt-dlp", "yt-dlp"),
+        ("cliamp", "cliamp"),
     ] {
         let found = std::env::var_os("PATH")
             .map(|p| std::env::split_paths(&p).any(|d| d.join(cmd).is_file()))
@@ -706,6 +1039,64 @@ fn cmd_doctor(cfg: &Config) -> i32 {
                 "ok".into()
             } else {
                 format!("pacman -S {cmd}")
+            },
+        ));
+    }
+    // The piece that makes leasing possible at all: without the boot time
+    // unit the connector stays a desktop monitor and nothing else works.
+    let unit = std::path::Path::new("/etc/systemd/system/omarchy-crt-lease.service");
+    let unit_enabled = std::process::Command::new("systemctl")
+        .args(["is-enabled", "--quiet", "omarchy-crt-lease.service"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    rows.push((
+        "lease unit installed".into(),
+        unit.is_file(),
+        if unit.is_file() {
+            "/etc/systemd/system/omarchy-crt-lease.service".into()
+        } else {
+            "sudo bin/omarchy-crt-install --system".into()
+        },
+    ));
+    rows.push((
+        "lease unit enabled".into(),
+        unit_enabled,
+        if unit_enabled {
+            "runs at boot".into()
+        } else {
+            "sudo systemctl enable --now omarchy-crt-lease.service".into()
+        },
+    ));
+    // The bar plugin, and whether the shell has been told about it.
+    let plugin_dir = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+        .join(".config/omarchy/plugins/io.github.stefanomainardi.omarchy-crt");
+    rows.push((
+        "bar plugin installed".into(),
+        plugin_dir.join("manifest.json").is_file(),
+        if plugin_dir.join("manifest.json").is_file() {
+            plugin_dir.display().to_string()
+        } else {
+            "bin/omarchy-crt-install (unlocked session)".into()
+        },
+    ));
+    // Somewhere to write: a read only config directory fails much later,
+    // in the middle of saving something the player cares about.
+    for (label, dir) in [
+        ("config directory writable", crt::config_dir()),
+        ("state directory writable", crt::state_dir()),
+    ] {
+        let ok = std::fs::create_dir_all(&dir).is_ok()
+            && omarchy_crt_shell::store::save(&dir.join(".write-test"), b"ok").is_ok();
+        let _ = std::fs::remove_file(dir.join(".write-test"));
+        let _ = std::fs::remove_file(dir.join(".write-test.bak"));
+        rows.push((
+            label.into(),
+            ok,
+            if ok {
+                dir.display().to_string()
+            } else {
+                format!("cannot write {}", dir.display())
             },
         ));
     }
@@ -952,7 +1343,11 @@ fn cmd_library(args: &[String]) {
                 return;
             }
             for f in found {
-                let note = if roots.contains(&f) { "  (a root already)" } else { "" };
+                let note = if roots.contains(&f) {
+                    "  (a root already)"
+                } else {
+                    ""
+                };
                 println!("{}{note}", f.display());
             }
         }
@@ -972,7 +1367,12 @@ fn cmd_library(args: &[String]) {
             let lib = library();
             let settings = omarchy_crt_shell::settings::Settings::load(&lib.config_dir);
             let regions = covers::regions_for(&settings.music.country);
-            let wanted: Vec<&String> = pos.iter().skip(1).filter(|s| !s.starts_with("--")).copied().collect();
+            let wanted: Vec<&String> = pos
+                .iter()
+                .skip(1)
+                .filter(|s| !s.starts_with("--"))
+                .copied()
+                .collect();
             let limit: usize = args
                 .iter()
                 .position(|a| a == "--limit")
@@ -1065,7 +1465,11 @@ fn cmd_library(args: &[String]) {
                     r["system"].as_str().unwrap_or(""),
                     r["core"].as_str().unwrap_or(""),
                     r["package"].as_str().unwrap_or(""),
-                    if r["aur"].as_bool().unwrap_or(false) { "  (AUR)" } else { "" },
+                    if r["aur"].as_bool().unwrap_or(false) {
+                        "  (AUR)"
+                    } else {
+                        ""
+                    },
                 );
             }
         }
@@ -1283,6 +1687,8 @@ fn main() {
         }
         "on" => cmd_on(&cfg, positional(args).first().map(|s| s.as_str())),
         "off" => cmd_off(&cfg),
+        "watchdog" => exit(cmd_watchdog(&cfg)),
+        "setup" => exit(cmd_setup(&cfg, args)),
         "boot" => cmd_boot(&cfg),
         "toggle" => {
             if status(&cfg)["active"].as_bool().unwrap_or(false) {
@@ -1383,7 +1789,10 @@ fn main() {
             if !display::running() {
                 die("the display process is not running");
             }
-            let sub = positional(args).first().map(|s| s.to_string()).unwrap_or_default();
+            let sub = positional(args)
+                .first()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
             match sub.as_str() {
                 "start" => {
                     let given = positional(args)
@@ -1400,10 +1809,13 @@ fn main() {
                     };
                     let conn = connector(&cfg);
                     let sink = crt_sink(&cfg, &conn);
-                    display::record_start(&path, sink.as_deref()).unwrap_or_else(|e| die(&e.to_string()));
+                    display::record_start(&path, sink.as_deref())
+                        .unwrap_or_else(|e| die(&e.to_string()));
                     println!(
                         "recording the tube to {path}{} (omarchy-crt record stop)",
-                        sink.as_deref().map(|s| format!(" with audio from {s}")).unwrap_or_default()
+                        sink.as_deref()
+                            .map(|s| format!(" with audio from {s}"))
+                            .unwrap_or_default()
                     );
                 }
                 "stop" => {
@@ -1533,11 +1945,16 @@ fn main() {
                     crt::control::send(&names).unwrap_or_else(|e| die(&e.to_string()));
                 }
                 "type" => {
-                    let words: Vec<&str> = positional(args).iter().skip(1).map(|s| s.as_str()).collect();
+                    let words: Vec<&str> = positional(args)
+                        .iter()
+                        .skip(1)
+                        .map(|s| s.as_str())
+                        .collect();
                     if words.is_empty() {
                         die("shell type needs the text to type");
                     }
-                    crt::control::send_text(&words.join(" ")).unwrap_or_else(|e| die(&e.to_string()));
+                    crt::control::send_text(&words.join(" "))
+                        .unwrap_or_else(|e| die(&e.to_string()));
                 }
                 _ => {
                     let pids = launcher::pids();
@@ -1577,7 +1994,9 @@ fn main() {
                     let v = v.min(150);
                     omarchy_crt_shell::crt::set_value("audio.volume", &v.to_string())
                         .unwrap_or_else(|e| die(&e));
-                    if state.on || audio::active_profile(&target.card).is_some_and(|p| p == target.profile) {
+                    if state.on
+                        || audio::active_profile(&target.card).is_some_and(|p| p == target.profile)
+                    {
                         omarchy_crt_shell::crt::run(
                             "pactl",
                             &["set-sink-volume", &target.sink, &format!("{v}%")],
@@ -1586,12 +2005,11 @@ fn main() {
                     println!("TV volume {v}%");
                 }
                 Some("all") => {
-                    if state.previous_sink.is_empty() {
-                        if let Some(prev) = audio::default_sink() {
-                            if prev != target.sink {
-                                state.previous_sink = prev;
-                            }
-                        }
+                    if state.previous_sink.is_empty()
+                        && let Some(prev) = audio::default_sink()
+                        && prev != target.sink
+                    {
+                        state.previous_sink = prev;
                     }
                     omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &target.sink]);
                     println!("system default: {}", target.sink);
@@ -1674,7 +2092,10 @@ fn main() {
                 let title = pos.get(1).map(|s| s.as_str()).unwrap_or("");
                 let path = omarchy_crt_shell::crt::config_dir().join("watch-later.tsv");
                 let mut text = std::fs::read_to_string(&path).unwrap_or_default();
-                if text.lines().any(|l| l.split('\t').next() == Some(target.as_str())) {
+                if text
+                    .lines()
+                    .any(|l| l.split('\t').next() == Some(target.as_str()))
+                {
                     println!("already in the watch later list");
                     return;
                 }
@@ -1704,5 +2125,38 @@ fn main() {
             }
         }
         other => die(&format!("unknown command {other}\n\n{HELP}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_locale_says_which_half_of_the_world_the_television_is_in() {
+        assert_eq!(standard_for("it_IT.UTF-8"), "pal");
+        assert_eq!(standard_for("en_GB.UTF-8"), "pal");
+        assert_eq!(standard_for("en_US.UTF-8"), "ntsc");
+        assert_eq!(standard_for("ja_JP.UTF-8"), "ntsc");
+        assert_eq!(standard_for(""), "ntsc");
+    }
+
+    #[test]
+    fn a_dac_is_recognised_by_the_name_in_its_edid() {
+        assert_eq!(known_dac("MORTACA DEV00"), Some(("RGB-Pi 2", true)));
+        assert_eq!(known_dac("ossc"), Some(("OSSC", false)));
+        assert_eq!(known_dac("B24W-7 LED"), None);
+        assert_eq!(known_dac(""), None);
+    }
+
+    #[test]
+    fn a_flag_value_is_read_and_a_following_flag_is_not() {
+        let args: Vec<String> = ["--connector", "HDMI-A-1", "--dry-run", "--standard"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(value(&args, "--connector").as_deref(), Some("HDMI-A-1"));
+        assert_eq!(value(&args, "--standard"), None, "no value after it");
+        assert_eq!(value(&args, "--force"), None);
     }
 }

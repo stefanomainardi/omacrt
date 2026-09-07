@@ -158,20 +158,22 @@ pub fn db_path() -> PathBuf {
 pub fn save(mapping: &str) -> std::io::Result<()> {
     let path = db_path();
     let guid = mapping.split(',').next().unwrap_or("");
-    let mut lines: Vec<String> = std::fs::read_to_string(&path)
+    let mut lines: Vec<String> = crate::store::load_string(&path)
         .unwrap_or_default()
         .lines()
         .filter(|l| !l.starts_with(guid) || guid.is_empty())
         .map(|l| l.to_string())
         .collect();
     if lines.is_empty() {
-        lines.push("# Pads mapped with the omarchy-crt launcher (SDL_GameControllerDB format).".into());
+        lines.push(
+            "# Pads mapped with the omarchy-crt launcher (SDL_GameControllerDB format).".into(),
+        );
     }
     lines.push(mapping.to_string());
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(&path, lines.join("\n") + "\n")
+    crate::store::save(&path, lines.join("\n") + "\n")
 }
 
 #[cfg(test)]
@@ -193,7 +195,9 @@ mod tests {
         assert!(!w.feed(Raw::Axis(1, false), 6.2)); // too soon after an answer
         assert!(w.feed(Raw::Axis(1, false), 7.0)); // dpleft
         let m = w.mapping();
-        assert!(m.starts_with("03000000aaaa,Some  Pad,a:b0,b:b1,y:b3,dpup:h0.1,dpdown:+a1,dpleft:-a1,"));
+        assert!(
+            m.starts_with("03000000aaaa,Some  Pad,a:b0,b:b1,y:b3,dpup:h0.1,dpdown:+a1,dpleft:-a1,")
+        );
         assert!(m.ends_with("platform:Linux,"));
         assert!(w.usable());
     }

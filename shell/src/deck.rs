@@ -25,7 +25,6 @@ pub const MODE_NAMES: [&str; MODES] = [
     "spectrum tower",
 ];
 
-
 /// Beat detection on the bass: a hit when the low bands jump above their
 /// running average. `hit` is 1.0 on the beat and decays.
 pub struct Kick {
@@ -254,15 +253,38 @@ impl Deck {
         fb.rect(slot_x, slot_y, slot_w, 1, scale(th.dim, 0.5));
         fb.rect(slot_x, slot_y + slot_h - 1, slot_w, 1, scale(th.fg, 0.15));
         if info.radio {
-            let label = if info.station.is_some() { info.title } else { info.sub };
-            self.draw_dial(fb, th, slot_x + 6, slot_y + 6, slot_w - 12, slot_h - 12, now, label, info);
+            let label = if info.station.is_some() {
+                info.title
+            } else {
+                info.sub
+            };
+            self.draw_dial(
+                fb,
+                th,
+                slot_x + 6,
+                slot_y + 6,
+                slot_w - 12,
+                slot_h - 12,
+                now,
+                label,
+                info,
+            );
         } else if info.turntable {
             let progress = if info.duration > 0.0 {
                 (info.position / info.duration).clamp(0.0, 1.0) as f32
             } else {
                 0.0
             };
-            self.draw_turntable(fb, th, slot_x + 4, slot_y + 4, slot_w - 8, slot_h - 8, progress, info);
+            self.draw_turntable(
+                fb,
+                th,
+                slot_x + 4,
+                slot_y + 4,
+                slot_w - 8,
+                slot_h - 8,
+                progress,
+                info,
+            );
         } else {
             let progress = if info.duration > 0.0 {
                 (info.position / info.duration).clamp(0.0, 1.0) as f32
@@ -275,7 +297,16 @@ impl Deck {
             let drop = ((1.0 - ease) * -(slot_h as f32 + 10.0)) as i32;
             let cy = slot_y + 6 + drop;
             if cy + slot_h - 12 > y0 - 12 {
-                self.draw_cassette(fb, th, slot_x + 8, cy, slot_w - 16, slot_h - 12, progress, info);
+                self.draw_cassette(
+                    fb,
+                    th,
+                    slot_x + 8,
+                    cy,
+                    slot_w - 16,
+                    slot_h - 12,
+                    progress,
+                    info,
+                );
             }
         }
         // VU meters on the right.
@@ -349,7 +380,12 @@ impl Deck {
         fb.rect(x + w - 1, y + 1, 1, h - 2, scale(edge, 0.6));
         fb.rect(x + 1, y + h - 1, w - 2, 1, scale(edge, 0.6));
         // Screws.
-        for (sx, sy) in [(x + 3, y + 3), (x + w - 5, y + 3), (x + 3, y + h - 5), (x + w - 5, y + h - 5)] {
+        for (sx, sy) in [
+            (x + 3, y + 3),
+            (x + w - 5, y + 3),
+            (x + 3, y + h - 5),
+            (x + w - 5, y + h - 5),
+        ] {
             fb.rect(sx, sy, 2, 2, th.dim);
         }
         // Label: a paper strip with the title, or the cover art.
@@ -406,7 +442,13 @@ impl Deck {
             }
         }
         // Tape path between the reels.
-        fb.rect(wx + ww / 4, cyr + (hub as i32) + 2, ww / 2, 1, lerp_color(th.bg, th.fg, 0.3));
+        fb.rect(
+            wx + ww / 4,
+            cyr + (hub as i32) + 2,
+            ww / 2,
+            1,
+            lerp_color(th.bg, th.fg, 0.3),
+        );
         // Side label: A.
         fb.text(x + 6, wy + 2, "A", th.dim, 1);
         // Playing light.
@@ -461,7 +503,11 @@ impl Deck {
         for k in 0..dots {
             let a = self.reel * 0.9 + k as f32 / dots as f32 * std::f32::consts::TAU;
             let rr = r_platter - 1.5;
-            let c = if k % 2 == 0 { th.paper } else { lerp_color(th.bg, th.paper, 0.35) };
+            let c = if k % 2 == 0 {
+                th.paper
+            } else {
+                lerp_color(th.bg, th.paper, 0.35)
+            };
             fb.put(cx + (a.cos() * rr) as i32, cy + (a.sin() * rr) as i32, c);
         }
         // The record: near black vinyl, grooves every two pixels, two sheens.
@@ -494,8 +540,10 @@ impl Deck {
                         if (dx * dx + dy * dy) as f32 > r_label * r_label {
                             continue;
                         }
-                        let sx = ((dx + ri) as usize * img.w / (2 * ri as usize + 1)).min(img.w - 1);
-                        let sy = ((dy + ri) as usize * img.h / (2 * ri as usize + 1)).min(img.h - 1);
+                        let sx =
+                            ((dx + ri) as usize * img.w / (2 * ri as usize + 1)).min(img.w - 1);
+                        let sy =
+                            ((dy + ri) as usize * img.h / (2 * ri as usize + 1)).min(img.h - 1);
                         fb.put(cx + dx, cy + dy, img.px[sy * img.w + sx] & 0x00ff_ffff);
                     }
                 }
@@ -503,7 +551,13 @@ impl Deck {
             _ => {
                 // A two tone label with a stripe, like a seventies pressing.
                 draw_disc(fb, cx, cy, r_label, lerp_color(th.accent, th.bg, 0.15));
-                draw_disc(fb, cx, cy, r_label - 5.0, lerp_color(th.magenta, th.paper, 0.2));
+                draw_disc(
+                    fb,
+                    cx,
+                    cy,
+                    r_label - 5.0,
+                    lerp_color(th.magenta, th.paper, 0.2),
+                );
                 let (s, c) = (self.reel * 0.9).sin_cos();
                 fb.line(
                     cx - (c * (r_label - 1.0)) as i32,
@@ -544,15 +598,28 @@ impl Deck {
         // Where a circle of arm_len around the pivot meets the circle of
         // target_r around the spindle: the stylus.
         let base = ((cy - py) as f32).atan2((cx - px) as f32);
-        let cosang = ((arm_len * arm_len + d * d - target_r * target_r) / (2.0 * arm_len * d)).clamp(-1.0, 1.0);
+        let cosang = ((arm_len * arm_len + d * d - target_r * target_r) / (2.0 * arm_len * d))
+            .clamp(-1.0, 1.0);
         let ang = base - cosang.acos();
         let sx = px as f32 + ang.cos() * arm_len;
         let sy = py as f32 + ang.sin() * arm_len;
         // Counterweight behind the pivot, on the arm's line.
         let bx = px as f32 - ang.cos() * 9.0;
         let by = py as f32 - ang.sin() * 9.0;
-        fb.line(px, py, bx as i32, by as i32, lerp_color(th.bg, th.paper, 0.7));
-        fb.rect(bx as i32 - 2, by as i32 - 2, 5, 5, lerp_color(th.bg, th.fg, 0.55));
+        fb.line(
+            px,
+            py,
+            bx as i32,
+            by as i32,
+            lerp_color(th.bg, th.paper, 0.7),
+        );
+        fb.rect(
+            bx as i32 - 2,
+            by as i32 - 2,
+            5,
+            5,
+            lerp_color(th.bg, th.fg, 0.55),
+        );
         // The arm, an S shape: straight to two thirds, then the headshell offset.
         let ex = px as f32 + ang.cos() * arm_len * 0.7;
         let ey = py as f32 + ang.sin() * arm_len * 0.7;
@@ -560,28 +627,78 @@ impl Deck {
         fb.line(px, py, ex as i32, ey as i32, arm);
         fb.line(px, py + 1, ex as i32, ey as i32 + 1, scale(arm, 0.55));
         fb.line(ex as i32, ey as i32, sx as i32, sy as i32, arm);
-        fb.line(ex as i32, ey as i32 + 1, sx as i32, sy as i32 + 1, scale(arm, 0.55));
+        fb.line(
+            ex as i32,
+            ey as i32 + 1,
+            sx as i32,
+            sy as i32 + 1,
+            scale(arm, 0.55),
+        );
         // Headshell and stylus.
-        fb.rect(sx as i32 - 2, sy as i32 - 2, 5, 4, lerp_color(th.bg, th.fg, 0.6));
+        fb.rect(
+            sx as i32 - 2,
+            sy as i32 - 2,
+            5,
+            4,
+            lerp_color(th.bg, th.fg, 0.6),
+        );
         fb.rect(sx as i32 - 3, sy as i32 + 1, 2, 2, th.paper);
         // Arm rest, where the stylus sits between records.
-        let rx = px as f32 + base.cos() * (d - rest_r) + (base + std::f32::consts::FRAC_PI_2).cos() * 0.0;
+        let rx = px as f32
+            + base.cos() * (d - rest_r)
+            + (base + std::f32::consts::FRAC_PI_2).cos() * 0.0;
         let ry = py as f32 + base.sin() * (d - rest_r);
-        fb.rect(rx as i32 - 1, ry as i32 + 3, 3, 4, lerp_color(th.bg, th.fg, 0.45));
+        fb.rect(
+            rx as i32 - 1,
+            ry as i32 + 3,
+            3,
+            4,
+            lerp_color(th.bg, th.fg, 0.45),
+        );
         // Speed selector: singles (under five minutes) spin at 45, albums at 33.
         self.rpm45 = info.duration > 0.0 && info.duration < 300.0;
         let sel_x = x + w - 44;
         let sel_y = y + h - 12;
-        let (c33, c45) = if self.rpm45 { (th.dim, th.paper) } else { (th.paper, th.dim) };
+        let (c33, c45) = if self.rpm45 {
+            (th.dim, th.paper)
+        } else {
+            (th.paper, th.dim)
+        };
         fb.text(sel_x, sel_y - 1, "33", c33, 1);
         fb.text(sel_x + 20, sel_y - 1, "45", c45, 1);
-        fb.rect(if self.rpm45 { sel_x + 20 } else { sel_x }, sel_y + 8, 14, 1, th.accent);
-        fb.rect(x + 6, y + h - 12, 4, 4, if info.playing { th.green } else { scale(th.green, 0.25) });
+        fb.rect(
+            if self.rpm45 { sel_x + 20 } else { sel_x },
+            sel_y + 8,
+            14,
+            1,
+            th.accent,
+        );
+        fb.rect(
+            x + 6,
+            y + h - 12,
+            4,
+            4,
+            if info.playing {
+                th.green
+            } else {
+                scale(th.green, 0.25)
+            },
+        );
         fb.text(x + 13, y + h - 13, "ON", th.dim, 1);
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn draw_vu(&self, fb: &mut Framebuffer, th: &Theme, x: i32, y: i32, w: i32, h: i32, ch: usize, label: &str) {
+    fn draw_vu(
+        &self,
+        fb: &mut Framebuffer,
+        th: &Theme,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        ch: usize,
+        label: &str,
+    ) {
         let face = lerp_color(th.bg, th.paper, 0.08);
         fb.rect(x, y, w, h, face);
         fb.rect(x, y, w, 1, scale(th.fg, 0.2));
@@ -609,21 +726,60 @@ impl Deck {
         // Peak marker and needle.
         let peak = self.peak[ch].clamp(0.0, 1.0);
         let ap = a0 + (a1 - a0) * peak;
-        fb.rect(px + (ap.cos() * (r - 1.0)) as i32, py + (ap.sin() * (r - 1.0)) as i32, 2, 2, th.yellow);
+        fb.rect(
+            px + (ap.cos() * (r - 1.0)) as i32,
+            py + (ap.sin() * (r - 1.0)) as i32,
+            2,
+            2,
+            th.yellow,
+        );
         let lvl = self.vu[ch].clamp(0.0, 1.0);
         let an = a0 + (a1 - a0) * lvl;
-        fb.line(px, py, px + (an.cos() * (r - 1.0)) as i32, py + (an.sin() * (r - 1.0)) as i32, th.paper);
+        fb.line(
+            px,
+            py,
+            px + (an.cos() * (r - 1.0)) as i32,
+            py + (an.sin() * (r - 1.0)) as i32,
+            th.paper,
+        );
         fb.rect(px - 1, py - 1, 3, 2, th.paper);
         fb.text(x + 3, y + 2, label, th.dim, 1);
         // Peak LED.
-        fb.rect(x + w - 6, y + 3, 3, 3, if peak > 0.86 { th.red } else { scale(th.red, 0.25) });
+        fb.rect(
+            x + w - 6,
+            y + 3,
+            3,
+            3,
+            if peak > 0.86 {
+                th.red
+            } else {
+                scale(th.red, 0.25)
+            },
+        );
         let vu = "VU";
-        fb.text(x + w - 3 - Framebuffer::text_width(vu, 1) - 6, y + h - 10, vu, scale(th.dim, 0.8), 1);
+        fb.text(
+            x + w - 3 - Framebuffer::text_width(vu, 1) - 6,
+            y + h - 10,
+            vu,
+            scale(th.dim, 0.8),
+            1,
+        );
     }
 
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
-    fn draw_dial(&mut self, fb: &mut Framebuffer, th: &Theme, x: i32, y: i32, w: i32, h: i32, now: f64, label: &str, info: &Info) {
+    fn draw_dial(
+        &mut self,
+        fb: &mut Framebuffer,
+        th: &Theme,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        now: f64,
+        label: &str,
+        info: &Info,
+    ) {
         let playing = info.playing;
         let glass = lerp_color(th.bg, th.orange, 0.10);
         fb.rect(x, y, w, h, glass);
@@ -637,11 +793,23 @@ impl Deck {
             let f = i as f32 / 20.0;
             let tx = sx0 + ((sx1 - sx0) as f32 * f) as i32;
             let tall = i % 4 == 0;
-            fb.rect(tx, sy - if tall { 5 } else { 3 }, 1, if tall { 5 } else { 3 }, th.dim);
+            fb.rect(
+                tx,
+                sy - if tall { 5 } else { 3 },
+                1,
+                if tall { 5 } else { 3 },
+                th.dim,
+            );
             if tall {
                 let mhz = 88 + i;
                 let s = mhz.to_string();
-                fb.text(tx - Framebuffer::text_width(&s, 1) / 2, sy - 15, &s, th.paper, 1);
+                fb.text(
+                    tx - Framebuffer::text_width(&s, 1) / 2,
+                    sy - 15,
+                    &s,
+                    th.paper,
+                    1,
+                );
             }
         }
         fb.text(x + 4, y + 3, "FM", th.orange, 1);
@@ -666,7 +834,13 @@ impl Deck {
             let side = (img.w as i32).min(img.h as i32).min(24);
             let bx = x + w - side - 6;
             let by = y + h - side - 12;
-            fb.rect(bx - 1, by - 1, side + 2, side + 2, lerp_color(th.bg, th.fg, 0.3));
+            fb.rect(
+                bx - 1,
+                by - 1,
+                side + 2,
+                side + 2,
+                lerp_color(th.bg, th.fg, 0.3),
+            );
             fb.blit(bx, by, img);
             room_w = bx - 10 - (x + 4);
         }
@@ -676,11 +850,23 @@ impl Deck {
         } else {
             label.chars().take(room).collect()
         };
-        fb.text(x + 4, y + h - 22, &name, if tuning { th.dim } else { th.bright_green }, 1);
+        fb.text(
+            x + 4,
+            y + h - 22,
+            &name,
+            if tuning { th.dim } else { th.bright_green },
+            1,
+        );
         let stereo = playing && !tuning && self.energy > 0.05;
         let lamp = |on: bool, c: Color| if on { c } else { scale(c, 0.2) };
         fb.rect(x + 4, y + h - 8, 4, 4, lamp(stereo, th.green));
-        fb.text(x + 11, y + h - 10, "STEREO", if stereo { th.paper } else { th.dim }, 1);
+        fb.text(
+            x + 11,
+            y + h - 10,
+            "STEREO",
+            if stereo { th.paper } else { th.dim },
+            1,
+        );
         let beat = self.kick.hit > 0.3;
         fb.rect(x + w - 24, y + h - 8, 4, 4, lamp(beat, th.red));
         fb.text(x + w - 17, y + h - 10, "ST", th.dim, 1);
@@ -711,7 +897,13 @@ impl Deck {
             let t: String = title.chars().take(max_cols.saturating_sub(18)).collect();
             fb.text(left, h - 14, &t, scale(th.paper, fade), 1);
             let m = MODE_NAMES[self.mode];
-            fb.text(w - left - Framebuffer::text_width(m, 1), h - 14, m, scale(th.dim, fade), 1);
+            fb.text(
+                w - left - Framebuffer::text_width(m, 1),
+                h - 14,
+                m,
+                scale(th.dim, fade),
+                1,
+            );
         }
     }
 
@@ -798,7 +990,8 @@ impl Deck {
             let glow = 0.18 + 0.32 * band;
             for x in 0..w {
                 let u = x as f32 / w as f32;
-                let yc = base_y + amp * (u * freq * std::f32::consts::TAU + phase).sin()
+                let yc = base_y
+                    + amp * (u * freq * std::f32::consts::TAU + phase).sin()
                     + 8.0 * (u * 3.0 + t * 0.7 + k as f32).cos();
                 let half = thick.max(1.0);
                 let y0 = (yc - half - 2.0) as i32;
@@ -806,7 +999,11 @@ impl Deck {
                 for y in y0.max(0)..=y1.min(h - 1) {
                     let d = ((y as f32 - yc).abs() / half).min(1.2);
                     // A bright core fading to a soft edge past the ribbon's width.
-                    let a = if d < 1.0 { (1.0 - d * d) * glow } else { (1.2 - d) * 0.5 * glow };
+                    let a = if d < 1.0 {
+                        (1.0 - d * d) * glow
+                    } else {
+                        (1.2 - d) * 0.5 * glow
+                    };
                     if a <= 0.005 {
                         continue;
                     }
@@ -847,7 +1044,11 @@ impl Deck {
             let mut v = 0.0;
             for (i, s) in self.smooth.iter().enumerate() {
                 let f = 1.0 + i as f32 * 1.7;
-                v += s * (std::f32::consts::TAU * f * t + self.phases[i] + now as f32 * (1.5 + i as f32 * 0.9)).sin();
+                v += s
+                    * (std::f32::consts::TAU * f * t
+                        + self.phases[i]
+                        + now as f32 * (1.5 + i as f32 * 0.9))
+                        .sin();
             }
             let v = (v / 2.2).clamp(-1.0, 1.0);
             wave.push(h / 2 + (v * amp) as i32);
@@ -861,7 +1062,13 @@ impl Deck {
             }
         }
         for x in 1..w {
-            fb.line(x - 1, wave[(x - 1) as usize], x, wave[x as usize], th.bright_green);
+            fb.line(
+                x - 1,
+                wave[(x - 1) as usize],
+                x,
+                wave[x as usize],
+                th.bright_green,
+            );
         }
         self.scope_prev.push(wave);
         if self.scope_prev.len() > 3 {
@@ -893,7 +1100,13 @@ impl Deck {
             if warp > 0.2 {
                 let px = w / 2.0 + s.x / s.pz * w / 2.0;
                 let py = h / 2.0 + s.y / s.pz * h / 2.0;
-                fb.line(px as i32, py as i32, sx as i32, sy as i32, lerp_color(th.bg, th.cyan, bright * warp));
+                fb.line(
+                    px as i32,
+                    py as i32,
+                    sx as i32,
+                    sy as i32,
+                    lerp_color(th.bg, th.cyan, bright * warp),
+                );
             }
             fb.put(sx as i32, sy as i32, c);
             if bright > 0.75 {
@@ -918,7 +1131,8 @@ impl Deck {
                 let v = (x * 0.11 + t).sin()
                     + (y * 0.14 - t * 0.7).sin()
                     + ((x + y) * 0.07 + t * 0.5).sin()
-                    + (((x - 40.0) * (x - 40.0) + (y - 30.0) * (y - 30.0)).sqrt() * 0.12 - t * 1.3).sin();
+                    + (((x - 40.0) * (x - 40.0) + (y - 30.0) * (y - 30.0)).sqrt() * 0.12 - t * 1.3)
+                        .sin();
                 let f = ((v + 4.0) / 8.0 + shift).fract();
                 let seg = f * (stops.len() - 1) as f32;
                 let i = (seg.floor() as usize).min(stops.len() - 2);
@@ -934,7 +1148,11 @@ impl Deck {
         let heat = (16.0 + bass * 20.0 + self.kick.hit * 10.0).min(36.0) as u8;
         for x in 0..FIRE_W {
             let r = self.rand();
-            let v = if r < 0.3 + bass { heat } else { heat.saturating_sub(6) };
+            let v = if r < 0.3 + bass {
+                heat
+            } else {
+                heat.saturating_sub(6)
+            };
             self.fire[(FIRE_H - 1) * FIRE_W + x] = v;
         }
         // Doom's fire: each cell cools a little and drifts sideways on its way up.
@@ -950,7 +1168,14 @@ impl Deck {
                 self.fire[dst] = v.saturating_sub(decay);
             }
         }
-        let stops = [th.bg, scale(th.red, 0.5), th.red, th.orange, th.yellow, th.paper];
+        let stops = [
+            th.bg,
+            scale(th.red, 0.5),
+            th.red,
+            th.orange,
+            th.yellow,
+            th.paper,
+        ];
         for y in 0..FIRE_H {
             for x in 0..FIRE_W {
                 let v = self.fire[y * FIRE_W + x] as f32 / 36.0;
@@ -1034,7 +1259,14 @@ fn fb_get(fb: &Framebuffer, x: i32, y: i32) -> Color {
 /// Synced lyrics over the picture: the current line large and lit, the next
 /// one small and dim, each glyph shadowed so it reads on any background.
 /// Lines wrap to the width; `y` is the top of the block, `height` its room.
-pub fn draw_lyrics(fb: &mut Framebuffer, th: &Theme, lines: &[(f64, String)], position: f64, y: i32, height: i32) {
+pub fn draw_lyrics(
+    fb: &mut Framebuffer,
+    th: &Theme,
+    lines: &[(f64, String)],
+    position: f64,
+    y: i32,
+    height: i32,
+) {
     let w = fb.w as i32;
     let left = (w as f32 * 0.05) as i32;
     let idx = lines.iter().rposition(|(s, _)| *s <= position);
@@ -1077,7 +1309,10 @@ pub fn draw_lyrics(fb: &mut Framebuffer, th: &Theme, lines: &[(f64, String)], po
             }
             if let Some((_, next)) = lines.get(i + 1) {
                 yy += 4;
-                for l in wrap(&crate::music::fold(next), ((w - 2 * left) / 8) as usize).iter().take(2) {
+                for l in wrap(&crate::music::fold(next), ((w - 2 * left) / 8) as usize)
+                    .iter()
+                    .take(2)
+                {
                     if yy + 8 > y + height {
                         break;
                     }

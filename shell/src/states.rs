@@ -66,7 +66,10 @@ pub fn find(rom: &Path) -> Vec<StateInfo> {
         if !d.is_dir() {
             continue;
         }
-        for (name, auto) in [(format!("{stem}.state"), false), (format!("{stem}.state.auto"), true)] {
+        for (name, auto) in [
+            (format!("{stem}.state"), false),
+            (format!("{stem}.state.auto"), true),
+        ] {
             let p = d.join(&name);
             let Ok(meta) = std::fs::metadata(&p) else {
                 continue;
@@ -83,7 +86,7 @@ pub fn find(rom: &Path) -> Vec<StateInfo> {
             });
         }
     }
-    out.sort_by(|a, b| b.when.cmp(&a.when));
+    out.sort_by_key(|s| std::cmp::Reverse(s.when));
     out
 }
 

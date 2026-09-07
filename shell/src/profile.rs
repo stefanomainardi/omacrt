@@ -48,8 +48,7 @@ impl Profile {
     }
 
     pub fn load(config_dir: &Path) -> Self {
-        std::fs::read_to_string(Self::path(config_dir))
-            .ok()
+        crate::store::load_string(&Self::path(config_dir))
             .and_then(|t| toml::from_str(&t).ok())
             .unwrap_or_default()
     }
@@ -57,8 +56,8 @@ impl Profile {
     pub fn save(&self, config_dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(config_dir)?;
         let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(Self::path(config_dir), text)?;
-        std::fs::write(config_dir.join("switchres.ini"), self.switchres_ini())
+        crate::store::save(&Self::path(config_dir), text)?;
+        crate::store::save(&config_dir.join("switchres.ini"), self.switchres_ini())
     }
 
     pub fn preset_index(&self) -> usize {

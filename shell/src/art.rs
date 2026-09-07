@@ -24,7 +24,7 @@ impl Image {
     /// Colour of a pixel blended over `bg`.
     pub fn over(&self, x: usize, y: usize, bg: Color) -> Color {
         let p = self.px[y * self.w + x];
-        let a = (p >> 24) as u32;
+        let a = p >> 24;
         if a == 255 {
             return p & 0x00ff_ffff;
         }
@@ -49,7 +49,11 @@ const SYSTEMATIC: &str = "/usr/share/retroarch/assets/xmb/systematic/png";
 
 enum Source {
     /// A game's box art: exact name first, the fuzzy match second.
-    Cover { label: String, stem: String, cache: PathBuf },
+    Cover {
+        label: String,
+        stem: String,
+        cache: PathBuf,
+    },
     /// Decode a file that is already on disk.
     Local(PathBuf),
 }
@@ -230,17 +234,23 @@ pub fn decode(path: &Path) -> Option<Image> {
     let data = &buf[..info.buffer_size()];
     let px: Vec<u32> = match info.color_type {
         png::ColorType::Rgba => data
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|c| {
                 ((c[3] as u32) << 24) | ((c[0] as u32) << 16) | ((c[1] as u32) << 8) | c[2] as u32
             })
             .collect(),
         png::ColorType::Rgb => data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| 0xff00_0000 | ((c[0] as u32) << 16) | ((c[1] as u32) << 8) | c[2] as u32)
             .collect(),
         png::ColorType::GrayscaleAlpha => data
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| {
                 ((c[1] as u32) << 24) | ((c[0] as u32) << 16) | ((c[0] as u32) << 8) | c[0] as u32
             })

@@ -137,9 +137,12 @@ mp.observe_property("time-pos", "number", function() if visible then render() en
 /// Build the mpv command for one file. `socket` is the IPC path,
 /// `input_conf` the key bindings, `osd` the Lua overlay, `colors` the
 /// theme as `accent,dim,paper,selection` hex values.
+///
+/// The file itself is not added here: the caller appends its own options and
+/// then calls [`add_target`], which puts the file last behind a `--` so a
+/// name or a URL starting with a dash cannot become an mpv flag.
 pub fn command(
     mpv: &str,
-    file: &Path,
     socket: &Path,
     input_conf: &Path,
     osd: &Path,
@@ -172,7 +175,6 @@ pub fn command(
         .arg("--save-position-on-quit")
         .arg("--hwdec=auto-safe")
         .arg(format!("--input-ipc-server={}", socket.display()))
-        .arg(file)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -209,6 +211,11 @@ pub fn stop_all() -> usize {
         hit += 1;
     }
     hit
+}
+
+/// Put the file at the end of the command, behind the option terminator.
+pub fn add_target(cmd: &mut std::process::Command, file: &Path) {
+    cmd.arg("--").arg(file);
 }
 
 /// State mirrored from mpv while a video plays.
@@ -294,11 +301,11 @@ impl Player {
     /// Called every frame: if mpv ignored the quit (or never answered the
     /// socket at all) signal it instead.
     fn enforce_quit(&mut self, now: f64) {
-        if let Some(at) = self.quit_at {
-            if now - at > 1.5 {
-                self.quit_at = Some(now);
-                stop_all();
-            }
+        if let Some(at) = self.quit_at
+            && now - at > 1.5
+        {
+            self.quit_at = Some(now);
+            stop_all();
         }
     }
 
@@ -376,10 +383,10 @@ impl Player {
                 }
             }
             4 => {
-                if let Some(t) = data.and_then(|d| d.as_str()) {
-                    if !t.is_empty() {
-                        self.title = t.to_string();
-                    }
+                if let Some(t) = data.and_then(|d| d.as_str())
+                    && !t.is_empty()
+                {
+                    self.title = t.to_string();
                 }
             }
             _ => {}

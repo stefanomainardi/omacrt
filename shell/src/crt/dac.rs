@@ -15,6 +15,12 @@ use std::time::Duration;
 pub const ADDR: u16 = 0x78;
 const I2C_SLAVE_FORCE: libc::c_ulong = 0x0706;
 const I2C_RDWR: libc::c_ulong = 0x0707;
+/// Transfer timeout, in tens of milliseconds, and how many times the driver
+/// retries. Without these a transfer to a DAC that is not answering, because
+/// the television is off, waits for ever: the bar plugin polls status every
+/// few seconds, so every poll would leave another process stuck on the bus.
+const I2C_RETRIES: libc::c_ulong = 0x0701;
+const I2C_TIMEOUT: libc::c_ulong = 0x0702;
 const I2C_M_RD: u16 = 0x0001;
 
 /// `struct i2c_msg` from linux/i2c.h.
@@ -112,13 +118,35 @@ impl Dac {
             unsafe { libc::close(fd) };
             return Err(e);
         }
+        // Give up on a transfer that goes unanswered rather than waiting on
+        // it: 200 ms, one retry.
+        unsafe {
+            libc::ioctl(fd, I2C_TIMEOUT, 20 as libc::c_ulong);
+            libc::ioctl(fd, I2C_RETRIES, 1 as libc::c_ulong);
+        }
         // One talker at a time: the page register is shared state, and the
         // bar plugin polls status while the CLI or the launcher may be
-        // writing. The lock lives as long as this handle.
-        if unsafe { libc::flock(fd, libc::LOCK_EX) } < 0 {
+        // writing. The lock lives as long as this handle, and it is taken
+        // without blocking: a holder that is itself stuck must not take the
+        // whole bar down with it.
+        let deadline = std::time::Instant::now() + Duration::from_millis(600);
+        loop {
+            if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+                break;
+            }
             let e = io::Error::last_os_error();
-            unsafe { libc::close(fd) };
-            return Err(e);
+            if e.kind() != io::ErrorKind::WouldBlock {
+                unsafe { libc::close(fd) };
+                return Err(e);
+            }
+            if std::time::Instant::now() >= deadline {
+                unsafe { libc::close(fd) };
+                return Err(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "the bus is busy: another omarchy-crt is talking to the DAC",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(30));
         }
         Ok(Self {
             fd,

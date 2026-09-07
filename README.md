@@ -188,6 +188,23 @@ can send to a television once the television is just another output it owns.
 | Television | Bang & Olufsen BeoCenter 1, RGB SCART |
 | Pads | Anything SDL knows; unknown pads get a mapping wizard on the tube |
 
+That is the machine everything here was written on. Nothing in the code is
+tied to it, but nothing else has been tried either, so this is what to expect
+elsewhere:
+
+| Part | Where it should work | Where it will not |
+| --- | --- | --- |
+| GPU | Any AMD card on `amdgpu`: the lease and the 15 kHz timings are kernel side, not vendor side | Nvidia's proprietary driver does not offer non-desktop connectors for leasing. Intel is untested |
+| DAC | Anything that takes HDMI and puts RGB on a SCART or VGA pin. `omarchy-crt setup` recognises the RGB-Pi 2 from its EDID | Sync mode is set over I2C only on the RGB-Pi 2; on anything else set it on the device itself |
+| Television | Any 15 kHz set with RGB in, PAL or NTSC. The standard follows your locale, `--standard` overrides it | A VGA monitor: 15 kHz is below what it will lock onto |
+| Compositor | Hyprland 0.56 or later, which is what Omarchy ships | Anything without DRM leasing |
+
+Run `omarchy-crt setup` first on a machine that is not this one: it lists the
+connectors with what their EDID says, picks the one the DAC is on, works out
+the standard from the locale, and writes those two lines to `crt.toml`.
+Everything else has a default that works. `omarchy-crt doctor` says what is
+still missing.
+
 The HDMI path works with wide "super resolution" modelines (3520x240 at 72 MHz,
 15.73 kHz, 60.04 Hz for NTSC; 3840x288 for PAL). The tube turns the wide frame
 back into 4:3, the emulator fills it, and every game line lands on one TV line.
@@ -202,10 +219,15 @@ needed so far.
 git clone https://github.com/stefanomainardi/omarchy-crt.git
 cd omarchy-crt
 bin/omarchy-crt-install                # builds, installs to ~/.local/bin, installs both plugins
+omarchy-crt setup                      # find the DAC's connector, write crt.toml
 sudo bin/omarchy-crt-install --system  # once: the boot time EDID override that hands the tube over
 omarchy-crt library scan ~/Games       # index your collection, any folder layout
 omarchy-crt on                         # tube on: 15 kHz timing, DAC sync, audio, launcher
 ```
+
+There is an Arch package in [`packaging/`](packaging/README.md) for people who
+would rather not build by hand, and `bin/omarchy-crt-install --uninstall`
+(plus `--uninstall-system` as root) puts everything back.
 
 Requirements: Omarchy with Hyprland 0.56 or later (the Lua configuration),
 RetroArch with libretro cores, mpv, cliamp (Omarchy's music player), yt-dlp
@@ -311,7 +333,8 @@ See [`plugin/README.md`](plugin/README.md).
 Everything the plugin and the launcher do can be typed:
 
 ```text
-omarchy-crt on | off | status | mode ntsc|pal|film [--lines N]
+omarchy-crt setup [--connector NAME] [--standard ntsc|pal] [--dry-run]
+omarchy-crt on | off | status | mode ntsc|pal|film|480i|576i [--lines N]
 omarchy-crt shell start|stop|restart | shell key <input>... | shell type <text>
 omarchy-crt shot out.png | record start out.mp4 | record stop | monitor on|off
 omarchy-crt game menu|pause|save|load|reset|quit
@@ -343,6 +366,8 @@ collapse onto one title and systems show up when they have games. Details in
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
 | `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting, state of the project |
+| `packaging/` | The Arch `PKGBUILD` and what it installs where |
+| `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
 
 ## State and what is next
 
@@ -355,8 +380,16 @@ pause menu, more screensaver effects.
 
 Work lands on `develop` and is merged to `main` when it runs on the
 television. Commits follow Conventional Commits. `cargo build --release` in
-`shell/` builds everything; `cargo test` runs the unit tests. Read the two
-notes at the top before opening an issue about either.
+`shell/` builds everything; `cargo test` runs the tests, which are the parts
+that can be checked without a tube: names into titles, titles into box art,
+modelines, the video fit, the durable writes. CI runs those plus `cargo fmt
+--check`, clippy with warnings denied, and a headless boot of the launcher
+whose frames have to come out as pictures rather than a blank screen. What
+needs the television is checked in the living room, and always will be.
+
+[`SECURITY.md`](SECURITY.md) says what runs as root, what is downloaded and
+from where, and what is executed. [`CHANGELOG.md`](CHANGELOG.md) keeps the
+releases. Read the two notes at the top before opening an issue about either.
 
 ## Credits and licenses
 

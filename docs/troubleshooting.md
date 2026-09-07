@@ -123,3 +123,32 @@ transaction (page select and read together) and serializes its own users
 with a lock on the bus device. A DAC reset is the last resort: it clears the
 sync selection, and writing a garbage value back to it is what produced the
 blue picture once.
+
+## The picture died in the middle of a game
+
+The display process owns the leased connector, so everything on the tube is
+one of its Wayland clients: when it goes, the launcher, the emulator and the
+picture go with it. `omarchy-crt on` leaves a watchdog behind for exactly
+this, and it puts the display, the timing, the DAC and the launcher back
+within a second. If the tube stayed black, the watchdog gave up:
+
+```sh
+tail ~/.local/state/omarchy-crt/watchdog.log   # why it stood down
+tail ~/.local/state/omarchy-crt/display.log    # what the display said as it died
+omarchy-crt on                                 # start again by hand
+```
+
+Three restarts inside two minutes is the limit. A display that cannot stay up
+that long is a bug in the log, not something to restart for ever.
+
+## A setting went back to its old value
+
+Every durable file is written through a temporary file and a rename, and the
+copy being replaced is kept next to it as `.bak`. A file that cannot be read
+falls back to that backup, so a truncated `settings.toml` costs the last
+change rather than every setting.
+
+A file written by a newer build than the one running is not overwritten: it is
+copied aside as `settings.toml.v<N>` first, and a line about it goes to the
+launcher's log. Going back to the newer build and moving that copy over the
+current file restores what it held.

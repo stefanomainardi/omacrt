@@ -409,10 +409,10 @@ impl Dispatch<wl_seat::WlSeat, ()> for Crt {
         if let wl_seat::Event::Capabilities {
             capabilities: WEnum::Value(caps),
         } = event
+            && caps.contains(wl_seat::Capability::Keyboard)
+            && host.keyboard.is_none()
         {
-            if caps.contains(wl_seat::Capability::Keyboard) && host.keyboard.is_none() {
-                host.keyboard = Some(seat.get_keyboard(qh, ()));
-            }
+            host.keyboard = Some(seat.get_keyboard(qh, ()));
         }
     }
 }
