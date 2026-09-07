@@ -469,32 +469,16 @@ fn default_systems() -> Vec<System> {
             &[
                 "iso", "gcm", "rvz", "gcz", "ciso", "wia", "dol", "elf", "m3u",
             ],
-            "native",
+            "super",
             0,
             false,
-            // Only what has been seen to help. A GameCube drew 640x480 on a
-            // television, so the widescreen hacks and progressive scan stay
-            // off and the overscan is cropped, which is what makes the core
-            // report 480 lines rather than the 528 its frame buffer has. The
-            // boot animation is skipped because it needs an IPL dump nobody
-            // has by default.
-            //
-            // Everything else is left to Dolphin. The graphics backend, the
-            // shader compilation mode and the CPU settings were all tried here
-            // and every one of them turned the picture into a screen of
-            // magenta; the core's own defaults draw these games correctly.
-            opts(&[
-                ("dolphin_widescreen", "disabled"),
-                ("dolphin_widescreen_hack", "disabled"),
-                ("dolphin_progressive_scan", "disabled"),
-                ("dolphin_force_progressive", "disabled"),
-                // A GameCube drew 640x480; the extra lines are the frame
-                // buffer's, not the picture's. Cropping them is what makes the
-                // core report the 480 lines the television is set to.
-                ("dolphin_crop_overscan", "enabled"),
-                ("dolphin_skip_gc_bios", "enabled"),
-                ("dolphin_osd_enabled", "disabled"),
-            ]),
+            // Nothing. Dolphin's own defaults draw these games; every setting
+            // tried here, the graphics backend, the shader compilation mode,
+            // the CPU and memory settings, the overscan crop and the
+            // widescreen flags, left the core rendering a screen of magenta.
+            // The picture it gives is already what a GameCube gave, and the
+            // television is told how many lines to draw by `default_lines`.
+            opts(&[]),
         ),
     ]
     .into_iter()
