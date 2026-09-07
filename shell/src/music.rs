@@ -320,6 +320,8 @@ pub struct Music {
     /// Album art of what plays as a 96 px PNG in the cache, once fetched.
     pub cover: Option<PathBuf>,
     cover_for: String,
+    /// When the engine was last looked for, before it is known to be there.
+    last_probe: f64,
     /// Art of what we asked to play: a station's logo, which cliamp's status
     /// does not carry back.
     played_art: (String, String),
@@ -353,6 +355,7 @@ impl Music {
             lyrics_for: String::new(),
             cover: None,
             cover_for: String::new(),
+            last_probe: 0.0,
             played_art: (String::new(), String::new()),
         }
     }
@@ -441,6 +444,13 @@ impl Music {
     /// Called every frame: polls status at 2 Hz, the spectrum at 20 Hz while
     /// something visualises it, and drains the worker's replies.
     pub fn tick(&mut self, now: f64, visualising: bool) {
+        // Before anything opened the music screens: if the engine is already
+        // running, follow what it plays, so the home screen can show it. No
+        // daemon is started for this, that waits for ensure().
+        if self.ready.is_none() && now - self.last_probe > 3.0 && socket_path().exists() {
+            self.last_probe = now;
+            let _ = self.tx.send(Request::Status);
+        }
         if self.ready.as_ref().is_some_and(|r| r.is_ok()) {
             if now - self.last_status > 0.5 {
                 self.last_status = now;

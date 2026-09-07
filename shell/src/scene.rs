@@ -4540,9 +4540,31 @@ impl Scene {
                 fade,
             );
         }
-        // What plays keeps its line at the foot of the home screen.
-        if fade > 0.9 {
-            self.draw_music_strip(fb, h - 44);
+        // What plays, on the Music row itself: the home list leaves no room
+        // for a line of its own.
+        if fade > 0.9 && self.music.status.active() {
+            let row = HOME
+                .iter()
+                .position(|(_, label, _)| *label == "Music")
+                .unwrap_or(0);
+            let y = rows_y + row as i32 * row_h;
+            let label = self
+                .music
+                .status
+                .track
+                .as_ref()
+                .map(|t| t.label())
+                .unwrap_or_default();
+            let state = if self.music.status.playing() { "" } else { "  paused" };
+            let text = format!("{label}{state}");
+            let vis_w = 30;
+            // Room between the row's own label and the chevron.
+            let room = ((width - 18 - vis_w - 30 - Framebuffer::text_width("Music", 1)) / 8).max(0) as usize;
+            let text: String = text.chars().take(room).collect::<String>().trim_end().to_string();
+            let tw = Framebuffer::text_width(&text, 1);
+            let tx = left + width - 16 - tw;
+            fb.text(tx, y + 2, &text, scale(self.theme.dim, 1.0), 1);
+            self.draw_vis(fb, tx - vis_w - 6, y + 9, vis_w, 7);
         }
         let max_cols = (width / 8) as usize;
         let cut = |s: &str| -> String { s.chars().take(max_cols).collect() };
