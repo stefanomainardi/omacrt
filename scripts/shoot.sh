@@ -6,6 +6,7 @@
 #   scripts/shoot.sh desktop OUT.mp4   bar, widget, panel, power off and on, PAL and back
 #   scripts/shoot.sh boot OUT.mp4      the launcher booting on a black tube
 #   scripts/shoot.sh tube OUT.mp4      boot, systems, collection, games, pause menu, video
+#   scripts/shoot.sh music OUT.mp4     the deck, the turntable, a visualizer, the equaliser
 #   scripts/shoot.sh restore           NTSC timing
 #
 # The tour uses the collection "0 Tour" (~/.config/omarchy-crt/collections),
@@ -29,7 +30,8 @@ play_row() {  # $1 = row in "0 Tour" (0 based), $2 = seconds to play, $3 = label
   key fire 1
   wait_game "$2"
 }
-quit_game() { omarchy-crt shell key menu; sleep 2.2; key down 0.4; key down 0.4; key down 0.4; key down 0.6; key fire 1; wait_no_game; }
+# The pause menu has eight rows; "Back to launcher" is the last one.
+quit_game() { omarchy-crt shell key menu; sleep 2.2; for _ in 1 2 3 4 5 6 7; do key down 0.35; done; key fire 1; wait_no_game; }
 
 case "${1:-}" in
   desktop)
@@ -120,6 +122,48 @@ case "${1:-}" in
     omarchy-crt shell key home; sleep 2
     omarchy-crt record stop
     say "tube take: $out"
+    ;;
+  music)
+    out="${2:?output file}"
+    # The music screens, with the station or track already playing: radio
+    # first for the dial and its logo, then the deck looks, a visualizer and
+    # the equaliser. Nothing here needs the desktop.
+    say "recording the music screens"
+    omarchy-crt record start "$out"
+    sleep 2
+    omarchy-crt shell key home; sleep 0.8
+    key down 0.4; key down 0.6      # Music
+    key fire 2.0
+    say "Radio: the country list"
+    key fire 2.5                    # Radio hub
+    key fire 3.0                    # the home country's stations
+    for _ in 1 2 3; do key down 0.8; done
+    key fire 6                      # tune in: the dial, the static, the logo
+    say "the deck: cassette, turntable"
+    key next 5                      # shoulder: the other deck look
+    key next 5
+    say "a visualizer"
+    key alt 8                       # X: show the visualizer
+    key next 6                      # the next mode
+    key next 6
+    key alt 2                       # back to the deck
+    say "the equaliser"
+    omarchy-crt shell key home; sleep 0.8
+    key down 0.4; key down 0.6      # Music
+    key fire 2.0
+    # The root remembers the last row; up walks to the top (it stops there),
+    # then the Equalizer is the last of the six rows with music playing.
+    for _ in 1 2 3 4 5 6; do key up 0.2; done
+    for _ in 1 2 3 4 5; do key down 0.35; done
+    key fire 2.5
+    for _ in 1 2 3; do key right 0.7; done
+    for _ in 1 2 3; do key up 0.6; done
+    for _ in 1 2 3; do key down 0.6; done
+    key fire 3                      # a preset
+    key back 1.5
+    omarchy-crt shell key home; sleep 2
+    omarchy-crt record stop
+    say "music take: $out"
     ;;
   restore) omarchy-crt mode ntsc ;;
   *) sed -n '2,13p' "$0" ;;
