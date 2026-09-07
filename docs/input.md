@@ -48,6 +48,14 @@ Pads SDL does not know can be described in
 [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) format
 (MIT). The file is loaded at startup when present.
 
+## In a game
+
+`Select` plus `Start` on the pad, the home button, or `omarchy-crt shell key
+menu` pauses the game and raises the launcher's pause menu over it: resume,
+save state, load state, fast forward (toggles RetroArch's speed and resumes),
+reset, back to the launcher. The menu shows when the game's latest save state
+was written. `B` or `Esc` resumes.
+
 ## In RetroArch
 
 The base `retroarch.cfg` selects the `udev` input and joypad drivers, enables

@@ -117,6 +117,12 @@ scanlines or curvature. The tube provides those.
   state, volume, hints) that appears on every command and stays while paused,
   position saved on quit. Deinterlacing stays off so 480i sources reach the
   tube as fields.
+- **Save states in sight.** RetroArch saves on exit and resumes on start; the
+  launcher shows it: a small arrow on every game that has a state, "left
+  12:03" or "saved Sat 21:10" under the box art, the same line when the pause
+  menu opens. The pause menu (Select + Start, or the home button) offers
+  resume, save state, load state, fast forward, reset and back to the
+  launcher, all through real hotkeys pressed by the compositor.
 - **Search.** `/` filters the open list as you type, or, from the home menu,
   searches the whole collection across systems (21,880 titles answer in a
   frame). Every word must appear in the title, titles starting with the first

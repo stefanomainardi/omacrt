@@ -54,6 +54,11 @@ pub fn load_state() -> std::io::Result<()> {
     act("load", "LOAD_STATE")
 }
 
+/// Toggle RetroArch's fast forward (its `space` hotkey).
+pub fn fast_forward() -> std::io::Result<()> {
+    act("ff", "FAST_FORWARD")
+}
+
 pub fn reset() -> std::io::Result<()> {
     act("reset", "RESET")
 }

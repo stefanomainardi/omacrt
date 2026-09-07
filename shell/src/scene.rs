@@ -19,6 +19,7 @@ use crate::pad::PadKind;
 use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
+use crate::states;
 use crate::theme::Theme;
 use crate::videofit::{self, Conversion};
 use std::path::{Path, PathBuf};
@@ -214,10 +215,11 @@ const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
 ];
 
 /// Pause menu over a running game.
-const PAUSE_ITEMS: [(icons::Icon, &str, bool); 5] = [
+const PAUSE_ITEMS: [(icons::Icon, &str, bool); 6] = [
     (icons::GAMEPAD, "Resume", false),
     (icons::FOLDER, "Save state", false),
     (icons::FOLDER, "Load state", false),
+    (icons::RESUME, "Fast forward", false),
     (icons::PULSE, "Reset game", false),
     (icons::DESKTOP, "Back to launcher", false),
 ];
@@ -341,6 +343,8 @@ pub struct Scene {
     /// Game counts per system, refreshed when the library is (re)read.
     system_counts: Vec<usize>,
     running: Option<(String, String)>,
+    /// System name and ROM path of the running game, for its save states.
+    running_path: Option<(String, PathBuf)>,
     /// Selected row of the pause menu while the running game is paused.
     paused: Option<usize>,
     mark_small: effects::Grid,
@@ -357,6 +361,8 @@ pub struct Scene {
     osk: Option<(i32, i32)>,
     /// The open list is the whole collection, opened by a search.
     search_global: bool,
+    /// Save states RetroArch wrote, looked up per game as rows show.
+    states: states::Cache,
     music: Music,
     /// Open music lists, innermost last: source, selected row, first shown row.
     music_path: Vec<(Source, usize, usize)>,
@@ -431,6 +437,7 @@ impl Scene {
             games_all: Vec::new(),
             osk: None,
             search_global: false,
+            states: states::Cache::default(),
             music: Music::new(std::env::var("PULSE_SINK").ok()),
             music_path: Vec::new(),
             music_root_sel: 0,
@@ -442,6 +449,7 @@ impl Scene {
             screen: Screen::Menu,
             games: Vec::new(),
             running: None,
+            running_path: None,
             paused: None,
             mark_small: grid,
         };
@@ -2128,6 +2136,7 @@ impl Scene {
                     lines,
                 });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
+                self.running_path = Some((system.name.clone(), entry.game.path.clone()));
                 self.remember(entry);
                 Action::None
             }
@@ -2152,6 +2161,7 @@ impl Scene {
                     lines,
                 });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
+                self.running_path = Some((system.name.clone(), entry.game.path.clone()));
                 self.remember(entry);
                 Action::None
             }
@@ -2223,6 +2233,9 @@ impl Scene {
     /// The game process ended; back to the list, cursor where it was.
     pub fn game_finished(&mut self, ok: bool) {
         self.running = None;
+        if let Some((_, path)) = self.running_path.take() {
+            self.states.forget(&path);
+        }
         self.paused = None;
         self.launching = None;
         self.player = None;
@@ -2284,6 +2297,13 @@ impl Scene {
             Ok(()) => {
                 self.paused = Some(0);
                 self.pending.push(Sound::Select);
+                if let Some((_, path)) = &self.running_path {
+                    let path = path.clone();
+                    self.states.forget(&path);
+                    if let Some(st) = self.states.latest(&path) {
+                        self.message = Some((format!("state {}", st.label()), self.now + 6.0));
+                    }
+                }
                 PauseOutcome::Shown
             }
             Err(e) => {
@@ -2337,6 +2357,10 @@ impl Scene {
             0 => self.resume_game(),
             1 => {
                 self.game_cmd(omarchy_crt_shell::game::save_state(), "state saved");
+                if let Some((_, path)) = &self.running_path {
+                    let path = path.clone();
+                    self.states.forget(&path);
+                }
                 PauseOutcome::None
             }
             2 => {
@@ -2344,6 +2368,13 @@ impl Scene {
                 PauseOutcome::None
             }
             3 => {
+                // Toggle fast forward and let the game run: RetroArch keeps
+                // the speed until the next toggle from the same menu.
+                let _ = omarchy_crt_shell::game::fast_forward();
+                self.message = Some(("fast forward toggled".into(), self.now + 2.5));
+                self.resume_game()
+            }
+            4 => {
                 let _ = omarchy_crt_shell::game::reset();
                 self.resume_game()
             }
@@ -2811,6 +2842,10 @@ impl Scene {
                         fb.text(bx, ty, &t, scale(self.theme.dim, 0.9), 1);
                         ty += 10;
                     }
+                    if let Some(st) = self.states.latest(&entry.game.path) {
+                        let label: String = st.label().chars().take((cover_box / 8) as usize).collect();
+                        fb.text(bx, ty + 2, &label, self.theme.green, 1);
+                    }
                 }
                 if n == 0 && self.search.as_deref().is_some_and(|q| !q.is_empty()) {
                     fb.text(left, y0, "no title matches", self.theme.dim, 1);
@@ -2869,6 +2904,19 @@ impl Scene {
                                 y + 1,
                                 &icons::STAR,
                                 self.theme.yellow,
+                                1,
+                                8,
+                            );
+                        } else if !entry.game.folder
+                            && !self.library.systems[entry.sys].is_video()
+                            && !self.states.get(&entry.game.path).is_empty()
+                        {
+                            // A game with a save state: it resumes where it was left.
+                            fb.bitmap(
+                                left + self.slide() + 6,
+                                y + 1,
+                                &icons::RESUME,
+                                if i == sel { self.theme.accent } else { self.theme.green },
                                 1,
                                 8,
                             );

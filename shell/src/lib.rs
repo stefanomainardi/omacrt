@@ -10,4 +10,5 @@ pub mod music;
 pub mod player;
 pub mod profile;
 pub mod settings;
+pub mod states;
 pub mod videofit;
