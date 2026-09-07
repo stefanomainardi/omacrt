@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Record the follow-up video. The tube is captured by the display process
-# itself (picture and the HDMI sink's audio), the desktop by omarchy's
-# screen recorder. Every step drives the launcher over its control pipe.
+# itself (picture and the HDMI sink's audio), the desktop by wf-recorder.
+# Every step drives the launcher over its control pipe.
 #
-#   scripts/shoot.sh desktop OUT.mp4   bar plugin: panel, power off, power on
+#   scripts/shoot.sh desktop OUT.mp4   bar, widget, panel, power off and on, PAL and back
+#   scripts/shoot.sh boot OUT.mp4      the launcher booting on a black tube
 #   scripts/shoot.sh tube OUT.mp4      boot, systems, collection, games, pause menu, video
 #   scripts/shoot.sh restore           NTSC timing
 #
@@ -32,19 +33,52 @@ quit_game() { omarchy-crt shell key menu; sleep 2.2; key down 0.4; key down 0.4;
 
 case "${1:-}" in
   desktop)
+    # A clean take of the main monitor: an empty workspace, the bar with the
+    # widget, the pointer arriving on it, the panel, power off and on, a live
+    # line standard switch. Captured with wf-recorder (screencopy, the picture
+    # the compositor shows): gpu-screen-recorder reads one DRM plane and this
+    # Hyprland spreads wallpaper, bar and popups over several. The pointer
+    # waits at the bottom edge first so it visibly travels to the widget. The
+    # shell's idle screensaver would otherwise take the workspace mid-take.
     out="${2:?output file}"
-    hyprctl eval 'hl.dispatch(hl.dsp.focus({ monitor = "DP-2" }))' >/dev/null
-    say "recording the desktop"
-    omarchy screenrecord --fullscreen >/dev/null 2>&1 &
-    sleep 3
+    command -v wf-recorder >/dev/null || { echo "wf-recorder missing (pacman -S wf-recorder)" >&2; exit 1; }
+    read -r mon mx my mw mh <<<"$(hyprctl monitors -j | python3 -c 'import json,sys; m=[m for m in json.load(sys.stdin) if m["focused"]][0]; print(m["name"], m["x"], m["y"], m["width"], m["height"])')"
+    widget_x=$((mx + mw - 332)); widget_y=$((my + 14))   # the CRT widget in the bar's right group
+    idle_before="$(omarchy toggle idle status | grep -c '"enabled":true' || true)"
+    omarchy toggle idle stay-awake >/dev/null
+    was_ws="$(hyprctl activeworkspace -j | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+    hyprctl dispatch workspace 9 >/dev/null
+    hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $((mx + mw / 2)), y = $((my + mh - 2)) }))" >/dev/null
+    sleep 1.5
+    say "recording $mon"
+    wf-recorder -o "$mon" -r 60 -c libx264 -p preset=ultrafast -p crf=16 -x yuv420p -f "$out" >/dev/null 2>&1 &
+    rec=$!
+    sleep 3.5
+    say "pointer on the widget"; hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $widget_x, y = $widget_y }))" >/dev/null; sleep 4
     say "panel"; omarchy-shell shell summon "$id" '{}' >/dev/null 2>&1; sleep 5
     say "power off"; omarchy-shell -q "$id" off >/dev/null 2>&1; sleep 7
-    say "power on"; omarchy-shell -q "$id" on >/dev/null 2>&1; sleep 18
+    say "power on"; omarchy-shell -q "$id" on >/dev/null 2>&1; sleep 17
+    say "PAL 50"; omarchy-shell -q "$id" pal >/dev/null 2>&1; sleep 6
+    say "NTSC 60"; omarchy-shell -q "$id" ntsc >/dev/null 2>&1; sleep 6
     omarchy-shell shell hide "$id" >/dev/null 2>&1
-    omarchy screenrecord --stop-recording >/dev/null 2>&1
-    sleep 2
-    latest="$(ls -t ~/Videos/screenrecording-*.mp4 2>/dev/null | head -1)"
-    [ -n "$latest" ] && mv "$latest" "$out" && say "desktop take: $out"
+    sleep 2.5
+    kill -INT "$rec"; wait "$rec" 2>/dev/null
+    hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $((mx + mw / 2)), y = $((my + mh / 2)) }))" >/dev/null
+    hyprctl dispatch workspace "$was_ws" >/dev/null
+    [ "$idle_before" = 1 ] || omarchy toggle idle allow-idle >/dev/null
+    say "desktop take: $out"
+    ;;
+  boot)
+    # The whole boot, from a black tube: recording runs before the launcher starts.
+    out="${2:?output file}"
+    omarchy-crt shell stop >/dev/null 2>&1 || true
+    sleep 1
+    omarchy-crt record start "$out"
+    sleep 1.5
+    omarchy-crt shell start >/dev/null 2>&1 || omarchy-crt shell restart >/dev/null
+    sleep 19
+    omarchy-crt record stop
+    say "boot take: $out"
     ;;
   tube)
     out="${2:?output file}"
@@ -88,5 +122,5 @@ case "${1:-}" in
     say "tube take: $out"
     ;;
   restore) omarchy-crt mode ntsc ;;
-  *) sed -n '2,12p' "$0" ;;
+  *) sed -n '2,13p' "$0" ;;
 esac
