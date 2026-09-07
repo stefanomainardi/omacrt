@@ -602,8 +602,15 @@ impl Crt {
     /// later, so the program's per frame input sampling cannot miss it. This
     /// is how the launcher drives RetroArch's hotkeys (pause, save, load,
     /// reset, quit): real key events, no network command interface.
-    fn inject_key(&mut self, name: &str) {
+    fn inject_key(&mut self, arg: &str) {
+        // `key r 2000`: the key stays down for that many milliseconds.
+        let (name, hold_ms) = match arg.split_once(' ') {
+            Some((n, ms)) => (n.trim(), ms.trim().parse::<u64>().unwrap_or(45).clamp(20, 10_000)),
+            None => (arg, 45),
+        };
         let evdev: u32 = match name {
+            "rewind" | "r" => 19,
+            "slow" | "e" => 18,
             "pause" | "p" => 25,
             "save" | "f2" => 60,
             "load" | "f4" => 62,
@@ -626,7 +633,7 @@ impl Crt {
         let code = Keycode::new(evdev + 8);
         self.key_event(code, KeyState::Pressed);
         let _ = self.handle.insert_source(
-            Timer::from_duration(Duration::from_millis(45)),
+            Timer::from_duration(Duration::from_millis(hold_ms)),
             move |_, _, st: &mut Crt| {
                 st.key_event(code, KeyState::Released);
                 TimeoutAction::Drop

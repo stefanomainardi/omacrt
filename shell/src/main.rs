@@ -462,6 +462,11 @@ fn run(args: &Args) -> Result<(), String> {
             None
         }
     };
+    // A video that survived the previous launcher would keep the tube and
+    // answer to nobody: the new launcher owns the screen, so it stops it.
+    if omarchy_crt_shell::player::stop_all() > 0 {
+        eprintln!("stopped a video left over from an earlier launcher");
+    }
     let mut child: Option<std::process::Child> = None;
     let mut lines_changed = false;
     // Pad buttons held, for the Select + Start pause combo.

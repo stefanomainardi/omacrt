@@ -118,6 +118,7 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
 pub fn stop() -> String {
     // The launcher is cliamp's face: no launcher, no music.
     crate::music::stop_now();
+    crate::player::stop_all();
     let list = pids();
     if list.is_empty() {
         return "not running".into();

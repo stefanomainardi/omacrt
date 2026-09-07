@@ -21,7 +21,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   off                      launcher closed, audio back, output disabled
   boot                     login reset: CRT output off, audio back to the desktop
   toggle
-  mode [ntsc|pal] [--lines N] [--shift-x X] [--shift-y Y]
+  mode [ntsc|pal|film|480i|576i] [--lines N] [--shift-x X] [--shift-y Y]
                            standard, active lines, picture shift; no args = full frame
   shell start|stop|restart|focus
   shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
@@ -1285,8 +1285,8 @@ fn main() {
                 state.standard.clone()
             };
             let std = pos.first().map(|s| s.as_str()).unwrap_or(current.as_str());
-            if std != "ntsc" && std != "pal" && std != "film" {
-                die("mode needs ntsc, pal or film");
+            if !matches!(std, "ntsc" | "pal" | "film" | "480i" | "576i") {
+                die("mode needs ntsc, pal, film, 480i or 576i");
             }
             let flag = |name: &str| -> Option<i32> {
                 args.iter()

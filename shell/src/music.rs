@@ -337,6 +337,17 @@ impl Music {
         }
     }
 
+    /// Ask for the art of what plays when the status carries none: a station's
+    /// favicon from the tuned list, or a Spotify track by its URI.
+    pub fn want_cover(&mut self, art: &str) {
+        if art.is_empty() || art == self.cover_for {
+            return;
+        }
+        self.cover_for = art.to_string();
+        self.cover = None;
+        let _ = self.tx.send(Request::Cover(art.to_string()));
+    }
+
     /// Absolute volume in dB.
     pub fn volume_set(&mut self, v: f64) {
         let v = v.clamp(-30.0, 6.0);
@@ -415,12 +426,16 @@ impl Music {
                             self.lyrics.clear();
                             let _ = self.tx.send(Request::Lyrics);
                         }
-                        if t.art != self.cover_for {
-                            self.cover_for = t.art.clone();
+                        // Spotify gives no art over the socket; its public oEmbed does.
+                        let art = if t.art.is_empty() && t.path.starts_with("spotify:track:") {
+                            t.path.clone()
+                        } else {
+                            t.art.clone()
+                        };
+                        if !art.is_empty() && art != self.cover_for {
+                            self.cover_for = art.clone();
                             self.cover = None;
-                            if !t.art.is_empty() {
-                                let _ = self.tx.send(Request::Cover(t.art.clone()));
-                            }
+                            let _ = self.tx.send(Request::Cover(art));
                         }
                     }
                 }
@@ -661,11 +676,23 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
     }
     let png = cache.join(format!("{hash:016x}.png"));
     if !png.is_file() {
+        // A Spotify URI: the oEmbed endpoint answers without a key and
+        // names the cover image.
+        let mut url = url.to_string();
+        if let Some(id) = url.strip_prefix("spotify:track:") {
+            let out = std::process::Command::new("curl")
+                .args(["-sL", "-m", "15", "-A", USER_AGENT])
+                .arg(format!("https://open.spotify.com/oembed?url=spotify:track:{id}"))
+                .output()
+                .ok()?;
+            let v: Value = serde_json::from_slice(&out.stdout).ok()?;
+            url = v.get("thumbnail_url")?.as_str()?.to_string();
+        }
         let raw = cache.join(format!("{hash:016x}.tmp"));
         let ok = std::process::Command::new("curl")
             .args(["-sL", "-m", "15", "-A", USER_AGENT, "-o"])
             .arg(&raw)
-            .arg(url)
+            .arg(&url)
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
@@ -937,6 +964,7 @@ fn stations(url: &str) -> Result<Vec<Item>, String> {
         {
             continue;
         }
+        let favicon = s.get("favicon").and_then(Value::as_str).unwrap_or("").to_string();
         let codec = s.get("codec").and_then(Value::as_str).unwrap_or("");
         let kbps = s.get("bitrate").and_then(Value::as_u64).unwrap_or(0);
         let note = match (kbps, codec.is_empty()) {
@@ -952,6 +980,7 @@ fn stations(url: &str) -> Result<Vec<Item>, String> {
             realtime: true,
             station: name.to_string(),
             note,
+            art: if favicon.starts_with("http") { favicon } else { String::new() },
             ..Track::default()
         }));
     }

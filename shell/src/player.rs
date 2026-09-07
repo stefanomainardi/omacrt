@@ -175,6 +175,38 @@ pub fn command(
     cmd
 }
 
+/// The app id every player of ours carries, and the way to stop one whose
+/// socket does not answer: a shell restart leaves the video playing, and
+/// nothing else could reach it.
+pub const APP_ID: &str = "omarchy-crt-player";
+
+/// Ask every mpv started by us to quit. Returns how many were signalled.
+pub fn stop_all() -> usize {
+    let Ok(dir) = std::fs::read_dir("/proc") else {
+        return 0;
+    };
+    let mut hit = 0;
+    for e in dir.flatten() {
+        let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else {
+            continue;
+        };
+        let Ok(cmdline) = std::fs::read(e.path().join("cmdline")) else {
+            continue;
+        };
+        let cmdline = String::from_utf8_lossy(&cmdline);
+        let mut args = cmdline.split('\0');
+        let exe = args.next().unwrap_or("");
+        if !exe.ends_with("mpv") || !cmdline.contains(APP_ID) {
+            continue;
+        }
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
+        hit += 1;
+    }
+    hit
+}
+
 /// State mirrored from mpv while a video plays.
 pub struct Player {
     socket: PathBuf,
@@ -182,15 +214,20 @@ pub struct Player {
     buf: Vec<u8>,
     next_connect: f64,
     next_poll: f64,
+    last_poll: f64,
     pub time: f64,
     pub duration: f64,
     pub paused: bool,
     pub title: String,
     pub connected: bool,
+    /// When a quit was asked for, to fall back to a signal if mpv stays.
+    quit_at: Option<f64>,
 }
 
 impl Player {
     pub fn new(socket: PathBuf, title: &str) -> Self {
+        // Only one video at a time on the tube.
+        stop_all();
         let _ = std::fs::remove_file(&socket);
         Self {
             socket,
@@ -198,11 +235,13 @@ impl Player {
             buf: Vec::new(),
             next_connect: 0.0,
             next_poll: 0.0,
+            last_poll: 0.0,
             time: 0.0,
             duration: 0.0,
             paused: false,
             title: title.to_string(),
             connected: false,
+            quit_at: None,
         }
     }
 
@@ -243,11 +282,27 @@ impl Player {
 
     pub fn quit(&mut self) {
         self.command(&["quit"]);
+        if self.quit_at.is_none() {
+            self.quit_at = Some(self.last_poll);
+        }
+    }
+
+    /// Called every frame: if mpv ignored the quit (or never answered the
+    /// socket at all) signal it instead.
+    fn enforce_quit(&mut self, now: f64) {
+        if let Some(at) = self.quit_at {
+            if now - at > 1.5 {
+                self.quit_at = Some(now);
+                stop_all();
+            }
+        }
     }
 
     /// Connect when the socket appears, ask for the properties we show, read
     /// whatever mpv answered. Non blocking; call once per frame.
     pub fn poll(&mut self, now: f64) {
+        self.last_poll = now;
+        self.enforce_quit(now);
         if self.stream.is_none() && now >= self.next_connect {
             self.next_connect = now + 0.25;
             if let Ok(s) = UnixStream::connect(&self.socket) {

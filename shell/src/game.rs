@@ -59,6 +59,16 @@ pub fn fast_forward() -> std::io::Result<()> {
     act("ff", "FAST_FORWARD")
 }
 
+/// Hold RetroArch's rewind key for two seconds (needs `rewind = true` on the system).
+pub fn rewind() -> std::io::Result<()> {
+    act("r 2000", "REWIND")
+}
+
+/// Toggle slow motion (RetroArch's `e` hotkey).
+pub fn slow_motion() -> std::io::Result<()> {
+    act("slow", "SLOWMOTION")
+}
+
 pub fn reset() -> std::io::Result<()> {
     act("reset", "RESET")
 }

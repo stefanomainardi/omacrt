@@ -255,11 +255,13 @@ const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
 ];
 
 /// Pause menu over a running game.
-const PAUSE_ITEMS: [(icons::Icon, &str, bool); 6] = [
+const PAUSE_ITEMS: [(icons::Icon, &str, bool); 8] = [
     (icons::GAMEPAD, "Resume", false),
     (icons::FOLDER, "Save state", false),
     (icons::FOLDER, "Load state", false),
+    (icons::RESUME, "Rewind two seconds", false),
     (icons::RESUME, "Fast forward", false),
+    (icons::PULSE, "Slow motion", false),
     (icons::PULSE, "Reset game", false),
     (icons::DESKTOP, "Back to launcher", false),
 ];
@@ -3145,13 +3147,31 @@ impl Scene {
                 PauseOutcome::None
             }
             3 => {
+                // Rewind runs only where the system allows it: the launch
+                // override writes rewind_enable from that flag.
+                if !self.running_rewinds() {
+                    self.pending.push(Sound::Crunch);
+                    self.message =
+                        Some(("rewind is off for this system".into(), self.now + 3.0));
+                    return PauseOutcome::None;
+                }
+                let _ = omarchy_crt_shell::game::rewind();
+                self.message = Some(("rewinding".into(), self.now + 2.5));
+                self.resume_game()
+            }
+            4 => {
                 // Toggle fast forward and let the game run: RetroArch keeps
                 // the speed until the next toggle from the same menu.
                 let _ = omarchy_crt_shell::game::fast_forward();
                 self.message = Some(("fast forward toggled".into(), self.now + 2.5));
                 self.resume_game()
             }
-            4 => {
+            5 => {
+                let _ = omarchy_crt_shell::game::slow_motion();
+                self.message = Some(("slow motion toggled".into(), self.now + 2.5));
+                self.resume_game()
+            }
+            6 => {
                 let _ = omarchy_crt_shell::game::reset();
                 self.resume_game()
             }
@@ -3163,6 +3183,19 @@ impl Scene {
                 PauseOutcome::Quit
             }
         }
+    }
+
+    /// Whether the system of the running game was launched with rewind on.
+    fn running_rewinds(&self) -> bool {
+        let Some((system, _)) = &self.running_path else {
+            return false;
+        };
+        self.library
+            .systems
+            .iter()
+            .find(|s| &s.name == system)
+            .map(|s| s.rewind)
+            .unwrap_or(false)
     }
 
     fn draw_pause(&mut self, fb: &mut Framebuffer) {
@@ -5694,7 +5727,11 @@ fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
     };
     text.lines()
         .filter_map(|l| {
-            let (name, p) = l.split_once('\t')?;
+            // system<TAB>path[<TAB>when]: take the path field alone, or a
+            // saved timestamp ends up glued to it.
+            let mut parts = l.split('\t');
+            let name = parts.next()?;
+            let p = parts.next()?;
             let i = lib.systems.iter().position(|s| s.name == name)?;
             Some((i, PathBuf::from(p)))
         })

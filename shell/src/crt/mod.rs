@@ -68,6 +68,19 @@ pub struct Modelines {
     /// 240p at 60.00 Hz for filming the tube with a 60 fps camera: no
     /// beat between the 60.04 Hz standard timing and the shutter.
     pub film: String,
+    /// Interlaced frames for video: 480 lines at 59.94 Hz and 576 at 50 Hz,
+    /// the same line rates as the progressive standards.
+    #[serde(default = "default_ntsc_i")]
+    pub ntsc_i: String,
+    #[serde(default = "default_pal_i")]
+    pub pal_i: String,
+}
+
+fn default_ntsc_i() -> String {
+    "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace".into()
+}
+fn default_pal_i() -> String {
+    "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace".into()
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -113,6 +126,8 @@ impl Default for Modelines {
             ntsc: "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync".into(),
             pal: "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync".into(),
             film: "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync".into(),
+            ntsc_i: default_ntsc_i(),
+            pal_i: default_pal_i(),
         }
     }
 }
@@ -171,6 +186,9 @@ ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"
 pal = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"
 # 240p at exactly 60.00 Hz, for filming the tube with a 60 fps camera.
 film = "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync"
+# Interlaced frames for video (omarchy-crt mode 480i | 576i).
+ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
+pal_i = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
 
 [shell]
 bin = "omarchy-crt-shell"
@@ -212,6 +230,8 @@ impl Config {
             "ntsc" => Some(&self.modelines.ntsc),
             "pal" => Some(&self.modelines.pal),
             "film" => Some(&self.modelines.film),
+            "480i" | "ntsc_i" => Some(&self.modelines.ntsc_i),
+            "576i" | "pal_i" => Some(&self.modelines.pal_i),
             _ => None,
         }
     }
@@ -284,7 +304,7 @@ pub fn set_value(key: &str, value: &str) -> Result<(), String> {
         ("output", &["connector", "position", "csync", "standard"]),
         ("audio", &["route", "system_default", "volume"]),
         ("shell", &["autostart"]),
-        ("modelines", &["ntsc", "pal", "film"]),
+        ("modelines", &["ntsc", "pal", "film", "ntsc_i", "pal_i"]),
     ];
     let ok = allowed
         .iter()
