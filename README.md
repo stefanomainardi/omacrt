@@ -211,7 +211,10 @@ switches with a blend.
 - **Games.** Systems with console pictures, games with box art from the
   libretro thumbnails (matched by title when the file names carry no region
   tags, so a RePlayOS style set gets its covers too; `omarchy-crt library
-  covers` fetches them all at once), collections, favourites, recent. `X`
+  covers` fetches them all at once), collections, favourites, recent. Arcade
+  files named after the emulated set, `mslug` for Metal Slug, are read
+  through the databases RetroArch ships, so those lists show titles and find
+  their covers as well. `X`
   opens the **cover
   flow**: the selected cover large on a shelf, the neighbours receding at an
   angle, everything mirrored on the floor, sliding with inertia.

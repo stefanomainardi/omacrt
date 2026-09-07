@@ -1007,10 +1007,13 @@ fn cmd_library(args: &[String]) {
                     }
                     done += 1;
                     eprint!("\r\x1b[2K  {} {}", system.name, stem);
-                    match index.best(stem, &regions) {
+                    // Arcade files are named after the set, the repository by
+                    // title: the databases RetroArch ships pair them.
+                    let stem = covers::title_for(&system.name, stem);
+                    match index.best(&stem, &regions) {
                         Some(name) => {
                             if covers::download(label, name, &dest) {
-                                if name == covers::thumb_name(stem) {
+                                if name == covers::thumb_name(&stem) {
                                     exact += 1;
                                 } else {
                                     fuzzy += 1;

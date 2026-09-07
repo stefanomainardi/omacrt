@@ -52,7 +52,11 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   the libretro thumbnails, a normalized match with region preference and a
   word overlap fallback; `omarchy-crt library covers` for the whole
   collection, the same lookup lazily in the launcher. On a PlayStation set
-  without region tags, 13 of 14 sampled titles found their art.
+  without region tags, 13 of 14 sampled titles found their art. Arcade
+  systems name their files after the emulated set, so the set names are
+  turned into titles through the databases RetroArch ships: Neo Geo went
+  from 2 covers of 120 to all of them, and the lists read as games rather
+  than as file names.
 - **Interlaced modes.** `mode 480i` and `mode 576i` program 480 and 576 line
   frames at the same line rates as the progressive standards, and the
   launcher draws at the full height. Whether a film looks better as fields

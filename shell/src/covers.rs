@@ -395,3 +395,149 @@ mod tests {
         assert_eq!(ix.best("Gran Turismo", &["USA"]), None);
     }
 }
+
+// --------------------------------------------------------- arcade set names
+
+/// Arcade collections name their files after the emulated set, not the game:
+/// `mslug.zip`, not `Metal Slug`. The thumbnail repository is keyed by title
+/// for every system, so a set name finds nothing. RetroArch ships the
+/// databases that pair the two, and this reads them: `rom_name` is the file,
+/// `name` the title.
+///
+/// The databases are MessagePack records; rather than parse the format, the
+/// two keys are found by their own headers and the string that follows each
+/// is read, which is all this needs.
+fn rdb_dirs() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(home) = std::env::var("HOME") {
+        out.push(PathBuf::from(&home).join(".config/retroarch/database/rdb"));
+    }
+    out.push(PathBuf::from("/usr/share/libretro/database/rdb"));
+    out
+}
+
+/// The databases to read for a system, in order: its own first, then the
+/// arcade sets that also carry its games.
+fn rdb_names(system: &str) -> &'static [&'static str] {
+    match system {
+        "arcade" => &["FBNeo - Arcade Games", "MAME"],
+        "mame" => &["MAME", "FBNeo - Arcade Games"],
+        "mame2003" => &["MAME 2003-Plus", "MAME"],
+        "neogeo" => &["FBNeo - Arcade Games", "MAME"],
+        "naomi" => &["MAME", "FBNeo - Arcade Games"],
+        "stv" => &["MAME", "FBNeo - Arcade Games"],
+        _ => &[],
+    }
+}
+
+/// One MessagePack string starting at `i`, and where it ends.
+fn mp_str(b: &[u8], i: usize) -> Option<(String, usize)> {
+    let head = *b.get(i)?;
+    let (len, start) = match head {
+        0xa0..=0xbf => ((head & 0x1f) as usize, i + 1),
+        0xd9 => (*b.get(i + 1)? as usize, i + 2),
+        0xda => (u16::from_be_bytes([*b.get(i + 1)?, *b.get(i + 2)?]) as usize, i + 3),
+        _ => return None,
+    };
+    let end = start + len;
+    let s = std::str::from_utf8(b.get(start..end)?).ok()?;
+    Some((s.to_string(), end))
+}
+
+/// Set name (without extension, lowercased) to title, from one database.
+fn read_rdb(path: &Path) -> Option<HashMap<String, String>> {
+    let b = std::fs::read(path).ok()?;
+    let mut out: HashMap<String, String> = HashMap::new();
+    let mut title: Option<String> = None;
+    let mut i = 0usize;
+    // The records put `name` before `rom_name`, so the last title seen when a
+    // file name turns up is the title of that file.
+    while i + 9 < b.len() {
+        if b[i] == 0xa4 && &b[i + 1..i + 5] == b"name" {
+            if let Some((s, end)) = mp_str(&b, i + 5) {
+                title = Some(s);
+                i = end;
+                continue;
+            }
+        }
+        if b[i] == 0xa8 && &b[i + 1..i + 9] == b"rom_name" {
+            if let Some((file, end)) = mp_str(&b, i + 9) {
+                if let Some(t) = &title {
+                    let stem = file.rsplit_once('.').map(|(s, _)| s).unwrap_or(&file);
+                    out.entry(stem.to_ascii_lowercase()).or_insert_with(|| t.clone());
+                }
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+type SetNames = std::sync::Arc<HashMap<String, String>>;
+
+fn set_names(system: &str) -> Option<SetNames> {
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<String, Option<SetNames>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(hit) = cache.lock().ok()?.get(system) {
+        return hit.clone();
+    }
+    let mut merged: HashMap<String, String> = HashMap::new();
+    for name in rdb_names(system) {
+        for dir in rdb_dirs() {
+            let path = dir.join(format!("{name}.rdb"));
+            if !path.is_file() {
+                continue;
+            }
+            if let Some(map) = read_rdb(&path) {
+                for (k, v) in map {
+                    merged.entry(k).or_insert(v);
+                }
+            }
+            break;
+        }
+    }
+    let value = if merged.is_empty() {
+        None
+    } else {
+        Some(std::sync::Arc::new(merged))
+    };
+    if let Ok(mut c) = cache.lock() {
+        c.insert(system.to_string(), value.clone());
+    }
+    value
+}
+
+/// The title of an arcade set, when the file is named after the set and a
+/// database knows it. Anything else is returned unchanged.
+pub fn title_for(system: &str, stem: &str) -> String {
+    // A real title has spaces or capitals; a set name is a short lowercase
+    // word, so nothing else is looked up.
+    if stem.contains(' ') || stem.chars().any(|c| c.is_ascii_uppercase()) || stem.len() > 16 {
+        return stem.to_string();
+    }
+    match set_names(system).and_then(|m| m.get(&stem.to_ascii_lowercase()).cloned()) {
+        Some(t) => t,
+        None => stem.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod set_name_tests {
+    /// The databases RetroArch ships are not part of this repository, so the
+    /// test only asks for a well known set when they are installed.
+    #[test]
+    fn a_neo_geo_set_finds_its_title() {
+        if super::set_names("neogeo").is_none() {
+            return;
+        }
+        assert_eq!(super::title_for("neogeo", "mslug"), "Metal Slug - Super Vehicle-001");
+        assert_eq!(super::title_for("neogeo", "Metal Slug (Europe)"), "Metal Slug (Europe)");
+    }
+}

@@ -40,6 +40,13 @@ Arch repositories, `libretro-mame2003-plus-git` from the AUR) so the overlay
 can offer the install through `omarchy pkg add` or `omarchy pkg aur add`.
 `config set` edits one key of `crt.toml` in place and keeps the comments.
 
+Arcade collections name their files after the emulated set, `mslug.zip` for
+Metal Slug, while both the lists and the thumbnail repository work in titles.
+The databases RetroArch ships (`/usr/share/libretro/database/rdb`, or the
+user's own copy) pair the two, so those systems show real titles, sort and
+search by them, and find their box art. Without those databases the set names
+stay as they are.
+
 `library covers` walks the collection and fetches the libretro thumbnail of
 every game into `~/.cache/omarchy-crt/art/<system>/`. The exact file name is
 tried first; when the repository has no such name (collections without

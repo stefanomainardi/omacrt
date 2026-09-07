@@ -160,6 +160,9 @@ impl Art {
             };
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
             let cache = crate::covers::cache_path(system, stem);
+            // Arcade files are named after the set: the cache keeps the file
+            // name, the repository is asked for the title.
+            let stem = crate::covers::title_for(system, stem);
             let _ = &self.cache_dir;
             self.request(
                 &key,

@@ -536,23 +536,29 @@ impl Library {
                 .position(|r| r.eq_ignore_ascii_case(&it.region))
                 .unwrap_or(REGION_ORDER.len())
         };
-        let mut best: BTreeMap<String, &crate::index::Item> = BTreeMap::new();
+        // Arcade collections name their files after the emulated set, so the
+        // index carries `mslug` where the game is Metal Slug. The databases
+        // RetroArch ships pair the two; the title is what the lists show,
+        // sort by and search.
+        let title_of = |it: &crate::index::Item| crate::covers::title_for(&system.name, &it.title);
+        let mut best: BTreeMap<String, (&crate::index::Item, String)> = BTreeMap::new();
         for it in items {
             if it.disc.map(|d| d > 1).unwrap_or(false) {
                 continue;
             }
-            let key = it.title.to_lowercase();
+            let title = title_of(it);
+            let key = title.to_lowercase();
             match best.get(&key) {
-                Some(cur) if rank(cur) <= rank(it) => {}
+                Some((cur, _)) if rank(cur) <= rank(it) => {}
                 _ => {
-                    best.insert(key, it);
+                    best.insert(key, (it, title));
                 }
             }
         }
         let mut games: Vec<Game> = best
             .into_values()
-            .map(|it| Game {
-                title: it.title.clone(),
+            .map(|(it, title)| Game {
+                title,
                 path: it.path.clone(),
                 crt_path: None,
                 folder: false,
