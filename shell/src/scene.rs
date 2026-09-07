@@ -422,6 +422,9 @@ pub struct Scene {
     music_saver: Option<Screen>,
     /// The visualizer chosen on purpose (X) rather than by idling.
     music_visual: bool,
+    /// X also flips the deck between cassette and turntable: None follows the
+    /// source, Some forces one look.
+    deck_look: Option<bool>,
     /// The list a station was tuned from and the index in it: left and right move along it.
     tuning: Option<(Vec<Track>, usize)>,
     /// Sleep timer: deadline and the volume to restore.
@@ -472,7 +475,7 @@ impl Scene {
             list_from_home: false,
             virtual_row: 0,
             open_collection: None,
-            art: crate::art::Art::new(),
+            art: crate::art::Art::new(crate::covers::regions_for(&settings.music.country)),
             row_shrink: 0,
             profile_preview: false,
             game_dir: None,
@@ -522,6 +525,7 @@ impl Scene {
             cover_img: None,
             music_saver: None,
             music_visual: false,
+            deck_look: None,
             tuning: None,
             sleep: None,
             sleep_set_at: 0.0,
@@ -864,7 +868,23 @@ impl Scene {
                 return;
             }
             Screen::NowPlaying => {
-                self.music_visual = !self.music_visual;
+                // Deck as the source suggests, the other look, the visualizer, round again.
+                if self.music_visual {
+                    self.music_visual = false;
+                    self.deck_look = None;
+                } else if self.deck_look.is_none() {
+                    let auto = self
+                        .music
+                        .status
+                        .track
+                        .as_ref()
+                        .map(|t| t.path.starts_with("spotify:") || (!t.stream && !t.album.is_empty()))
+                        .unwrap_or(false);
+                    self.deck_look = Some(!auto);
+                } else {
+                    self.deck_look = None;
+                    self.music_visual = true;
+                }
                 self.deck.mode_since = self.now;
                 self.pending.push(Sound::Whoosh);
                 return;
@@ -3054,8 +3074,8 @@ impl Scene {
             effects::draw_cell(fb, mx, 10, 1, cell, cell.final_color);
         }
         // The same glint as the home logo, on its own rhythm.
-        self.glint(fb, left, 8, 24, 24, 13.0, 5.0);
-        self.glint(fb, mx, 10, self.mark_small.cols, self.mark_small.rows * 2, 13.0, 4.6);
+        self.glint(fb, left, 8, 24, 24, 8.0, 3.0);
+        self.glint(fb, mx, 10, self.mark_small.cols, self.mark_small.rows * 2, 8.0, 2.6);
         fb.text(left, 40, prompt, self.theme.dim, 1);
         let clock = chrono::Local::now().format("%H:%M").to_string();
         fb.text(
@@ -3916,7 +3936,7 @@ impl Scene {
             let bottom = self.mark_final_y(fb) + self.mark_rows * 2 * MARK_SCALE;
             let x0 = mx.min(lx);
             let x1 = (mx + mw).max(lx + lsize);
-            self.glint(fb, x0, ly, x1 - x0, bottom - ly, 9.0, 0.0);
+            self.glint(fb, x0, ly, x1 - x0, bottom - ly, 6.0, 0.0);
         }
         self.draw_home(fb, t);
         if t >= 4.0 && !self.chime_played {
@@ -4979,6 +4999,12 @@ impl Scene {
             return;
         }
         let y0 = self.draw_header(fb, "Music");
+        if track.path.starts_with("spotify:") {
+            // The source, up in the header next to the screen's name.
+            let bx = left + Framebuffer::text_width("Music", 1) + 10;
+            fb.bitmap(bx, 39, &icons::SPOTIFY, theme.green, 1, 8);
+            fb.text(bx + 11, 40, "SPOTIFY", theme.green, 1);
+        }
         let station = self.tuning.as_ref().filter(|_| track.stream).map(|(l, i)| (*i, l.len()));
         match &self.music.cover {
             Some(p) if self.cover_img.as_ref().map(|(q, _)| q) != Some(p) => {
@@ -4996,7 +5022,7 @@ impl Scene {
             duration: st.duration,
             playing: st.playing(),
             radio: track.stream && track.duration_secs == 0 && st.duration <= 0.0,
-            turntable: track.path.starts_with("spotify:") || (!track.stream && !track.album.is_empty()),
+            turntable: self.deck_look.unwrap_or(track.path.starts_with("spotify:") || (!track.stream && !track.album.is_empty())),
             spotify: track.path.starts_with("spotify:"),
             station,
             cover: cover.as_ref(),
@@ -5014,7 +5040,7 @@ impl Scene {
         // Two lines of hints: the deck has more controls than fit in one.
         let skip = if track.stream { "tune" } else { "track" };
         let hint1 = self.hint(&[("A", "pause"), ("<>", skip), ("^v", "volume")]);
-        let hint2 = self.hint(&[("X", "visualizer"), ("Y", "sleep timer"), ("B", "back")]);
+        let hint2 = self.hint(&[("X", "view"), ("Y", "sleep timer"), ("B", "back")]);
         fb.text(left, h - 24, &hint1, scale(theme.dim, 0.7), 1);
         fb.text(left, h - 14, &hint2, scale(theme.dim, 0.7), 1);
     }
@@ -5134,28 +5160,40 @@ impl Scene {
     /// across the box in under a second, brightening only what is drawn
     /// there. The small movement that keeps a logo alive.
     fn glint(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, period: f64, offset: f64) {
-        const SWEEP: f64 = 0.9;
-        let phase = (self.now + offset).rem_euclid(period);
-        if phase > SWEEP || w <= 0 || h <= 0 {
+        const SWEEP: f64 = 1.1;
+        if w <= 0 || h <= 0 {
             return;
         }
-        let p = (phase / SWEEP) as f32;
-        let centre = -0.2 + 1.4 * p;
         let bg = self.theme.bg;
         let paper = self.theme.paper;
+        // The slow breath: the whole mark brightens and dims a little,
+        // the way phosphor never quite sits still.
+        let breath = 0.05 + 0.05 * ((self.now * 1.4 + offset).sin() as f32);
+        // A scan line that drifts down the mark every other cycle.
+        let scan_phase = ((self.now + offset) / (period * 0.5)).fract() as f32;
+        let scan_y = y as f32 + scan_phase * (h as f32 + 4.0) - 2.0;
+        let phase = (self.now + offset).rem_euclid(period);
+        let sweep = phase <= SWEEP;
+        let p = (phase / SWEEP) as f32;
+        let centre = -0.25 + 1.5 * p;
         for py in y.max(0)..(y + h).min(fb.h as i32) {
+            let scan = 1.0 - ((py as f32 - scan_y).abs() / 2.0).min(1.0);
             for px in x.max(0)..(x + w).min(fb.w as i32) {
-                let u = (px - x) as f32 / w as f32 + 0.4 * (py - y) as f32 / h as f32;
-                let d = (u - centre).abs();
-                if d >= 0.1 {
-                    continue;
-                }
                 let c = fb.px[py as usize * fb.w + px as usize];
                 if c == bg {
                     continue;
                 }
-                let k = (1.0 - d / 0.1).powi(2) * 0.85;
-                fb.put(px, py, lerp_color(c, paper, k));
+                let mut k = breath + scan * 0.18;
+                if sweep {
+                    let u = (px - x) as f32 / w as f32 + 0.4 * (py - y) as f32 / h as f32;
+                    let d = (u - centre).abs();
+                    if d < 0.13 {
+                        k += (1.0 - d / 0.13).powi(2) * 0.95;
+                    }
+                }
+                if k > 0.0 {
+                    fb.put(px, py, lerp_color(c, paper, k.min(1.0)));
+                }
             }
         }
     }

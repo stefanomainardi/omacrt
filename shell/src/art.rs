@@ -42,79 +42,14 @@ impl Image {
 
 /// libretro thumbnail folder (and systematic asset) per system name.
 pub fn system_label(system: &str) -> Option<&'static str> {
-    Some(match system {
-        "nes" => "Nintendo - Nintendo Entertainment System",
-        "snes" => "Nintendo - Super Nintendo Entertainment System",
-        "megadrive" => "Sega - Mega Drive - Genesis",
-        "mastersystem" => "Sega - Master System - Mark III",
-        "gamegear" => "Sega - Game Gear",
-        "sg1000" => "Sega - SG-1000",
-        "segacd" => "Sega - Mega-CD - Sega CD",
-        "sega32x" => "Sega - 32X",
-        "saturn" => "Sega - Saturn",
-        "dreamcast" => "Sega - Dreamcast",
-        "naomi" => "Sega - Naomi",
-        "stv" => "Sega - ST-V",
-        "pcengine" => "NEC - PC Engine - TurboGrafx 16",
-        "pcenginecd" => "NEC - PC Engine CD - TurboGrafx-CD",
-        "n64" => "Nintendo - Nintendo 64",
-        "gb" => "Nintendo - Game Boy",
-        "gbc" => "Nintendo - Game Boy Color",
-        "gba" => "Nintendo - Game Boy Advance",
-        "nds" => "Nintendo - Nintendo DS",
-        "psx" => "Sony - PlayStation",
-        "psp" => "Sony - PlayStation Portable",
-        "neogeo" => "SNK - Neo Geo",
-        "neogeocd" => "SNK - Neo Geo CD",
-        "ngp" => "SNK - Neo Geo Pocket Color",
-        "arcade" => "FBNeo - Arcade Games",
-        "mame" => "MAME",
-        "mame2003" => "MAME 2003-Plus",
-        "c64" => "Commodore - 64",
-        "amiga" => "Commodore - Amiga",
-        "amigacd32" => "Commodore - CD32",
-        "amstradcpc" => "Amstrad - CPC",
-        "atari2600" => "Atari - 2600",
-        "atari5200" => "Atari - 5200",
-        "atari7800" => "Atari - 7800",
-        "lynx" => "Atari - Lynx",
-        "jaguar" => "Atari - Jaguar",
-        "3do" => "The 3DO Company - 3DO",
-        "cdi" => "Philips - CD-i",
-        "msx" => "Microsoft - MSX",
-        "zxspectrum" => "Sinclair - ZX Spectrum",
-        "dos" => "DOS",
-        "scummvm" => "ScummVM",
-        "x68000" => "Sharp - X68000",
-        _ => return None,
-    })
+    crate::covers::label(system)
 }
 
 const SYSTEMATIC: &str = "/usr/share/retroarch/assets/xmb/systematic/png";
-const THUMBS: &str = "https://thumbnails.libretro.com";
-
-/// libretro replaces characters that cannot be file names with `_`.
-fn thumb_name(stem: &str) -> String {
-    stem.chars()
-        .map(|c| if "&*/:`<>?\\|".contains(c) { '_' } else { c })
-        .collect()
-}
-
-fn percent_encode(s: &str) -> String {
-    let mut out = String::new();
-    for b in s.bytes() {
-        if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
-}
 
 enum Source {
-    /// Download to the cache path when missing, then decode.
-    Remote { url: String, cache: PathBuf },
+    /// A game's box art: exact name first, the fuzzy match second.
+    Cover { label: String, stem: String, cache: PathBuf },
     /// Decode a file that is already on disk.
     Local(PathBuf),
 }
@@ -124,6 +59,7 @@ struct Request {
     source: Source,
     max_w: usize,
     max_h: usize,
+    regions: Vec<&'static str>,
 }
 
 struct Done {
@@ -133,6 +69,8 @@ struct Done {
 
 pub struct Art {
     cache_dir: PathBuf,
+    /// Region order for covers that exist in several editions.
+    regions: Vec<&'static str>,
     tx: Sender<Request>,
     rx: Receiver<Done>,
     ready: HashMap<String, Option<Image>>,
@@ -140,11 +78,8 @@ pub struct Art {
 }
 
 impl Art {
-    pub fn new() -> Self {
-        let cache_dir = std::env::var_os("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| crate::library::home().join(".cache"))
-            .join("omarchy-crt/art");
+    pub fn new(regions: Vec<&'static str>) -> Self {
+        let cache_dir = crate::covers::cache_dir();
         let (tx, worker_rx) = channel::<Request>();
         let (done_tx, rx) = channel::<Done>();
         std::thread::Builder::new()
@@ -166,6 +101,7 @@ impl Art {
             .ok();
         Self {
             cache_dir,
+            regions,
             tx,
             rx,
             ready: HashMap::new(),
@@ -191,6 +127,7 @@ impl Art {
             source,
             max_w,
             max_h,
+            regions: self.regions.clone(),
         });
     }
 
@@ -222,14 +159,18 @@ impl Art {
                 return None;
             };
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            let name = thumb_name(stem);
-            let url = format!(
-                "{THUMBS}/{}/Named_Boxarts/{}.png",
-                percent_encode(label),
-                percent_encode(&name)
+            let cache = crate::covers::cache_path(system, stem);
+            let _ = &self.cache_dir;
+            self.request(
+                &key,
+                Source::Cover {
+                    label: label.to_string(),
+                    stem: stem.to_string(),
+                    cache,
+                },
+                max_w,
+                max_h,
             );
-            let cache = self.cache_dir.join(system).join(format!("{name}.png"));
-            self.request(&key, Source::Remote { url, cache }, max_w, max_h);
             return None;
         }
         self.ready.get(&key).and_then(|i| i.as_ref())
@@ -258,30 +199,14 @@ impl Art {
 fn fetch(req: &Request) -> Option<Image> {
     let path = match &req.source {
         Source::Local(p) => p.clone(),
-        Source::Remote { url, cache } => {
-            let missing = cache.with_extension("missing");
-            if missing.exists() {
-                return None;
-            }
+        Source::Cover { label, stem, cache } => {
             if !cache.exists() {
-                if let Some(dir) = cache.parent() {
-                    std::fs::create_dir_all(dir).ok()?;
+                if cache.with_extension("missing").exists() {
+                    return None;
                 }
-                let tmp = cache.with_extension("part");
-                let status = std::process::Command::new("curl")
-                    .args(["-fsSL", "--max-time", "20", "-o"])
-                    .arg(&tmp)
-                    .arg(url)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status();
-                match status {
-                    Ok(s) if s.success() && std::fs::rename(&tmp, cache).is_ok() => {}
-                    _ => {
-                        let _ = std::fs::remove_file(&tmp);
-                        let _ = std::fs::write(&missing, b"");
-                        return None;
-                    }
+                if !crate::covers::fetch_cover(label, stem, cache, &req.regions) {
+                    let _ = std::fs::write(cache.with_extension("missing"), b"");
+                    return None;
                 }
             }
             cache.clone()

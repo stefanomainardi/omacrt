@@ -42,6 +42,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library [--json]         systems, sources, game counts, cores
   library cores [--json]   the core each system needs, installed or not, and its package
   library set SYS core=X|dir=D   change a system's core or folder in systems.toml
+  library covers [SYS...] [--limit N] [--force]   fetch box art for the collection, matching titles when names differ
   library scan [DIR...]    index every game under the roots (any layout)
   library discover [--json]  mounted places that look like collections
   library roots add|remove DIR
@@ -952,6 +953,75 @@ fn cmd_library(args: &[String]) {
             };
             library::set_system_field(system, key, value).unwrap_or_else(|e| die(&e));
             println!("{system}: {key} = {value}");
+        }
+        Some("covers") => {
+            // Box art for the whole collection, exact names first, fuzzy after.
+            use omarchy_crt_shell::covers;
+            let lib = library();
+            let settings = omarchy_crt_shell::settings::Settings::load(&lib.config_dir);
+            let regions = covers::regions_for(&settings.music.country);
+            let wanted: Vec<&String> = pos.iter().skip(1).filter(|s| !s.starts_with("--")).copied().collect();
+            let limit: usize = args
+                .iter()
+                .position(|a| a == "--limit")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(usize::MAX);
+            let force = has(args, "--force");
+            for system in lib.systems.iter().filter(|s| !s.is_video()) {
+                if !wanted.is_empty() && !wanted.iter().any(|w| **w == system.name) {
+                    continue;
+                }
+                let Some(label) = covers::label(&system.name) else {
+                    continue;
+                };
+                let games = lib.games(system);
+                if games.is_empty() {
+                    continue;
+                }
+                let Some(index) = covers::NameIndex::load(label) else {
+                    println!("{:<12} no thumbnail index reachable", system.name);
+                    continue;
+                };
+                let (mut have, mut exact, mut fuzzy, mut none) = (0, 0, 0, 0);
+                let mut done = 0;
+                for g in &games {
+                    if done >= limit {
+                        break;
+                    }
+                    let stem = g.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    let dest = covers::cache_path(&system.name, stem);
+                    if dest.exists() && !force {
+                        have += 1;
+                        continue;
+                    }
+                    done += 1;
+                    eprint!("\r\x1b[2K  {} {}", system.name, stem);
+                    match index.best(stem, &regions) {
+                        Some(name) => {
+                            if covers::download(label, name, &dest) {
+                                if name == covers::thumb_name(stem) {
+                                    exact += 1;
+                                } else {
+                                    fuzzy += 1;
+                                }
+                            } else {
+                                none += 1;
+                            }
+                        }
+                        None => {
+                            let _ = std::fs::write(dest.with_extension("missing"), b"");
+                            none += 1;
+                        }
+                    }
+                }
+                eprint!("\r\x1b[2K");
+                println!(
+                    "{:<12} {:>5} games: {have} had art, {exact} exact, {fuzzy} matched by title, {none} without",
+                    system.name,
+                    games.len()
+                );
+            }
         }
         Some("cores") => {
             let lib = library();

@@ -26,6 +26,43 @@ television outright. Written in Rust, drawn at 320x240.
 > by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
 > every other name here belong to their owners.
 
+## At a glance
+
+- **The television is a client of its own compositor.** The desktop hands the
+  DAC's connector over at boot; `omarchy-crt-display` sets the 15 kHz timing
+  and runs the tube. Nothing from the desktop can land on it.
+- **Games.** 21,880 titles indexed from disks in any layout, box art, console
+  pictures, a cover flow, search across everything, letter jumps, pads mapped
+  on the tube, save states in sight, a pause menu over the game, the line
+  count of each system set live.
+- **Music.** cliamp as the engine: radio by country and genre, Spotify (and
+  any provider cliamp knows) with search, a hi-fi deck with cassette,
+  turntable and VU meters, seven visualizers, synced lyrics, sleep timer.
+- **Video.** Local films fitted to the tube, YouTube searched and played from
+  the television, a link sent from the desktop.
+- **Omarchy all the way.** Theme colours, the bar widget and its panel, a full
+  screen library overlay, the shell's plugin system, cliamp, mpv, yt-dlp: the
+  desktop's own tools drive the CRT.
+- **One CLI for everything**, a control pipe to drive the launcher from a
+  script, screenshots and recordings straight from the tube's framebuffer.
+
+## Why
+
+A television that marked a couple of generations sits in a corner, still
+perfect at what it was built for, and a modern PC can feed it the exact
+signal its tube was made to show. This project is a way to learn, in the
+open, how that signal, the kernel, a compositor, an emulator and a music
+player fit together, and to give the old screen a second life that is both
+useful and fun: the games look the way they were drawn, the radio sounds like
+a radio, an evening's video plays without a scaler in between.
+
+It is also a playground. A system this malleable invites experiments the
+big frontends never bothered with: a cassette that turns with the song, a
+Mode 7 floor under the spectrum, covers on a shelf that reflect on the floor,
+a laser etching the wordmark at boot. Some of it is nostalgia, some of it is
+just the pleasure of drawing pixels at 320x240 and seeing them glow on
+glass. Both are the point.
+
 ## What it looks like
 
 <p align="center">
@@ -85,6 +122,37 @@ The bar plugin and the CLI stay on the desktop and talk to the tube over a
 control pipe: the panel is the remote control, the overlay manages the
 collection, the CLI does everything from a terminal.
 
+## Omarchy on the tube
+
+The interesting part is not the emulator, it is what an integrated desktop
+can send to a television once the television is just another output it owns.
+
+- **The shell.** The bar widget, the panel and the library overlay are
+  Omarchy shell plugins, in Quickshell like the rest of the bar, using the
+  same components, colours and popout behaviour. A keybinding can talk to them
+  through `omarchy-shell` IPC (`power`, `on`, `off`, `ntsc`, `pal`, `focus`,
+  `library`).
+- **Themes.** The launcher reads Omarchy's theme colours and offers every
+  installed theme; switching one blends the whole screen, icon and wordmark
+  included.
+- **cliamp.** Omarchy's music player runs as a daemon and the launcher is its
+  face on the CRT over a Unix socket: radio through the Radio Browser
+  directory it ships, Spotify, YouTube Music and the other providers set up
+  once with `cliamp setup`, its spectrum analyser feeding the visualizers, its
+  lyrics on the screen. What plays on the desktop can play on the tube and
+  the other way round.
+- **mpv and yt-dlp.** Local films, a YouTube search typed on the tube, a
+  link copied on the desktop and sent with one click from the panel or with
+  `omarchy-crt watch`, all through the same player with the tube's own fit
+  pipeline (480p streams, 480i or 576i by frame rate when the modeline lands).
+- **RetroArch.** Driven without its menu: a configuration written per launch
+  from `systems.toml`, hotkeys pressed by the compositor, save states read
+  back for the launcher's rows.
+- **The rest of the box.** PipeWire routes the launcher, RetroArch, mpv and
+  cliamp to the television's audio and back; the I2C bus of the HDMI port
+  configures the DAC's sync; systemd hands the tube over at boot; pads come
+  through SDL with a wizard for the unknown ones.
+
 ## Hardware
 
 | Part | What worked |
@@ -134,7 +202,10 @@ switches with a blend.
   slams in SNES title screen style over a Mode 7 floor. Both logos glint
   every few seconds afterwards.
 - **Games.** Systems with console pictures, games with box art from the
-  libretro thumbnails, collections, favourites, recent. `X` opens the **cover
+  libretro thumbnails (matched by title when the file names carry no region
+  tags, so a RePlayOS style set gets its covers too; `omarchy-crt library
+  covers` fetches them all at once), collections, favourites, recent. `X`
+  opens the **cover
   flow**: the selected cover large on a shelf, the neighbours receding at an
   angle, everything mirrored on the floor, sliding with inertia.
 - **Search.** `/` filters the open list as you type; from the home menu it
@@ -203,7 +274,7 @@ omarchy-crt shell start|stop|restart | shell key <input>... | shell type <text>
 omarchy-crt shot out.png | record start out.mp4 | record stop | monitor on|off
 omarchy-crt game menu|pause|save|load|reset|quit
 omarchy-crt watch <file|url> [--later [TITLE]]
-omarchy-crt library scan|discover|cores|set|assign|unknown | bios [import DIR|discover]
+omarchy-crt library scan|discover|covers|cores|set|assign|unknown | bios [import DIR|discover]
 omarchy-crt audio crt|desktop|all|apps | audio volume N | dac csync and|xor | doctor | config set KEY VALUE
 ```
 
@@ -235,9 +306,8 @@ collapse onto one title and systems show up when they have games. Details in
 
 [`docs/plan.md`](docs/plan.md) keeps the current state. In short: the tube is
 ours, games, music and video run on it, the collection is managed from the
-bar. Next: interlaced 480i and 576i modelines for video, smarter cover
-matching for collections whose file names carry no region tags, rewind and
-aspect in the pause menu, album art on the music screens.
+bar. Next: interlaced 480i and 576i modelines for video, rewind and aspect
+in the pause menu, album art on the music screens.
 
 ## Contributing
 

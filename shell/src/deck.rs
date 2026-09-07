@@ -184,11 +184,25 @@ impl Deck {
         if playing {
             self.reel += dt * (2.2 + self.energy * 1.5);
         }
-        // Two channels from the bands: lows and mids left, mids and highs right.
-        let left = (self.smooth[0] + self.smooth[1] + self.smooth[2] + self.smooth[4]) / 4.0;
-        let right = (self.smooth[3] + self.smooth[5] + self.smooth[6] + self.smooth[7]) / 4.0;
+        // Two channels from interleaved bands, weighted so the bass does not
+        // pin the needle, then compressed the way a VU meter's ballistics do:
+        // -20 dB sits near the left, 0 dB where the red zone starts.
+        let weights = [0.35f32, 0.6, 0.8, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6];
+        let mut acc = [0.0f32; 2];
+        let mut wsum = [0.0f32; 2];
+        for (i, s) in self.smooth.iter().enumerate() {
+            acc[i % 2] += s * weights[i];
+            wsum[i % 2] += weights[i];
+        }
+        let level = |e: f32| -> f32 {
+            let e = (e * 1.8).clamp(1e-4, 1.0);
+            // 0..1 over a 23 dB window, 0 dB at 0.78 of the arc.
+            ((20.0 * e.log10() + 23.0) / 23.0 * 0.78).clamp(0.0, 1.0)
+        };
+        let left = level(acc[0] / wsum[0]);
+        let right = level(acc[1] / wsum[1]);
         for (i, target) in [left, right].into_iter().enumerate() {
-            let target = if playing { (target * 1.6).min(1.0) } else { 0.0 };
+            let target = if playing { target } else { 0.0 };
             let k = if target > self.vu[i] { 0.35 } else { 0.08 };
             self.vu[i] += (target - self.vu[i]) * k;
             if self.vu[i] > self.peak[i] {
@@ -263,10 +277,6 @@ impl Deck {
                 self.draw_cassette(fb, th, slot_x + 8, cy, slot_w - 16, slot_h - 12, progress, info);
             }
         }
-        if info.spotify {
-            // The badge sits in the slot's corner, phosphor green.
-            fb.bitmap(slot_x + slot_w - 12, slot_y + 3, &crate::icons::SPOTIFY, th.green, 1, 8);
-        }
         // VU meters on the right.
         let vx = slot_x + slot_w + 8;
         let vw = width - slot_w - 8;
@@ -276,8 +286,15 @@ impl Deck {
         // Title, subtitle, times.
         let ty = slot_y + slot_h + 8;
         let max_cols = (width / 8) as usize;
-        let title: String = info.title.chars().take(max_cols).collect();
-        fb.text(left, ty, &title, th.bright_green, 1);
+        let mut tx = left;
+        let mut cols = max_cols;
+        if info.spotify {
+            fb.bitmap(left, ty, &crate::icons::SPOTIFY, th.green, 1, 8);
+            tx += 12;
+            cols = cols.saturating_sub(2);
+        }
+        let title: String = info.title.chars().take(cols).collect();
+        fb.text(tx, ty, &title, th.bright_green, 1);
         let sub: String = info.sub.chars().take(max_cols).collect();
         fb.text(left, ty + 12, &sub, th.paper, 1);
         let bar_y = ty + 26;
@@ -397,9 +414,11 @@ impl Deck {
         }
     }
 
-    /// A record player: platter, a black record whose grooves catch a
-    /// rotating sheen, the label (album art when there is one) and a tonearm
-    /// that tracks inward with the position.
+    /// A record player the way a sixteen bit artist would draw one: a walnut
+    /// plinth with a bevel, a platter with a strobe ring that turns, a record
+    /// whose fine grooves catch two rotating sheens, the label with the album
+    /// art (or the theme's colours), a tonearm with counterweight and
+    /// headshell tracking inward with the song, a 33/45 selector, a lamp.
     #[allow(clippy::too_many_arguments)]
     fn draw_turntable(
         &mut self,
@@ -412,32 +431,60 @@ impl Deck {
         progress: f32,
         info: &Info,
     ) {
-        let plinth = lerp_color(th.bg, th.fg, 0.14);
-        fb.rect(x, y, w, h, plinth);
-        fb.rect(x, y, w, 1, lerp_color(th.bg, th.fg, 0.3));
-        // Platter and record, off centre to leave room for the arm.
-        let cx = x + h / 2 + 4;
-        let cy = y + h / 2;
-        let r_platter = (h / 2 - 4) as f32;
-        let r_record = r_platter - 2.0;
-        draw_disc(fb, cx, cy, r_platter, lerp_color(th.bg, th.dim, 0.6));
-        draw_disc(fb, cx, cy, r_record, scale(th.bg, 0.6));
-        // Grooves: rings every three pixels, lit where a sheen passes as the
-        // record turns.
-        let sheen = self.reel * 0.9;
-        let mut r = r_record - 2.0;
-        while r > 12.0 {
-            let steps = (r * 6.0) as i32;
+        // Plinth: warm wood with a lighter bevel on top and left, shadow below.
+        let wood = lerp_color(th.bg, th.orange, 0.22);
+        let wood_dark = lerp_color(th.bg, th.orange, 0.12);
+        let bevel = lerp_color(wood, th.paper, 0.25);
+        fb.rect(x, y, w, h, wood);
+        for k in 0..6 {
+            let c = lerp_color(wood_dark, wood, k as f32 / 6.0);
+            fb.rect(x, y + h - 6 + k, w, 1, c);
+        }
+        // Grain: faint horizontal streaks.
+        for k in (3..h - 8).step_by(5) {
+            let a = 0.06 + 0.04 * (((k * 7) % 11) as f32 / 11.0);
+            fb.rect(x + 2, y + k, w - 4, 1, lerp_color(wood, th.bg, a));
+        }
+        fb.rect(x, y, w, 1, bevel);
+        fb.rect(x, y, 1, h, bevel);
+        fb.rect(x + w - 1, y, 1, h, scale(wood, 0.6));
+        // Platter, off centre to leave room for the arm.
+        let cx = x + h / 2 + 3;
+        let cy = y + h / 2 + 1;
+        let r_platter = (h / 2 - 5) as f32;
+        let r_record = r_platter - 3.0;
+        // Rubber mat edge and strobe dots turning with the record.
+        draw_disc(fb, cx, cy, r_platter + 1.0, scale(th.bg, 0.7));
+        draw_disc(fb, cx, cy, r_platter, lerp_color(th.bg, th.dim, 0.7));
+        let dots = 24;
+        for k in 0..dots {
+            let a = self.reel * 0.9 + k as f32 / dots as f32 * std::f32::consts::TAU;
+            let rr = r_platter - 1.5;
+            let c = if k % 2 == 0 { th.paper } else { lerp_color(th.bg, th.paper, 0.35) };
+            fb.put(cx + (a.cos() * rr) as i32, cy + (a.sin() * rr) as i32, c);
+        }
+        // The record: near black vinyl, grooves every two pixels, two sheens.
+        let vinyl = lerp_color(th.bg, th.fg, 0.05);
+        draw_disc(fb, cx, cy, r_record, vinyl);
+        let sheen_a = self.reel * 0.9;
+        let sheen_b = sheen_a + 2.6;
+        let mut r = r_record - 1.0;
+        while r > 13.0 {
+            let steps = (r * 6.5) as i32;
             for k in 0..steps {
                 let a = k as f32 / steps as f32 * std::f32::consts::TAU;
-                let glint = ((a - sheen).cos()).max(0.0).powi(6);
-                let c = lerp_color(lerp_color(th.bg, th.fg, 0.10), th.paper, glint * 0.45);
+                let g1 = (a - sheen_a).cos().max(0.0).powi(8);
+                let g2 = (a - sheen_b).cos().max(0.0).powi(12) * 0.6;
+                let glint = (g1 + g2).min(1.0);
+                let groove = lerp_color(vinyl, th.fg, 0.09);
+                let c = lerp_color(groove, th.paper, glint * 0.5);
                 fb.put(cx + (a.cos() * r) as i32, cy + (a.sin() * r) as i32, c);
             }
-            r -= 3.0;
+            r -= 2.0;
         }
-        // Label: the album art clipped to a disc, or the accent.
-        let r_label = 11.0;
+        // Lead-out ring and the label.
+        let r_label = 12.0;
+        draw_ring(fb, cx, cy, r_label + 1.0, lerp_color(vinyl, th.fg, 0.2));
         match info.cover {
             Some(img) if img.w > 0 => {
                 let ri = r_label as i32;
@@ -453,34 +500,56 @@ impl Deck {
                 }
             }
             _ => {
-                draw_disc(fb, cx, cy, r_label, th.accent);
-                draw_disc(fb, cx, cy, r_label - 4.0, lerp_color(th.accent, th.paper, 0.35));
+                // A two tone label with a stripe, like a seventies pressing.
+                draw_disc(fb, cx, cy, r_label, lerp_color(th.accent, th.bg, 0.15));
+                draw_disc(fb, cx, cy, r_label - 5.0, lerp_color(th.magenta, th.paper, 0.2));
+                let (s, c) = (self.reel * 0.9).sin_cos();
+                fb.line(
+                    cx - (c * (r_label - 1.0)) as i32,
+                    cy - (s * (r_label - 1.0)) as i32,
+                    cx + (c * (r_label - 1.0)) as i32,
+                    cy + (s * (r_label - 1.0)) as i32,
+                    lerp_color(th.accent, th.paper, 0.5),
+                );
             }
         }
-        // Spindle and a rotating mark on the label so the turn shows.
-        fb.rect(cx, cy, 1, 1, th.paper);
-        let (ms, mc) = (self.reel * 0.9).sin_cos();
-        fb.put(cx + (mc * 8.0) as i32, cy + (ms * 8.0) as i32, th.paper);
-        // Tonearm: pivot top right, the stylus moving from the edge inward.
-        let px = x + w - 12;
-        let py = y + 8;
-        fb.rect(px - 3, py - 3, 7, 7, lerp_color(th.bg, th.fg, 0.4));
+        // Spindle.
+        fb.rect(cx - 1, cy - 1, 3, 3, scale(th.bg, 0.8));
+        fb.put(cx, cy, th.paper);
+        // Tonearm: a round base at the top right, a counterweight behind the
+        // pivot, the arm bending to a headshell whose stylus rides the groove.
+        let px = x + w - 16;
+        let py = y + 14;
+        draw_disc(fb, px, py, 6.0, lerp_color(th.bg, th.fg, 0.35));
+        draw_disc(fb, px, py, 3.0, lerp_color(th.bg, th.paper, 0.6));
         let target_r = if info.playing || progress > 0.0 {
-            r_record - 4.0 - (r_record - 4.0 - r_label - 3.0) * progress
+            r_record - 3.0 - (r_record - 3.0 - r_label - 3.0) * progress
         } else {
-            r_record + 10.0
+            r_record + 9.0
         };
-        // Stylus point on the record's radius toward the arm side.
         let dir = ((py - cy) as f32).atan2((px - cx) as f32);
         let sx = cx as f32 + dir.cos() * target_r;
         let sy = cy as f32 + dir.sin() * target_r;
-        let arm = lerp_color(th.bg, th.paper, 0.75);
+        // Counterweight: a stub on the far side of the pivot.
+        let bx = px as f32 + (px as f32 - sx) * 0.22;
+        let by = py as f32 + (py as f32 - sy) * 0.22;
+        fb.line(px, py, bx as i32, by as i32, lerp_color(th.bg, th.paper, 0.7));
+        fb.rect(bx as i32 - 2, by as i32 - 2, 5, 5, lerp_color(th.bg, th.fg, 0.55));
+        // The arm itself, two pixels wide with a lit edge.
+        let arm = lerp_color(th.bg, th.paper, 0.85);
         fb.line(px, py, sx as i32, sy as i32, arm);
-        fb.line(px + 1, py, sx as i32 + 1, sy as i32, scale(arm, 0.6));
-        fb.rect(sx as i32 - 1, sy as i32 - 1, 3, 3, th.paper);
-        // Speed lamp.
-        fb.rect(x + w - 8, y + h - 8, 3, 3, if info.playing { th.green } else { scale(th.green, 0.25) });
-        fb.text(x + w - 30, y + h - 10, "33", th.dim, 1);
+        fb.line(px, py + 1, sx as i32, sy as i32 + 1, scale(arm, 0.55));
+        // Headshell and stylus.
+        fb.rect(sx as i32 - 2, sy as i32 - 2, 5, 4, lerp_color(th.bg, th.fg, 0.6));
+        fb.rect(sx as i32 - 3, sy as i32, 2, 2, th.paper);
+        // Controls on the plinth: speed selector and the power lamp.
+        let sel_x = x + w - 44;
+        let sel_y = y + h - 12;
+        fb.text(sel_x, sel_y - 1, "33", th.paper, 1);
+        fb.text(sel_x + 20, sel_y - 1, "45", th.dim, 1);
+        fb.rect(sel_x, sel_y + 8, 14, 1, th.accent);
+        fb.rect(x + 6, y + h - 12, 4, 4, if info.playing { th.green } else { scale(th.green, 0.25) });
+        fb.text(x + 13, y + h - 13, "ON", th.dim, 1);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -897,6 +966,15 @@ impl Deck {
     }
 }
 
+/// One pixel ring.
+fn draw_ring(fb: &mut Framebuffer, cx: i32, cy: i32, r: f32, c: Color) {
+    let steps = (r * 7.0) as i32;
+    for k in 0..steps {
+        let a = k as f32 / steps as f32 * std::f32::consts::TAU;
+        fb.put(cx + (a.cos() * r) as i32, cy + (a.sin() * r) as i32, c);
+    }
+}
+
 /// Filled circle.
 fn draw_disc(fb: &mut Framebuffer, cx: i32, cy: i32, r: f32, c: Color) {
     let ri = r.ceil() as i32;
@@ -969,10 +1047,7 @@ pub fn draw_lyrics(fb: &mut Framebuffer, th: &Theme, lines: &[(f64, String)], po
             }
         }
         None => {
-            if let Some((start, _)) = lines.first() {
-                let s = format!("lyrics in {}", crate::player::clock((start - position).max(0.0)));
-                text_shadow(fb, w / 2, yy, &s, th.dim, shadow, 1);
-            }
+            let _ = (shadow, yy);
         }
     }
 }

@@ -26,6 +26,7 @@ omarchy-crt bios discover [--json]   # folders on the roots and disks that hold 
 omarchy-crt library [--json]
 omarchy-crt library cores [--json]   # the core each system needs, installed or not, its package
 omarchy-crt library set SYS core=X|dir=D   # change a system's core or folder in systems.toml
+omarchy-crt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
 omarchy-crt library scan [DIR...]
 omarchy-crt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
 omarchy-crt doctor
@@ -38,6 +39,15 @@ omarchy-crt config set KEY VALUE     # output.csync, output.standard, audio.volu
 Arch repositories, `libretro-mame2003-plus-git` from the AUR) so the overlay
 can offer the install through `omarchy pkg add` or `omarchy pkg aur add`.
 `config set` edits one key of `crt.toml` in place and keeps the comments.
+
+`library covers` walks the collection and fetches the libretro thumbnail of
+every game into `~/.cache/omarchy-crt/art/<system>/`. The exact file name is
+tried first; when the repository has no such name (collections without
+region tags), the name index of that system (downloaded once a fortnight into
+`art/_index/`) is searched for the same title, in the region order of
+`[music] country` in `settings.toml`, then for the closest title by words.
+The launcher does the same lazily for any cover it misses. Covers are shrunk
+to 320 pixels on the way in.
 
 ## What `on` does, in order
 

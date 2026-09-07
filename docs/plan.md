@@ -42,16 +42,17 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   folders).
 - **The CLI.** Everything above from a terminal, with `--json` where the
   plugin needs it.
+- **Covers by title.** `shell/src/covers.rs`: the per system name index of
+  the libretro thumbnails, a normalized match with region preference and a
+  word overlap fallback; `omarchy-crt library covers` for the whole
+  collection, the same lookup lazily in the launcher. On a PlayStation set
+  without region tags, 13 of 14 sampled titles found their art.
 
 ## Next
 
 1. **Interlaced modes.** A verified 480i and 576i modeline for the RGB-Pi 2
    so video plays as fields, the way the fit pipeline already prepares it.
-2. **Smarter covers.** Collections whose file names carry no region tags
-   (RePlayOS style PlayStation sets) miss the libretro thumbnails, which are
-   named No-Intro and Redump style. A per system name index and a normalized,
-   fuzzy match, run once by `omarchy-crt library covers`, then lazily.
-3. **Pause menu.** Rewind where the CPU allows (per system), aspect and
+2. **Pause menu.** Rewind where the CPU allows (per system), aspect and
    shader choices.
 4. **Music screens.** Album art and station logos on the deck, an equaliser
    page.
