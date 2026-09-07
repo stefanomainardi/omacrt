@@ -124,3 +124,39 @@ Per system, `systems.toml` controls two things:
 
 Paired pads reconnect on their own next time they are switched on, and SDL
 picks them up while the shell is running.
+
+## Two databases, one pad
+
+SDL and RetroArch both keep a list of pad layouts, in different formats,
+matched on different things. SDL matches a GUID and reads
+`gamecontrollerdb.txt`; RetroArch matches a USB vendor and product and reads
+`.cfg` profiles from one directory. A pad in one list and not the other works
+in the launcher and does nothing in a game, which is how a controller ends up
+with no Start button on a title screen.
+
+The launcher keeps the directory RetroArch reads filled. For every pad that
+connects it works out the USB ids from the SDL GUID, and:
+
+- if the profile directory already holds a profile for those ids, it leaves
+  it alone, so anything tuned by hand survives;
+- else if RetroArch ships one (`/usr/share/libretro/autoconfig/udev`), it
+  copies it in, because RetroArch reads exactly one directory and a file
+  written into `/usr/share` would not survive an update;
+- else, if SDL knows the pad, it writes a profile translated from SDL's own
+  mapping.
+
+The translation crosses the face buttons over, since the two projects name
+them differently: RetroPad B is the bottom button, which SDL calls A, and
+RetroPad Y is the left one, which SDL calls X. Hats, axes and triggers carry
+over as they are.
+
+```sh
+omarchy-crt-shell --pads
+```
+
+says what SDL makes of every connected pad, which mapping it found, where
+Start is, and what was done about the games. It is the first thing to run when
+a pad behaves oddly.
+
+A pad neither list knows still gets the mapping wizard on the tube, which
+writes the SDL side; the RetroArch side is then translated from it.

@@ -32,6 +32,34 @@ of `systems.toml`. Mode switching needs RetroArch on the KMS or X11 video
 driver and the 15 kHz kernel; on a Wayland desktop it does nothing, so it stays
 off while testing in a window. Pinned frames work everywhere.
 
+## Lines, and the tube following the game
+
+The mode the television is in is decided by a line count, not by a mode name.
+Every system carries one (`lines` in `systems.toml`, with a built-in default
+per console: 240 for a NES, 224 for a Super Nintendo, 480 for a Dreamcast),
+and the launcher switches the tube to it before the game starts.
+
+A line count above 288 does not fit a progressive 15 kHz frame, so it selects
+the interlaced mode of the same standard by itself: `--lines 480` on an NTSC
+tube is 480i at 59.94 Hz, `--lines 576` on a PAL one is 576i at 50 Hz. Nobody
+has to name a mode.
+
+The table is only a starting point. While a game runs, the launcher reads the
+emulator's own log, which announces the geometry the core is drawing and every
+change to it:
+
+```text
+[INFO] [Core] Geometry: 640x480, Aspect: 1.333, FPS: 59.95, ...
+[INFO] [Environ] SET_GEOMETRY: 320x240, Aspect: 1.333.
+```
+
+The tube follows those within a second. A PlayStation game whose menus go to
+480 lines gets an interlaced menu and a progressive game; a Saturn game moving
+between 224 and 240 lines gets both. What the console drew is what the
+television draws, which is the whole point of the exercise: 640x480 squeezed
+into 240 lines is how text becomes unreadable, and it is exactly what happens
+when the mode is left alone.
+
 ## Interlace
 
 Systems that draw 480 or 576 lines (Dreamcast, Naomi, PlayStation 2, some
@@ -64,4 +92,5 @@ dir = "~/Games/roms/dreamcast"
 core = "flycast"
 extensions = ["gdi", "chd", "cdi"]
 video = "native"
+lines = 480     # 480i: what a Dreamcast drew on a television
 ```

@@ -141,7 +141,16 @@ impl VideoPolicy {
                 kv("crt_switch_resolution", if switching { "1" } else { "0" });
                 kv("crt_switch_resolution_super", "0");
                 kv("aspect_ratio_index", "22");
-                kv("video_scale_integer", "true");
+                // Integer scaling only means something when the emulator is
+                // picking the mode. When the host picks it the picture lands
+                // in a frame thousands of pixels wide that the tube squeezes
+                // back to 4:3, and asking for whole multiples there leaves the
+                // game in a strip in the middle of the screen with its top and
+                // bottom cut off.
+                kv(
+                    "video_scale_integer",
+                    if switching { "true" } else { "false" },
+                );
             }
             VideoPolicy::Fixed(w, h) => {
                 kv("crt_switch_resolution", "0");
@@ -204,6 +213,25 @@ fn opts(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect()
+}
+
+/// The active lines a console draws, as a starting point for the tube.
+///
+/// It only has to be right often enough that the first frame of a game is
+/// already the right shape: the launcher reads the core's own reports from
+/// the emulator's log while it runs and follows them from there, so a game
+/// that disagrees costs one mode change rather than a squashed picture.
+///
+/// 480 is a real interlaced frame, not half a progressive one: a console that
+/// drew 480 lines on a television gets 480 lines on this one.
+pub fn default_lines(system: &str) -> Option<u32> {
+    Some(match system {
+        "nes" | "pcengine" | "pcenginecd" | "psx" | "n64" | "mastersystem" | "gamegear" => 240,
+        "snes" | "megadrive" | "megacd" | "32x" | "neogeo" | "arcade" | "saturn" | "mame" => 224,
+        "dreamcast" | "naomi" | "ps2" | "gamecube" | "wii" | "xbox" => 480,
+        "gb" | "gbc" | "gba" | "nds" | "psp" | "ngp" | "wonderswan" | "lynx" => 240,
+        _ => return None,
+    })
 }
 
 /// Built-in systems, tuned for a first launch that looks and plays right on
@@ -386,10 +414,76 @@ fn default_systems() -> Vec<System> {
                 ("reicast_widescreen_hack", "disabled"),
             ]),
         ),
+        sys(
+            "scummvm",
+            "scummvm",
+            &["scummvm", "svm"],
+            // These games were drawn 320x200 and shown on 4:3 monitors, which
+            // stretched them to 240 lines: that is what they are supposed to
+            // look like. Pinning the frame at 240 also keeps the launcher's
+            // own screens, which are 240 lines, sharp over the game.
+            "320x240",
+            0,
+            false,
+            // Point and click on a sofa: the left stick is the pointer, with
+            // enough acceleration to cross the screen and a response curve
+            // that still lets it stop on a door handle. The interface stays at
+            // the resolution the games were drawn for, since that is what the
+            // tube shows, and hardware acceleration stays off because the core
+            // draws these games in software anyway.
+            opts(&[
+                ("scummvm_pointer_device", "Left Analog"),
+                ("scummvm_gamepad_cursor_speed", "1.0"),
+                ("scummvm_gamepad_cursor_acceleration_time", "0.2"),
+                ("scummvm_analog_response", "quadratic"),
+                ("scummvm_analog_deadzone", "15"),
+                ("scummvm_mouse_speed", "1.0"),
+                ("scummvm_mouse_fine_control_speed_reduction", "4"),
+                ("scummvm_gui_aspect_ratio", "4/3"),
+                ("scummvm_gui_h_res", "320x200"),
+                ("scummvm_video_hw_acceleration", "disabled"),
+                ("scummvm_autosave", "enabled"),
+                ("scummvm_samplerate", "48000"),
+                // A point and click game on a pad needs the two mouse buttons
+                // and the handful of keys these games were written around:
+                // Enter for a dialogue box, Escape to skip a cutscene, the
+                // full stop to skip a line, F5 for the save menu, and the
+                // virtual keyboard for the one game that asks you to type.
+                ("scummvm_mapper_a", "RETROKE_LEFT_BUTTON"),
+                ("scummvm_mapper_b", "RETROKE_RIGHT_BUTTON"),
+                ("scummvm_mapper_x", "RETROK_ESCAPE"),
+                ("scummvm_mapper_y", "RETROK_PERIOD"),
+                ("scummvm_mapper_start", "RETROK_RETURN"),
+                ("scummvm_mapper_select", "RETROKE_SCUMMVM_GUI"),
+                ("scummvm_mapper_l", "RETROKE_VKBD"),
+                ("scummvm_mapper_r", "RETROKE_FINE_CONTROL"),
+                ("scummvm_mapper_l2", "RETROK_F5"),
+                ("scummvm_mapper_r2", "RETROK_SPACE"),
+                ("scummvm_mapper_l3", "RETROK_BACKSPACE"),
+                ("scummvm_mapper_r3", "RETROK_RETURN"),
+            ]),
+        ),
+        sys(
+            "gamecube",
+            "dolphin",
+            &[
+                "iso", "gcm", "rvz", "gcz", "ciso", "wia", "dol", "elf", "m3u",
+            ],
+            "super",
+            0,
+            false,
+            // Nothing. Dolphin's own defaults draw these games; every setting
+            // tried here, the graphics backend, the shader compilation mode,
+            // the CPU and memory settings, the overscan crop and the
+            // widescreen flags, left the core rendering a screen of magenta.
+            // The picture it gives is already what a GameCube gave, and the
+            // television is told how many lines to draw by `default_lines`.
+            opts(&[]),
+        ),
     ]
     .into_iter()
     .map(|mut s| {
-        if matches!(s.name.as_str(), "n64" | "dreamcast" | "psx") {
+        if matches!(s.name.as_str(), "n64" | "dreamcast" | "psx" | "gamecube") {
             s.analog_dpad = Some(0);
         }
         s
@@ -466,8 +560,25 @@ impl Library {
         let index = crate::index::Index::load();
         let mut systems = systems;
         if let Some(ix) = &index {
+            // A system the scan found but `systems.toml` does not mention.
+            // It gets the built-in definition when there is one, which is
+            // where the tuning lives: the picture a console drew, the core
+            // options that make it look right, the buttons a game needs. Only
+            // a system nobody has tuned falls back to the catalogue, which
+            // knows a core and a list of extensions and nothing else.
+            let builtin: std::collections::HashMap<String, System> = default_systems()
+                .into_iter()
+                .map(|s| (s.name.clone(), s))
+                .collect();
             for (name, _) in ix.systems() {
                 if systems.iter().any(|s| s.name == name) {
+                    continue;
+                }
+                if let Some(mut tuned) = builtin.get(&name).cloned() {
+                    // The folder comes from the index, not from the built-in
+                    // guess at where a collection lives.
+                    tuned.dir = String::new();
+                    systems.push(tuned);
                     continue;
                 }
                 let (core, exts) = crate::index::catalog(&name)
@@ -489,6 +600,12 @@ impl Library {
                     shift_x: 0,
                     shift_y: 0,
                 });
+            }
+        }
+        // A system that names no line count gets the one its console drew.
+        for s in &mut systems {
+            if s.lines.is_none() && !s.is_video() {
+                s.lines = default_lines(&s.name);
             }
         }
         let mut lib = Self {
@@ -800,6 +917,24 @@ impl Library {
         let mut out = VideoPolicy::parse(&system.video).retroarch_keys(self.switching);
         {
             let mut kv = |k: &str, v: &str| out.push_str(&format!("{k} = \"{v}\"\n"));
+            // Pad profiles come from the directory the launcher keeps filled,
+            // written here rather than in `retroarch.cfg` so that a config
+            // from an older version cannot point somewhere empty. RetroArch
+            // adds the driver's own subdirectory to this path.
+            if let Some(dir) = crate::padmap::autoconfig_dir().parent() {
+                kv("joypad_autoconfig_dir", &dir.display().to_string());
+                kv("input_autodetect_enable", "true");
+            }
+            // The emulator's own rumble volume: nothing to feel without it,
+            // and nothing to gain from it when the pad cannot shake.
+            kv(
+                "input_rumble_gain",
+                if crate::rumble::pad_can_rumble() {
+                    "100"
+                } else {
+                    "0"
+                },
+            );
             if system.runahead > 0 {
                 kv("run_ahead_enabled", "true");
                 kv("run_ahead_frames", &system.runahead.to_string());
@@ -903,9 +1038,21 @@ impl Library {
             crate::player::add_target(&mut cmd, file);
             return Ok(cmd);
         }
+        // A core that needs files nobody ships with it gets them now, once.
+        if let Some(note) = crate::coredata::ensure(&system.core, &crate::coredata::system_dir()) {
+            eprintln!("{note}");
+        }
         let cfg = self.retroarch_config()?;
         let cores_cfg = self.config_dir.join("cores.cfg");
         let mut options = String::new();
+        // Vibration first, so anything written by hand in systems.toml has the
+        // last word: the emulator keeps the value it reads last.
+        let rumbles = crate::rumble::pad_can_rumble();
+        if rumbles {
+            for (k, v) in crate::rumble::options(&system.name) {
+                options.push_str(&format!("{k} = \"{v}\"\n"));
+            }
+        }
         for (k, v) in &system.options {
             options.push_str(&format!("{k} = \"{v}\"\n"));
         }
@@ -922,6 +1069,14 @@ impl Library {
             .arg(launch_cfg);
         for d in &system.devices {
             cmd.arg(format!("--device={d}"));
+        }
+        // A PlayStation only shakes when the pad it is given has the motors:
+        // a device type, not a core option. A system that names its own
+        // devices has already said what it wants.
+        if rumbles && system.devices.is_empty() {
+            for d in crate::rumble::devices(&system.name) {
+                cmd.arg(format!("--device={d}"));
+            }
         }
         cmd.arg("-L")
             .arg(self.core_path(system))
@@ -1049,7 +1204,7 @@ config_save_on_exit = "false"
 input_driver = "udev"
 input_joypad_driver = "udev"
 input_autodetect_enable = "true"
-joypad_autoconfig_dir = "/usr/share/libretro/autoconfig/udev"
+joypad_autoconfig_dir = "/usr/share/libretro/autoconfig"
 input_max_users = "4"
 "#;
 
@@ -1136,4 +1291,44 @@ pub fn installed_cores(core_dir: &Path) -> Vec<String> {
         .unwrap_or_default();
     out.sort();
     out
+}
+
+/// The picture the running core is drawing, read from the emulator's own log.
+///
+/// RetroArch with `--verbose` announces the geometry it was given when a game
+/// starts, and again whenever the core changes it: a PlayStation menu going to
+/// 480 lines, a Saturn game switching between 224 and 240. Both lines carry
+/// the same shape, and the last one in the file is the truth:
+///
+/// ```text
+/// [INFO] [Core] Geometry: 640x480, Aspect: 1.333, FPS: 59.95, ...
+/// [INFO] [Environ] SET_GEOMETRY: 640x480, Aspect: 1.333.
+/// ```
+///
+/// This is how the tube follows a game rather than a table: the launcher polls
+/// it while a game runs and asks for that many lines. Nothing else in
+/// RetroArch will say it without a network command, and those crash the
+/// emulator often enough to be worth avoiding.
+pub fn core_geometry(log: &str) -> Option<(u32, u32)> {
+    let mut found = None;
+    for line in log.lines() {
+        let Some(rest) = line
+            .split_once("SET_GEOMETRY:")
+            .or_else(|| line.split_once("Geometry:"))
+            .map(|(_, r)| r.trim())
+        else {
+            continue;
+        };
+        let size = rest.split(',').next().unwrap_or("").trim();
+        let Some((w, h)) = size.split_once('x') else {
+            continue;
+        };
+        if let (Ok(w), Ok(h)) = (w.trim().parse::<u32>(), h.trim().parse::<u32>())
+            && (1..=4096).contains(&w)
+            && (1..=1200).contains(&h)
+        {
+            found = Some((w, h));
+        }
+    }
+    found
 }

@@ -184,6 +184,9 @@ const BY_EXTENSION: &[(&str, &str)] = &[
     ("hdm", "x68000"),
     ("pbp", "psx"),
     ("cso", "psp"),
+    ("gcm", "gamecube"),
+    ("rvz", "gamecube"),
+    ("gcz", "gamecube"),
     ("gdi", "dreamcast"),
     ("cdi", "dreamcast"),
     ("dosz", "dos"),
@@ -192,7 +195,7 @@ const BY_EXTENSION: &[(&str, &str)] = &[
 /// Extensions of things that are games but need more evidence.
 const AMBIGUOUS: &[&str] = &[
     "zip", "7z", "bin", "cue", "chd", "iso", "img", "m3u", "rom", "dsk", "tap", "cdt", "sna",
-    "ccd", "mds", "toc", "exe", "elf", "crt", "cpr",
+    "ccd", "mds", "toc", "exe", "elf", "crt", "cpr", "ciso", "wbfs", "wia",
 ];
 
 /// Extensions that are never games, even in a game folder.
@@ -265,6 +268,11 @@ const FOLDER_WORDS: &[(&str, &str)] = &[
     ("nintendo n64", "n64"),
     ("n64", "n64"),
     ("nintendo 64", "n64"),
+    ("nintendo gamecube", "gamecube"),
+    ("gamecube", "gamecube"),
+    ("game cube", "gamecube"),
+    ("ngc", "gamecube"),
+    ("gcn", "gamecube"),
     ("nintendo gbc", "gbc"),
     ("gbc", "gbc"),
     ("game boy color", "gbc"),
@@ -464,6 +472,18 @@ fn system_from_content(path: &Path) -> Option<&'static str> {
     }
     if head.starts_with(b"NES\x1a") {
         return Some("nes");
+    }
+    // The two Nintendo disc formats carry a word at a fixed place rather than
+    // a string: 0xC2339F3D at 0x1C is a GameCube disc, 0x5D1C9EA3 at 0x18 a
+    // Wii one. Both also start with a six character game id, which is what
+    // the title comes from.
+    if head.len() > 0x20 {
+        if head[0x1C..0x20] == [0xC2, 0x33, 0x9F, 0x3D] {
+            return Some("gamecube");
+        }
+        if head[0x18..0x1C] == [0x5D, 0x1C, 0x9E, 0xA3] {
+            return Some("wii");
+        }
     }
     for (sig, system) in DISC_SIGNATURES {
         if find(&head, sig) {
@@ -778,6 +798,56 @@ pub fn scan(roots: &[PathBuf], hints: &Hints, mut progress: impl FnMut(&str)) ->
                     owned.insert(o);
                 }
             }
+            // An archive that has been unpacked next to itself is not a game
+            // of its own any more: a disc image the emulator can open beats
+            // the same disc still inside a `.7z`, which several of them
+            // cannot read at all and the rest have to unpack first.
+            {
+                let unpacked: HashSet<String> = files
+                    .iter()
+                    .filter(|f| {
+                        matches!(
+                            ext_of(f).as_str(),
+                            "iso" | "ciso" | "rvz" | "gcz" | "gcm" | "wbfs" | "wia" | "chd"
+                        )
+                    })
+                    .filter_map(|f| f.file_stem().and_then(|s| s.to_str()).map(str::to_string))
+                    .collect();
+                for f in &files {
+                    if !matches!(ext_of(f).as_str(), "7z" | "zip" | "rar") {
+                        continue;
+                    }
+                    let stem = f.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    if unpacked.contains(stem) {
+                        owned.insert(f.clone());
+                    }
+                }
+            }
+            // A ScummVM game is a folder of data files with one `.scummvm`
+            // launcher in it. The executable and the disc images beside it are
+            // the game's own parts, not games of their own. A folder that has
+            // no launcher yet is a game waiting to be unpacked, and its two
+            // discs are not two games either.
+            let scumm_here = dir.components().any(|c| {
+                let name = c.as_os_str().to_string_lossy().to_ascii_lowercase();
+                name == "scummvm" || name == "scumm"
+            });
+            if scumm_here {
+                let has_launcher = files
+                    .iter()
+                    .any(|f| matches!(ext_of(f).as_str(), "scummvm" | "svm"));
+                for f in &files {
+                    if !matches!(ext_of(f).as_str(), "scummvm" | "svm") {
+                        owned.insert(f.clone());
+                    }
+                }
+                // A folder with no launcher yet holds a game still on its
+                // discs, or the odds and ends a disc carries: an installer, a
+                // driver, a readme. Neither is worth reporting as something
+                // the scan could not place, and the preparation step says
+                // plainly which games are waiting to be unpacked.
+                let _ = has_launcher;
+            }
             for f in files {
                 let ext = ext_of(&f);
                 if ext.is_empty() || NOISE.contains(&ext.as_str()) || owned.contains(&f) {
@@ -969,6 +1039,14 @@ pub const CATALOG: &[(&str, &str, &str, &[&str])] = &[
         "Nintendo 64",
         "mupen64plus_next",
         &["n64", "v64", "z64", "zip"],
+    ),
+    (
+        "gamecube",
+        "Nintendo GameCube",
+        "dolphin",
+        &[
+            "iso", "gcm", "rvz", "gcz", "ciso", "wia", "dol", "elf", "m3u",
+        ],
     ),
     ("gb", "Game Boy", "mgba", &["gb", "sgb", "zip"]),
     ("gbc", "Game Boy Color", "mgba", &["gbc", "zip"]),

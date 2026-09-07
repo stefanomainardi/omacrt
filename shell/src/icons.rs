@@ -210,6 +210,21 @@ pub const LOGO_DC: Logo = [
     "..........",
 ];
 
+/// The GameCube's own mark is a cube with a G cut into it; at ten pixels a
+/// square inside a square is what is left of it.
+pub const LOGO_GC: Logo = [
+    "..........",
+    ".########.",
+    ".#......#.",
+    ".#.####.#.",
+    ".#.#..#.#.",
+    ".#.#..#.#.",
+    ".#.####.#.",
+    ".#......#.",
+    ".########.",
+    "..........",
+];
+
 /// Logo and signature color for a system name; None for unknown systems.
 pub fn system_logo(name: &str) -> Option<(&'static Logo, u32)> {
     Some(match name {
@@ -225,6 +240,7 @@ pub fn system_logo(name: &str) -> Option<(&'static Logo, u32)> {
         "psx" | "playstation" => (&LOGO_PSX, 0xc8c8c8),
         "n64" => (&LOGO_N64, 0x2ecc71),
         "dreamcast" | "dc" => (&LOGO_DC, 0xff8f3f),
+        "gamecube" | "ngc" | "gcn" => (&LOGO_GC, 0x6f5faa),
         "videos" | "video" | "movies" => (&LOGO_FILM, 0xf5d76e),
         _ => return None,
     })

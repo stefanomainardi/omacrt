@@ -3,6 +3,7 @@
 //! by both the launcher (`omarchy-crt-shell`) and the CLI (`omarchy-crt`).
 
 pub mod config;
+pub mod coredata;
 pub mod covers;
 pub mod crt;
 pub mod game;
@@ -13,6 +14,8 @@ pub mod music;
 pub mod padmap;
 pub mod player;
 pub mod profile;
+pub mod rumble;
+pub mod scumm;
 pub mod settings;
 pub mod states;
 pub mod store;
