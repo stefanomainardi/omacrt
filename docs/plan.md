@@ -82,3 +82,10 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   own plugin of kind `overlay`.
 - cliamp 1.63 speaks the v1 socket protocol; the v2 envelope of newer releases
   is not accepted yet.
+- Hyprland 0.56 takes dispatchers through its Lua API: `hyprctl dispatch
+  workspace 9` is a syntax error that changes nothing, while `hyprctl eval
+  'hl.dispatch(hl.dsp.focus({ workspace = "name:x" }))'` works. A take that
+  believed the first form recorded the wrong workspace.
+- The launcher's own keys reach a running game only through the compositor
+  (`omarchy-crt game key`), and RetroArch reads its own bindings: start is
+  enter, the arcade coin rshift, A is x.

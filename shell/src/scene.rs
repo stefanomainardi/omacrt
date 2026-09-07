@@ -5770,8 +5770,15 @@ impl Scene {
         // Title and details of the selection.
         let entry = self.games[sel.min(n - 1)].clone();
         let max_cols = ((w - 2 * left) / 8) as usize;
-        let title: String = entry.game.title.chars().take(max_cols).collect();
-        fb.text_centered(w / 2, floor_y + 34, &title, self.theme.bright_green, 1);
+        // The save state label sits on the left of the same line, so the
+        // centred title keeps clear of it on both sides.
+        let state = self.states.latest(&entry.game.path).map(|st| st.label());
+        let reserve = state.as_ref().map(|l| l.chars().count() + 2).unwrap_or(0);
+        let room = max_cols.saturating_sub(reserve).max(8);
+        // The title centres in what is left of the line, not in the frame.
+        let centre = w / 2 + (reserve as i32 * 8) / 2;
+        let title: String = entry.game.title.chars().take(room).collect();
+        fb.text_centered(centre, floor_y + 34, &title, self.theme.bright_green, 1);
         let stem = entry.game.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         let (_, tags, _, _) = crate::index::parse_name(stem);
         let system_label = crate::index::catalog(&self.library.systems[entry.sys].name)
@@ -5784,8 +5791,8 @@ impl Scene {
         }
         let detail: String = detail.chars().take(max_cols).collect();
         fb.text_centered(w / 2, floor_y + 46, &detail, self.theme.dim, 1);
-        if let Some(st) = self.states.latest(&entry.game.path) {
-            fb.text(left, floor_y + 34, &st.label(), self.theme.green, 1);
+        if let Some(label) = &state {
+            fb.text(left, floor_y + 34, label, self.theme.green, 1);
         }
         if self.is_favorite(&entry) {
             fb.bitmap(w - left - 8, floor_y + 35, &icons::STAR, self.theme.yellow, 1, 8);

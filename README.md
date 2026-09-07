@@ -10,7 +10,7 @@ refresh, real scanlines, no scaler in between. A launcher on the tube in the
 Omarchy look, a bar plugin on the desktop, and a display process that owns the
 television outright. Written in Rust, drawn at 320x240.
 
-> **Two things to know before you read on.**
+> **Three things to know before you read on.**
 >
 > **This project is written with an AI.** Design, code, tests and this very
 > README are the work of a human directing Claude, commit after commit, on a
@@ -21,6 +21,15 @@ television outright. Written in Rust, drawn at 320x240.
 > files, plugins and music player on purpose. It is not a generic Linux CRT
 > frontend and will not become one. If Omarchy is not your thing, this is not
 > either.
+>
+> **This project is about preservation, not piracy.** It ships no games, no
+> BIOS files and no copyrighted material, and it links to none. It is a
+> frontend for hardware and software you already own: a television, a DAC,
+> emulators, and whatever you are entitled to run on them. Old machines and
+> the things made for them are disappearing into landfill and rot; keeping
+> them readable, and keeping a tube alive to show them on, is the point.
+> Where you get your files, and whether you have the right to them, is
+> between you and the law of your country.
 >
 > Omarchy CRT is a fun project by one user. It is not affiliated with, endorsed
 > by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
@@ -73,12 +82,15 @@ glass. Both are the point.
 ## What it looks like
 
 <p align="center">
-  <img src="docs/screens/home.png" width="320" alt="Home menu on the tube">
-  <img src="docs/screens/coverflow.png" width="320" alt="Cover flow">
-  <img src="docs/screens/search.png" width="320" alt="Search across the collection">
-  <img src="docs/screens/deck-radio.png" width="320" alt="The music deck tuned to a radio">
-  <img src="docs/screens/visual-mode7.png" width="320" alt="Mode 7 equalizer visualizer">
-  <img src="docs/screens/pause.png" width="320" alt="Pause menu over a game">
+  <img src="docs/screens/coverflow.png" width="420" alt="Cover flow on the tube">
+</p>
+<p align="center">
+  <img src="docs/screens/home.png" width="270" alt="Home menu on the tube">
+  <img src="docs/screens/systems.png" width="270" alt="Systems with console pictures">
+  <img src="docs/screens/pause.png" width="270" alt="Pause menu over a game">
+  <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
+  <img src="docs/screens/equalizer.png" width="270" alt="The ten band equaliser">
+  <img src="docs/screens/visual-mode7.png" width="270" alt="Mode 7 equalizer visualizer">
 </p>
 
 Every picture above was captured from the tube's own framebuffer by
@@ -238,13 +250,19 @@ switches with a blend.
   deck**: a cassette whose reels turn with the music, or a radio dial whose
   needle glides to the station through a burst of static, two VU meters with
   inertia. Six idle seconds later the screen becomes a **visualizer** driven
-  by cliamp's spectrum and a kick detector: Mode 7 equalizer, copper bars,
+  by cliamp's spectrum and a kick detector: Mode 7 equalizer, silk ribbons,
   oscilloscope, starfield, plasma, pixel fire, spectrum tower. Synced lyrics
   when cliamp has them, a sleep timer, and the selection band of every list
   breathing with the beat. The album art of a Spotify track and the logo of a
   radio station arrive on the cassette label, the record label and the dial.
   An **equaliser** page moves the engine's ten bands one decibel at a time,
   or takes one of its presets.
+
+<p align="center">
+  <img src="docs/screens/music.png" width="270" alt="The music screen">
+  <img src="docs/screens/visual-ribbons.png" width="270" alt="Silk ribbons visualizer">
+  <img src="docs/screens/youtube.png" width="270" alt="YouTube search on the tube">
+</p>
 - **Videos.** Local films through mpv with a themed on screen display and a
   fit pipeline for the tube (480i or 576i by frame rate, pulldown or PAL
   speed-up for film, letterbox or crop, a safe area, a retro 240p mode).
