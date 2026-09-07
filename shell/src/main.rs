@@ -18,7 +18,8 @@ mod menu;
 mod pad;
 mod scene;
 mod theme;
-use omarchy_crt_shell::{index, library, music, player, profile, settings, states, videofit};
+use omarchy_crt_shell::padmap::Raw;
+use omarchy_crt_shell::{index, library, music, padmap, player, profile, settings, states, videofit};
 
 use audio::Audio;
 use fb::Framebuffer;
@@ -401,12 +402,18 @@ fn run(args: &Args) -> Result<(), String> {
             }
         }
     }
+    let js = sdl.joystick()?;
     let mut controllers = Vec::new();
+    // Pads without a mapping stay open as bare joysticks so the wizard can
+    // read their buttons.
+    let mut raw_joys: Vec<sdl2::joystick::Joystick> = Vec::new();
     for i in 0..gcs.num_joysticks()? {
         if gcs.is_game_controller(i) {
             if let Ok(c) = gcs.open(i) {
                 controllers.push(c);
             }
+        } else if let Ok(j) = js.open(i) {
+            raw_joys.push(j);
         }
     }
     let mut stick = Stick::new();
@@ -414,6 +421,11 @@ fn run(args: &Args) -> Result<(), String> {
     let mut scene = build_scene(args);
     if let Some(c) = controllers.last() {
         scene.set_pad(Some(&c.name()));
+    }
+    // Pads plugged in before the start that SDL does not know: the wizard
+    // shows once the menu is up.
+    for j in &raw_joys {
+        scene.pad_wizard_start(&j.name(), &j.guid().string(), j.instance_id());
     }
     let mut fb = Framebuffer::new(args.w, args.h);
     let mut bytes = Vec::with_capacity(args.w * args.h * 4);
@@ -487,6 +499,19 @@ fn run(args: &Args) -> Result<(), String> {
         // Real events and control-pipe lines share one handling path.
         let mut inputs: Vec<Input> = Vec::new();
         for ev in pump.poll_iter() {
+            // While a pad is being mapped its buttons answer the wizard and
+            // nothing else; a remapped pad still emits controller events.
+            if scene.pad_wizard_active()
+                && matches!(
+                    ev,
+                    Event::ControllerButtonDown { .. }
+                        | Event::ControllerButtonUp { .. }
+                        | Event::ControllerAxisMotion { .. }
+                )
+            {
+                continue;
+            }
+            let mut mapped: Option<String> = None;
             let mut inp = Input::default();
             // While the search bar takes text, letters type instead of
             // acting as vim keys; arrows, Enter and Escape keep working.
@@ -542,6 +567,30 @@ fn run(args: &Args) -> Result<(), String> {
                         scene.set_pad(Some(&c.name()));
                         controllers.push(c);
                     }
+                }
+                Event::JoyDeviceAdded { which, .. } => {
+                    if !gcs.is_game_controller(which) {
+                        if let Ok(j) = js.open(which) {
+                            scene.pad_wizard_start(&j.name(), &j.guid().string(), j.instance_id());
+                            raw_joys.push(j);
+                        }
+                    }
+                }
+                Event::JoyDeviceRemoved { which, .. } => {
+                    raw_joys.retain(|j| j.instance_id() != which);
+                }
+                Event::JoyButtonDown { which, button_idx, .. } if scene.pad_wizard_active() => {
+                    mapped = scene.pad_wizard_raw(which, Raw::Button(button_idx));
+                }
+                Event::JoyAxisMotion { which, axis_idx, value, .. }
+                    if scene.pad_wizard_active() && value.unsigned_abs() > 20000 =>
+                {
+                    mapped = scene.pad_wizard_raw(which, Raw::Axis(axis_idx, value > 0));
+                }
+                Event::JoyHatMotion { which, hat_idx, state, .. }
+                    if scene.pad_wizard_active() && state != sdl2::joystick::HatState::Centered =>
+                {
+                    mapped = scene.pad_wizard_raw(which, Raw::Hat(hat_idx, state as u8));
                 }
                 Event::ControllerDeviceRemoved { which, .. } => {
                     controllers.retain(|c| c.instance_id() != which);
@@ -600,7 +649,43 @@ fn run(args: &Args) -> Result<(), String> {
                 },
                 _ => {}
             }
+            if let Some(mapping) = mapped {
+                // SDL learns the pad now; open it as a controller like any other.
+                match gcs.add_mapping(&mapping) {
+                    Ok(_) => {
+                        for i in 0..gcs.num_joysticks().unwrap_or(0) {
+                            if !gcs.is_game_controller(i) {
+                                continue;
+                            }
+                            if let Ok(c) = gcs.open(i) {
+                                if !controllers.iter().any(|x| x.instance_id() == c.instance_id()) {
+                                    raw_joys.retain(|j| j.instance_id() != c.instance_id());
+                                    scene.set_pad(Some(&c.name()));
+                                    controllers.push(c);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("pad mapping refused: {e}"),
+                }
+            }
             inputs.push(inp);
+        }
+        if scene.take_remap_request() {
+            // Map the last pad again: its raw joystick answers the wizard.
+            if let Some(c) = controllers.last() {
+                let id = c.instance_id();
+                let name = c.name();
+                for i in 0..js.num_joysticks().unwrap_or(0) {
+                    if let Ok(j) = js.open(i) {
+                        if j.instance_id() == id {
+                            scene.pad_wizard_start(&name, &j.guid().string(), id);
+                            raw_joys.push(j);
+                            break;
+                        }
+                    }
+                }
+            }
         }
         if let Some(rx) = &control {
             for line in rx.try_iter() {

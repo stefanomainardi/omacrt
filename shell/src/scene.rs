@@ -16,6 +16,7 @@ use crate::icons;
 use crate::library::{Game, Library};
 use crate::music::{self, Item as MusicItem, Music, Source};
 use crate::pad::PadKind;
+use crate::padmap::{self, Raw, Wizard};
 use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
@@ -99,6 +100,8 @@ enum Screen {
     },
     /// What plays now, with the visualiser.
     NowPlaying,
+    /// Button by button mapping of a pad SDL does not know.
+    PadWizard,
 }
 
 /// A row of the music screen.
@@ -363,6 +366,10 @@ pub struct Scene {
     search_global: bool,
     /// Save states RetroArch wrote, looked up per game as rows show.
     states: states::Cache,
+    wizard: Option<Wizard>,
+    /// A pad that arrived while the wizard could not show: name, guid, id.
+    pending_wizard: Option<(String, String, u32)>,
+    remap_request: bool,
     music: Music,
     /// Open music lists, innermost last: source, selected row, first shown row.
     music_path: Vec<(Source, usize, usize)>,
@@ -438,6 +445,9 @@ impl Scene {
             osk: None,
             search_global: false,
             states: states::Cache::default(),
+            wizard: None,
+            pending_wizard: None,
+            remap_request: false,
             music: Music::new(std::env::var("PULSE_SINK").ok()),
             music_path: Vec::new(),
             music_root_sel: 0,
@@ -761,6 +771,10 @@ impl Scene {
     /// converting the selected video for the CRT.
     pub fn convert_selected(&mut self) {
         match self.screen {
+            Screen::Pair { .. } => {
+                self.remap_request = true;
+                return;
+            }
             Screen::Music { .. } | Screen::NowPlaying => {
                 self.music_alt(None);
                 return;
@@ -1694,6 +1708,14 @@ impl Scene {
                     *top = *sel + 1 - page;
                 }
             }
+            Screen::PadWizard => {
+                if nav == Nav::Back {
+                    self.wizard = None;
+                    self.screen = Screen::Settings { sel: 2 };
+                    self.message = Some(("pad mapping cancelled".into(), self.now + 3.0));
+                    moved = true;
+                }
+            }
             Screen::NowPlaying => match nav {
                 Nav::Left => {
                     self.music.prev();
@@ -2025,6 +2047,17 @@ impl Scene {
             }
             Screen::NowPlaying => {
                 self.music_alt(None);
+                Action::None
+            }
+            Screen::PadWizard => {
+                // Enter skips the control the pad does not have.
+                if let Some(w) = self.wizard.as_mut() {
+                    w.skip();
+                    self.pending.push(Sound::Move);
+                    if w.finished {
+                        self.pad_wizard_finish();
+                    }
+                }
                 Action::None
             }
             Screen::Menu => Action::None,
@@ -3011,7 +3044,7 @@ impl Scene {
                     self.bt.status.clone()
                 };
                 fb.text(left, h - 28, &cut(&status, max_cols), self.theme.cyan, 1);
-                let hint = self.hint(&[("A", "pair/scan"), ("B", "back")]);
+                let hint = self.hint(&[("A", "pair/scan"), ("X", "remap pad"), ("B", "back")]);
                 fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
             Screen::Settings { sel } => {
@@ -3052,6 +3085,10 @@ impl Scene {
             }
             Screen::NowPlaying => {
                 self.draw_now_playing(fb);
+                return;
+            }
+            Screen::PadWizard => {
+                self.draw_pad_wizard(fb);
                 return;
             }
             Screen::Menu => {}
@@ -3197,6 +3234,17 @@ impl Scene {
         self.tick_theme();
         self.tick_conversion();
         self.tick_music(now);
+        if self.pending_wizard.is_some()
+            && self.menu_live
+            && self.running.is_none()
+            && self.launching.is_none()
+            && self.wizard.is_none()
+            && self.saver.is_none()
+        {
+            if let Some((name, guid, which)) = self.pending_wizard.take() {
+                self.pad_wizard_start(&name, &guid, which);
+            }
+        }
         fb.clear(self.theme.bg);
         if self.saver.is_some() {
             self.draw_saver(fb);
@@ -4207,6 +4255,117 @@ impl Scene {
             fb.rect(w / 2 + 3, (vis_top + vis_bottom) / 2 - 8, 5, 16, self.theme.paper);
         }
         let hint = self.hint(&[("A", "pause"), ("^v", "volume"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    // --------------------------------------------------------- pad wizard
+
+    pub fn pad_wizard_active(&self) -> bool {
+        self.wizard.is_some()
+    }
+
+    /// A pad SDL has no mapping for: ask for its buttons one by one. When the
+    /// menu is not up yet (boot, a game) the pad waits its turn.
+    pub fn pad_wizard_start(&mut self, name: &str, guid: &str, which: u32) {
+        if !self.menu_live
+            || self.running.is_some()
+            || self.launching.is_some()
+            || self.wizard.is_some()
+            || self.saver.is_some()
+        {
+            self.pending_wizard = Some((name.to_string(), guid.to_string(), which));
+            return;
+        }
+        self.wizard = Some(Wizard::new(name, guid, which));
+        self.pending.push(Sound::Insert);
+        self.go(Screen::PadWizard);
+    }
+
+    /// A raw joystick input while the wizard runs. Returns the finished
+    /// mapping line once the last control is answered.
+    pub fn pad_wizard_raw(&mut self, which: u32, raw: Raw) -> Option<String> {
+        let now = self.now;
+        let w = self.wizard.as_mut()?;
+        if w.which != which {
+            return None;
+        }
+        if w.feed(raw, now) {
+            self.pending.push(Sound::Click);
+        }
+        if self.wizard.as_ref().is_some_and(|w| w.finished) {
+            return self.pad_wizard_finish();
+        }
+        None
+    }
+
+    fn pad_wizard_finish(&mut self) -> Option<String> {
+        let w = self.wizard.take()?;
+        self.screen = Screen::Settings { sel: 2 };
+        if !w.usable() {
+            self.pending.push(Sound::Crunch);
+            self.message = Some((
+                "pad not mapped: A, B and a way to move are needed".into(),
+                self.now + 5.0,
+            ));
+            return None;
+        }
+        let mapping = w.mapping();
+        match padmap::save(&mapping) {
+            Ok(()) => {
+                self.pending.push(Sound::Lock);
+                self.message = Some((format!("pad mapped: {}", w.name), self.now + 5.0));
+            }
+            Err(e) => {
+                self.pending.push(Sound::Crunch);
+                self.message = Some((format!("pad mapping not saved: {e}"), self.now + 5.0));
+            }
+        }
+        Some(mapping)
+    }
+
+    pub fn take_remap_request(&mut self) -> bool {
+        std::mem::take(&mut self.remap_request)
+    }
+
+    fn draw_pad_wizard(&mut self, fb: &mut Framebuffer) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, "New pad");
+        let Some(wiz) = self.wizard.as_ref() else {
+            return;
+        };
+        let max_cols = (width / 8) as usize;
+        let name: String = wiz.name.chars().take(max_cols).collect();
+        fb.text(left, y0 + 2, &name, self.theme.paper, 1);
+        fb.text(
+            left,
+            y0 + 14,
+            &format!("step {} of {}", wiz.step + 1, padmap::STEPS.len()),
+            self.theme.dim,
+            1,
+        );
+        if let Some((_, what)) = wiz.current() {
+            fb.text(left, y0 + 34, "Press", self.theme.dim, 1);
+            let what: String = what.chars().take(max_cols).collect();
+            fb.text(left, y0 + 46, &what, self.theme.bright_green, 2.min(1 + (what.len() * 16 <= width as usize) as i32));
+        }
+        // What is set so far, newest last.
+        let mut y = y0 + 74;
+        let start = wiz.binds.len().saturating_sub(6);
+        for (field, bind) in &wiz.binds[start..] {
+            fb.text(left, y, &format!("{field:<14} {bind}"), scale(self.theme.dim, 0.9), 1);
+            y += 10;
+        }
+        fb.text(
+            left,
+            h - 40,
+            "press A again to skip a control the pad lacks",
+            scale(self.theme.dim, 0.8),
+            1,
+        );
+        let hint = self.hint(&[("Enter", "skip"), ("Esc", "cancel")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 

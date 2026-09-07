@@ -117,6 +117,9 @@ scanlines or curvature. The tube provides those.
   state, volume, hints) that appears on every command and stays while paused,
   position saved on quit. Deinterlacing stays off so 480i sources reach the
   tube as fields.
+- **Any pad.** Pads SDL knows just work; an unknown one gets a button by
+  button wizard on the tube the moment it is plugged in, and the mapping is
+  kept for next time. `X` on the Pads screen maps the current pad again.
 - **Save states in sight.** RetroArch saves on exit and resumes on start; the
   launcher shows it: a small arrow on every game that has a state, "left
   12:03" or "saved Sat 21:10" under the box art, the same line when the pause

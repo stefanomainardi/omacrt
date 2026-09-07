@@ -43,10 +43,20 @@ A PlayStation pad shows `X run  O back  ^ fav`; Xbox and Nintendo pads show
 letters. SDL names buttons by position, so on a Nintendo pad the letters match
 the physical labels.
 
-Pads SDL does not know can be described in
-`~/.config/omarchy-crt/gamecontrollerdb.txt`, in the
+## Pads SDL does not know
+
+A pad without a mapping in SDL's database arrives as a bare joystick. When one
+is plugged in (or was already there at start) the launcher opens a short
+wizard on the tube once the menu is up: it names a control at a time (A, B,
+X, Y, Start, Select, the d-pad, shoulders, triggers, the left stick, the home
+button) and records the button, axis or hat that answers. Pressing the button
+already given as A skips a control the pad lacks; `Enter` skips too, `Esc`
+cancels. The mapping is written in the
 [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) format
-(MIT). The file is loaded at startup when present.
+(MIT) to `~/.config/omarchy-crt/gamecontrollerdb.txt`, loaded at every start,
+and the pad works right away. `X` on the Settings, Pads screen runs the wizard
+again for the current pad when a mapping came out wrong. RetroArch keeps its
+own autoconfig profiles; the wizard is for the launcher.
 
 ## In a game
 

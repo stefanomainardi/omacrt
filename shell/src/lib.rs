@@ -7,6 +7,7 @@ pub mod game;
 pub mod index;
 pub mod library;
 pub mod music;
+pub mod padmap;
 pub mod player;
 pub mod profile;
 pub mod settings;
