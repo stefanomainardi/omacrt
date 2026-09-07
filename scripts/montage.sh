@@ -52,20 +52,20 @@ desk() {  # source, start, duration: the desktop take, 3440x1440, no audio.
 
 T="$dir/tube-tour.mp4"; VV="$dir/tube-videos.mp4"; D="$dir/desktop-plugin.mp4"; B="$dir/tube-boot.mp4"
 card "Omarchy CRT" "an Omarchy version for retro gaming on CRT · update, September 2026" 4.5
-card "The bar plugin" "power, line standard, sync, audio and library from the Omarchy bar" 3.5
+card "The bar plugin" "power, standard, sync, audio and library, from the bar" 3.5
 desk "$D" 1 48
-card "The tube is ours" "the DAC output is leased from the desktop and driven by our own compositor · 15 kHz timing set directly" 4.5
-card "Boot" "POST, wordmark and menu drawn at 320x240 on a 3520x240 super resolution" 3
+card "The tube is ours" "leased from the desktop, driven by our own compositor at 15 kHz" 4.5
+card "Boot" "drawn at 320x240 on a 3520x240 super resolution" 3
 tube "$B" 0.5 18.5
-card "Systems and console art" "28,847 games indexed from an unsorted disk, any folder layout" 3.5
+card "Systems and console art" "indexed from an unsorted disk, any folder layout" 3.5
 tube "$T" 14 10
-card "Collections and box art" "curated lists, covers from the libretro thumbnails" 3
+card "Collections and box art" "curated lists, covers matched by title" 3
 tube "$T" 24 16
 card "Yie Ar Kung-Fu" "Konami, 1985 · MAME" 3
 tube "$T" 42 26
-card "Pause menu" "save state, load, reset, back to the launcher · hotkeys pressed by the compositor" 3.5
+card "Pause menu" "save, load, reset, back · hotkeys pressed by the compositor" 3.5
 tube "$T" 68 22
-card "Chrono Trigger" "Super Nintendo · the tube switches to 224 lines for this system" 3.5
+card "Chrono Trigger" "Super Nintendo · the tube switches to 224 lines" 3.5
 tube "$T" 94 26
 card "Sonic The Hedgehog 2" "Mega Drive" 3
 tube "$T" 143 20
@@ -73,6 +73,6 @@ card "Metal Slug" "Neo Geo · FinalBurn Neo" 3
 tube "$T" 178 22
 card "Videos" "mpv on the tube, fitted to 15 kHz" 3
 tube "$VV" 0 30
-card "github.com/stefanomainardi/omarchy-crt" "#omarchyCRT · next: media player on cliamp, pad wizard, library GUI" 5
+card "github.com/stefanomainardi/omarchy-crt" "#omarchyCRT · music, video and the library, from the bar" 5
 ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$list" -c copy "$out"
 echo "$out"; ffprobe -v error -show_entries format=duration -of csv=p=0 "$out"

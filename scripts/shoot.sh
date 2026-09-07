@@ -49,7 +49,21 @@ case "${1:-}" in
     idle_before="$(omarchy toggle idle status | grep -c '"enabled":true' || true)"
     omarchy toggle idle stay-awake >/dev/null
     was_ws="$(hyprctl activeworkspace -j | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
-    hyprctl dispatch workspace 9 >/dev/null
+    # A named workspace of our own: an empty one by construction. Numbered
+    # workspaces may hold windows, and a take with someone's terminals in it
+    # is a take that cannot be published.
+    # Hyprland 0.56 takes dispatchers through its Lua API: the shell form
+    # `hyprctl dispatch workspace 9` is a Lua syntax error and changes
+    # nothing, which is how the first take ended up full of windows.
+    hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = "name:crt-shoot" }))' >/dev/null
+    sleep 1
+    open_windows="$(hyprctl activeworkspace -j | python3 -c 'import json,sys; print(json.load(sys.stdin)["windows"])')"
+    if [ "$open_windows" != "0" ]; then
+      echo "the workspace is not empty ($open_windows windows): not recording" >&2
+      hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \"$was_ws\" }))" >/dev/null
+      [ "$idle_before" = 1 ] || omarchy toggle idle allow-idle >/dev/null
+      exit 1
+    fi
     hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $((mx + mw / 2)), y = $((my + mh - 2)) }))" >/dev/null
     sleep 1.5
     say "recording $mon"
@@ -66,7 +80,7 @@ case "${1:-}" in
     sleep 2.5
     kill -INT "$rec"; wait "$rec" 2>/dev/null
     hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $((mx + mw / 2)), y = $((my + mh / 2)) }))" >/dev/null
-    hyprctl dispatch workspace "$was_ws" >/dev/null
+    hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = \"$was_ws\" }))" >/dev/null
     [ "$idle_before" = 1 ] || omarchy toggle idle allow-idle >/dev/null
     say "desktop take: $out"
     ;;
@@ -131,8 +145,9 @@ case "${1:-}" in
     say "recording the music screens"
     omarchy-crt record start "$out"
     sleep 2
-    omarchy-crt shell key home; sleep 0.8
-    key down 0.4; key down 0.6      # Music
+    omarchy-crt shell key home; sleep 1.2
+    for _ in 1 2 3 4 5 6 7 8; do key up 0.2; done   # to the top of the list
+    key down 0.4; key down 0.7      # Music, the third row
     key fire 2.0
     say "Radio: the country list"
     key fire 2.5                    # Radio hub
@@ -148,18 +163,19 @@ case "${1:-}" in
     key next 6
     key alt 2                       # back to the deck
     say "the equaliser"
-    omarchy-crt shell key home; sleep 0.8
-    key down 0.4; key down 0.6      # Music
+    omarchy-crt shell key home; sleep 1.2
+    for _ in 1 2 3 4 5 6 7 8; do key up 0.2; done
+    key down 0.4; key down 0.7      # Music, the third row
     key fire 2.0
     # The root remembers the last row; up walks to the top (it stops there),
     # then the Equalizer is the last of the six rows with music playing.
     for _ in 1 2 3 4 5 6; do key up 0.2; done
     for _ in 1 2 3 4 5; do key down 0.35; done
     key fire 2.5
-    for _ in 1 2 3; do key right 0.7; done
-    for _ in 1 2 3; do key up 0.6; done
-    for _ in 1 2 3; do key down 0.6; done
-    key fire 3                      # a preset
+    # The page is shown, not used: walking the bands or the presets would
+    # leave the listener's own curve changed.
+    for _ in 1 2 3; do key right 0.9; done
+    sleep 2
     key back 1.5
     omarchy-crt shell key home; sleep 2
     omarchy-crt record stop

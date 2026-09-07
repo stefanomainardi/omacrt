@@ -1397,12 +1397,15 @@ impl Scene {
 
     fn open_virtual(&mut self, list: &[(usize, PathBuf)]) {
         self.search_global = false;
+        // The names of the systems, to turn an arcade set name into a title
+        // the way the per system lists do.
+        let names: Vec<String> = self.library.systems.iter().map(|s| s.name.clone()).collect();
         let entries: Vec<Entry> = list
             .iter()
-            .filter(|(i, p)| *i < self.library.systems.len() && p.exists())
+            .filter(|(i, p)| *i < names.len() && p.exists())
             .map(|(i, p)| Entry {
                 game: Game {
-                    title: crate::library::clean_title(p),
+                    title: crate::covers::title_for(&names[*i], &crate::library::clean_title(p)),
                     crt_path: {
                         let c = videofit::crt_path(p);
                         c.exists().then_some(c)
