@@ -23,6 +23,14 @@ Romset`, `01 Other Romsets`, ...). The launcher browses folders inside a
 
 ## Phase A2, playing well
 
+Progress: the CRT workspace is now hardened (everything pinned floating on
+`crt`, foreign windows pushed back to the desktop, the pointer parked off
+the tube), and the launcher draws its own pause overlay (Resume, Save
+state, Load state, Reset, Back to launcher) raised over the game. The
+catch is that RetroArch's network commands only land while its window
+renders, so save and quit from behind the overlay are best effort (Wayland
+throttles an occluded window's loop); resume is solid. Still to do below.
+
 - **In game menu, Omarchy style.** The plumbing is in: RetroArch runs with
   its network command interface on, and `omarchy-crt game
 pause|save|load|reset|quit` drives it (proven on the tube). `omarchy-crt

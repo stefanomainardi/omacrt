@@ -43,6 +43,32 @@ runs. Two launcher processes fighting over the tube produce the same
 symptom; `omarchy-crt shell stop` waits for the launcher to exit and kills a
 stuck one.
 
+## The CRT workspace is protected
+
+Everything the launcher puts on the tube is a floating, pinned window on
+the `crt` workspace: the launcher, the emulator, the video player. Pinned
+windows draw above everything on their monitor and stay where they are
+whatever the desktop does, so no stray desktop window, and no mouse pointer,
+lands on the tube. The `window.open` handler (`isolate`) sends any foreign
+window that opens on `crt`/`crtgame` back to the desktop, and pins the
+emulator the launcher started (an "expected game" flag set right before the
+spawn covers the frame before its class is known). The pointer is parked on
+the desktop monitor after every focus. Verify:
+
+```
+hyprctl clients -j | jq '.[] | select(.workspace.name=="crt") | {class, pinned}'
+```
+
+## Talking to the running emulator is unreliable
+
+RetroArch's network commands (`omarchy-crt game save|load|reset|quit`, and
+the pause menu that uses them) reach the emulator only while its window is
+actually rendering. A Wayland client that is occluded or unfocused gets few
+or no frame callbacks, its run loop slows to a crawl, and commands queue or
+drop. Save and quit work when the game is on top; behind the pause overlay
+they are best effort. `GET_STATUS` does not answer at all on this build.
+Resuming (which raises the game again) always works.
+
 ## The in-game menu (RGUI) is blank
 
 RetroArch's own menu opens and pauses the game (the picture freezes) but

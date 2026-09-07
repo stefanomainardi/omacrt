@@ -392,9 +392,15 @@ pub fn workspace_rule(name: &str) {
 }
 
 /// Bring one of our windows to the front of the tube and give it focus.
+///
+/// Stacking among pinned windows is fixed, so raising is done with the pin
+/// itself: the game unpinned sits below the pinned launcher (still mapped,
+/// rendered and answering), pinned again it is back above. Focus follows.
 pub fn raise(class: &str) -> bool {
+    let game = "com.libretro.RetroArch";
+    let pin_game = class != SHELL_CLASS;
     let (ok, out) = hypr_eval(&format!(
-        "local w = hl.get_windows({{ class = \"{class}\" }})[1]; if not w then return \"no window\" end; hl.dispatch(hl.dsp.window.bring_to_top({{ window = w }})); hl.dispatch(hl.dsp.focus({{ window = w }})); return \"raised\""
+        "local g = hl.get_windows({{ class = \"{game}\" }})[1]; if g then hl.dispatch(hl.dsp.window.pin({{ window = g, enable = {pin_game} }})) end; local w = hl.get_windows({{ class = \"{class}\" }})[1]; if not w then return \"no window\" end; hl.dispatch(hl.dsp.focus({{ window = w }})); return \"raised\""
     ));
     park_cursor("");
     ok && !out.contains("no window")
