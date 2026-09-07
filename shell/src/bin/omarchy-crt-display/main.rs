@@ -17,6 +17,7 @@ use omarchy_crt_shell::crt::output::Modeline;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 
 mod comp;
+mod host;
 mod lease;
 
 pub struct Leased(pub OwnedFd);

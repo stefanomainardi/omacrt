@@ -98,6 +98,8 @@ pub struct Crt {
     last_stats: Instant,
     /// Surface commits since the last statistics line, by app id.
     commits: std::collections::BTreeMap<String, u64>,
+    /// The desktop side window (preview + keyboard), when opened.
+    pub host: Option<crate::host::Host>,
 }
 
 #[derive(Default)]
@@ -385,7 +387,17 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         frames: 0,
         last_stats: Instant::now(),
         commits: Default::default(),
+        host: None,
     };
+    crt.handle
+        .insert_source(
+            Timer::from_duration(Duration::from_millis(100)),
+            |_, _, st: &mut Crt| {
+                st.preview();
+                TimeoutAction::ToDuration(Duration::from_millis(100))
+            },
+        )
+        .map_err(|e| e.to_string())?;
     println!(
         "compositor up: WAYLAND_DISPLAY={}",
         crt.socket_name.to_string_lossy()
@@ -424,6 +436,25 @@ impl Crt {
                 }
             }
             "key" => self.inject_key(arg.trim()),
+            "monitor" => match arg.trim() {
+                "on" => {
+                    if self.host.is_none() {
+                        output::hypr_eval(&format!(
+                            "hl.window_rule({{ name = \"omarchy-crt-monitor\", match = {{ class = \"{}\" }}, float = true, size = \"880 660\", center = true }})",
+                            crate::host::APP_ID
+                        ));
+                        match crate::host::Host::open(&self.handle) {
+                            Ok(h) => self.host = Some(h),
+                            Err(e) => eprintln!("monitor: {e}"),
+                        }
+                    }
+                }
+                _ => {
+                    if let Some(mut h) = self.host.take() {
+                        h.close();
+                    }
+                }
+            },
             "shot" => {
                 if let Err(e) = self.screenshot(arg.trim()) {
                     eprintln!("shot: {e}");
@@ -441,7 +472,7 @@ impl Crt {
     /// is one, else the window on top. The launcher takes the pad in the
     /// background and its control pipe, it never needs the keyboard while a
     /// program runs; the program needs it to count as focused.
-    fn focus_top(&mut self) {
+    pub fn focus_top(&mut self) {
         let program = ["com.libretro.RetroArch", "omarchy-crt-player"]
             .iter()
             .find_map(|id| self.window_with_app_id(id));
@@ -489,7 +520,7 @@ impl Crt {
         );
     }
 
-    fn key_event(&mut self, code: Keycode, state: KeyState) {
+    pub fn key_event(&mut self, code: Keycode, state: KeyState) {
         let Some(kbd) = self.seat.get_keyboard() else {
             return;
         };
@@ -500,12 +531,8 @@ impl Crt {
         });
     }
 
-    /// Render the current frame off screen and write it as a PNG. The
-    /// desktop's screenshot tools cannot see a leased output, this can.
-    fn screenshot(&mut self, path: &str) -> Result<(), String> {
-        if path.is_empty() {
-            return Err("shot needs a file path".into());
-        }
+    /// Render the current frame off screen: top-down BGRA bytes, width, height.
+    fn capture(&mut self) -> Result<(Vec<u8>, usize, usize), String> {
         let size = self
             .output
             .current_mode()
@@ -542,16 +569,28 @@ impl Crt {
             .map_texture(&mapping)
             .map_err(|e| format!("map: {e}"))?;
         let (w, h) = (w as usize, h as usize);
-        let mut rgb = vec![0u8; w * h * 3];
+        let row = w * 4;
+        let mut out = vec![0u8; row * h];
         for y in 0..h {
-            let src_y = if flipped { h - 1 - y } else { y };
-            for x in 0..w {
-                let s = (src_y * w + x) * 4;
-                let d = (y * w + x) * 3;
-                rgb[d] = bytes[s + 2];
-                rgb[d + 1] = bytes[s + 1];
-                rgb[d + 2] = bytes[s];
-            }
+            // GL framebuffers read bottom-up unless the mapping says otherwise.
+            let src_y = if flipped { y } else { h - 1 - y };
+            out[y * row..(y + 1) * row].copy_from_slice(&bytes[src_y * row..(src_y + 1) * row]);
+        }
+        Ok((out, w, h))
+    }
+
+    /// Write the current frame as a PNG. The desktop's screenshot tools
+    /// cannot see a leased output, this can.
+    fn screenshot(&mut self, path: &str) -> Result<(), String> {
+        if path.is_empty() {
+            return Err("shot needs a file path".into());
+        }
+        let (bgra, w, h) = self.capture()?;
+        let mut rgb = vec![0u8; w * h * 3];
+        for i in 0..w * h {
+            rgb[i * 3] = bgra[i * 4 + 2];
+            rgb[i * 3 + 1] = bgra[i * 4 + 1];
+            rgb[i * 3 + 2] = bgra[i * 4];
         }
         let file = std::fs::File::create(path).map_err(|e| format!("{path}: {e}"))?;
         let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
@@ -561,6 +600,27 @@ impl Crt {
         writer.write_image_data(&rgb).map_err(|e| e.to_string())?;
         println!("shot: {path}");
         Ok(())
+    }
+
+    /// A frame for the desktop preview window, when it is open and ready.
+    pub fn preview(&mut self) {
+        let closed = self.host.as_ref().map(|h| h.closed).unwrap_or(false);
+        if closed {
+            self.host = None;
+            return;
+        }
+        let ready = self.host.as_ref().map(|h| h.ready()).unwrap_or(false);
+        if !ready {
+            return;
+        }
+        match self.capture() {
+            Ok((bgra, w, h)) => {
+                if let Some(host) = self.host.as_mut() {
+                    host.present(&bgra, w, h);
+                }
+            }
+            Err(e) => eprintln!("preview: {e}"),
+        }
     }
 
     fn window_with_app_id(&self, app_id: &str) -> Option<Window> {

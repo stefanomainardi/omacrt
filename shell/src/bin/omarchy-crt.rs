@@ -27,6 +27,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
   game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
   shot <file.png>                what the tube shows right now (leased output)
+  monitor on|off                 desktop window: live preview of the tube, keyboard to the tube when focused
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
   dac status|reset|csync and|xor|separate|watch
@@ -1153,6 +1154,25 @@ fn main() {
             // confirming write is enough and the launcher gets focus back.
             let _ = set_csync(&cfg, &conn);
             launcher::focus();
+        }
+        "monitor" => {
+            let on = positional(args)
+                .first()
+                .map(|s| s.as_str() != "off")
+                .unwrap_or(true);
+            if !display::running() {
+                die("the display process is not running");
+            }
+            display::send(&format!("monitor {}", if on { "on" } else { "off" }))
+                .unwrap_or_else(|e| die(&e.to_string()));
+            println!(
+                "monitor {}",
+                if on {
+                    "on: a desktop window shows the tube; focus it to type on the tube"
+                } else {
+                    "off"
+                }
+            );
         }
         "shot" => {
             let given: String = positional(args)
