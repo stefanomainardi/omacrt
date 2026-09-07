@@ -289,7 +289,7 @@ fn fetch(req: &Request) -> Option<Image> {
 }
 
 /// Decode a PNG into straight alpha RGBA.
-fn decode(path: &Path) -> Option<Image> {
+pub fn decode(path: &Path) -> Option<Image> {
     let file = std::fs::File::open(path).ok()?;
     let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
@@ -329,7 +329,7 @@ fn decode(path: &Path) -> Option<Image> {
 
 /// Shrink to fit inside `max_w` x `max_h`, averaging source pixels (alpha
 /// weighted) so box art keeps its colours at 90 pixels wide.
-fn fit(img: &Image, max_w: usize, max_h: usize) -> Image {
+pub fn fit(img: &Image, max_w: usize, max_h: usize) -> Image {
     if img.w == 0 || img.h == 0 {
         return img.clone();
     }

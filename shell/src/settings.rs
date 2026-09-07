@@ -45,6 +45,9 @@ pub struct Music {
     /// ISO country code whose radio stations come first; empty follows the locale.
     #[serde(default)]
     pub country: String,
+    /// Pad rumble on the beat while the music screens are up.
+    #[serde(default)]
+    pub rumble: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

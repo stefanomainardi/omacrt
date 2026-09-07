@@ -8,6 +8,7 @@ mod art;
 mod assets;
 mod audio;
 mod bt;
+mod deck;
 mod crt_tag;
 mod effects;
 mod etch;
@@ -670,6 +671,11 @@ fn run(args: &Args) -> Result<(), String> {
                 }
             }
             inputs.push(inp);
+        }
+        if scene.take_rumble() {
+            if let Some(c) = controllers.last_mut() {
+                let _ = c.set_rumble(0, 0x9000, 60);
+            }
         }
         if scene.take_remap_request() {
             // Map the last pad again: its raw joystick answers the wizard.

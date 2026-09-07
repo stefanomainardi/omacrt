@@ -18,6 +18,8 @@ pub enum Sound {
     Whoosh,
     Insert,
     Click,
+    /// Radio static between two stations.
+    Static,
 }
 
 struct Voice {
@@ -137,6 +139,7 @@ pub fn render_bank() -> Vec<(Sound, Vec<f32>)> {
         (Sound::Whoosh, synth_whoosh()),
         (Sound::Insert, synth_insert()),
         (Sound::Click, synth_click()),
+        (Sound::Static, synth_static()),
     ]
 }
 
@@ -352,6 +355,29 @@ fn synth_insert() -> Vec<f32> {
             v += rng.next() * (-d * 300.0).exp() * 0.2;
         }
         *s = v;
+    }
+    out
+}
+
+/// Between two stations: hiss that swells and cuts as the tuner locks.
+fn synth_static() -> Vec<f32> {
+    let n = seconds(0.7);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(77);
+    let mut lp = 0.0f32;
+    let tau = 2.0 * std::f32::consts::PI;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let p = t / 0.7;
+        let cut = 900.0 + 2600.0 * (0.5 + 0.5 * (p * 9.0).sin());
+        let a = 1.0 / (1.0 + RATE as f32 / (tau * cut));
+        lp += a * (rng.next() - lp);
+        let env = if p < 0.85 {
+            (p * std::f32::consts::PI / 0.85).sin().powf(0.6)
+        } else {
+            0.0
+        };
+        *s = lp * env * 0.16;
     }
     out
 }

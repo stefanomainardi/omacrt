@@ -9,12 +9,13 @@
 use crate::assets::ICON_24;
 use crate::audio::Sound;
 use crate::bt::Bluetooth;
+use crate::deck::{self, Deck};
 use crate::effects::{self, Effect, Kind, Palette};
 use crate::etch::LaserEtch;
 use crate::fb::{Color, Framebuffer, scale};
 use crate::icons;
 use crate::library::{Game, Library};
-use crate::music::{self, Item as MusicItem, Music, Source};
+use crate::music::{self, Item as MusicItem, Music, Source, Track};
 use crate::pad::PadKind;
 use crate::padmap::{self, Raw, Wizard};
 use crate::player::Player;
@@ -44,6 +45,7 @@ pub enum Action {
 }
 
 /// Which screen the menu is on after boot.
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Screen {
     Menu,
     Systems {
@@ -368,6 +370,20 @@ pub struct Scene {
     search_global: bool,
     /// Save states RetroArch wrote, looked up per game as rows show.
     states: states::Cache,
+    /// The hi-fi deck and the visualizers of the music screens.
+    deck: Deck,
+    /// Album art decoded for the cassette label, and the file it came from.
+    cover_img: Option<(PathBuf, crate::art::Image)>,
+    /// Screen to come back to when the music visualizer stands in for the screensaver.
+    music_saver: Option<Screen>,
+    /// The visualizer chosen on purpose (X) rather than by idling.
+    music_visual: bool,
+    /// The list a station was tuned from and the index in it: left and right move along it.
+    tuning: Option<(Vec<Track>, usize)>,
+    /// Sleep timer: deadline and the volume to restore.
+    sleep: Option<(f64, f64)>,
+    sleep_set_at: f64,
+    rumble_pending: bool,
     wizard: Option<Wizard>,
     /// A pad that arrived while the wizard could not show: name, guid, id.
     pending_wizard: Option<(String, String, u32)>,
@@ -447,6 +463,14 @@ impl Scene {
             osk: None,
             search_global: false,
             states: states::Cache::default(),
+            deck: Deck::new(),
+            cover_img: None,
+            music_saver: None,
+            music_visual: false,
+            tuning: None,
+            sleep: None,
+            sleep_set_at: 0.0,
+            rumble_pending: false,
             wizard: None,
             pending_wizard: None,
             remap_request: false,
@@ -553,6 +577,11 @@ impl Scene {
     pub fn touch(&mut self, now: f64) -> bool {
         self.last_input = now;
         if self.saver.take().is_some() {
+            self.pending.push(Sound::Move);
+            return true;
+        }
+        if let Some(prev) = self.music_saver.take() {
+            self.screen = prev;
             self.pending.push(Sound::Move);
             return true;
         }
@@ -778,7 +807,13 @@ impl Scene {
                 self.remap_request = true;
                 return;
             }
-            Screen::Music { .. } | Screen::NowPlaying => {
+            Screen::NowPlaying => {
+                self.music_visual = !self.music_visual;
+                self.deck.mode_since = self.now;
+                self.pending.push(Sound::Whoosh);
+                return;
+            }
+            Screen::Music { .. } => {
                 self.music_alt(None);
                 return;
             }
@@ -1752,12 +1787,25 @@ impl Scene {
                 }
             }
             Screen::NowPlaying => match nav {
+                Nav::Left | Nav::Right if self.music_visual => {
+                    let now = self.now;
+                    if nav == Nav::Left {
+                        self.deck.prev_mode(now);
+                    } else {
+                        self.deck.next_mode(now);
+                    }
+                    moved = true;
+                }
                 Nav::Left => {
-                    self.music.prev();
+                    if !self.tune(-1) {
+                        self.music.prev();
+                    }
                     moved = true;
                 }
                 Nav::Right => {
-                    self.music.next();
+                    if !self.tune(1) {
+                        self.music.next();
+                    }
                     moved = true;
                 }
                 Nav::Up => {
@@ -1769,8 +1817,12 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
-                    let sel = self.music_root_sel;
-                    self.screen = Screen::Music { sel, top: 0 };
+                    if self.music_visual {
+                        self.music_visual = false;
+                    } else {
+                        let sel = self.music_root_sel;
+                        self.screen = Screen::Music { sel, top: 0 };
+                    }
                     moved = true;
                 }
             },
@@ -1963,7 +2015,28 @@ impl Scene {
     fn music_play_item(&mut self, sel: usize, item: MusicItem) {
         match item {
             MusicItem::Track(t) => {
-                self.pending.push(Sound::Select);
+                // The list becomes the tuner's band: left and right walk it.
+                let tracks: Vec<Track> = self
+                    .music_visible()
+                    .into_iter()
+                    .filter_map(|it| match it {
+                        MusicItem::Track(x) => Some(x),
+                        _ => None,
+                    })
+                    .collect();
+                let idx = tracks.iter().position(|x| x.path == t.path).unwrap_or(0);
+                let count = tracks.len();
+                self.tuning = Some((tracks, idx));
+                if t.stream {
+                    self.deck.tune(idx, count, self.now);
+                    self.pending.push(Sound::Static);
+                } else {
+                    self.deck.insert_at = self.now;
+                    self.pending.push(Sound::Insert);
+                }
+                self.music_root_sel = 0;
+                self.music_visual = false;
+                self.go(Screen::NowPlaying);
                 let queue = matches!(self.music_path.last(), Some((Source::Queue, _, _)));
                 if queue {
                     let idx = self
@@ -2342,6 +2415,10 @@ impl Scene {
 
     /// Toggle the selected game in the favorites list.
     pub fn toggle_favorite(&mut self) {
+        if matches!(self.screen, Screen::NowPlaying) {
+            self.sleep_cycle();
+            return;
+        }
         if let Screen::MusicList { sel, .. } = self.screen {
             if let Some(MusicItem::Track(t)) = self.music_selected(sel) {
                 let label = t.label();
@@ -2634,7 +2711,7 @@ impl Scene {
         let left = margin + self.slide();
         let max_cols = ((w - 2 * margin) / 8) as usize;
         if on {
-            fb.rect(left, y - 2, w - 2 * margin, 12, self.theme.selection);
+            fb.rect(left, y - 2, w - 2 * margin, 12, self.band_color());
         }
         let room = max_cols.saturating_sub(right.chars().count() + 1);
         let full = format!("  {label}");
@@ -3417,8 +3494,12 @@ impl Scene {
             }
             let limit = self.idle_limit();
             if limit > 0.0 && (now - self.last_input) as f32 > limit {
-                let kind = self.chosen_effect();
-                self.start_screensaver(now, kind);
+                if self.music.status.playing() {
+                    self.music_saver_start(now);
+                } else {
+                    let kind = self.chosen_effect();
+                    self.start_screensaver(now, kind);
+                }
             }
             return;
         }
@@ -3442,8 +3523,12 @@ impl Scene {
         }
         let limit = self.idle_limit();
         if self.menu_live && limit > 0.0 && (now - self.last_input) as f32 > limit {
-            let kind = self.chosen_effect();
-            self.start_screensaver(now, kind);
+            if self.music.status.playing() {
+                self.music_saver_start(now);
+            } else {
+                let kind = self.chosen_effect();
+                self.start_screensaver(now, kind);
+            }
         }
     }
 
@@ -4172,6 +4257,96 @@ impl Scene {
         for (b, target) in self.vis.iter_mut().zip(self.music.bands.iter()) {
             *b += (target - *b) * 0.45;
         }
+        let playing = self.music.status.playing();
+        let bands = self.music.bands.clone();
+        self.deck.tick(&bands, playing, now);
+        if self.deck.beat && playing && vis && self.settings.music.rumble {
+            self.rumble_pending = true;
+        }
+        // Sleep timer: the volume glides down over the last two minutes, then stop.
+        if let Some((deadline, restore)) = self.sleep {
+            let left = deadline - now;
+            if left <= 0.0 {
+                self.music.stop();
+                self.music.volume_set(restore);
+                self.sleep = None;
+                self.message = Some(("sleep timer: stopped".into(), now + 4.0));
+            } else if left < 120.0 && now - self.sleep_set_at > 2.0 {
+                self.sleep_set_at = now;
+                let v = restore - 30.0 * (1.0 - left / 120.0);
+                self.music.volume_set(v);
+            }
+        }
+    }
+
+    pub fn take_rumble(&mut self) -> bool {
+        std::mem::take(&mut self.rumble_pending)
+    }
+
+    /// The selection band breathes with the beat while music plays.
+    fn band_color(&self) -> Color {
+        if self.music.status.playing() {
+            crate::fb::lerp_color(self.theme.selection, self.theme.accent, self.deck.kick.hit * 0.3)
+        } else {
+            self.theme.selection
+        }
+    }
+
+    /// Idle with music on: the visualizer stands in for the screensaver.
+    fn music_saver_start(&mut self, now: f64) {
+        if self.music_saver.is_none() {
+            self.music_saver = Some(self.screen);
+            self.screen = Screen::NowPlaying;
+            self.deck.mode_since = now;
+        }
+    }
+
+    /// Y on the deck: no timer, 15, 30, 60 minutes, none again.
+    fn sleep_cycle(&mut self) {
+        let mins = match self.sleep {
+            None => Some(15.0),
+            Some((d, _)) => {
+                let left = ((d - self.now) / 60.0).round();
+                if left <= 15.0 {
+                    Some(30.0)
+                } else if left <= 30.0 {
+                    Some(60.0)
+                } else {
+                    None
+                }
+            }
+        };
+        let restore = self.sleep.map(|(_, r)| r).unwrap_or(self.music.status.volume);
+        self.sleep = mins.map(|m| (self.now + m * 60.0, restore));
+        if mins.is_none() && self.music.status.volume != restore {
+            self.music.volume_set(restore);
+        }
+        self.message = Some((
+            match mins {
+                Some(m) => format!("sleep in {m:.0} min"),
+                None => "sleep timer off".into(),
+            },
+            self.now + 3.0,
+        ));
+        self.pending.push(Sound::Select);
+    }
+
+    /// Left or right on the deck while a station list is tuned in.
+    fn tune(&mut self, dir: i32) -> bool {
+        let Some((list, idx)) = &self.tuning else {
+            return false;
+        };
+        let n = list.len();
+        if n < 2 {
+            return false;
+        }
+        let next = ((*idx as i32 + dir).rem_euclid(n as i32)) as usize;
+        let t = list[next].clone();
+        self.tuning = Some((list.clone(), next));
+        self.deck.tune(next, n, self.now);
+        self.pending.push(Sound::Static);
+        self.music.play(&t);
+        true
     }
 
     /// Ten bars of the spectrum, bottom aligned in the given box.
@@ -4335,83 +4510,74 @@ impl Scene {
     }
 
     fn draw_now_playing(&mut self, fb: &mut Framebuffer) {
-        let w = fb.w as i32;
         let h = fb.h as i32;
+        let w = fb.w as i32;
         let left = (w as f32 * 0.05) as i32;
-        let width = w - 2 * left;
-        let y0 = self.draw_header(fb, "Music");
         let st = self.music.status.clone();
         let track = st.track.clone().unwrap_or_default();
-        let title = if !track.title.is_empty() {
-            track.title.clone()
-        } else {
-            track.label()
-        };
-        let max_cols = (width / 8) as usize;
-        let big = title.chars().count() * 16 <= width as usize;
-        let cut = |s: &str, n: usize| -> String { s.chars().take(n).collect() };
-        fb.text(
-            left,
-            y0 + 6,
-            &cut(&title, if big { max_cols / 2 } else { max_cols }),
-            self.theme.bright_green,
-            if big { 2 } else { 1 },
-        );
+        let title = if !track.title.is_empty() { track.title.clone() } else { track.label() };
         let sub = if !track.artist.is_empty() && !track.station.is_empty() {
             format!("{}  on {}", track.artist, track.station)
         } else if !track.artist.is_empty() {
             track.artist.clone()
-        } else if !track.station.is_empty() {
+        } else if !track.station.is_empty() && track.station != title {
             track.station.clone()
         } else if track.stream {
             "live stream".to_string()
         } else {
             track.album.clone()
         };
-        fb.text(left, y0 + 28, &cut(&sub, max_cols), self.theme.paper, 1);
-        let bar_y = y0 + 46;
-        fb.rect(left, bar_y, width, 6, self.theme.selection);
-        let times = if st.duration > 0.0 {
-            let filled = ((st.position / st.duration).clamp(0.0, 1.0) * width as f64) as i32;
-            fb.rect(left, bar_y, filled, 6, self.theme.accent);
-            format!(
-                "{} / {}",
-                crate::player::clock(st.position),
-                crate::player::clock(st.duration)
-            )
-        } else {
-            // A live stream: a dot walks the bar while it plays.
-            if st.playing() {
-                let x = left + ((self.now * 40.0) as i32 % (width - 6).max(1));
-                fb.rect(x, bar_y, 6, 6, self.theme.accent);
+        let idle = self.now - self.last_input > deck::IDLE_TO_VISUAL;
+        let visual = self.music_visual || self.music_saver.is_some() || (idle && st.playing());
+        let now = self.now;
+        let theme = self.theme.clone();
+        if visual {
+            // Cycle the modes while nobody touches anything.
+            if !self.music_visual && now - self.deck.mode_since > deck::MODE_SECS {
+                self.deck.next_mode(now);
             }
-            crate::player::clock(st.position)
-        };
-        fb.text(left, bar_y + 12, &times, self.theme.paper, 1);
-        let state = match st.state {
-            Some(music::State::Playing) => "playing",
-            Some(music::State::Paused) => "paused",
-            _ => "stopped",
-        };
-        let right = format!("{state}  {:+.0} dB", st.volume);
-        fb.text(
-            w - left - Framebuffer::text_width(&right, 1),
-            bar_y + 12,
-            &right,
-            self.theme.dim,
-            1,
-        );
-        let vis_top = bar_y + 30;
-        let vis_bottom = h - 24;
-        if vis_bottom - vis_top > 20 {
-            self.draw_vis(fb, left, vis_bottom, width, vis_bottom - vis_top);
+            self.deck.draw_visual(fb, &theme, now, &title);
+            // Lyrics line up with a song's clock, not with a stream's.
+            if !self.music.lyrics.is_empty() && st.duration > 0.0 {
+                let band_y = h / 2 - 24;
+                fb.rect(0, band_y - 4, w, 46, scale(theme.bg, 0.55));
+                deck::draw_lyrics(fb, &theme, &self.music.lyrics, st.position, band_y, 40);
+            }
+            return;
         }
-        if st.state == Some(music::State::Paused) {
-            fb.rect(w / 2 - 8, (vis_top + vis_bottom) / 2 - 8, 5, 16, self.theme.paper);
-            fb.rect(w / 2 + 3, (vis_top + vis_bottom) / 2 - 8, 5, 16, self.theme.paper);
+        let y0 = self.draw_header(fb, "Music");
+        let station = self.tuning.as_ref().filter(|_| track.stream).map(|(l, i)| (*i, l.len()));
+        match &self.music.cover {
+            Some(p) if self.cover_img.as_ref().map(|(q, _)| q) != Some(p) => {
+                let img = crate::art::decode(p).map(|i| crate::art::fit(&i, 22, 22));
+                self.cover_img = img.map(|i| (p.clone(), i));
+            }
+            None => self.cover_img = None,
+            _ => {}
         }
-        let hint = self.hint(&[("A", "pause"), ("^v", "volume"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        let cover = self.cover_img.as_ref().map(|(_, i)| i.clone());
+        let info = deck::Info {
+            title: &title,
+            sub: &sub,
+            position: st.position,
+            duration: st.duration,
+            playing: st.playing(),
+            radio: track.stream && track.duration_secs == 0 && st.duration <= 0.0,
+            station,
+            cover: cover.as_ref(),
+            volume_db: st.volume,
+        };
+        self.deck.draw(fb, &theme, y0, now, &info);
+        if !self.music.lyrics.is_empty() && st.duration > 0.0 {
+            deck::draw_lyrics(fb, &theme, &self.music.lyrics, st.position, h - 26, 10);
+        }
+        if let Some((deadline, _)) = self.sleep {
+            let m = ((deadline - now) / 60.0).ceil().max(0.0);
+            let s = format!("sleep {m:.0}m");
+            fb.text(w - left - Framebuffer::text_width(&s, 1), y0 - 12, &s, theme.orange, 1);
+        }
+        let hint = self.hint(&[("<>", "tune"), ("X", "visual"), ("Y", "sleep"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(theme.dim, 0.7), 1);
     }
 
     // --------------------------------------------------------- pad wizard

@@ -46,6 +46,8 @@ pub struct Track {
     /// Bitrate and codec of a directory station, for the row's right side.
     pub note: String,
     pub duration_secs: u32,
+    /// Album art URL a provider gave, when any.
+    pub art: String,
     /// The object as cliamp sent it, handed back untouched on play so a
     /// provider track keeps its identity.
     pub raw: Value,
@@ -64,6 +66,7 @@ impl Track {
             station: s("station"),
             note: String::new(),
             duration_secs: v.get("duration_secs").and_then(Value::as_u64).unwrap_or(0) as u32,
+            art: s("album_art_url"),
             raw: v.clone(),
         }
     }
@@ -242,6 +245,8 @@ enum Request {
     List(Source),
     Play(Track),
     PlayIndex(usize),
+    Lyrics,
+    Cover(String),
     Load(String, String),
     Toggle,
     Pause,
@@ -259,6 +264,8 @@ enum Reply {
     List(Source, Result<Vec<Item>, String>),
     Error(String),
     Played,
+    Lyrics(Vec<(f64, String)>),
+    Cover(Option<PathBuf>),
 }
 
 /// The scene's handle: state mirrors plus the worker channel.
@@ -280,6 +287,12 @@ pub struct Music {
     sink: Option<String>,
     /// Stream URLs starred by the listener.
     pub favorites: std::collections::HashSet<String>,
+    /// Synced lyrics of what plays, `(seconds, line)`, and which song they are for.
+    pub lyrics: Vec<(f64, String)>,
+    lyrics_for: String,
+    /// Album art of what plays as a 96 px PNG in the cache, once fetched.
+    pub cover: Option<PathBuf>,
+    cover_for: String,
 }
 
 impl Music {
@@ -306,7 +319,18 @@ impl Music {
             last_bands: 0.0,
             sink,
             favorites: load_favorites().iter().map(|t| t.path.clone()).collect(),
+            lyrics: Vec::new(),
+            lyrics_for: String::new(),
+            cover: None,
+            cover_for: String::new(),
         }
+    }
+
+    /// Absolute volume in dB.
+    pub fn volume_set(&mut self, v: f64) {
+        let v = v.clamp(-30.0, 6.0);
+        self.status.volume = v;
+        let _ = self.tx.send(Request::Volume(v));
     }
 
     pub fn is_favorite(&self, t: &Track) -> bool {
@@ -352,7 +376,10 @@ impl Music {
                 self.last_status = now;
                 let _ = self.tx.send(Request::Status);
             }
-            if visualising && self.status.playing() && now - self.last_bands > 0.05 {
+            // The spectrum: fast while it is on screen, a trickle otherwise so
+            // the lists can breathe with the beat.
+            let period = if visualising { 0.05 } else { 0.125 };
+            if self.status.playing() && now - self.last_bands > period {
                 self.last_bands = now;
                 let _ = self.tx.send(Request::Bands);
             }
@@ -368,7 +395,25 @@ impl Music {
                         }
                     }
                     self.status = s;
+                    // A new song (or a new ICY title on a stream): lyrics and art.
+                    if let Some(t) = &self.status.track {
+                        let key = format!("{}|{}|{}", t.path, t.artist, t.title);
+                        if key != self.lyrics_for && self.status.active() {
+                            self.lyrics_for = key.clone();
+                            self.lyrics.clear();
+                            let _ = self.tx.send(Request::Lyrics);
+                        }
+                        if t.art != self.cover_for {
+                            self.cover_for = t.art.clone();
+                            self.cover = None;
+                            if !t.art.is_empty() {
+                                let _ = self.tx.send(Request::Cover(t.art.clone()));
+                            }
+                        }
+                    }
                 }
+                Ok(Reply::Lyrics(l)) => self.lyrics = l,
+                Ok(Reply::Cover(c)) => self.cover = c,
                 Ok(Reply::Bands(b)) => self.bands = b,
                 Ok(Reply::Providers(p)) => self.providers = p,
                 Ok(Reply::List(src, items)) => {
@@ -532,6 +577,16 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
                     Err(e) => Reply::Error(e),
                 }
             }
+            Request::Lyrics => {
+                // Lyrics arrive a little after the song starts; ask twice.
+                let mut lines = fetch_lyrics();
+                if lines.is_empty() {
+                    std::thread::sleep(Duration::from_millis(2500));
+                    lines = fetch_lyrics();
+                }
+                Reply::Lyrics(lines)
+            }
+            Request::Cover(url) => Reply::Cover(fetch_cover(&url)),
             Request::Toggle => simple("toggle"),
             Request::Pause => simple("pause"),
             Request::Next => simple("next"),
@@ -546,6 +601,71 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
             return;
         }
     }
+}
+
+fn fetch_lyrics() -> Vec<(f64, String)> {
+    match call(json!({ "cmd": "lyrics" })) {
+        Ok(v) => v
+            .get("lyrics")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|l| {
+                        let start = l.get("start").and_then(Value::as_f64)?;
+                        let text = l.get("text").and_then(Value::as_str)?.trim().to_string();
+                        if text.is_empty() {
+                            return None;
+                        }
+                        Some((start, text))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Album art for the cassette label: downloaded once per URL into the cache,
+/// scaled by ffmpeg to a 96 px PNG (the launcher only decodes PNG).
+fn fetch_cover(url: &str) -> Option<PathBuf> {
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache"))
+        .join("omarchy-crt")
+        .join("music-art");
+    std::fs::create_dir_all(&cache).ok()?;
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in url.bytes() {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    let png = cache.join(format!("{hash:016x}.png"));
+    if !png.is_file() {
+        let raw = cache.join(format!("{hash:016x}.tmp"));
+        let ok = std::process::Command::new("curl")
+            .args(["-sL", "-m", "15", "-A", USER_AGENT, "-o"])
+            .arg(&raw)
+            .arg(url)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            return None;
+        }
+        let ok = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-i"])
+            .arg(&raw)
+            .args(["-vf", "scale=96:96:force_original_aspect_ratio=decrease", "-frames:v", "1"])
+            .arg(&png)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        let _ = std::fs::remove_file(&raw);
+        if !ok {
+            return None;
+        }
+    }
+    Some(png)
 }
 
 fn simple(cmd: &str) -> Reply {
