@@ -510,6 +510,11 @@ fn run(args: &Args) -> Result<(), String> {
                     if lines_changed {
                         crt_mode(None);
                         lines_changed = false;
+                        // Our own screens are 240 lines and the game's were
+                        // not: drawing them before the television has changed
+                        // back puts every row of text through a scaler, which
+                        // is what a menu full of smeared letters is.
+                        settle_mode(&mut canvas, &mut pump, fb.h as u32, &clock);
                     }
                     if args.fullscreen {
                         fit_output(canvas.window_mut());
@@ -917,14 +922,7 @@ fn run(args: &Args) -> Result<(), String> {
                 // We are a client of the same compositor, so our own window
                 // being resized is the signal that the mode has landed.
                 if let Some(want) = g.lines {
-                    let deadline = now() + 1.0;
-                    while now() < deadline {
-                        pump.pump_events();
-                        if canvas.output_size().map(|(_, h)| h == want).unwrap_or(true) {
-                            break;
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(16));
-                    }
+                    settle_mode(&mut canvas, &mut pump, want, &clock);
                 }
             }
             // The game must land on the tube whatever has focus: flag the
@@ -1259,6 +1257,29 @@ fn crt_mode(geometry: Option<Geometry>) -> bool {
 }
 
 /// Ask the CLI to put keyboard focus (and the CRT workspace) back on us.
+/// Wait until the tube is in a mode `want` lines tall, for up to a second.
+///
+/// Asking for a mode only sends the request: the compositor applies it a moment
+/// later and tells its clients afterwards. Anything that has to look right in
+/// the new mode, an emulator about to start or our own screens about to be
+/// drawn again, has to wait for it. We are a client of that compositor, so our
+/// own window being resized is the signal.
+fn settle_mode(
+    canvas: &mut sdl2::render::WindowCanvas,
+    pump: &mut sdl2::EventPump,
+    want: u32,
+    clock: &Instant,
+) {
+    let deadline = clock.elapsed().as_secs_f64() + 1.0;
+    while clock.elapsed().as_secs_f64() < deadline {
+        pump.pump_events();
+        if canvas.output_size().map(|(_, h)| h == want).unwrap_or(true) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(16));
+    }
+}
+
 /// Compositor side of a pause action: the launcher comes to the front over
 /// the paused game, resuming puts the game back in front. Both windows stay
 /// mapped and rendered throughout.
