@@ -8,10 +8,11 @@ import qs.Ui
 // The library overlay: a full screen surface over the desktop where the game
 // collection is managed. Sources (the folders the scan reads, disks that
 // look like collections), the systems with their games and cores (with an
-// install offer for a missing core), the BIOS files and where to import them
-// from, and the folders the scan could not place. Every button runs one
-// `omarchy-crt` command; long ones open a floating terminal so their
-// progress shows.
+// install offer for a missing core), the folders of the systems that read
+// one, the BIOS files and where to import them from, and the folders the
+// scan could not place. Every button runs one `omarchy-crt` command; the
+// scan runs here and shows the folder it reads, the few that need a
+// password open a floating terminal.
 //
 // An Omarchy shell plugin of kind `overlay`, its own id next to the bar
 // widget: the shell mounts it on `summon` and hands the payload to `open()`.
@@ -44,8 +45,14 @@ Item {
   property string errorMessage: ""
   property string newRoot: ""
   property var catalog: []
+  // The scan runs here rather than in a terminal: this is the folder it is
+  // reading now, and the summary it printed when it ended.
+  property string scanDir: ""
+  property string scanResult: ""
 
   readonly property var systems: (lib.systems || []).filter(function(s) { return !s.video })
+  // Systems that read one folder of their own instead of the index.
+  readonly property var folderSystems: (lib.systems || []).filter(function(s) { return s.dir && s.dir !== "index" })
   readonly property var roots: lib.roots || []
   readonly property var newDisks: discovered.filter(function(d) { return !d.root })
   readonly property var missingCores: cores.filter(function(c) { return !c.installed })
@@ -103,8 +110,20 @@ Item {
 
   function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
 
+  // The scan in the background, with the folder it reads shown as it goes.
   function scan(dir) {
-    root.inTerminal(root.helper + " library scan" + (dir ? " " + q(dir) : ""))
+    if (scanProc.running) return
+    root.errorMessage = ""
+    root.scanResult = ""
+    root.scanDir = dir || "every source"
+    scanProc.command = dir
+      ? [root.helper, "library", "scan", dir, "--progress"]
+      : [root.helper, "library", "scan", "--progress"]
+    scanProc.running = true
+  }
+
+  function stopScan() {
+    if (scanProc.running) scanProc.signal(15)
   }
 
   function installCore(c) {
@@ -179,6 +198,29 @@ Item {
         for (var d in dirs) out.push({ dir: d, files: dirs[d], system: "" })
         out.sort(function(a, b) { return b.files - a.files })
         root.unknownDirs = out.slice(0, 40)
+      }
+    }
+  }
+  Process {
+    id: scanProc
+    stdout: SplitParser {
+      onRead: function(line) {
+        var l = String(line || "").trim()
+        if (l.indexOf("scanning ") === 0) root.scanDir = l.substring(9)
+        else if (l) root.scanResult = l
+      }
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var e = String(text || "").trim()
+        if (e) root.errorMessage = e
+      }
+    }
+    onRunningChanged: {
+      if (!running) {
+        root.scanDir = ""
+        root.refresh()
       }
     }
   }
@@ -338,7 +380,11 @@ Item {
                       anchors.verticalCenter: parent.verticalCenter
                     }
                     Small { text: "looks like a collection"; width: Style.space(90); anchors.verticalCenter: parent.verticalCenter }
-                    Act { text: "Adopt and scan"; onClicked: root.scan(modelData.path) }
+                    Act {
+                      text: "Adopt and scan"
+                      enabled: !scanProc.running
+                      onClicked: root.scan(modelData.path)
+                    }
                   }
                 }
                 Row {
@@ -355,10 +401,14 @@ Item {
                   }
                   Act {
                     text: "Add folder and scan"
-                    enabled: root.newRoot.trim() !== "" && !actionProc.running
+                    enabled: root.newRoot.trim() !== "" && !actionProc.running && !scanProc.running
                     onClicked: root.scan(root.newRoot.trim())
                   }
-                  Act { text: "Rescan"; enabled: root.roots.length > 0 && !actionProc.running; onClicked: root.scan("") }
+                  Act {
+                    text: "Rescan"
+                    enabled: root.roots.length > 0 && !actionProc.running && !scanProc.running
+                    onClicked: root.scan("")
+                  }
                 }
               }
 
@@ -428,6 +478,49 @@ Item {
                       visible: modelData.core && modelData.unknown > 0
                       text: modelData.unknown + " file(s) with an unknown extension"
                       anchors.verticalCenter: parent.verticalCenter
+                    }
+                  }
+                }
+              }
+
+              // ---------------------------------------------- folder systems
+              Section {
+                visible: root.folderSystems.length > 0
+                title: "FOLDERS"
+                hint: "systems that read one folder of their own, films among them"
+                Repeater {
+                  model: root.folderSystems
+                  Row {
+                    id: dirRow
+                    required property var modelData
+                    property string edited: modelData.dir
+                    width: parent.width
+                    spacing: Style.space(8)
+                    Mono {
+                      text: modelData.label + "  " + modelData.name
+                      width: Style.space(250)
+                      color: modelData.exists ? root.fg : root.urgent
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Mono {
+                      text: String(modelData.games)
+                      width: Style.space(70)
+                      horizontalAlignment: Text.AlignRight
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+                    TextField {
+                      width: parent.width - Style.space(490)
+                      text: dirRow.edited
+                      foreground: modelData.exists ? root.fg : root.urgent
+                      font.family: root.mono
+                      onTextChanged: dirRow.edited = text
+                      onAccepted: if (dirRow.edited.trim()) root.act(["library", "set", modelData.name, "dir=" + dirRow.edited.trim()])
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Act {
+                      text: "Use this folder"
+                      enabled: dirRow.edited.trim() !== "" && dirRow.edited.trim() !== modelData.dir && !actionProc.running
+                      onClicked: root.act(["library", "set", modelData.name, "dir=" + dirRow.edited.trim()])
                     }
                   }
                 }
@@ -529,11 +622,14 @@ Item {
               spacing: Style.space(8)
               Act { text: "Doctor"; onClicked: root.inTerminal(root.helper + " doctor") }
               Act { text: "Refresh"; onClicked: root.refresh() }
+              Act { visible: scanProc.running; text: "Stop the scan"; onClicked: root.stopScan() }
               Text {
                 width: parent.width - Style.space(200)
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.busy !== "" ? ("omarchy-crt " + root.busy + " …")
-                    : (root.errorMessage !== "" ? root.errorMessage : root.note)
+                text: scanProc.running ? ("scanning  " + root.scanDir)
+                    : (root.busy !== "" ? ("omarchy-crt " + root.busy + " …")
+                    : (root.scanResult !== "" ? root.scanResult
+                    : (root.errorMessage !== "" ? root.errorMessage : root.note)))
                 color: root.errorMessage !== "" ? root.urgent : root.muted
                 font.family: root.mono
                 font.pixelSize: Style.font.caption

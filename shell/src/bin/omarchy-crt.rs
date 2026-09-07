@@ -886,15 +886,25 @@ fn cmd_library(args: &[String]) {
             }
             lc.save().unwrap_or_else(|e| die(&e.to_string()));
             let quiet = has(args, "--quiet");
+            // --progress: one plain line per folder on stdout, for a caller
+            // that shows the progress itself (the library overlay does).
+            let progress = has(args, "--progress");
             let started = std::time::Instant::now();
             let mut last = String::new();
             let ix = index::scan(&lc.roots, &lc.hints(), |dir| {
-                if !quiet && dir != last {
+                if dir == last {
+                    return;
+                }
+                last = dir.to_string();
+                if progress {
+                    println!("scanning {dir}");
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                } else if !quiet {
                     eprint!("\r\x1b[2K  {dir}");
-                    last = dir.to_string();
                 }
             });
-            if !quiet {
+            if !quiet && !progress {
                 eprint!("\r\x1b[2K");
             }
             ix.save().unwrap_or_else(|e| die(&e.to_string()));
