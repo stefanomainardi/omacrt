@@ -14,7 +14,7 @@ use crate::fb::{Color, Framebuffer, lerp_color, rgb};
 
 /// Effect ticks per second (TTE runs at 120 on the site).
 pub const TICK_HZ: f32 = 120.0;
-const ETCH_SPEED: usize = 1; // cells per etch step
+const ETCH_SPEED: usize = 2; // cells per etch step (twice the site: a boot screen, not a web page)
 const ETCH_DELAY: u32 = 1; // ticks between etch steps
 const SPAWN_TICKS: u32 = 3;
 const COOL_STEP_TICKS: u32 = 3;
@@ -189,6 +189,62 @@ impl LaserEtch {
             }
         }
         order
+    }
+
+    /// A quiet soundtrack for the etch, generated from this run's order so it
+    /// follows the picture: a soft high hiss while the laser works, one tiny
+    /// crackle per cut cell with a pitch that rises toward the top rows, and a
+    /// little more sizzle when the beam jumps far (a new branch of the walk).
+    pub fn synth(&self, rate: u32) -> Vec<f32> {
+        let step = (ETCH_DELAY + 1) as f32 / TICK_HZ;
+        let total = (self.order.len() / ETCH_SPEED) as f32 * step + 0.4;
+        let n = (total * rate as f32) as usize;
+        let mut out = vec![0.0f32; n];
+        let sr = rate as f32;
+        let tau = std::f32::consts::TAU;
+        let mut noise = 0x1234_5679u32 ^ self.rng;
+        let mut rnd = || {
+            noise ^= noise << 13;
+            noise ^= noise >> 17;
+            noise ^= noise << 5;
+            (noise >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
+        };
+        // Hiss: band-passed noise, fading in and out with the work.
+        let (mut lo, mut hi) = (0.0f32, 0.0f32);
+        let a_hi = 1.0 / (1.0 + sr / (tau * 6000.0));
+        let a_lo = 1.0 / (1.0 + sr / (tau * 2500.0));
+        let work = (self.order.len() / ETCH_SPEED) as f32 * step;
+        for (i, s) in out.iter_mut().enumerate() {
+            let t = i as f32 / sr;
+            let w = rnd();
+            hi += a_hi * (w - hi);
+            lo += a_lo * (w - lo);
+            let env = (t / 0.3).min(1.0) * (1.0 - ((t - work) / 0.35).clamp(0.0, 1.0));
+            *s = (hi - lo) * 0.05 * env;
+        }
+        // Crackles: one per cell.
+        let mut prev: Option<(i32, i32)> = None;
+        for (k, &idx) in self.order.iter().enumerate() {
+            let cell = &self.cells[idx];
+            let at = (k / ETCH_SPEED) as f32 * step;
+            let start = (at * sr) as usize;
+            let jump = prev
+                .map(|(c, r)| ((cell.col - c).abs() + (cell.row - r).abs()) > 2)
+                .unwrap_or(false);
+            prev = Some((cell.col, cell.row));
+            let f = 1800.0 + (self.rows - 1 - cell.row) as f32 / (self.rows - 1) as f32 * 2200.0;
+            let len = if jump { 0.03 } else { 0.012 };
+            let gain = if jump { 0.06 } else { 0.035 };
+            for j in 0..(len * sr) as usize {
+                let d = j as f32 / sr;
+                let v = (tau * f * d).sin() * (-d * (6.0 / len)).exp() * gain
+                    + rnd() * (-d * (8.0 / len)).exp() * gain * 0.5;
+                if let Some(o) = out.get_mut(start + j) {
+                    *o += v;
+                }
+            }
+        }
+        out
     }
 
     pub fn total_cells(&self) -> usize {

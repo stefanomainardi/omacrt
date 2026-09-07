@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Build omarchy-crt from this checkout and install it for the current user:
+# the launcher and the CLI into ~/.local/bin, the Omarchy bar plugin into
+# ~/.config/omarchy/plugins. Re-run after pulling to update everything.
+#
+#   bin/omarchy-crt-install            build and install
+#   bin/omarchy-crt-install --no-build install the binaries already built
+#   sudo bin/omarchy-crt-install --system
+#                                      one-time root part: mark the DAC's
+#                                      connector non-desktop at every boot so
+#                                      omarchy-crt can lease it (see docs/plan.md,
+#                                      phase A3); the connector name comes from
+#                                      OMARCHY_CRT_CONNECTOR (default HDMI-A-1)
+set -euo pipefail
+
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+plugin_id="io.github.stefanomainardi.omarchy-crt"
+library_id="${plugin_id}.library"
+bin_dir="${HOME}/.local/bin"
+plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
+library_dir="${HOME}/.config/omarchy/plugins/${library_id}"
+build=1
+for arg in "$@"; do
+  case "$arg" in
+    --system)
+      [ "$(id -u)" = 0 ] || { echo "--system needs root: sudo $0 --system" >&2; exit 1; }
+      conn="${OMARCHY_CRT_CONNECTOR:-HDMI-A-1}"
+      echo "== installing the lease setup for $conn (root)"
+      install -d -m 755 /usr/local/lib/omarchy-crt
+      install -m 755 "$repo/scripts/crt-lease-setup.sh" "$repo/scripts/edid-non-desktop.py" /usr/local/lib/omarchy-crt/
+      sed "s/^Environment=OMARCHY_CRT_CONNECTOR=.*/Environment=OMARCHY_CRT_CONNECTOR=$conn/" "$repo/systemd/omarchy-crt-lease.service" > /etc/systemd/system/omarchy-crt-lease.service
+      systemctl daemon-reload
+      systemctl enable --now omarchy-crt-lease.service
+      systemctl --no-pager --lines=3 status omarchy-crt-lease.service || true
+      echo "done: $conn is handed to omarchy-crt at boot (reverse: systemctl disable --now omarchy-crt-lease.service)"
+      exit 0
+      ;;
+    --no-build) build=0 ;;
+    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
+    *) echo "unknown option $arg" >&2; exit 1 ;;
+  esac
+done
+
+if [ "$build" = 1 ]; then
+  echo "== building (cargo build --release)"
+  (cd "$repo/shell" && cargo build --release)
+fi
+
+for b in omarchy-crt omarchy-crt-shell omarchy-crt-display; do
+  [ -x "$repo/shell/target/release/$b" ] || { echo "missing $repo/shell/target/release/$b" >&2; exit 1; }
+done
+
+echo "== installing binaries into $bin_dir"
+mkdir -p "$bin_dir"
+install -m 755 "$repo/shell/target/release/omarchy-crt" "$bin_dir/omarchy-crt"
+install -m 755 "$repo/shell/target/release/omarchy-crt-shell" "$bin_dir/omarchy-crt-shell"
+install -m 755 "$repo/shell/target/release/omarchy-crt-display" "$bin_dir/omarchy-crt-display"
+case ":$PATH:" in
+  *":$bin_dir:"*) ;;
+  *) echo "note: $bin_dir is not in PATH" ;;
+esac
+
+# The shell watches its plugin folders and reloads plugin code on any file
+# change; under the lock screen that reload aborts Quickshell (its lock plugin
+# re-creates surfaces without an active lock). Plugin files wait for an
+# unlocked desktop; the binaries in ~/.local/bin are in place already.
+if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
+  echo "note: the session is locked; run this again unlocked to update the bar plugin"
+  "$bin_dir/omarchy-crt" status || true
+  exit 0
+fi
+
+echo "== installing plugin into $plugin_dir"
+# Overwrite in place: removing the folder makes the shell drop the plugin
+# for a moment and the bar widget vanishes; changed files hot reload instead.
+mkdir -p "$plugin_dir/bin"
+for f in "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$repo/plugin/README.md"; do
+  [ -f "$f" ] && install -m 644 "$f" "$plugin_dir/$(basename "$f")"
+done
+install -m 755 "$repo/shell/target/release/omarchy-crt" "$plugin_dir/bin/omarchy-crt"
+
+# The library overlay is a second plugin (kind overlay) the panel summons.
+echo "== installing the library overlay into $library_dir"
+mkdir -p "$library_dir"
+for f in "$repo/plugin/library/manifest.json" "$repo/plugin/library/"*.qml; do
+  [ -f "$f" ] && install -m 644 "$f" "$library_dir/$(basename "$f")"
+done
+
+# Hot reloading plugin code while the session is locked makes the shell's
+# lock plugin re-create its surfaces without an active lock, which Quickshell
+# treats as fatal: the shell crashes and restarts on top of the lock screen.
+# The files are in place already; the reload waits for an unlocked desktop.
+if command -v omarchy >/dev/null 2>&1; then
+  omarchy plugin validate "$plugin_dir"
+  omarchy plugin validate "$library_dir"
+  if ! omarchy plugin list --json 2>/dev/null | grep -q "\"$library_id\""; then
+    omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  fi
+  enabled() {  # $1 = plugin id; true when listed and enabled
+    omarchy plugin list --json 2>/dev/null | python3 -c '
+import json,sys
+pl=[p for p in json.load(sys.stdin) if p.get("id")==sys.argv[1]]
+sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
+  }
+  enabled "$plugin_id" || omarchy plugin enable "$plugin_id" right
+  enabled "$library_id" || omarchy plugin enable "$library_id"
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+fi
+
+"$bin_dir/omarchy-crt" status || true
+echo "done. Try: omarchy-crt on"

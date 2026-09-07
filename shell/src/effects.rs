@@ -30,29 +30,6 @@ pub struct Grid {
     pub cells: Vec<Cell>,
 }
 
-/// Turn 1-bit pixel art (`#` = on) into block-character text: every pair of
-/// pixel rows becomes one text row made of `█`, `▀`, `▄` and spaces.
-pub fn art_to_blocks(rows: &[&str]) -> String {
-    let w = rows.iter().map(|r| r.len()).max().unwrap_or(0);
-    let mut out = String::new();
-    for pair in rows.chunks(2) {
-        let up = pair[0].as_bytes();
-        let down = pair.get(1).map(|r| r.as_bytes()).unwrap_or(&[]);
-        for x in 0..w {
-            let u = up.get(x) == Some(&b'#');
-            let d = down.get(x) == Some(&b'#');
-            out.push(match (u, d) {
-                (true, true) => '█',
-                (true, false) => '▀',
-                (false, true) => '▄',
-                _ => ' ',
-            });
-        }
-        out.push('\n');
-    }
-    out
-}
-
 impl Grid {
     /// `stops` runs bottom to top.
     pub fn wordmark(stops: [Color; 3]) -> Self {
@@ -336,7 +313,7 @@ impl Effect {
     /// Seconds after which the picture is complete.
     pub fn length(&self) -> f32 {
         match self {
-            Effect::Etch(e) => e.total_cells() as f32 / 60.0 + 0.6,
+            Effect::Etch(e) => e.total_cells() as f32 / 120.0 + 0.6,
             Effect::Vhs { total, .. } => *total,
             Effect::Planned { length, .. } => *length,
         }

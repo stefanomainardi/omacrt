@@ -32,54 +32,70 @@ Options:
 | `--auto-boot`                              | start the boot sequence immediately                                           |
 | `--theme PATH`                             | alternative `colors.toml`                                                     |
 | `--menu PATH`                              | alternative `menu.toml`                                                       |
+| `--systems PATH`                           | alternative `systems.toml`                                                    |
+| `--browse [SYSTEM]`                        | boot straight into the game browser                                           |
+| `--idle SECONDS`                           | screensaver after this idle time, default 60, 0 disables                      |
+| `--screensaver [NAME]`                     | start in the screensaver, optionally with one effect                          |
 | `--headless --dump 1.0,4.5 --dump-dir DIR` | render frames to PPM without a window                                         |
 
-Controls: arrows or `hjkl` move, `Enter` or `Space` select, `Esc` or `q` quit.
-Game controllers work through SDL: d-pad moves, `A` or `Start` selects.
+Controls: arrows or `hjkl` move, `Enter` or `Space` select (and skip the boot
+sequence while it plays), `Esc` or `Backspace` go back, `F` stars a game, `q`
+quits. Game controllers work through
+SDL: d-pad or left stick moves, `A` or `Start` selects, `B` goes back, `Y`
+stars a game. Extra pad mappings load from
+`~/.config/omarchy-crt/gamecontrollerdb.txt`. See
+[`../docs/input.md`](../docs/input.md).
 
 ## Menu
 
-`~/.config/omarchy-crt/menu.toml`:
+Home: Games, Favorites, Recent, Settings, About, Power. Settings opens the TV
+profile, pad pairing, screensaver options and a diagnostics page (kernel, GPU,
+connectors, RetroArch version, cores, switching flag, pad). Power off needs a
+second press within three seconds. Screensaver options live in
+`~/.config/omarchy-crt/settings.toml`:
 
 ```toml
-[[item]]
-name = "retroarch/"
-command = "retroarch"
+[screensaver]
+enabled = true
+idle_secs = 60
+effect = "random" # or laseretch, rain, beams, burn, slide, decrypt, expand, unstable, vhstape
 
-[[item]]
-name = "mame/"
-command = "groovymame"
-
-[[item]]
-name = "desktop/"
-quit = true
-
-[[item]]
-name = "poweroff"
-command = "systemctl poweroff"
+# Theme directory name from ~/.local/share/omarchy/themes, or "system".
+theme = "system"
 ```
 
-Items without a command show a message; `quit = true` exits the shell.
+## Games
+
+`~/.config/omarchy-crt/systems.toml` lists the systems: ROM directory, libretro
+core, extensions and a video policy (`super`, `native` or a pinned `WxH`). The
+shell writes `retroarch.cfg` once (menu and notifications off, save state on
+exit, resume on start) and a `launch.cfg` per game with the policy keys, then
+runs `retroarch --config ... --appendconfig ... -L core rom` and waits. Core
+options go to `cores.cfg`, the TV profile to `profile.toml` and
+`switchres.ini`. See [`../docs/systems.md`](../docs/systems.md) and
+[`../docs/video-policy.md`](../docs/video-policy.md).
 
 ## Sound
 
 Every sound is synthesized at startup: a switch clunk with a degauss thump, HDD
-seek clicks during the POST, a systems-online chord with tape echo, and short
-square-wave beeps for navigation.
+seek clicks during the POST, a systems-online chord with tape echo, the CRT tag
+reveal (beam whine, arpeggio, stamp) and short square-wave beeps for
+navigation. `--dump-audio DIR` writes them all as WAV files.
 
 ## Timeline
 
 Seconds after START:
 
-| Time         | Event                                                   |
-| ------------ | ------------------------------------------------------- |
-| 0.0 to 0.55  | power surge, vertical roll                              |
-| 0.45         | POST lines, one every 0.18 s, memory count to 65536K    |
-| 1.75 to 2.03 | POST fades, second roll at 1.92                         |
-| 2.2 to 3.65  | logo revealed in bands with a scanning beam             |
-| 4.0          | chime, logo moves up                                    |
-| 4.2 to 6.6   | wordmark etched left to right with sparks               |
-| 6.9 to 7.45  | everything settles, listing fades in, menu becomes live |
+| Time         | Event                                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| 0.0 to 0.55  | power surge, vertical roll                                                                          |
+| 0.45         | POST lines, one every 0.18 s, memory count to 65536K                                                |
+| 1.75 to 2.03 | POST fades, second roll at 1.92                                                                     |
+| 2.2 to 3.65  | logo revealed in bands with a scanning beam                                                         |
+| 4.0          | chime, logo moves up                                                                                |
+| 4.2 to 6.6   | wordmark etched left to right with sparks                                                           |
+| 6.9 to 9.7   | icon and wordmark settle; Mode 7 show: floor, spinning letters, slam at 8.3, flight, landing at 9.5 |
+| 9.6 to 10.1  | listing fades in, prompt is typed, menu becomes live                                                |
 
 ## Credits
 

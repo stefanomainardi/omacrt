@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.stefanomainardi.omarchy-crt",
+  "name": "Omarchy CRT",
+  "version": "0.1.0",
+  "author": "Stefano Mainardi",
+  "license": "MIT",
+  "homepage": "https://github.com/stefanomainardi/omarchy-crt",
+  "description": "Drive a 15 kHz CRT television from the Omarchy bar: power the tube on and off, NTSC or PAL, DAC sync, audio to the TV, launcher focus, library and BIOS health.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "Omarchy CRT",
+    "description": "15 kHz CRT output: power, standard, DAC, audio, launcher",
+    "category": "Hardware",
+    "aliases": ["crt", "retro", "retroarch", "15khz", "scart", "rgb-pi", "tube"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 5,
+      "hideWhenAbsent": false
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 2,
+        "max": 60,
+        "step": 1,
+        "defaultValue": 5,
+        "description": "How often the bar icon re-reads the CRT status. The panel refreshes every 2 seconds while open."
+      },
+      {
+        "key": "hideWhenAbsent",
+        "type": "boolean",
+        "label": "Hide when no DAC is connected",
+        "defaultValue": false,
+        "description": "Hide the bar icon while no CRT DAC is plugged into an HDMI output."
+      }
+    ]
+  }
+}

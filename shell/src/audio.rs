@@ -13,13 +13,22 @@ pub enum Sound {
     Chime,
     Move,
     Select,
-    Vhs,
+    TagReveal,
     Lock,
+    Whoosh,
+    Insert,
+    Click,
+    /// Radio static between two stations.
+    Static,
 }
 
 struct Voice {
     data: Arc<Vec<f32>>,
     pos: usize,
+    looping: bool,
+    gain: f32,
+    /// Target gain; the mixer ramps toward it (fade in and out).
+    target: f32,
 }
 
 pub struct Mixer {
@@ -34,13 +43,20 @@ impl AudioCallback for Mixer {
         for v in voices.iter_mut() {
             for sample in out.iter_mut() {
                 if v.pos >= v.data.len() {
-                    break;
+                    if v.looping && !v.data.is_empty() {
+                        v.pos = 0;
+                    } else {
+                        break;
+                    }
                 }
-                *sample += v.data[v.pos];
+                v.gain += (v.target - v.gain) * 0.0004;
+                *sample += v.data[v.pos] * v.gain;
                 v.pos += 1;
             }
         }
-        voices.retain(|v| v.pos < v.data.len());
+        voices.retain(|v| {
+            (v.pos < v.data.len() || v.looping) && !(v.target == 0.0 && v.gain < 0.002)
+        });
         for s in out.iter_mut() {
             *s = s.clamp(-1.0, 1.0);
         }
@@ -72,15 +88,10 @@ impl Audio {
         let cb_voices = voices.clone();
         let device = subsystem.open_playback(None, &spec, move |_| Mixer { voices: cb_voices })?;
         device.resume();
-        let bank = vec![
-            (Sound::PowerOn, Arc::new(synth_power_on())),
-            (Sound::Crunch, Arc::new(synth_crunch())),
-            (Sound::Chime, Arc::new(synth_chime())),
-            (Sound::Move, Arc::new(synth_beep(880.0, 0.025, 0.035))),
-            (Sound::Select, Arc::new(synth_beep(1320.0, 0.06, 0.04))),
-            (Sound::Vhs, Arc::new(synth_vhs())),
-            (Sound::Lock, Arc::new(synth_beep(2200.0, 0.02, 0.05))),
-        ];
+        let bank = render_bank()
+            .into_iter()
+            .map(|(k, v)| (k, Arc::new(v)))
+            .collect();
         Ok(Self {
             _device: Some(device),
             voices,
@@ -88,14 +99,70 @@ impl Audio {
         })
     }
 
+    /// Play a buffer generated at runtime (the laser etch follows a random walk).
+    pub fn play_samples(&self, data: Vec<f32>) {
+        if self._device.is_none() {
+            return;
+        }
+        self.voices.lock().unwrap().push(Voice {
+            data: Arc::new(data),
+            pos: 0,
+            looping: false,
+            gain: 1.0,
+            target: 1.0,
+        });
+    }
+
     pub fn play(&self, s: Sound) {
         if let Some((_, data)) = self.bank.iter().find(|(k, _)| *k == s) {
             self.voices.lock().unwrap().push(Voice {
                 data: data.clone(),
                 pos: 0,
+                looping: false,
+                gain: 1.0,
+                target: 1.0,
             });
         }
     }
+}
+
+/// Every sound the shell uses, rendered to samples.
+pub fn render_bank() -> Vec<(Sound, Vec<f32>)> {
+    vec![
+        (Sound::PowerOn, synth_power_on()),
+        (Sound::Crunch, synth_crunch()),
+        (Sound::Chime, synth_chime()),
+        (Sound::Move, synth_beep(880.0, 0.025, 0.035)),
+        (Sound::Select, synth_beep(1320.0, 0.06, 0.04)),
+        (Sound::TagReveal, crate::crt_tag::synth(RATE)),
+        (Sound::Lock, synth_beep(2200.0, 0.02, 0.05)),
+        (Sound::Whoosh, synth_whoosh()),
+        (Sound::Insert, synth_insert()),
+        (Sound::Click, synth_click()),
+        (Sound::Static, synth_static()),
+    ]
+}
+
+/// Write one sound as a 16 bit mono WAV, for listening outside the shell.
+pub fn write_wav(path: &std::path::Path, data: &[f32]) -> std::io::Result<()> {
+    let mut out = Vec::with_capacity(44 + data.len() * 2);
+    let bytes = (data.len() * 2) as u32;
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + bytes).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&RATE.to_le_bytes());
+    out.extend_from_slice(&(RATE * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&bytes.to_le_bytes());
+    for s in data {
+        out.extend_from_slice(&((s.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
+    }
+    std::fs::write(path, out)
 }
 
 fn seconds(n: f32) -> usize {
@@ -244,32 +311,85 @@ fn synth_beep(freq: f32, dur: f32, gain: f32) -> Vec<f32> {
     out
 }
 
-/// Tape hunting for sync: mains buzz, head-switching ticks and hiss, dying out.
-fn synth_vhs() -> Vec<f32> {
-    let n = seconds(1.8);
+/// Short filtered noise sweep for a submenu opening.
+fn synth_whoosh() -> Vec<f32> {
+    let n = seconds(0.14);
     let mut out = vec![0.0; n];
-    let mut rng = Lcg(19);
+    let mut rng = Lcg(21);
+    let mut lp = 0.0f32;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let p = t / 0.14;
+        let cut = 600.0 + 3400.0 * (1.0 - p);
+        let a = 1.0 / (1.0 + RATE as f32 / (2.0 * std::f32::consts::PI * cut));
+        lp += a * (rng.next() - lp);
+        let env = (p * std::f32::consts::PI).sin();
+        *s = lp * env * 0.12;
+    }
+    out
+}
+
+/// A cartridge sliding home: plastic scrape, then a firm click.
+fn synth_insert() -> Vec<f32> {
+    let n = seconds(0.55);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(33);
+    let mut lp = 0.0f32;
     let tau = 2.0 * std::f32::consts::PI;
     for (i, s) in out.iter_mut().enumerate() {
         let t = i as f32 / RATE as f32;
-        let env = if t < 1.1 {
-            1.0
-        } else {
-            (-(t - 1.1) * 6.0).exp()
-        };
-        let saw = 2.0 * ((t * 50.0).fract()) - 1.0;
-        let buzz = saw * 0.25 + (tau * 100.0 * t).sin() * 0.08;
-        let tick = if (t * 60.0).fract() < 0.004 {
-            rng.next() * 0.9
+        // Scrape while sliding (0 to 0.4 s), band-limited noise with a slow swell.
+        let a = 1.0 / (1.0 + RATE as f32 / (tau * 1400.0));
+        lp += a * (rng.next() - lp);
+        let slide = if t < 0.4 {
+            (t / 0.4 * std::f32::consts::PI).sin() * 0.05
         } else {
             0.0
         };
-        let hiss = rng.next() * 0.12 * (0.6 + 0.4 * (tau * 7.0 * t).sin());
-        *s = (buzz + tick + hiss) * env;
+        let mut v = lp * slide;
+        // Click at 0.42 s: two short resonances.
+        let d = t - 0.42;
+        if d >= 0.0 {
+            v += (tau * 900.0 * d).sin() * (-d * 90.0).exp() * 0.35;
+            v += (tau * 2400.0 * d).sin() * (-d * 140.0).exp() * 0.2;
+            v += rng.next() * (-d * 300.0).exp() * 0.2;
+        }
+        *s = v;
     }
-    lowpass(&mut out[..], 3500.0);
-    for s in out.iter_mut() {
-        *s *= 0.22;
+    out
+}
+
+/// Between two stations: hiss that swells and cuts as the tuner locks.
+fn synth_static() -> Vec<f32> {
+    let n = seconds(0.7);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(77);
+    let mut lp = 0.0f32;
+    let tau = 2.0 * std::f32::consts::PI;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let p = t / 0.7;
+        let cut = 900.0 + 2600.0 * (0.5 + 0.5 * (p * 9.0).sin());
+        let a = 1.0 / (1.0 + RATE as f32 / (tau * cut));
+        lp += a * (rng.next() - lp);
+        let env = if p < 0.85 {
+            (p * std::f32::consts::PI / 0.85).sin().powf(0.6)
+        } else {
+            0.0
+        };
+        *s = lp * env * 0.16;
+    }
+    out
+}
+
+/// Tiny mechanical click for typewriter text.
+fn synth_click() -> Vec<f32> {
+    let n = seconds(0.008);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(5);
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        *s = rng.next() * (-t * 900.0).exp() * 0.12;
     }
     out
 }

@@ -1,0 +1,17 @@
+[Unit]
+Description=Omarchy CRT: hand the CRT DAC connector to omarchy-crt (non-desktop EDID override)
+Documentation=https://github.com/stefanomainardi/omarchy-crt
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+Before=display-manager.service
+ConditionPathExists=/sys/kernel/debug
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=OMARCHY_CRT_CONNECTOR=HDMI-A-1
+ExecStart=/usr/local/lib/omarchy-crt/crt-lease-setup.sh on ${OMARCHY_CRT_CONNECTOR}
+ExecStop=/usr/local/lib/omarchy-crt/crt-lease-setup.sh off ${OMARCHY_CRT_CONNECTOR}
+
+[Install]
+WantedBy=multi-user.target

@@ -12,6 +12,7 @@ pub struct Theme {
     pub dim: Color,
     pub paper: Color,
     pub accent: Color,
+    pub selection: Color,
     pub green: Color,
     pub bright_green: Color,
     pub cyan: Color,
@@ -23,6 +24,11 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// A step above the background, for the dark squares of the Mode 7 floor.
+    pub fn fg_dark_floor(&self) -> Color {
+        crate::fb::lerp_color(self.bg, self.dim, 0.28)
+    }
+
     pub fn tokyo_night() -> Self {
         Self {
             name: "tokyo-night".into(),
@@ -31,6 +37,7 @@ impl Theme {
             dim: rgb(0x56, 0x5f, 0x89),
             paper: rgb(0xc0, 0xca, 0xf5),
             accent: rgb(0x7a, 0xa2, 0xf7),
+            selection: rgb(0x29, 0x2e, 0x42),
             green: rgb(0x9e, 0xce, 0x6a),
             bright_green: rgb(0xb9, 0xf2, 0x7c),
             cyan: rgb(0x7d, 0xcf, 0xff),
@@ -45,6 +52,64 @@ impl Theme {
     pub fn default_path() -> Option<PathBuf> {
         let home = std::env::var_os("HOME")?;
         Some(Path::new(&home).join(".config/omarchy/current/colors.toml"))
+    }
+
+    /// Every installed Omarchy theme: (name, colors.toml path), sorted.
+    pub fn installed() -> Vec<(String, PathBuf)> {
+        let home = match std::env::var_os("HOME") {
+            Some(h) => PathBuf::from(h),
+            None => return Vec::new(),
+        };
+        let dir = home.join(".local/share/omarchy/themes");
+        let mut out: Vec<(String, PathBuf)> = std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .filter(|p| p.join("colors.toml").exists())
+                    .map(|p| {
+                        (
+                            p.file_name().unwrap().to_string_lossy().into_owned(),
+                            p.join("colors.toml"),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.sort();
+        out
+    }
+
+    /// Load a specific theme directory's colors under its own name.
+    pub fn load_named(path: &Path, name: &str) -> Option<Self> {
+        let mut t = Self::load(path)?;
+        t.name = name.to_string();
+        Some(t)
+    }
+
+    /// Linear blend between two themes, for live switching.
+    pub fn blend(a: &Self, b: &Self, t: f32) -> Self {
+        let l = |x: Color, y: Color| crate::fb::lerp_color(x, y, t);
+        Self {
+            name: if t < 0.5 {
+                a.name.clone()
+            } else {
+                b.name.clone()
+            },
+            bg: l(a.bg, b.bg),
+            fg: l(a.fg, b.fg),
+            dim: l(a.dim, b.dim),
+            paper: l(a.paper, b.paper),
+            accent: l(a.accent, b.accent),
+            selection: l(a.selection, b.selection),
+            green: l(a.green, b.green),
+            bright_green: l(a.bright_green, b.bright_green),
+            cyan: l(a.cyan, b.cyan),
+            blue: l(a.blue, b.blue),
+            magenta: l(a.magenta, b.magenta),
+            yellow: l(a.yellow, b.yellow),
+            orange: l(a.orange, b.orange),
+            red: l(a.red, b.red),
+        }
     }
 
     pub fn load(path: &Path) -> Option<Self> {
@@ -70,6 +135,7 @@ impl Theme {
             dim: get("dark_foreground", base.dim),
             paper: get("bright_foreground", base.paper),
             accent: get("accent", base.accent),
+            selection: get("selection", base.selection),
             green: get("green", base.green),
             bright_green: get("bright_green", base.bright_green),
             cyan: get("bright_cyan", base.cyan),
