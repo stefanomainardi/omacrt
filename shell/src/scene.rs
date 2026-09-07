@@ -231,7 +231,7 @@ const VIDEOS_ROWS: usize = 3;
 /// Country codes the radio row cycles through; empty follows the locale.
 const COUNTRIES: [&str; 10] = ["", "IT", "US", "GB", "DE", "FR", "ES", "PT", "JP", "BR"];
 
-const FIT_ROWS: usize = 5;
+const FIT_ROWS: usize = 6;
 
 /// A game being launched: the media animation plays, then RetroArch starts.
 struct Launch {
@@ -253,6 +253,10 @@ pub struct Geometry {
     pub lines: Option<u32>,
     pub shift_x: i32,
     pub shift_y: i32,
+    /// Whether to follow the resolution the core reports while it runs. A
+    /// pinned frame is a deliberate choice for the whole session, so a core
+    /// that changes its mind about its own size is scaled into it instead.
+    pub follow: bool,
 }
 
 const LAUNCH_SECS: f32 = 1.15;
@@ -772,6 +776,11 @@ impl Scene {
     }
 
     /// The RetroArch command once the launch animation has run its course.
+    /// Whether the desktop preview window should stay up while a game runs.
+    pub fn keep_preview_in_games(&self) -> bool {
+        self.settings.video.monitor_in_games
+    }
+
     pub fn take_launch(&mut self) -> Option<(std::process::Command, String, Option<Geometry>)> {
         let l = self.launching.as_mut()?;
         if l.spawned || ((self.now - l.started) as f32) < LAUNCH_SECS - 0.2 {
@@ -961,6 +970,7 @@ impl Scene {
             2 => v.aspect = cycle(&v.aspect, &["letterbox", "crop", "anamorphic"], dir),
             3 => v.overscan = !v.overscan,
             4 => v.retro_240p = !v.retro_240p,
+            5 => v.monitor_in_games = !v.monitor_in_games,
             _ => {}
         }
     }
@@ -1361,6 +1371,30 @@ impl Scene {
         }
     }
 
+    /// Take a freshly read library, after a scan has changed what is on disk.
+    ///
+    /// The library and its index are read once at start, because reading them
+    /// every frame would mean touching a disk sixty times a second. That
+    /// leaves the launcher showing yesterday's collection when a scan runs
+    /// from the desktop overlay, which is exactly when somebody is looking at
+    /// the numbers to see whether it worked.
+    pub fn replace_library(&mut self, library: Library) {
+        self.library = library;
+        self.refresh_counts();
+        // Whatever list is open was built from the old library.
+        if let Screen::Games { sys, .. } = self.screen {
+            let all = match sys {
+                Some(i) if i < self.library.systems.len() => self.entries_for(i),
+                Some(_) => Vec::new(),
+                None => (0..self.library.systems.len())
+                    .filter(|&i| !self.library.systems[i].is_video())
+                    .flat_map(|i| self.entries_for(i))
+                    .collect(),
+            };
+            self.set_games(all);
+        }
+    }
+
     /// Counts for the systems screen, computed once per library read so the
     /// screen never rescans folders while drawing.
     fn refresh_counts(&mut self) {
@@ -1650,6 +1684,33 @@ impl Scene {
             self.music_view_step(dir);
             return;
         }
+        // The list of consoles has no letters worth jumping between, so the
+        // shoulders move it a page at a time, which is what they are for on
+        // every other screen.
+        if let Screen::Systems { sel, top } = &mut self.screen {
+            let rows = Self::VIRTUAL
+                + self
+                    .library
+                    .systems
+                    .iter()
+                    .filter(|s| !s.is_video())
+                    .count();
+            if rows == 0 {
+                return;
+            }
+            let step = SYS_PAGE as i32 - 1;
+            let next = (*sel as i32 + dir.signum() * step).clamp(0, rows as i32 - 1) as usize;
+            if next == *sel {
+                return;
+            }
+            *sel = next;
+            *top = next.saturating_sub(SYS_PAGE - 1).min(next);
+            if next < *top {
+                *top = next;
+            }
+            self.pending.push(Sound::Move);
+            return;
+        }
         let Screen::Games { sel, .. } = self.screen else {
             return;
         };
@@ -1749,8 +1810,31 @@ impl Scene {
     }
 
     /// Rows of the systems screen: recent/, favorites/, then every system.
+    /// Systems the Games browser lists: everything but the videos folder,
+    /// which is not a console and has its own row on the home menu.
+    fn browse_systems(&self) -> Vec<usize> {
+        (0..self.library.systems.len())
+            .filter(|&i| !self.library.systems[i].is_video())
+            .collect()
+    }
+
+    /// The system a row of the browser stands for.
+    fn system_at_row(&self, row: usize) -> Option<usize> {
+        let n = row.checked_sub(Self::VIRTUAL)?;
+        self.browse_systems().get(n).copied()
+    }
+
+    /// The row a system sits on, for coming back to the list on it.
+    fn row_of_system(&self, sys: usize) -> usize {
+        self.browse_systems()
+            .iter()
+            .position(|&i| i == sys)
+            .map(|n| n + Self::VIRTUAL)
+            .unwrap_or(self.virtual_row)
+    }
+
     fn system_rows(&self) -> usize {
-        Self::VIRTUAL + self.library.systems.len()
+        Self::VIRTUAL + self.browse_systems().len()
     }
 
     fn navigate_browser(&mut self, nav: Nav) {
@@ -1897,7 +1981,7 @@ impl Scene {
                             return;
                         }
                         let row = match self.screen {
-                            Screen::Games { sys: Some(i), .. } => i + Self::VIRTUAL,
+                            Screen::Games { sys: Some(i), .. } => self.row_of_system(i),
                             _ => self.virtual_row,
                         };
                         self.screen = Screen::Systems {
@@ -2684,7 +2768,10 @@ impl Scene {
                         self.open_virtual(&list);
                     }
                     2 => self.go(Screen::Collections { sel: 0, top: 0 }),
-                    i => self.open_games(Some(i - Self::VIRTUAL)),
+                    i => match self.system_at_row(i) {
+                        Some(sys) => self.open_games(Some(sys)),
+                        None => return Action::None,
+                    },
                 }
                 Action::None
             }
@@ -3037,7 +3124,12 @@ impl Scene {
                     }
                 }
                 keys.push_str(&format!(
-                    "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\nvideo_windowed_position_width = \"{w}\"\nvideo_windowed_position_height = \"{h}\"\nvideo_window_auto_width_max = \"{w}\"\nvideo_window_auto_height_max = \"{h}\"\n",
+                    // `video_fullscreen_x/y` as well as the viewport: it is
+                    // the size the emulator lays its picture out for, and
+                    // without it a mode change that lands late leaves the game
+                    // in a column in the middle of a frame it thinks is
+                    // smaller than it is.
+                    "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\nvideo_fullscreen_x = \"{w}\"\nvideo_fullscreen_y = \"{h}\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\nvideo_windowed_position_width = \"{w}\"\nvideo_windowed_position_height = \"{h}\"\nvideo_window_auto_width_max = \"{w}\"\nvideo_window_auto_height_max = \"{h}\"\n",
                     w as f32 / h as f32
                 ));
             }
@@ -3058,6 +3150,7 @@ impl Scene {
                     lines: l,
                     shift_x: system.shift_x,
                     shift_y: system.shift_y,
+                    follow: pinned.is_none(),
                 })
             } else {
                 None
@@ -3545,12 +3638,18 @@ impl Scene {
             Screen::Systems { sel, top } => {
                 let y0 = self.draw_header(fb, "Games");
                 let ox = self.slide();
-                let systems = self.library.systems.clone();
+                let browse = self.browse_systems();
+                let systems: Vec<crate::library::System> = browse
+                    .iter()
+                    .map(|&i| self.library.systems[i].clone())
+                    .collect();
                 // The selected console sits on the right; rows make room.
                 let panel = 72;
                 self.row_shrink = panel + 8;
-                if sel >= Self::VIRTUAL {
-                    let name = systems[sel - Self::VIRTUAL].name.clone();
+                if sel >= Self::VIRTUAL
+                    && let Some(s) = systems.get(sel - Self::VIRTUAL)
+                {
+                    let name = s.name.clone();
                     let px = w - left - panel;
                     let py = y0 + 6;
                     if let Some(img) = self.art.system_image(&name, panel as usize) {
@@ -3630,9 +3729,9 @@ impl Scene {
                         }
                         _ => {
                             let sys = &systems[i - Self::VIRTUAL];
-                            let count = self
-                                .system_counts
+                            let count = browse
                                 .get(i - Self::VIRTUAL)
+                                .and_then(|&si| self.system_counts.get(si))
                                 .copied()
                                 .unwrap_or(0);
                             let right = format!(
@@ -5192,6 +5291,14 @@ impl Scene {
                     "off".into()
                 },
             ),
+            (
+                "preview in games",
+                if v.monitor_in_games {
+                    "on".into()
+                } else {
+                    "off".into()
+                },
+            ),
         ];
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
@@ -5229,6 +5336,7 @@ impl Scene {
             "black bars, center crop, or squeeze",
             "keeps titles inside the safe area",
             "4:3 sources back to 320x240",
+            "keep the desktop preview window up while playing",
         ];
         let max_cols = (width / 8) as usize;
         fb.text(

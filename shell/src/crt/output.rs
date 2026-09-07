@@ -154,11 +154,38 @@ impl Modeline {
     /// The same timing with a different number of active lines, centred in
     /// the frame: a 224 line game on a 240 line standard keeps the line rate
     /// and refresh and gains blank lines above and below.
+    /// True when the modeline draws two fields per frame.
+    pub fn is_interlaced(&self) -> bool {
+        self.flags.to_ascii_lowercase().contains("interlace")
+    }
+
+    /// What the television sees: the field rate, which for an interlaced mode
+    /// is twice the frame rate. A 480i picture is 59.94 Hz on the tube even
+    /// though its frames arrive at 29.97.
+    pub fn field_hz(&self) -> f64 {
+        if self.is_interlaced() {
+            self.vfreq_hz() * 2.0
+        } else {
+            self.vfreq_hz()
+        }
+    }
+
+    /// How the mode is written: `240p`, `480i`.
+    pub fn label(&self) -> String {
+        format!(
+            "{}{}",
+            self.height(),
+            if self.is_interlaced() { "i" } else { "p" }
+        )
+    }
+
     pub fn with_lines(&self, lines: u32) -> Self {
         let active = self.v[0];
         let vsync = self.v[2] - self.v[1];
         let front = self.v[1] - self.v[0];
-        let lines = lines.clamp(180, self.v[3] - vsync - 4);
+        // Never eat into the blanking: a frame with no front or back porch
+        // left is one the television cannot lock onto.
+        let lines = lines.clamp(180, self.v[3] - vsync - 8);
         let extra = active as i64 - lines as i64;
         let front = (front as i64 + extra / 2).max(1) as u32;
         let mut m = self.clone();
@@ -213,6 +240,20 @@ impl Modeline {
 pub fn hypr_eval(code: &str) -> (bool, String) {
     let (ok, out) = run_loose("hyprctl", &["eval", code]);
     (ok && !out.to_ascii_lowercase().contains("error"), out)
+}
+
+/// One `hyprctl getoption` value, as the integer the compositor reports.
+/// Booleans come back as `bool`, everything else as `int`.
+pub fn option_int(name: &str) -> Option<i64> {
+    let text = run("hyprctl", &["getoption", name, "-j"])?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get("int")
+        .and_then(serde_json::Value::as_i64)
+        .or_else(|| {
+            v.get("bool")
+                .and_then(serde_json::Value::as_bool)
+                .map(i64::from)
+        })
 }
 
 pub fn hypr_monitor(name: &str) -> Option<serde_json::Value> {
@@ -400,6 +441,14 @@ pub fn workspace_rule(name: &str) {
 /// Stacking among pinned windows is fixed, so raising is done with the pin
 /// itself: the game unpinned sits below the pinned launcher (still mapped,
 /// rendered and answering), pinned again it is back above. Focus follows.
+/// True when a window of this class is open on the desktop.
+pub fn window_exists(class: &str) -> bool {
+    let (ok, out) = hypr_eval(&format!(
+        "return #hl.get_windows({{ class = \"{class}\" }}) > 0 and \"yes\" or \"no\""
+    ));
+    ok && out.contains("yes")
+}
+
 pub fn raise(class: &str) -> bool {
     let game = "com.libretro.RetroArch";
     let pin_game = class != SHELL_CLASS;

@@ -165,3 +165,38 @@ fn a_saved_file_survives_a_truncated_successor() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// -------------------------------------------------------- the tube follows
+
+#[test]
+fn the_core_geometry_is_read_from_the_emulator_log() {
+    let log = "\
+[INFO] [Core] Geometry: 640x480, Aspect: 1.333, FPS: 59.95, Sample rate: 44100.00 Hz.
+[INFO] [GL] Detecting screen resolution: 3520x240.
+[INFO] [Environ] SET_GEOMETRY: 320x240, Aspect: 1.333.
+";
+    // The last report wins: a game that changes its picture mid-play is what
+    // this exists for.
+    assert_eq!(
+        omarchy_crt_shell::library::core_geometry(log),
+        Some((320, 240))
+    );
+    assert_eq!(
+        omarchy_crt_shell::library::core_geometry("nothing here"),
+        None
+    );
+    assert_eq!(
+        omarchy_crt_shell::library::core_geometry("Geometry: 99999x99999, Aspect: 1"),
+        None,
+        "a nonsense size is not a geometry"
+    );
+}
+
+#[test]
+fn a_console_that_drew_480_lines_asks_for_480() {
+    use omarchy_crt_shell::library::default_lines;
+    assert_eq!(default_lines("dreamcast"), Some(480));
+    assert_eq!(default_lines("snes"), Some(224));
+    assert_eq!(default_lines("nes"), Some(240));
+    assert_eq!(default_lines("videos"), None);
+}

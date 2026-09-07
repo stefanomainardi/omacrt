@@ -35,6 +35,8 @@ pub fn label(system: &str) -> Option<&'static str> {
         "pcengine" => "NEC - PC Engine - TurboGrafx 16",
         "pcenginecd" => "NEC - PC Engine CD - TurboGrafx-CD",
         "n64" => "Nintendo - Nintendo 64",
+        "gamecube" => "Nintendo - GameCube",
+        "wii" => "Nintendo - Wii",
         "gb" => "Nintendo - Game Boy",
         "gbc" => "Nintendo - Game Boy Color",
         "gba" => "Nintendo - Game Boy Advance",

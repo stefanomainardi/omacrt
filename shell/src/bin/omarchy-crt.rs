@@ -80,6 +80,34 @@ fn has(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+/// The ScummVM folders under these roots, each one once.
+///
+/// A collection on a removable disk is often on a filesystem that does not
+/// care about case, where `scummvm` and `ScummVM` are the same folder reached
+/// by two names; without this the scan reports every game in it twice.
+fn scummvm_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for root in roots {
+        for folder in ["scummvm", "ScummVM", "scumm"] {
+            let dir = root.join(folder);
+            if !dir.is_dir() {
+                continue;
+            }
+            let real = std::fs::canonicalize(&dir).unwrap_or(dir);
+            // Same folder, two spellings: compare without case, since that is
+            // what the filesystem underneath is doing.
+            let key = real.to_string_lossy().to_lowercase();
+            if !out
+                .iter()
+                .any(|p: &PathBuf| p.to_string_lossy().to_lowercase() == key)
+            {
+                out.push(real);
+            }
+        }
+    }
+    out
+}
+
 /// The value after a `--flag`, when it is there.
 fn value(args: &[String], flag: &str) -> Option<String> {
     let i = args.iter().position(|a| a == flag)?;
@@ -169,7 +197,9 @@ fn status(cfg: &Config) -> Value {
         if leased {
             if display::running() {
                 let standard = st["standard"].as_str().unwrap_or("ntsc").to_string();
-                if let Some(ml) = cfg.modeline(&standard).and_then(Modeline::parse) {
+                let applied =
+                    crt::applied_standard_with(&standard, state.lines, cfg.output.interlace);
+                if let Some(ml) = cfg.modeline(applied).and_then(Modeline::parse) {
                     let ml = if state.lines > 0 && state.lines != ml.height() {
                         ml.with_lines(state.lines)
                     } else {
@@ -177,10 +207,10 @@ fn status(cfg: &Config) -> Value {
                     };
                     st["active"] = json!(true);
                     st["mode"] = json!({
-                        "width": ml.width(), "height": ml.height(), "refresh_hz": ml.vfreq_hz(), "disabled": false,
+                        "width": ml.width(), "height": ml.height(), "refresh_hz": ml.field_hz(), "disabled": false,
                         "hfreq_khz": (ml.hfreq_khz() * 1000.0).round() / 1000.0,
-                        "vfreq_hz": (ml.vfreq_hz() * 1000.0).round() / 1000.0,
-                        "lines": format!("{}p", ml.height()),
+                        "vfreq_hz": (ml.field_hz() * 1000.0).round() / 1000.0,
+                        "lines": ml.label(),
                     });
                 }
             }
@@ -459,16 +489,37 @@ fn set_csync(cfg: &Config, conn: &Connector) -> Result<String, String> {
 
 /// Hyprland options that let RetroArch and mpv take the tube while they run
 /// and hand it back to the launcher when they exit.
+/// Hyprland's focus behaviour while the tube is ours, and putting it back
+/// afterwards. These are session wide settings on somebody's desktop, so what
+/// was there before is saved and restored rather than assumed.
 fn compositor_fullscreen_policy(on: bool) {
-    // 0: a window that opens under a fullscreen one stays behind it. The
-    // launcher keeps the tube while RetroArch starts; the launcher then moves
-    // RetroArch to the game workspace and nothing else is ever composited.
-    let code = if on {
-        "hl.config({ misc = { on_focus_under_fullscreen = 0, exit_window_retains_fullscreen = true } })"
+    let mut state = State::load();
+    if on {
+        // 0: a window that opens under a fullscreen one stays behind it, so
+        // the launcher keeps the tube while the emulator starts.
+        if state.previous_focus_under_fullscreen.is_none() {
+            state.previous_focus_under_fullscreen =
+                output::option_int("misc:on_focus_under_fullscreen");
+            state.save();
+        }
+        output::hypr_eval("hl.config({ misc = { on_focus_under_fullscreen = 0 } })");
     } else {
-        "hl.config({ misc = { on_focus_under_fullscreen = 0, exit_window_retains_fullscreen = false } })"
-    };
-    output::hypr_eval(code);
+        // 1 is what Omarchy sets, and what to fall back on when the tube was
+        // turned on by a version that saved nothing.
+        let back = state.previous_focus_under_fullscreen.take().unwrap_or(1);
+        state.save();
+        output::hypr_eval(&format!(
+            "hl.config({{ misc = {{ on_focus_under_fullscreen = {back} }} }})"
+        ));
+    }
+    // Always, in both directions: versions up to 0.2.0 turned this on for the
+    // whole session and never turned it off again. It makes the next window
+    // inherit the fullscreen of one that just closed, which on this desktop
+    // means the screensaver handing its own fullscreen to whatever comes back
+    // after the lock screen, on a machine that may not have had a television
+    // switched on for days. Nothing here needs it: every window on the tube is
+    // floating, pinned and sized to the output, never fullscreen.
+    output::hypr_eval("hl.config({ misc = { exit_window_retains_fullscreen = false } })");
 }
 
 fn cmd_on(cfg: &Config, standard: Option<&str>) {
@@ -674,6 +725,10 @@ fn cmd_off(cfg: &Config) {
     // Before anything else: a deliberate shutdown must not look like a crash.
     watchdog::stop();
     println!("launcher:   {}", launcher::stop());
+    // The compositor goes back to how it was whichever way the tube was
+    // driven, including a leased session that never changed it: a stale
+    // setting from an older version is cleared here too.
+    compositor_fullscreen_policy(false);
     let mut state = State::load();
     if cfg.audio.route {
         println!("audio:      {}", audio::route_back(&mut state));
@@ -684,7 +739,6 @@ fn cmd_off(cfg: &Config) {
         state.save();
         return;
     }
-    compositor_fullscreen_policy(false);
     output::unisolate();
     if let Some(conn) = output::pick(cfg) {
         output::disable(&conn.name);
@@ -698,6 +752,10 @@ fn cmd_off(cfg: &Config) {
 /// fallback mode and PipeWire remembers the CRT sink as default. Put the
 /// desktop back to normal without touching the launcher config.
 fn cmd_boot(cfg: &Config) {
+    // A login is the one moment nothing of ours is running, so it is the
+    // right place to clear whatever an unclean shutdown left on the
+    // compositor.
+    compositor_fullscreen_policy(false);
     let mut state = State::load();
     if cfg.audio.route && (!state.previous_sink.is_empty() || state.on) {
         println!("audio:      {}", audio::route_back(&mut state));
@@ -961,6 +1019,30 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
 
 fn cmd_doctor(cfg: &Config) -> i32 {
     let mut rows: Vec<(String, bool, String)> = Vec::new();
+    rows.push((
+        "interlaced modes".into(),
+        true,
+        if cfg.output.interlace {
+            "on: 480i and 576i are used where a console drew them".into()
+        } else {
+            "off: 480 line consoles are shown at 240p (needs a 15 kHz kernel)".into()
+        },
+    ));
+    for extra in omarchy_crt_shell::coredata::TABLE {
+        let there = !omarchy_crt_shell::coredata::missing(
+            extra.core,
+            &omarchy_crt_shell::coredata::system_dir(),
+        );
+        rows.push((
+            format!("{} core files", extra.core),
+            there,
+            if there {
+                extra.what.into()
+            } else {
+                format!("missing; fetched on the first launch ({})", extra.what)
+            },
+        ));
+    }
     let conn = output::pick(cfg);
     rows.push((
         "CRT connector found".into(),
@@ -1278,6 +1360,23 @@ fn cmd_library(args: &[String]) {
                 lc.roots = found;
             }
             lc.save().unwrap_or_else(|e| die(&e.to_string()));
+            // ScummVM games arrive as folders of data files, and the core
+            // launches a `.scummvm` file naming the game. Write the missing
+            // ones before the scan, so they are picked up as games.
+            for dir in scummvm_dirs(&lc.roots) {
+                for done in omarchy_crt_shell::scumm::prepare_all(&dir) {
+                    match done {
+                        omarchy_crt_shell::scumm::Prepared::Wrote(file, id) => {
+                            println!("scummvm:    {id}, {}", file.display())
+                        }
+                        omarchy_crt_shell::scumm::Prepared::Packaged(dir) => println!(
+                            "scummvm:    {} is still on its discs; \
+                             `omarchy-crt library unpack` reads them out",
+                            dir.display()
+                        ),
+                    }
+                }
+            }
             let quiet = has(args, "--quiet");
             // --progress: one plain line per folder on stdout, for a caller
             // that shows the progress itself (the library overlay does).
@@ -1515,6 +1614,31 @@ fn cmd_library(args: &[String]) {
                 p.display()
             );
         }
+        // `library unpack [DIR...]`: read a ScummVM game out of its discs.
+        Some("unpack") => {
+            let lc = LibraryConfig::load();
+            let given: Vec<PathBuf> = pos[1..].iter().map(PathBuf::from).collect();
+            let folders: Vec<PathBuf> = if given.is_empty() {
+                scummvm_dirs(&lc.roots)
+                    .iter()
+                    .flat_map(|d| omarchy_crt_shell::scumm::packaged_under(d))
+                    .collect()
+            } else {
+                given
+            };
+            if folders.is_empty() {
+                println!("nothing to unpack: every ScummVM game is already readable");
+                return;
+            }
+            for dir in folders {
+                println!("unpacking {} ...", dir.display());
+                match omarchy_crt_shell::scumm::unpack(&dir) {
+                    Ok(note) => println!("  {note}"),
+                    Err(e) => println!("  {e}"),
+                }
+            }
+            println!("run `omarchy-crt library scan` to pick them up");
+        }
         Some("unknown") => {
             let Some(ix) = Index::load() else {
                 die("no index yet, run omarchy-crt library scan")
@@ -1716,18 +1840,34 @@ fn main() {
                     .and_then(|v| v.parse().ok())
             };
             let lines = flag("--lines").map(|v| v.max(0) as u32);
+            // A line count is what a system asks for, and it decides the
+            // standard on its own: more lines than a progressive 15 kHz frame
+            // holds is an interlaced picture, fewer is a progressive one. This
+            // is what makes a 480 line console readable without anybody having
+            // to name a mode.
+            // `applied` is what goes to the tube; `std` is what gets saved, so
+            // that a 480 line game does not leave the launcher interlaced when
+            // it ends.
+            let applied = crt::applied_standard_with(std, lines.unwrap_or(0), cfg.output.interlace);
+            // The picture shift is a calibration of the television, not a
+            // parameter of this call: a game that asks for a line count must
+            // not undo it. Only an explicit flag changes it.
             let shift = (
-                flag("--shift-x").unwrap_or(0),
-                flag("--shift-y").unwrap_or(0),
+                flag("--shift-x").unwrap_or(state.shift_x),
+                flag("--shift-y").unwrap_or(state.shift_y),
             );
             let conn = connector(&cfg);
             if display::leaseable(&conn.name) && display::running() {
                 let text = cfg
-                    .modeline(std)
+                    .modeline(applied)
                     .unwrap_or_else(|| die("no modeline for that standard"));
                 let mut ml = Modeline::parse(text).unwrap_or_else(|| die("bad modeline"));
                 if let Some(l) = lines {
-                    ml = ml.with_lines(l);
+                    // The standard's own frame is the ceiling: a core that
+                    // reports more lines than the television has (a GameCube
+                    // saying 528 for its 480 line picture) gets the whole
+                    // frame, not a frame with no blanking left in it.
+                    ml = ml.with_lines(l.min(ml.height()));
                 }
                 if shift != (0, 0) {
                     let scale = ml.width() as f32 / 320.0;
@@ -1742,22 +1882,22 @@ fn main() {
                 state.save();
                 println!(
                     "{} {}x{} {:.3} kHz {:.3} Hz",
-                    std.to_uppercase(),
+                    applied.to_uppercase(),
                     ml.width(),
-                    ml.height(),
+                    ml.label(),
                     ml.hfreq_khz(),
-                    ml.vfreq_hz()
+                    ml.field_hz()
                 );
                 return;
             }
-            match apply_mode(&cfg, &conn, std, lines, shift) {
+            match apply_mode(&cfg, &conn, applied, lines, shift) {
                 Ok(ml) => println!(
                     "{} {}x{} {:.3} kHz {:.3} Hz",
-                    std.to_uppercase(),
+                    applied.to_uppercase(),
                     ml.width(),
-                    ml.height(),
+                    ml.label(),
                     ml.hfreq_khz(),
-                    ml.vfreq_hz()
+                    ml.field_hz()
                 ),
                 Err(e) => die(&e),
             }

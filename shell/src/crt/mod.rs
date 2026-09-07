@@ -60,6 +60,16 @@ pub struct Output {
     pub csync: String,
     /// Standard used by `on` without an argument: `ntsc` or `pal`.
     pub standard: String,
+    /// Whether this machine can put a real interlaced picture on the tube.
+    ///
+    /// A console that drew 480 lines wants 480i, and that needs a kernel that
+    /// can drive an interlaced mode. Stock `amdgpu` cannot: it accepts the
+    /// modeline and scans out something the television makes a mess of, which
+    /// looks like a narrow strip rather than a picture. The 15 kHz kernel
+    /// patches fix it; until they are installed a 480 line game is shown at
+    /// 240 progressive, which is soft but right.
+    #[serde(default)]
+    pub interlace: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -118,6 +128,7 @@ impl Default for Output {
             position: "auto".into(),
             csync: "xor".into(),
             standard: "ntsc".into(),
+            interlace: false,
         }
     }
 }
@@ -241,6 +252,9 @@ pub struct State {
     pub previous_profile: String,
     pub previous_sink: String,
     pub audio_card: String,
+    /// What `misc:on_focus_under_fullscreen` was before the tube took it,
+    /// so that turning the television off puts the desktop back as it was.
+    pub previous_focus_under_fullscreen: Option<i64>,
 }
 
 impl State {
@@ -260,6 +274,30 @@ impl State {
         if let Ok(text) = serde_json::to_string_pretty(self) {
             let _ = std::fs::write(Self::path(), text);
         }
+    }
+}
+
+/// The standard actually put on the tube, for a base standard and a line
+/// count. More lines than a progressive 15 kHz frame holds is an interlaced
+/// picture; fewer is a progressive one. A console that drew 480 lines on a
+/// television gets 480 lines here, and nobody has to name a mode for it.
+///
+/// `lines` of 0 means the standard's own line count, so nothing changes.
+pub fn applied_standard(standard: &str, lines: u32) -> &str {
+    applied_standard_with(standard, lines, true)
+}
+
+/// The same, told whether this machine can show an interlaced picture. When
+/// it cannot, a line count that would have asked for one stays on the
+/// progressive mode and the emulator scales into it.
+pub fn applied_standard_with(standard: &str, lines: u32, interlace: bool) -> &str {
+    match (standard, lines) {
+        (_, 0) => standard,
+        ("ntsc", l) if l > 288 && interlace => "480i",
+        ("pal", l) if l > 288 && interlace => "576i",
+        ("480i" | "ntsc_i", l) if l <= 288 || !interlace => "ntsc",
+        ("576i" | "pal_i", l) if l <= 288 || !interlace => "pal",
+        _ => standard,
     }
 }
 
