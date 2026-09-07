@@ -43,12 +43,13 @@ pad() { printf "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=%s" "$bg"; }
 fades() { printf "fade=t=in:st=0:d=0.12,fade=t=out:st=%s:d=0.16" "$(awk "BEGIN{print $1-0.16}")"; }
 afades() { printf "afade=t=in:st=0:d=0.12,afade=t=out:st=%s:d=0.2" "$(awk "BEGIN{print $1-0.2}")"; }
 
-# The room: the whole phone frame, cropped to the wide ratio, pushing in
-# slowly. Photographic material, so a gentle zoom does not hurt it.
+# The room: the whole phone frame cropped to the wide ratio. The camera
+# never moves, and neither does the shot: a slow push looked like a slideshow
+# effect on a picture that is already still.
 wide() {  # start, seconds, caption
   n=$((n+1)); local f="$work/$(printf '%02d' $n)-wide.mp4"
   local d="$2" cap; cap="$(caption "${3:-}" "$2")"
-  local vf="crop=1920:${H}:0:138,scale=2400:-2,zoompan=z='min(1+0.00055*on,1.10)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x${H}:fps=30"
+  local vf="crop=1920:${H}:0:138,setsar=1"
   [ "$cap" = "null" ] || vf="$vf,$cap"
   ffmpeg -hide_banner -loglevel error -y -ss "$1" -t "$d" -i "$P" \
     -vf "$vf,$(pad),$(fades "$d")" -af "$(afades "$d")" "${common[@]}" "$f"
@@ -93,7 +94,7 @@ card() {  # title, subtitle, seconds
 # ---------------------------------------------------------------- the film
 # Timestamps read off both takes frame by frame: the phone for anything with
 # a picture in it, the capture for anything made of text.
-wide    99  5.0 "A Bang & Olufsen television from 1998, driven by an Omarchy PC"
+wide    20  4.0 "A Bang & Olufsen television from 1998, driven by an Omarchy PC"
 card    "OMARCHY CRT" "an Omarchy version for retro gaming on CRT" 2.6
 clean  10.6 4.6 "the launcher boots on the tube"
 clean  18.4 2.6 "320x240, in the Omarchy look"
