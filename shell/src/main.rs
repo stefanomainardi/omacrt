@@ -20,7 +20,7 @@ mod pad;
 mod scene;
 mod theme;
 use omarchy_crt_shell::padmap::Raw;
-use omarchy_crt_shell::{index, library, music, padmap, player, profile, settings, states, videofit};
+use omarchy_crt_shell::{index, library, music, padmap, player, profile, settings, states, videofit, yt};
 
 use audio::Audio;
 use fb::Framebuffer;

@@ -12,7 +12,7 @@ use crate::bt::Bluetooth;
 use crate::deck::{self, Deck};
 use crate::effects::{self, Effect, Kind, Palette};
 use crate::etch::LaserEtch;
-use crate::fb::{Color, Framebuffer, scale};
+use crate::fb::{Color, Framebuffer, lerp_color, scale};
 use crate::icons;
 use crate::library::{Game, Library};
 use crate::music::{self, Item as MusicItem, Music, Source, Track};
@@ -22,6 +22,7 @@ use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
 use crate::states;
+use crate::yt;
 use crate::theme::Theme;
 use crate::videofit::{self, Conversion};
 use std::path::{Path, PathBuf};
@@ -104,6 +105,14 @@ enum Screen {
     NowPlaying,
     /// Button by button mapping of a pad SDL does not know.
     PadWizard,
+    /// Videos hub: local films, YouTube, the clipboard link.
+    Videos {
+        sel: usize,
+    },
+    /// YouTube hub: search, watch later, recently watched.
+    YouTube {
+        sel: usize,
+    },
 }
 
 /// A row of the music screen.
@@ -243,6 +252,20 @@ pub enum PauseOutcome {
 
 /// Rows per page in the systems list.
 const SYS_PAGE: usize = 11;
+/// Videos hub entries.
+const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
+    (icons::FILM, "Local videos", true),
+    (icons::RESUME, "YouTube", true),
+    (icons::FOLDER, "Play the link in the clipboard", false),
+];
+
+/// YouTube hub entries.
+const YOUTUBE_ITEMS: [(icons::Icon, &str, bool); 3] = [
+    (icons::NOTE, "Search", true),
+    (icons::CLOCK, "Watch later", true),
+    (icons::STAR, "Recently watched", true),
+];
+
 /// On screen keyboard: four rows of ten keys the pad walks through.
 const OSK_ROWS: [&str; 4] = ["1234567890", "QWERTYUIOP", "ASDFGHJKL-", "ZXCVBNM ._"];
 
@@ -370,6 +393,16 @@ pub struct Scene {
     search_global: bool,
     /// Save states RetroArch wrote, looked up per game as rows show.
     states: states::Cache,
+    /// Screen a game list returns to when it was opened from a hub.
+    games_back: Option<Screen>,
+    /// A YouTube search in flight, and the text typed for it.
+    yt_search: Option<std::sync::mpsc::Receiver<Result<Vec<yt::Hit>, String>>>,
+    yt_query: bool,
+    yt_results: bool,
+    /// The game list shown as a row of covers instead of rows of text.
+    flow_view: bool,
+    /// Where the cover row is, in list indices, easing toward the selection.
+    flow_pos: f32,
     /// The hi-fi deck and the visualizers of the music screens.
     deck: Deck,
     /// Album art decoded for the cassette label, and the file it came from.
@@ -463,6 +496,12 @@ impl Scene {
             osk: None,
             search_global: false,
             states: states::Cache::default(),
+            games_back: None,
+            yt_search: None,
+            yt_query: false,
+            yt_results: false,
+            flow_view: false,
+            flow_pos: 0.0,
             deck: Deck::new(),
             cover_img: None,
             music_saver: None,
@@ -699,6 +738,7 @@ impl Scene {
         self.sel = 0;
         self.list_from_home = false;
         self.open_collection = None;
+        self.flow_view = false;
         self.pending.push(Sound::Move);
     }
 
@@ -719,10 +759,7 @@ impl Scene {
                 }
             }
             1 => match self.library.systems.iter().position(|s| s.is_video()) {
-                Some(i) => {
-                    self.list_from_home = true;
-                    self.open_games(Some(i));
-                }
+                Some(_) => self.go(Screen::Videos { sel: 0 }),
                 None => {
                     self.message = Some(("no video folder in systems.toml".into(), self.now + 4.0))
                 }
@@ -830,6 +867,10 @@ impl Scene {
             return;
         };
         if !self.library.systems[entry.sys].is_video() {
+            // Games: the cover flow, in and out.
+            self.flow_view = !self.flow_view;
+            self.flow_pos = sel as f32;
+            self.pending.push(Sound::Whoosh);
             return;
         }
         if self.conversion.is_some() {
@@ -1027,6 +1068,7 @@ impl Scene {
     fn open_games(&mut self, sys: Option<usize>) {
         self.game_dir = None;
         self.search_global = false;
+        self.games_back = None;
         let list = match sys {
             Some(i) => self.entries_for(i),
             None => Vec::new(),
@@ -1053,16 +1095,131 @@ impl Scene {
                 .games_in(system, &crate::library::expand(&system.dir)),
             Some(dir) => self.library.games_in(system, dir),
         };
-        let mut entries: Vec<Entry> = games
+        games
             .into_iter()
             .map(|game| Entry { game, sys: i })
+            .collect()
+    }
+
+    fn video_system(&self) -> Option<usize> {
+        self.library.systems.iter().position(|s| s.is_video())
+    }
+
+    /// A list of links (watch later, recently watched, search hits) shown
+    /// as a game list under the Videos system, going back to a hub.
+    fn open_links(&mut self, entries: Vec<Entry>, back: Screen) {
+        self.game_dir = None;
+        self.search_global = false;
+        self.list_from_home = false;
+        self.open_collection = None;
+        let sys = self.video_system();
+        self.set_games(entries);
+        self.games_back = Some(back);
+        self.go(Screen::Games { sys, sel: 0, top: 0 });
+    }
+
+    /// Links played before, newest first, from the recent list.
+    fn recent_links(&self, sys: usize) -> Vec<Entry> {
+        self.recent
+            .iter()
+            .filter(|(_, p)| p.to_string_lossy().starts_with("http"))
+            .map(|(_, p)| Entry {
+                game: Game {
+                    title: watch_title(&p.to_string_lossy(), ""),
+                    path: p.clone(),
+                    crt_path: None,
+                    folder: false,
+                },
+                sys,
+            })
+            .collect()
+    }
+
+    /// Y on a link: in or out of the watch later list.
+    fn toggle_watch_later(&mut self, entry: &Entry) {
+        let path = self.library.config_dir.join("watch-later.tsv");
+        let target = entry.game.path.to_string_lossy().to_string();
+        let mut lines: Vec<String> = std::fs::read_to_string(&path)
+            .unwrap_or_default()
+            .lines()
+            .map(|l| l.to_string())
             .collect();
-        if system.is_video() && self.game_dir.is_none() {
-            let mut later = self.watch_later(i);
-            later.extend(entries);
-            entries = later;
+        let before = lines.len();
+        lines.retain(|l| l.split('\t').next() != Some(target.as_str()));
+        let kept = if lines.len() == before {
+            lines.push(format!("{target}\t{}", entry.game.title));
+            true
+        } else {
+            false
+        };
+        if let Err(e) = std::fs::write(&path, lines.join("\n") + "\n") {
+            self.message = Some((format!("watch later: {e}"), self.now + 3.0));
+            return;
         }
-        entries
+        self.message = Some((
+            if kept { format!("watch later: {}", entry.game.title) } else { format!("removed {}", entry.game.title) },
+            self.now + 2.5,
+        ));
+        self.pending.push(Sound::Select);
+    }
+
+    /// Enter on the search bar while it asks for a query: run the search
+    /// and show the hits as the list.
+    fn yt_submit(&mut self) {
+        let q = self.search.clone().unwrap_or_default();
+        if q.trim().is_empty() {
+            return;
+        }
+        self.yt_search = Some(yt::search(&q, 20));
+        self.message = Some((format!("searching YouTube for {q}"), self.now + 8.0));
+        self.pending.push(Sound::Select);
+    }
+
+    /// The search answered: hits become the list, still under Videos.
+    fn yt_poll(&mut self) {
+        let Some(rx) = &self.yt_search else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok(hits)) => {
+                self.yt_search = None;
+                let Screen::Games { sys: Some(i), .. } = self.screen else {
+                    return;
+                };
+                let entries: Vec<Entry> = hits
+                    .into_iter()
+                    .map(|h| Entry {
+                        game: Game {
+                            title: if h.channel.is_empty() {
+                                h.title
+                            } else {
+                                format!("{}  ({})", h.title, h.channel)
+                            },
+                            path: PathBuf::from(h.url),
+                            crt_path: None,
+                            folder: false,
+                        },
+                        sys: i,
+                    })
+                    .collect();
+                let n = entries.len();
+                let back = self.games_back;
+                self.set_games(entries);
+                self.games_back = back;
+                self.yt_query = false;
+                self.yt_results = true;
+                self.message = Some((format!("{n} videos"), self.now + 3.0));
+                self.pending.push(Sound::Lock);
+            }
+            Ok(Err(e)) => {
+                self.yt_search = None;
+                self.yt_query = false;
+                self.message = Some((format!("YouTube: {e}"), self.now + 5.0));
+                self.pending.push(Sound::Crunch);
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => self.yt_search = None,
+        }
     }
 
     /// Counts for the systems screen, computed once per library read so the
@@ -1148,6 +1305,8 @@ impl Scene {
         self.games_all = list;
         self.search = None;
         self.osk = None;
+        self.yt_query = false;
+        self.yt_results = false;
         self.apply_search();
     }
 
@@ -1253,6 +1412,10 @@ impl Scene {
     /// Every word typed must appear in the title; titles starting with the
     /// first word come first, the list order holds otherwise.
     fn apply_search(&mut self) {
+        if self.yt_query {
+            // The bar collects a YouTube query; the list stays as it is.
+            return;
+        }
         let q = self.search.clone().unwrap_or_default().to_lowercase();
         let words: Vec<&str> = q.split_whitespace().collect();
         self.games = if words.is_empty() {
@@ -1480,6 +1643,37 @@ impl Scene {
                     }
                 }
             }
+            Screen::Games { sel, top, .. } if self.flow_view => {
+                let n = self.games.len();
+                match nav {
+                    Nav::Left if *sel > 0 => {
+                        *sel -= 1;
+                        moved = true;
+                    }
+                    Nav::Right if *sel + 1 < n => {
+                        *sel += 1;
+                        moved = true;
+                    }
+                    Nav::Up if *sel > 0 => {
+                        *sel = sel.saturating_sub(10);
+                        moved = true;
+                    }
+                    Nav::Down if n > 0 && *sel + 1 < n => {
+                        *sel = (*sel + 10).min(n - 1);
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        self.flow_view = false;
+                        moved = true;
+                    }
+                    _ => {}
+                }
+                if *sel < *top {
+                    *top = *sel;
+                } else if *sel >= *top + page_rows {
+                    *top = *sel + 1 - page_rows;
+                }
+            }
             Screen::Games { sel, top, .. } => {
                 let n = self.games.len();
                 let page = page_rows;
@@ -1505,6 +1699,11 @@ impl Scene {
                             if self.leave_folder(i) {
                                 return;
                             }
+                        }
+                        if let Some(back) = self.games_back.take() {
+                            self.screen = back;
+                            self.pending.push(Sound::Move);
+                            return;
                         }
                         self.search_global = false;
                         if self.list_from_home {
@@ -1578,6 +1777,36 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.screen = Screen::Settings { sel: 1 };
+                    moved = true;
+                }
+                _ => {}
+            },
+            Screen::Videos { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < VIDEOS_ITEMS.len() => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.screen = Screen::Menu;
+                    moved = true;
+                }
+                _ => {}
+            },
+            Screen::YouTube { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < YOUTUBE_ITEMS.len() => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.screen = Screen::Videos { sel: 1 };
                     moved = true;
                 }
                 _ => {}
@@ -2138,6 +2367,10 @@ impl Scene {
                 Action::None
             }
             Screen::Games { sel, sys, .. } => {
+                if self.yt_query && self.search.is_some() {
+                    self.yt_submit();
+                    return Action::None;
+                }
                 let Some(entry) = self.games.get(sel).cloned() else {
                     return Action::None;
                 };
@@ -2171,6 +2404,64 @@ impl Scene {
                 Action::None
             }
             Screen::Settings { sel } => self.activate_settings(sel),
+            Screen::Videos { sel } => {
+                self.pending.push(Sound::Select);
+                let Some(i) = self.video_system() else {
+                    return Action::None;
+                };
+                match sel {
+                    0 => {
+                        self.list_from_home = false;
+                        self.open_games(Some(i));
+                        self.games_back = Some(Screen::Videos { sel: 0 });
+                        self.pending.push(Sound::Whoosh);
+                    }
+                    1 => self.go(Screen::YouTube { sel: 0 }),
+                    _ => match yt::clipboard_link() {
+                        Some(link) => {
+                            let e = Entry {
+                                game: Game {
+                                    title: watch_title(&link, ""),
+                                    path: PathBuf::from(link),
+                                    crt_path: None,
+                                    folder: false,
+                                },
+                                sys: i,
+                            };
+                            return self.run_entry(&e);
+                        }
+                        None => {
+                            self.message = Some(("no link in the clipboard".into(), self.now + 3.0));
+                            self.pending.push(Sound::Crunch);
+                        }
+                    },
+                }
+                Action::None
+            }
+            Screen::YouTube { sel } => {
+                self.pending.push(Sound::Select);
+                let Some(i) = self.video_system() else {
+                    return Action::None;
+                };
+                match sel {
+                    0 => {
+                        // An empty list with the bar asking for the query.
+                        self.open_links(Vec::new(), Screen::YouTube { sel: 0 });
+                        self.search = Some(String::new());
+                        self.osk = if self.pad == PadKind::Keyboard { None } else { Some((1, 0)) };
+                        self.yt_query = true;
+                    }
+                    1 => {
+                        let list = self.watch_later(i);
+                        self.open_links(list, Screen::YouTube { sel: 1 });
+                    }
+                    _ => {
+                        let list = self.recent_links(i);
+                        self.open_links(list, Screen::YouTube { sel: 2 });
+                    }
+                }
+                Action::None
+            }
             Screen::Power { sel } => self.activate_power(sel),
             Screen::Saver { sel } => {
                 if sel == 3 {
@@ -2275,11 +2566,31 @@ impl Scene {
                 hex(self.theme.selection)
             )];
             let is_url = entry.game.path.to_string_lossy().starts_with("http");
-            if entry.game.crt_path.is_none() && !is_url {
-                let probe = videofit::probe(&entry.game.path);
+            if entry.game.crt_path.is_none() {
+                // A link cannot be probed before it plays: treat it as the
+                // 16:9 progressive video it almost always is.
+                let probe = if is_url {
+                    videofit::Probe {
+                        width: 1920,
+                        height: 1080,
+                        fps: 30.0,
+                        duration: 0.0,
+                        interlaced: false,
+                        hdr: false,
+                    }
+                } else {
+                    videofit::probe(&entry.game.path)
+                };
                 let plan = videofit::plan(&probe, &self.settings.video);
                 self.message = Some((format!("fit: {}", plan.label()), self.now + 4.0));
                 lines.extend(plan.mpv_args());
+                if is_url {
+                    // The tube shows 240 lines: a 480p H.264 stream is all it
+                    // needs, and it decodes without heating the room.
+                    lines.push(
+                        "--ytdl-format=bestvideo[height<=480][vcodec^=avc1]+bestaudio/best[height<=480]/best".into(),
+                    );
+                }
             }
             if self.wide_output() {
                 lines.push("--keepaspect=no".into());
@@ -2437,6 +2748,10 @@ impl Scene {
         let Some(entry) = self.games.get(sel).cloned() else {
             return;
         };
+        if entry.game.path.to_string_lossy().starts_with("http") {
+            self.toggle_watch_later(&entry);
+            return;
+        }
         let key = (entry.sys, entry.game.path.clone());
         if let Some(pos) = self.favorites.iter().position(|k| *k == key) {
             self.favorites.remove(pos);
@@ -2685,6 +3000,9 @@ impl Scene {
         for cell in &self.mark_small.cells {
             effects::draw_cell(fb, mx, 10, 1, cell, cell.final_color);
         }
+        // The same glint as the home logo, on its own rhythm.
+        self.glint(fb, left, 8, 24, 24, 13.0, 5.0);
+        self.glint(fb, mx, 10, self.mark_small.cols, self.mark_small.rows * 2, 13.0, 4.6);
         fb.text(left, 40, prompt, self.theme.dim, 1);
         let clock = chrono::Local::now().format("%H:%M").to_string();
         fb.text(
@@ -2958,6 +3276,14 @@ impl Scene {
             }
             Screen::Games { sys, sel, top } => {
                 let prompt = match sys {
+                    Some(i) if self.games_back.is_some() && self.library.systems[i].is_video() => {
+                        match self.games_back {
+                            Some(Screen::YouTube { sel: 0 }) => "YouTube search".to_string(),
+                            Some(Screen::YouTube { sel: 1 }) => "Watch later".to_string(),
+                            Some(Screen::YouTube { .. }) => "Recently watched".to_string(),
+                            _ => "Local videos".to_string(),
+                        }
+                    }
                     Some(i) => match &self.game_dir {
                         Some(d) => {
                             // The whole path inside the system folder, one crumb per level.
@@ -2989,6 +3315,10 @@ impl Scene {
                     },
                 };
                 let n = self.games.len();
+                if self.flow_view && n > 0 && !self.games[sel.min(n - 1)].game.folder {
+                    self.draw_flow(fb, &prompt, sel);
+                    return;
+                }
                 let mut y0 = self.draw_header(fb, &prompt);
                 if let Some(q) = self.search.clone() {
                     y0 = self.draw_search_bar(fb, y0, &q, n);
@@ -3043,7 +3373,7 @@ impl Scene {
                                 fb.put(bx, by + i, frame);
                                 fb.put(bx + cover_box - 1, by + i, frame);
                             }
-                            let key = crate::art::Art::cover_key(&system, &entry.game.path);
+                            let key = crate::art::Art::cover_key(&system, &entry.game.path, cover_box as usize, cover_box as usize);
                             if !settled || self.art.loading(&key) {
                                 if (self.now * 3.0) as i64 % 2 == 0 {
                                     fb.rect(
@@ -3093,7 +3423,14 @@ impl Scene {
                         fb.text(bx, ty + 2, &label, scale(self.theme.dim, 0.9), 1);
                     }
                 }
-                if n == 0 && self.search.as_deref().is_some_and(|q| !q.is_empty()) {
+                if n == 0 && self.yt_query {
+                    let msg = if self.yt_search.is_some() { "searching YouTube" } else { "type what to look for, then Enter" };
+                    fb.text(left, y0, msg, self.theme.dim, 1);
+                } else if n == 0 && self.yt_results {
+                    fb.text(left, y0, "no videos found", self.theme.dim, 1);
+                } else if n == 0 && self.games_back.is_some() {
+                    fb.text(left, y0, "nothing here yet", self.theme.dim, 1);
+                } else if n == 0 && self.search.as_deref().is_some_and(|q| !q.is_empty()) {
                     fb.text(left, y0, "no title matches", self.theme.dim, 1);
                 } else if n == 0 {
                     match sys {
@@ -3186,12 +3523,14 @@ impl Scene {
                 let keyboard = self.pad == PadKind::Keyboard;
                 let hint = if self.osk.is_some() {
                     self.hint(&[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")])
+                } else if is_video && matches!(self.games_back, Some(Screen::YouTube { .. })) {
+                    self.hint(&[("A", "play"), ("Y", "later"), ("B", "back")])
                 } else if is_video {
                     self.hint(&[("A", "play"), ("X", "convert"), ("Y", "fav"), ("B", "back")])
                 } else if keyboard {
-                    self.hint(&[("A", "run"), ("B", "back"), ("Y", "fav"), ("/", "find")])
+                    self.hint(&[("A", "run"), ("X", "covers"), ("Y", "fav"), ("/", "find")])
                 } else {
-                    self.hint(&[("A", "run"), ("B", "back"), ("Y", "fav"), ("LT", "find")])
+                    self.hint(&[("A", "run"), ("X", "covers"), ("Y", "fav"), ("LT", "find")])
                 };
                 fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
@@ -3302,6 +3641,14 @@ impl Scene {
             }
             Screen::PadWizard => {
                 self.draw_pad_wizard(fb);
+                return;
+            }
+            Screen::Videos { sel } => {
+                self.draw_menu_screen(fb, "Videos", &VIDEOS_ITEMS, sel);
+                return;
+            }
+            Screen::YouTube { sel } => {
+                self.draw_menu_screen(fb, "YouTube", &YOUTUBE_ITEMS, sel);
                 return;
             }
             Screen::Menu => {}
@@ -3447,6 +3794,7 @@ impl Scene {
         self.tick_theme();
         self.tick_conversion();
         self.tick_music(now);
+        self.yt_poll();
         if self.pending_wizard.is_some()
             && self.menu_live
             && self.running.is_none()
@@ -3507,6 +3855,16 @@ impl Scene {
         self.draw_logo(fb, t);
         self.draw_etch(fb, t);
         self.draw_crt_tag(fb, t);
+        if self.menu_live {
+            // Icon and wordmark together, one sweep every nine seconds.
+            let (lx, ly, lsize) = self.logo_final(fb);
+            let mw = self.mark_cols * MARK_SCALE;
+            let mx = (fb.w as i32 - mw) / 2;
+            let bottom = self.mark_final_y(fb) + self.mark_rows * 2 * MARK_SCALE;
+            let x0 = mx.min(lx);
+            let x1 = (mx + mw).max(lx + lsize);
+            self.glint(fb, x0, ly, x1 - x0, bottom - ly, 9.0, 0.0);
+        }
         self.draw_home(fb, t);
         if t >= 4.0 && !self.chime_played {
             self.chime_played = true;
@@ -4691,6 +5049,167 @@ impl Scene {
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
+    /// A glint: every `period` seconds a narrow diagonal highlight sweeps
+    /// across the box in under a second, brightening only what is drawn
+    /// there. The small movement that keeps a logo alive.
+    fn glint(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, period: f64, offset: f64) {
+        const SWEEP: f64 = 0.9;
+        let phase = (self.now + offset).rem_euclid(period);
+        if phase > SWEEP || w <= 0 || h <= 0 {
+            return;
+        }
+        let p = (phase / SWEEP) as f32;
+        let centre = -0.2 + 1.4 * p;
+        let bg = self.theme.bg;
+        let paper = self.theme.paper;
+        for py in y.max(0)..(y + h).min(fb.h as i32) {
+            for px in x.max(0)..(x + w).min(fb.w as i32) {
+                let u = (px - x) as f32 / w as f32 + 0.4 * (py - y) as f32 / h as f32;
+                let d = (u - centre).abs();
+                if d >= 0.1 {
+                    continue;
+                }
+                let c = fb.px[py as usize * fb.w + px as usize];
+                if c == bg {
+                    continue;
+                }
+                let k = (1.0 - d / 0.1).powi(2) * 0.85;
+                fb.put(px, py, lerp_color(c, paper, k));
+            }
+        }
+    }
+
+    /// The cover flow: the selected game's box art large in the middle, the
+    /// neighbours receding to both sides at an angle, everything mirrored on
+    /// a dark floor, stars behind. Left and right slide the row with inertia.
+    fn draw_flow(&mut self, fb: &mut Framebuffer, prompt: &str, sel: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let n = self.games.len();
+        let now = self.now;
+        // Ease toward the selection; snap when close.
+        let target = sel as f32;
+        self.flow_pos += (target - self.flow_pos) * 0.22;
+        if (self.flow_pos - target).abs() < 0.01 {
+            self.flow_pos = target;
+        }
+        let floor_y = 162;
+        // Sky: a quiet gradient and a few stars that twinkle.
+        for y in 0..floor_y {
+            let f = y as f32 / floor_y as f32;
+            fb.rect(0, y, w, 1, lerp_color(self.theme.bg, self.theme.selection, 0.25 * (1.0 - f)));
+        }
+        for i in 0..70u32 {
+            let x = (i * 97 + 13) as i32 % w;
+            let y = (i * 53 + 7) as i32 % (floor_y - 10);
+            let tw = 0.5 + 0.5 * ((now * 1.3 + i as f64 * 0.7).sin() as f32);
+            fb.put(x, y, lerp_color(self.theme.bg, self.theme.paper, 0.2 + 0.5 * tw));
+        }
+        // Floor: darker toward the bottom with a horizon line.
+        for y in floor_y..h {
+            let f = (y - floor_y) as f32 / (h - floor_y) as f32;
+            fb.rect(0, y, w, 1, lerp_color(self.theme.selection, self.theme.bg, 0.4 + 0.6 * f));
+        }
+        fb.rect(0, floor_y, w, 1, scale(self.theme.dim, 0.7));
+        // Covers, far ones first.
+        let cw = 100;
+        let ch = 126;
+        // Covers stand on a shelf just above the floor; the reflection
+        // hangs from the same edge.
+        let bottom = floor_y - 6;
+        let cy = bottom - ch / 2;
+        let lo = (self.flow_pos.floor() as i64 - 4).max(0) as usize;
+        let hi = ((self.flow_pos.ceil() as usize) + 4).min(n.saturating_sub(1));
+        let mut order: Vec<usize> = (lo..=hi).collect();
+        order.sort_by(|a, b| {
+            let da = (*a as f32 - self.flow_pos).abs();
+            let db = (*b as f32 - self.flow_pos).abs();
+            db.partial_cmp(&da).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let entries: Vec<Entry> = order.iter().map(|i| self.games[*i].clone()).collect();
+        for (k, i) in order.iter().enumerate() {
+            let entry = &entries[k];
+            let d = *i as f32 - self.flow_pos;
+            let ad = d.abs();
+            let sc = 0.78f32.powf(ad).max(0.25);
+            let off = d.signum() * (86.0 + 38.0 * (ad - 1.0).max(0.0)) * ad.min(1.0);
+            let x_c = w as f32 / 2.0 + off;
+            let ww = (cw as f32 * sc * (1.0 - 0.25 * ad.min(1.0))) as i32;
+            let hh = (ch as f32 * sc) as i32;
+            // The far edge is shorter: a cover turned toward the middle.
+            let tilt = 0.82 + 0.18 * (1.0 - ad.min(1.0));
+            let (hl, hr) = if d < 0.0 { ((hh as f32 * tilt) as i32, hh) } else { (hh, (hh as f32 * tilt) as i32) };
+            let x0 = (x_c - ww as f32 / 2.0) as i32;
+            let y0 = bottom - hh;
+            let shade = 1.0 - 0.45 * ad.min(1.0);
+            let system = self.library.systems[entry.sys].name.clone();
+            let img = self.art.cover(&system, &entry.game.path, cw as usize, ch as usize).cloned();
+            match img {
+                Some(img) => {
+                    // Keep the cover's own proportions inside the box.
+                    let f = (ww as f32 / img.w as f32).min(hh as f32 / img.h as f32);
+                    let iw = (img.w as f32 * f) as i32;
+                    let ih = (img.h as f32 * f) as i32;
+                    let ix = (x_c - iw as f32 / 2.0) as i32;
+                    let iy = bottom - ih;
+                    let (il, ir) = ((hl as f32 * ih as f32 / hh as f32) as i32, (hr as f32 * ih as f32 / hh as f32) as i32);
+                    fb.blit_trapezoid(&img, ix, iy, iw, il, ir, shade, 1.0, false, floor_y, 0);
+                    // Reflection: the same cover upside down under the floor,
+                    // fading out within a few rows.
+                    let ry = floor_y + 1 + (floor_y - bottom);
+                    fb.blit_trapezoid(&img, ix, ry, iw, il, ir, shade * 0.6, 0.35, true, floor_y + 30, 30);
+                    let _ = (x0, y0);
+                }
+                None => {
+                    let frame = scale(self.theme.dim, 0.6);
+                    for k in (0..ww).step_by(4) {
+                        fb.put(x0 + k, y0, frame);
+                        fb.put(x0 + k, y0 + hh - 1, frame);
+                    }
+                    for k in (0..hh).step_by(4) {
+                        fb.put(x0, y0 + k, frame);
+                        fb.put(x0 + ww - 1, y0 + k, frame);
+                    }
+                    if let Some((logo, c)) = icons::system_logo(&system) {
+                        let s = if ad < 0.5 { 2 } else { 1 };
+                        fb.bitmap(x_c as i32 - 5 * s, bottom - hh / 2 - 5 * s, logo, scale(c, shade), s, 10);
+                    }
+                    let _ = cy;
+                }
+            }
+        }
+        // Title and details of the selection.
+        let entry = self.games[sel.min(n - 1)].clone();
+        let max_cols = ((w - 2 * left) / 8) as usize;
+        let title: String = entry.game.title.chars().take(max_cols).collect();
+        fb.text_centered(w / 2, floor_y + 34, &title, self.theme.bright_green, 1);
+        let stem = entry.game.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let (_, tags, _, _) = crate::index::parse_name(stem);
+        let system_label = crate::index::catalog(&self.library.systems[entry.sys].name)
+            .map(|(l, _, _)| l.to_string())
+            .unwrap_or_else(|| self.library.systems[entry.sys].name.clone());
+        let mut detail = system_label;
+        for t in tags.iter().take(2) {
+            detail.push_str("  ");
+            detail.push_str(t);
+        }
+        let detail: String = detail.chars().take(max_cols).collect();
+        fb.text_centered(w / 2, floor_y + 46, &detail, self.theme.dim, 1);
+        if let Some(st) = self.states.latest(&entry.game.path) {
+            fb.text(left, floor_y + 34, &st.label(), self.theme.green, 1);
+        }
+        if self.is_favorite(&entry) {
+            fb.bitmap(w - left - 8, floor_y + 35, &icons::STAR, self.theme.yellow, 1, 8);
+        }
+        let pos = format!("{}/{}", sel + 1, n);
+        fb.text(w - left - Framebuffer::text_width(&pos, 1), 4, &pos, scale(self.theme.dim, 0.8), 1);
+        let p: String = prompt.chars().take(24).collect();
+        fb.text(left, 4, &p, scale(self.theme.dim, 0.8), 1);
+        let hint = self.hint(&[("A", "run"), ("X", "list"), ("Y", "fav"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
     /// The search bar under the header: the query with a blinking cursor and
     /// the number of matches. Returns the y the list starts at.
     fn draw_search_bar(&mut self, fb: &mut Framebuffer, y0: i32, q: &str, hits: usize) -> i32 {
@@ -4710,7 +5229,9 @@ impl Scene {
             let cx = left + 4 + Framebuffer::text_width(&text, 1) + 1;
             fb.rect(cx, y0, 6, 8, self.theme.accent);
         }
-        let count = if q.trim().is_empty() {
+        let count = if self.yt_query {
+            if self.yt_search.is_some() { "searching".to_string() } else { "Enter searches YouTube".to_string() }
+        } else if q.trim().is_empty() {
             "type to filter".to_string()
         } else {
             format!("{hits} found")

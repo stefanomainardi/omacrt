@@ -225,3 +225,101 @@ impl Framebuffer {
         std::fs::write(path, data)
     }
 }
+
+impl Framebuffer {
+    /// Like `blit_scaled`, but the left edge is `h_left` tall and the right
+    /// edge `h_right`, both centred on the box: a cover seen at an angle.
+    /// With `flip` the image is drawn upside down (a reflection); nothing is
+    /// drawn at or below `clip_y`, and with `fade_rows` > 0 the alpha thins
+    /// out over that many rows from the top of the box.
+    #[allow(clippy::too_many_arguments)]
+    pub fn blit_trapezoid(
+        &mut self,
+        img: &crate::art::Image,
+        x: i32,
+        y: i32,
+        w: i32,
+        h_left: i32,
+        h_right: i32,
+        shade: f32,
+        alpha: f32,
+        flip: bool,
+        clip_y: i32,
+        fade_rows: i32,
+    ) {
+        if img.w == 0 || img.h == 0 || w <= 0 {
+            return;
+        }
+        let cy = y as f32 + h_left.max(h_right) as f32 / 2.0;
+        for c in 0..w {
+            let t = c as f32 / w as f32;
+            let hcol = (h_left as f32 + (h_right - h_left) as f32 * t).max(1.0);
+            let sx = ((c as usize) * img.w / w as usize).min(img.w - 1);
+            let top = cy - hcol / 2.0;
+            let dx = x + c;
+            if dx < 0 || dx >= self.w as i32 {
+                continue;
+            }
+            for r in 0..hcol as i32 {
+                let dy = top as i32 + r;
+                if dy < 0 || dy >= self.h as i32 || dy >= clip_y {
+                    continue;
+                }
+                let row_alpha = if fade_rows > 0 {
+                    alpha * (1.0 - (dy - y) as f32 / fade_rows as f32).clamp(0.0, 1.0)
+                } else {
+                    alpha
+                };
+                let mut sy = (r as usize) * img.h / hcol as usize;
+                if flip {
+                    sy = img.h - 1 - sy.min(img.h - 1);
+                }
+                let p = img.px[sy.min(img.h - 1) * img.w + sx];
+                let a = ((p >> 24) & 0xff) as f32 / 255.0 * row_alpha;
+                if a <= 0.0 {
+                    continue;
+                }
+                let c = scale(p & 0x00ff_ffff, shade);
+                let bg = self.px[dy as usize * self.w + dx as usize];
+                self.px[dy as usize * self.w + dx as usize] = lerp_color(bg, c, a);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod trapezoid_tests {
+    use super::*;
+
+    #[test]
+    fn flipped_reflection_draws_rows() {
+        let img = crate::art::Image {
+            w: 4,
+            h: 4,
+            px: vec![0xffff_0000; 16],
+        };
+        let mut fb = Framebuffer::new(20, 40);
+        fb.clear(0);
+        // A cover bottom at row 10; the reflection starts at 12 and fades over 10 rows.
+        fb.blit_trapezoid(&img, 2, 12, 8, 8, 8, 1.0, 0.5, true, 30, 10);
+        let drawn: Vec<usize> = (0..40).filter(|y| (0..20).any(|x| fb.px[y * 20 + x] != 0)).collect();
+        assert!(!drawn.is_empty(), "nothing drawn");
+        assert_eq!(drawn[0], 12, "rows start at the box top, got {drawn:?}");
+    }
+}
+
+#[cfg(test)]
+mod reflection_scene_numbers {
+    use super::*;
+
+    #[test]
+    fn reflection_with_scene_numbers() {
+        let img = crate::art::Image { w: 100, h: 126, px: vec![0xffff_0000; 100 * 126] };
+        let mut fb = Framebuffer::new(320, 240);
+        fb.clear(0);
+        let floor_y = 162;
+        fb.blit_trapezoid(&img, 110, 171, 100, 126, 126, 0.6, 0.35, true, floor_y + 30, 30);
+        let drawn: Vec<usize> = (0..240).filter(|y| (0..320).any(|x| fb.px[y * 320 + x] != 0)).collect();
+        assert_eq!((drawn.first().copied(), drawn.last().copied()), (Some(171), Some(191)), "{drawn:?}");
+    }
+}

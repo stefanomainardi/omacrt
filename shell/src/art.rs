@@ -199,9 +199,11 @@ impl Art {
         self.pending.contains(key)
     }
 
-    pub fn cover_key(system: &str, path: &Path) -> String {
+    /// One entry per game and size: the list wants a small box, the cover
+    /// flow a large one, both from the same file in the cache.
+    pub fn cover_key(system: &str, path: &Path, max_w: usize, max_h: usize) -> String {
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        format!("cover:{system}:{stem}")
+        format!("cover:{system}:{stem}:{max_w}x{max_h}")
     }
 
     /// Box art of a game, fitted into `max_w` x `max_h`. `None` while it
@@ -213,7 +215,7 @@ impl Art {
         max_w: usize,
         max_h: usize,
     ) -> Option<&Image> {
-        let key = Self::cover_key(system, path);
+        let key = Self::cover_key(system, path, max_w, max_h);
         if !self.ready.contains_key(&key) {
             let Some(label) = system_label(system) else {
                 self.ready.insert(key.clone(), None);

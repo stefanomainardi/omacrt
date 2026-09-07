@@ -21,6 +21,7 @@ Panel {
   property string lastNote: ""
   property bool watching: false
   property bool cursorOn: true
+  property string watchUrl: ""
 
   readonly property color fg: root.bar ? root.bar.foreground : Color.foreground
   readonly property color bg: root.bar ? root.bar.background : Color.background
@@ -390,6 +391,28 @@ Panel {
               text: root.shellRunning ? "↻  Restart launcher" : "▶  Start launcher"
               enabled: root.active && !actionProc.running
               onClicked: root.runAction(["shell", root.shellRunning ? "restart" : "start"])
+            }
+          }
+
+          // A link or a file for the tube: mpv plays it through the launcher.
+          Row {
+            width: parent.width
+            spacing: Style.space(6)
+            visible: root.shellRunning
+            TextField {
+              width: parent.width - Style.space(150)
+              text: root.watchUrl
+              foreground: root.fg
+              font.family: root.mono
+              onTextChanged: root.watchUrl = text
+              onAccepted: if (root.watchUrl.trim()) { root.runAction(["watch", root.watchUrl.trim()]); root.watchUrl = "" }
+            }
+            Act {
+              width: Style.space(144)
+              text: "▶  Watch on the TV"
+              tooltipText: "a YouTube link or a video file, played on the tube through mpv"
+              enabled: root.watchUrl.trim() !== "" && !actionProc.running
+              onClicked: { root.runAction(["watch", root.watchUrl.trim()]); root.watchUrl = "" }
             }
           }
 

@@ -20,6 +20,12 @@ const USER_AGENT: &str = "omarchy-crt/0.1 (https://github.com/stefanomainardi/om
 /// Stations per country or genre list, most voted first.
 const STATIONS: usize = 100;
 
+/// Silence the daemon from outside the launcher (the launcher stopping, the
+/// tube going off). Nothing happens when no daemon listens.
+pub fn stop_now() {
+    let _ = call(json!({ "cmd": "stop" }));
+}
+
 pub fn socket_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
     PathBuf::from(home).join(".config/cliamp/cliamp.sock")
@@ -360,12 +366,13 @@ impl Music {
         which("cliamp")
     }
 
-    /// Start the daemon when it is not running and read the providers.
+    /// Start the daemon when it is not running and read the providers again:
+    /// a `cliamp setup` done meanwhile shows up on the next open.
     pub fn ensure(&mut self) {
         if self.ready.is_none() {
             let _ = self.tx.send(Request::Ensure);
-            let _ = self.tx.send(Request::Providers);
         }
+        let _ = self.tx.send(Request::Providers);
     }
 
     /// Called every frame: polls status at 2 Hz, the spectrum at 20 Hz while
@@ -422,7 +429,15 @@ impl Music {
                     }
                     self.lists.insert(src, items);
                 }
-                Ok(Reply::Error(e)) => self.error = Some(e),
+                Ok(Reply::Error(e)) => {
+                    // The daemon went away: start it again on the next open.
+                    if e.contains("Connection refused") || e.contains("No such file") {
+                        self.ready = None;
+                        self.status = Status::default();
+                    } else {
+                        self.error = Some(e);
+                    }
+                }
                 Ok(Reply::Played) => {
                     self.played = true;
                     self.last_status = 0.0;

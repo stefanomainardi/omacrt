@@ -116,6 +116,8 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
 /// answers gets SIGKILL, otherwise a restart would end with two launchers
 /// fighting over the tube.
 pub fn stop() -> String {
+    // The launcher is cliamp's face: no launcher, no music.
+    crate::music::stop_now();
     let list = pids();
     if list.is_empty() {
         return "not running".into();

@@ -13,3 +13,4 @@ pub mod profile;
 pub mod settings;
 pub mod states;
 pub mod videofit;
+pub mod yt;

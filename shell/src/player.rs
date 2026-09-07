@@ -72,7 +72,11 @@ local function render()
   local box_y = h - margin - box_h
   local fs_big = math.floor(9 * unit) * 2
   local fs_small = math.floor(7 * unit) * 2
-  local font = "\\fnmonospace"
+  -- On a wide super resolution (3520x240 shown as 4:3) every pixel is many
+  -- times wider than tall: stretch the glyphs the same way or they squash.
+  local xs = (w / h) / (4 / 3)
+  if xs < 1.5 then xs = 1 end
+  local font = string.format("\\fnmonospace\\fscx%d", math.floor(xs * 100))
 
   local a = {}
   -- Box.
