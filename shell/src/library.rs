@@ -941,6 +941,14 @@ impl Library {
                 kv("joypad_autoconfig_dir", &dir.display().to_string());
                 kv("input_autodetect_enable", "true");
             }
+            // Dolphin asks libretro for a Vulkan context, and it only gets one
+            // when RetroArch itself is running its Vulkan driver. Under the GL
+            // driver it falls back to its OpenGL backend, fails to make the
+            // second context its shader compiler needs, and draws a screen of
+            // magenta.
+            if system.core.contains("dolphin") {
+                kv("video_driver", "vulkan");
+            }
             // The emulator's own rumble volume: nothing to feel without it,
             // and nothing to gain from it when the pad cannot shake.
             kv(

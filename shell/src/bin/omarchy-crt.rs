@@ -197,7 +197,8 @@ fn status(cfg: &Config) -> Value {
         if leased {
             if display::running() {
                 let standard = st["standard"].as_str().unwrap_or("ntsc").to_string();
-                let applied = crt::applied_standard(&standard, state.lines);
+                let applied =
+                    crt::applied_standard_with(&standard, state.lines, cfg.output.interlace);
                 if let Some(ml) = cfg.modeline(applied).and_then(Modeline::parse) {
                     let ml = if state.lines > 0 && state.lines != ml.height() {
                         ml.with_lines(state.lines)
@@ -1018,6 +1019,15 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
 
 fn cmd_doctor(cfg: &Config) -> i32 {
     let mut rows: Vec<(String, bool, String)> = Vec::new();
+    rows.push((
+        "interlaced modes".into(),
+        true,
+        if cfg.output.interlace {
+            "on: 480i and 576i are used where a console drew them".into()
+        } else {
+            "off: 480 line consoles are shown at 240p (needs a 15 kHz kernel)".into()
+        },
+    ));
     for extra in omarchy_crt_shell::coredata::TABLE {
         let there = !omarchy_crt_shell::coredata::missing(
             extra.core,
@@ -1838,7 +1848,7 @@ fn main() {
             // `applied` is what goes to the tube; `std` is what gets saved, so
             // that a 480 line game does not leave the launcher interlaced when
             // it ends.
-            let applied = crt::applied_standard(std, lines.unwrap_or(0));
+            let applied = crt::applied_standard_with(std, lines.unwrap_or(0), cfg.output.interlace);
             let shift = (
                 flag("--shift-x").unwrap_or(0),
                 flag("--shift-y").unwrap_or(0),
