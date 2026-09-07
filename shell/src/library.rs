@@ -478,7 +478,12 @@ fn default_systems() -> Vec<System> {
             // is what a 15 kHz set can show. The boot animation is skipped
             // because it needs an IPL dump nobody has by default.
             opts(&[
-                ("dolphin_efb_scale", "1x Native (640x528)"),
+                // Vulkan rather than the OpenGL backend: under libretro,
+                // Dolphin cannot make the second GL context its shader
+                // compiler wants, warns about it a hundred times a second and
+                // draws a magenta screen. Vulkan brings its own context and
+                // is what this machine would rather use anyway.
+                ("dolphin_renderer", "Vulkan"),
                 ("dolphin_widescreen", "disabled"),
                 ("dolphin_widescreen_hack", "disabled"),
                 ("dolphin_progressive_scan", "disabled"),
@@ -489,11 +494,6 @@ fn default_systems() -> Vec<System> {
                 ("dolphin_crop_overscan", "enabled"),
                 ("dolphin_skip_gc_bios", "enabled"),
                 ("dolphin_osd_enabled", "disabled"),
-                ("dolphin_shader_compilation_mode", "sync"),
-                ("dolphin_wait_for_shaders", "enabled"),
-                ("dolphin_cpu_core", "JIT Recompiler"),
-                ("dolphin_dsp_hle", "enabled"),
-                ("dolphin_fastmem", "enabled"),
             ]),
         ),
     ]
