@@ -696,6 +696,9 @@ fn cmd_doctor(cfg: &Config) -> i32 {
         ("retroarch", "retroarch"),
         ("mpv", "mpv"),
         ("ffmpeg", "ffmpeg"),
+        ("curl", "curl"),
+        ("yt-dlp", "yt-dlp"),
+        ("cliamp", "cliamp"),
     ] {
         let found = std::env::var_os("PATH")
             .map(|p| std::env::split_paths(&p).any(|d| d.join(cmd).is_file()))
@@ -707,6 +710,64 @@ fn cmd_doctor(cfg: &Config) -> i32 {
                 "ok".into()
             } else {
                 format!("pacman -S {cmd}")
+            },
+        ));
+    }
+    // The piece that makes leasing possible at all: without the boot time
+    // unit the connector stays a desktop monitor and nothing else works.
+    let unit = std::path::Path::new("/etc/systemd/system/omarchy-crt-lease.service");
+    let unit_enabled = std::process::Command::new("systemctl")
+        .args(["is-enabled", "--quiet", "omarchy-crt-lease.service"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    rows.push((
+        "lease unit installed".into(),
+        unit.is_file(),
+        if unit.is_file() {
+            "/etc/systemd/system/omarchy-crt-lease.service".into()
+        } else {
+            "sudo bin/omarchy-crt-install --system".into()
+        },
+    ));
+    rows.push((
+        "lease unit enabled".into(),
+        unit_enabled,
+        if unit_enabled {
+            "runs at boot".into()
+        } else {
+            "sudo systemctl enable --now omarchy-crt-lease.service".into()
+        },
+    ));
+    // The bar plugin, and whether the shell has been told about it.
+    let plugin_dir = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+        .join(".config/omarchy/plugins/io.github.stefanomainardi.omarchy-crt");
+    rows.push((
+        "bar plugin installed".into(),
+        plugin_dir.join("manifest.json").is_file(),
+        if plugin_dir.join("manifest.json").is_file() {
+            plugin_dir.display().to_string()
+        } else {
+            "bin/omarchy-crt-install (unlocked session)".into()
+        },
+    ));
+    // Somewhere to write: a read only config directory fails much later,
+    // in the middle of saving something the player cares about.
+    for (label, dir) in [
+        ("config directory writable", crt::config_dir()),
+        ("state directory writable", crt::state_dir()),
+    ] {
+        let ok = std::fs::create_dir_all(&dir).is_ok()
+            && omarchy_crt_shell::store::save(&dir.join(".write-test"), b"ok").is_ok();
+        let _ = std::fs::remove_file(dir.join(".write-test"));
+        let _ = std::fs::remove_file(dir.join(".write-test.bak"));
+        rows.push((
+            label.into(),
+            ok,
+            if ok {
+                dir.display().to_string()
+            } else {
+                format!("cannot write {}", dir.display())
             },
         ));
     }
