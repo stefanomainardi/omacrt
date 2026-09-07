@@ -472,11 +472,14 @@ impl Crt {
     }
 
     /// Keys typed into the desktop window go to the program on the tube.
+    ///
+    /// No check on our own `focused` flag: the desktop only delivers key
+    /// events to a window that holds its keyboard, and that flag has been
+    /// seen to stay false when the enter event was missed, which swallowed
+    /// every key typed in the window (Escape over a video, for one).
     fn forward_key(&mut self, code: Keycode, state: KeyState) {
-        if self.host.as_ref().map(|h| h.focused).unwrap_or(false) {
-            self.focus_top();
-            self.key_event(code, state);
-        }
+        self.focus_top();
+        self.key_event(code, state);
     }
 }
 
