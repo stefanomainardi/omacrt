@@ -60,6 +60,16 @@ case ":$PATH:" in
   *) echo "note: $bin_dir is not in PATH" ;;
 esac
 
+# The shell watches its plugin folders and reloads plugin code on any file
+# change; under the lock screen that reload aborts Quickshell (its lock plugin
+# re-creates surfaces without an active lock). Plugin files wait for an
+# unlocked desktop; the binaries in ~/.local/bin are in place already.
+if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
+  echo "note: the session is locked; run this again unlocked to update the bar plugin"
+  "$bin_dir/omarchy-crt" status || true
+  exit 0
+fi
+
 echo "== installing plugin into $plugin_dir"
 # Overwrite in place: removing the folder makes the shell drop the plugin
 # for a moment and the bar widget vanishes; changed files hot reload instead.
@@ -80,9 +90,7 @@ done
 # lock plugin re-create its surfaces without an active lock, which Quickshell
 # treats as fatal: the shell crashes and restarts on top of the lock screen.
 # The files are in place already; the reload waits for an unlocked desktop.
-if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
-  echo "note: the session is locked, the shell keeps the old plugin code until you run this again unlocked"
-elif command -v omarchy >/dev/null 2>&1; then
+if command -v omarchy >/dev/null 2>&1; then
   omarchy plugin validate "$plugin_dir"
   omarchy plugin validate "$library_dir"
   if ! omarchy plugin list --json 2>/dev/null | grep -q "\"$library_id\""; then
