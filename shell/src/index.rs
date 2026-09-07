@@ -825,16 +825,28 @@ pub fn scan(roots: &[PathBuf], hints: &Hints, mut progress: impl FnMut(&str)) ->
             }
             // A ScummVM game is a folder of data files with one `.scummvm`
             // launcher in it. The executable and the disc images beside it are
-            // the game's own parts, not games of their own.
-            if files
-                .iter()
-                .any(|f| matches!(ext_of(f).as_str(), "scummvm" | "svm"))
-            {
+            // the game's own parts, not games of their own. A folder that has
+            // no launcher yet is a game waiting to be unpacked, and its two
+            // discs are not two games either.
+            let scumm_here = dir.components().any(|c| {
+                let name = c.as_os_str().to_string_lossy().to_ascii_lowercase();
+                name == "scummvm" || name == "scumm"
+            });
+            if scumm_here {
+                let has_launcher = files
+                    .iter()
+                    .any(|f| matches!(ext_of(f).as_str(), "scummvm" | "svm"));
                 for f in &files {
                     if !matches!(ext_of(f).as_str(), "scummvm" | "svm") {
                         owned.insert(f.clone());
                     }
                 }
+                // A folder with no launcher yet holds a game still on its
+                // discs, or the odds and ends a disc carries: an installer, a
+                // driver, a readme. Neither is worth reporting as something
+                // the scan could not place, and the preparation step says
+                // plainly which games are waiting to be unpacked.
+                let _ = has_launcher;
             }
             for f in files {
                 let ext = ext_of(&f);

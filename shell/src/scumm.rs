@@ -201,6 +201,82 @@ pub fn prepare_all(root: &Path) -> Vec<Prepared> {
         .collect()
 }
 
+/// Unpack the disc images in a game folder into the folder itself.
+///
+/// A ScummVM game bought on CD arrives as one or two disc images, and ScummVM
+/// reads files rather than images. The contents of both discs belong in the
+/// same folder: that is how the manual says to install a two disc game, and
+/// how the second disc's music and speech end up next to the first disc's.
+///
+/// The images are left where they are. They are somebody's backup, and the
+/// unpacked copy costs disk rather than replacing anything.
+pub fn unpack(dir: &Path) -> Result<String, String> {
+    let mut discs: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .and_then(|x| x.to_str())
+                    .map(|x| x.to_ascii_lowercase())
+                    .is_some_and(|x| matches!(x.as_str(), "iso" | "img" | "bin" | "mdf" | "nrg"))
+        })
+        .collect();
+    if discs.is_empty() {
+        return Err(format!("{}: no disc image to unpack", dir.display()));
+    }
+    // Disc one first, so that a file on both discs is written by the disc the
+    // game expects it from and the later one is skipped.
+    discs.sort();
+    let mut done = 0;
+    for disc in &discs {
+        let ok = std::process::Command::new("7z")
+            .arg("x")
+            .arg("-y")
+            .arg("-aos") // never overwrite: the first disc wins
+            .arg("-bso0")
+            .arg("-bsp0")
+            .arg(disc)
+            .arg(format!("-o{}", dir.display()))
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            done += 1;
+        }
+    }
+    if done == 0 {
+        return Err(format!(
+            "{}: could not be unpacked (is 7z installed?)",
+            dir.display()
+        ));
+    }
+    // The data usually arrives in a subfolder of the disc; the launcher file
+    // goes wherever the game was actually found.
+    match ensure_launcher(dir) {
+        Some(Prepared::Wrote(file, id)) => {
+            Ok(format!("{done} disc(s) unpacked, {id}: {}", file.display()))
+        }
+        Some(Prepared::Packaged(_)) | None => Ok(format!(
+            "{done} disc(s) unpacked into {}, but the game could not be placed",
+            dir.display()
+        )),
+    }
+}
+
+/// Game folders under `root` that hold nothing but disc images.
+pub fn packaged_under(root: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    rd.filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .filter(|dir| matches!(ensure_launcher(dir), Some(Prepared::Packaged(_))))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

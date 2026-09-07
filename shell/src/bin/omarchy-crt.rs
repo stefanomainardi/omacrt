@@ -80,6 +80,34 @@ fn has(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
 }
 
+/// The ScummVM folders under these roots, each one once.
+///
+/// A collection on a removable disk is often on a filesystem that does not
+/// care about case, where `scummvm` and `ScummVM` are the same folder reached
+/// by two names; without this the scan reports every game in it twice.
+fn scummvm_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for root in roots {
+        for folder in ["scummvm", "ScummVM", "scumm"] {
+            let dir = root.join(folder);
+            if !dir.is_dir() {
+                continue;
+            }
+            let real = std::fs::canonicalize(&dir).unwrap_or(dir);
+            // Same folder, two spellings: compare without case, since that is
+            // what the filesystem underneath is doing.
+            let key = real.to_string_lossy().to_lowercase();
+            if !out
+                .iter()
+                .any(|p: &PathBuf| p.to_string_lossy().to_lowercase() == key)
+            {
+                out.push(real);
+            }
+        }
+    }
+    out
+}
+
 /// The value after a `--flag`, when it is there.
 fn value(args: &[String], flag: &str) -> Option<String> {
     let i = args.iter().position(|a| a == flag)?;
@@ -1325,22 +1353,17 @@ fn cmd_library(args: &[String]) {
             // ScummVM games arrive as folders of data files, and the core
             // launches a `.scummvm` file naming the game. Write the missing
             // ones before the scan, so they are picked up as games.
-            for root in &lc.roots {
-                for folder in ["scummvm", "ScummVM", "scumm"] {
-                    let dir = root.join(folder);
-                    if !dir.is_dir() {
-                        continue;
-                    }
-                    for done in omarchy_crt_shell::scumm::prepare_all(&dir) {
-                        match done {
-                            omarchy_crt_shell::scumm::Prepared::Wrote(file, id) => {
-                                println!("scummvm:    {id}, {}", file.display())
-                            }
-                            omarchy_crt_shell::scumm::Prepared::Packaged(dir) => println!(
-                                "scummvm:    {} is still a disc image; unpack it into the folder",
-                                dir.display()
-                            ),
+            for dir in scummvm_dirs(&lc.roots) {
+                for done in omarchy_crt_shell::scumm::prepare_all(&dir) {
+                    match done {
+                        omarchy_crt_shell::scumm::Prepared::Wrote(file, id) => {
+                            println!("scummvm:    {id}, {}", file.display())
                         }
+                        omarchy_crt_shell::scumm::Prepared::Packaged(dir) => println!(
+                            "scummvm:    {} is still on its discs; \
+                             `omarchy-crt library unpack` reads them out",
+                            dir.display()
+                        ),
                     }
                 }
             }
@@ -1580,6 +1603,31 @@ fn cmd_library(args: &[String]) {
                 "{} -> {system}; run `omarchy-crt library scan` to apply",
                 p.display()
             );
+        }
+        // `library unpack [DIR...]`: read a ScummVM game out of its discs.
+        Some("unpack") => {
+            let lc = LibraryConfig::load();
+            let given: Vec<PathBuf> = pos[1..].iter().map(PathBuf::from).collect();
+            let folders: Vec<PathBuf> = if given.is_empty() {
+                scummvm_dirs(&lc.roots)
+                    .iter()
+                    .flat_map(|d| omarchy_crt_shell::scumm::packaged_under(d))
+                    .collect()
+            } else {
+                given
+            };
+            if folders.is_empty() {
+                println!("nothing to unpack: every ScummVM game is already readable");
+                return;
+            }
+            for dir in folders {
+                println!("unpacking {} ...", dir.display());
+                match omarchy_crt_shell::scumm::unpack(&dir) {
+                    Ok(note) => println!("  {note}"),
+                    Err(e) => println!("  {e}"),
+                }
+            }
+            println!("run `omarchy-crt library scan` to pick them up");
         }
         Some("unknown") => {
             let Some(ix) = Index::load() else {

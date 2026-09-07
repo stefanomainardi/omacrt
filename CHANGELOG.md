@@ -12,6 +12,9 @@ caveat for a 0.x project: anything may still move.
 - GameCube, through the Dolphin core: native internal resolution, 480 lines,
   the widescreen hacks off and the boot animation skipped. The files the core
   needs but nobody ships with it are fetched once, on the first launch.
+- `omarchy-crt library unpack` reads a ScummVM game out of its disc images
+  into the folder beside them, which is what ScummVM needs and what the manual
+  told you to do in 1997.
 - ScummVM games are prepared on the way in: the scan works out what each
   folder holds from its data files and writes the `.scummvm` launcher the core
   needs, beside the data. The pointer is on the left stick with the settings a
