@@ -1371,6 +1371,30 @@ impl Scene {
         }
     }
 
+    /// Take a freshly read library, after a scan has changed what is on disk.
+    ///
+    /// The library and its index are read once at start, because reading them
+    /// every frame would mean touching a disk sixty times a second. That
+    /// leaves the launcher showing yesterday's collection when a scan runs
+    /// from the desktop overlay, which is exactly when somebody is looking at
+    /// the numbers to see whether it worked.
+    pub fn replace_library(&mut self, library: Library) {
+        self.library = library;
+        self.refresh_counts();
+        // Whatever list is open was built from the old library.
+        if let Screen::Games { sys, .. } = self.screen {
+            let all = match sys {
+                Some(i) if i < self.library.systems.len() => self.entries_for(i),
+                Some(_) => Vec::new(),
+                None => (0..self.library.systems.len())
+                    .filter(|&i| !self.library.systems[i].is_video())
+                    .flat_map(|i| self.entries_for(i))
+                    .collect(),
+            };
+            self.set_games(all);
+        }
+    }
+
     /// Counts for the systems screen, computed once per library read so the
     /// screen never rescans folders while drawing.
     fn refresh_counts(&mut self) {

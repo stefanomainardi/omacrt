@@ -193,20 +193,24 @@ fn parse_args() -> Result<Args, String> {
     Ok(a)
 }
 
+/// Where the systems file lives for this run: the flag, else the config
+/// directory, else the usual place.
+fn systems_path(args: &Args) -> PathBuf {
+    args.systems
+        .clone()
+        .unwrap_or_else(|| match &args.config_dir {
+            Some(d) => d.join("systems.toml"),
+            None => library::default_path(),
+        })
+}
+
 fn build_scene(args: &Args) -> Scene {
     let theme_path = args.theme.clone().or_else(theme::Theme::default_path);
     let theme = theme_path
         .and_then(|p| theme::Theme::load(&p))
         .unwrap_or_else(theme::Theme::tokyo_night);
     let info = SysInfo::probe(args.w, args.h, args.hz);
-    let systems_path = args
-        .systems
-        .clone()
-        .unwrap_or_else(|| match &args.config_dir {
-            Some(d) => d.join("systems.toml"),
-            None => library::default_path(),
-        });
-    let library = library::Library::load(&systems_path);
+    let library = library::Library::load(&systems_path(args));
     Scene::new(theme, info, args.idle, library)
 }
 
@@ -481,6 +485,18 @@ fn run(args: &Args) -> Result<(), String> {
     // menu going interlaced, a Saturn switching between 224 and 240) gets the
     // mode it asks for. `follow_at` is when to look again, `following` the
     // line count already applied.
+    // When a scan runs from the desktop overlay the index file changes under
+    // us; the launcher reads it again rather than showing the collection as it
+    // was when it started.
+    let index_path = omarchy_crt_shell::index::Index::path();
+    let index_stamp = |p: &std::path::Path| {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .ok()
+            .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default())
+    };
+    let mut index_seen = index_stamp(&index_path);
+    let mut index_check = 0.0f64;
     let mut follow_at = 0.0f64;
     let mut following: Option<u32> = None;
     // Whether the desktop preview window was up when the game started, and
@@ -982,6 +998,16 @@ fn run(args: &Args) -> Result<(), String> {
                     eprintln!("cannot start retroarch: {e}");
                     scene.game_finished(false);
                 }
+            }
+        }
+        // Once a second, and never while a game holds the tube.
+        if child.is_none() && now() >= index_check {
+            index_check = now() + 1.0;
+            let stamp = index_stamp(&index_path);
+            if stamp != index_seen {
+                index_seen = stamp;
+                eprintln!("the library was scanned again, reading it");
+                scene.replace_library(library::Library::load(&systems_path(args)));
             }
         }
         if let Some(n) = stick.poll(now())
