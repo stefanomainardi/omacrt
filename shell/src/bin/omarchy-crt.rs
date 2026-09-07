@@ -169,7 +169,8 @@ fn status(cfg: &Config) -> Value {
         if leased {
             if display::running() {
                 let standard = st["standard"].as_str().unwrap_or("ntsc").to_string();
-                if let Some(ml) = cfg.modeline(&standard).and_then(Modeline::parse) {
+                let applied = crt::applied_standard(&standard, state.lines);
+                if let Some(ml) = cfg.modeline(applied).and_then(Modeline::parse) {
                     let ml = if state.lines > 0 && state.lines != ml.height() {
                         ml.with_lines(state.lines)
                     } else {
@@ -177,10 +178,10 @@ fn status(cfg: &Config) -> Value {
                     };
                     st["active"] = json!(true);
                     st["mode"] = json!({
-                        "width": ml.width(), "height": ml.height(), "refresh_hz": ml.vfreq_hz(), "disabled": false,
+                        "width": ml.width(), "height": ml.height(), "refresh_hz": ml.field_hz(), "disabled": false,
                         "hfreq_khz": (ml.hfreq_khz() * 1000.0).round() / 1000.0,
-                        "vfreq_hz": (ml.vfreq_hz() * 1000.0).round() / 1000.0,
-                        "lines": format!("{}p", ml.height()),
+                        "vfreq_hz": (ml.field_hz() * 1000.0).round() / 1000.0,
+                        "lines": ml.label(),
                     });
                 }
             }
@@ -1744,6 +1745,15 @@ fn main() {
                     .and_then(|v| v.parse().ok())
             };
             let lines = flag("--lines").map(|v| v.max(0) as u32);
+            // A line count is what a system asks for, and it decides the
+            // standard on its own: more lines than a progressive 15 kHz frame
+            // holds is an interlaced picture, fewer is a progressive one. This
+            // is what makes a 480 line console readable without anybody having
+            // to name a mode.
+            // `applied` is what goes to the tube; `std` is what gets saved, so
+            // that a 480 line game does not leave the launcher interlaced when
+            // it ends.
+            let applied = crt::applied_standard(std, lines.unwrap_or(0));
             let shift = (
                 flag("--shift-x").unwrap_or(0),
                 flag("--shift-y").unwrap_or(0),
@@ -1751,7 +1761,7 @@ fn main() {
             let conn = connector(&cfg);
             if display::leaseable(&conn.name) && display::running() {
                 let text = cfg
-                    .modeline(std)
+                    .modeline(applied)
                     .unwrap_or_else(|| die("no modeline for that standard"));
                 let mut ml = Modeline::parse(text).unwrap_or_else(|| die("bad modeline"));
                 if let Some(l) = lines {
@@ -1770,22 +1780,22 @@ fn main() {
                 state.save();
                 println!(
                     "{} {}x{} {:.3} kHz {:.3} Hz",
-                    std.to_uppercase(),
+                    applied.to_uppercase(),
                     ml.width(),
-                    ml.height(),
+                    ml.label(),
                     ml.hfreq_khz(),
-                    ml.vfreq_hz()
+                    ml.field_hz()
                 );
                 return;
             }
-            match apply_mode(&cfg, &conn, std, lines, shift) {
+            match apply_mode(&cfg, &conn, applied, lines, shift) {
                 Ok(ml) => println!(
                     "{} {}x{} {:.3} kHz {:.3} Hz",
-                    std.to_uppercase(),
+                    applied.to_uppercase(),
                     ml.width(),
-                    ml.height(),
+                    ml.label(),
                     ml.hfreq_khz(),
-                    ml.vfreq_hz()
+                    ml.field_hz()
                 ),
                 Err(e) => die(&e),
             }

@@ -266,6 +266,23 @@ impl State {
     }
 }
 
+/// The standard actually put on the tube, for a base standard and a line
+/// count. More lines than a progressive 15 kHz frame holds is an interlaced
+/// picture; fewer is a progressive one. A console that drew 480 lines on a
+/// television gets 480 lines here, and nobody has to name a mode for it.
+///
+/// `lines` of 0 means the standard's own line count, so nothing changes.
+pub fn applied_standard(standard: &str, lines: u32) -> &str {
+    match (standard, lines) {
+        (_, 0) => standard,
+        ("ntsc", l) if l > 288 => "480i",
+        ("pal", l) if l > 288 => "576i",
+        ("480i" | "ntsc_i", l) if l <= 288 => "ntsc",
+        ("576i" | "pal_i", l) if l <= 288 => "pal",
+        _ => standard,
+    }
+}
+
 /// Run a command and return stdout when it succeeded.
 pub fn run(cmd: &str, args: &[&str]) -> Option<String> {
     let out = Command::new(cmd).args(args).output().ok()?;

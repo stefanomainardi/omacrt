@@ -154,6 +154,31 @@ impl Modeline {
     /// The same timing with a different number of active lines, centred in
     /// the frame: a 224 line game on a 240 line standard keeps the line rate
     /// and refresh and gains blank lines above and below.
+    /// True when the modeline draws two fields per frame.
+    pub fn is_interlaced(&self) -> bool {
+        self.flags.to_ascii_lowercase().contains("interlace")
+    }
+
+    /// What the television sees: the field rate, which for an interlaced mode
+    /// is twice the frame rate. A 480i picture is 59.94 Hz on the tube even
+    /// though its frames arrive at 29.97.
+    pub fn field_hz(&self) -> f64 {
+        if self.is_interlaced() {
+            self.vfreq_hz() * 2.0
+        } else {
+            self.vfreq_hz()
+        }
+    }
+
+    /// How the mode is written: `240p`, `480i`.
+    pub fn label(&self) -> String {
+        format!(
+            "{}{}",
+            self.height(),
+            if self.is_interlaced() { "i" } else { "p" }
+        )
+    }
+
     pub fn with_lines(&self, lines: u32) -> Self {
         let active = self.v[0];
         let vsync = self.v[2] - self.v[1];

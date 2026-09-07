@@ -21,6 +21,13 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The television follows the resolution the core is drawing. Every system has
+  a line count (480 for a Dreamcast, 224 for a Super Nintendo), a count above
+  288 selects the interlaced mode of the standard on its own, and the launcher
+  reads the emulator's log while a game runs and follows every change. A
+  640x480 console is no longer squeezed into 240 lines.
+- `misc:exit_window_retains_fullscreen` is never left set on the desktop, and
+  `misc:on_focus_under_fullscreen` is put back to whatever it was.
 - Log files rotate past 8 MB, keeping one older generation; the per-second
   display bookkeeping is behind `OMARCHY_CRT_LOG=debug`.
 - `crt.toml` and `systems.toml` are written atomically and read through the

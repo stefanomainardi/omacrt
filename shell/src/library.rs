@@ -206,6 +206,25 @@ fn opts(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         .collect()
 }
 
+/// The active lines a console draws, as a starting point for the tube.
+///
+/// It only has to be right often enough that the first frame of a game is
+/// already the right shape: the launcher reads the core's own reports from
+/// the emulator's log while it runs and follows them from there, so a game
+/// that disagrees costs one mode change rather than a squashed picture.
+///
+/// 480 is a real interlaced frame, not half a progressive one: a console that
+/// drew 480 lines on a television gets 480 lines on this one.
+pub fn default_lines(system: &str) -> Option<u32> {
+    Some(match system {
+        "nes" | "pcengine" | "pcenginecd" | "psx" | "n64" | "mastersystem" | "gamegear" => 240,
+        "snes" | "megadrive" | "megacd" | "32x" | "neogeo" | "arcade" | "saturn" | "mame" => 224,
+        "dreamcast" | "naomi" | "ps2" | "gamecube" | "wii" | "xbox" => 480,
+        "gb" | "gbc" | "gba" | "nds" | "psp" | "ngp" | "wonderswan" | "lynx" => 240,
+        _ => return None,
+    })
+}
+
 /// Built-in systems, tuned for a first launch that looks and plays right on
 /// a 15 kHz CRT with the cores Arch ships. Users override any of it in
 /// `systems.toml`. Run-ahead only where the CPU has headroom (8 and 16 bit),
@@ -489,6 +508,12 @@ impl Library {
                     shift_x: 0,
                     shift_y: 0,
                 });
+            }
+        }
+        // A system that names no line count gets the one its console drew.
+        for s in &mut systems {
+            if s.lines.is_none() && !s.is_video() {
+                s.lines = default_lines(&s.name);
             }
         }
         let mut lib = Self {
@@ -1136,4 +1161,44 @@ pub fn installed_cores(core_dir: &Path) -> Vec<String> {
         .unwrap_or_default();
     out.sort();
     out
+}
+
+/// The picture the running core is drawing, read from the emulator's own log.
+///
+/// RetroArch with `--verbose` announces the geometry it was given when a game
+/// starts, and again whenever the core changes it: a PlayStation menu going to
+/// 480 lines, a Saturn game switching between 224 and 240. Both lines carry
+/// the same shape, and the last one in the file is the truth:
+///
+/// ```text
+/// [INFO] [Core] Geometry: 640x480, Aspect: 1.333, FPS: 59.95, ...
+/// [INFO] [Environ] SET_GEOMETRY: 640x480, Aspect: 1.333.
+/// ```
+///
+/// This is how the tube follows a game rather than a table: the launcher polls
+/// it while a game runs and asks for that many lines. Nothing else in
+/// RetroArch will say it without a network command, and those crash the
+/// emulator often enough to be worth avoiding.
+pub fn core_geometry(log: &str) -> Option<(u32, u32)> {
+    let mut found = None;
+    for line in log.lines() {
+        let Some(rest) = line
+            .split_once("SET_GEOMETRY:")
+            .or_else(|| line.split_once("Geometry:"))
+            .map(|(_, r)| r.trim())
+        else {
+            continue;
+        };
+        let size = rest.split(',').next().unwrap_or("").trim();
+        let Some((w, h)) = size.split_once('x') else {
+            continue;
+        };
+        if let (Ok(w), Ok(h)) = (w.trim().parse::<u32>(), h.trim().parse::<u32>())
+            && (1..=4096).contains(&w)
+            && (1..=1200).contains(&h)
+        {
+            found = Some((w, h));
+        }
+    }
+    found
 }

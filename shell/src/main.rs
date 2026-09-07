@@ -471,6 +471,13 @@ fn run(args: &Args) -> Result<(), String> {
     }
     let mut child: Option<std::process::Child> = None;
     let mut lines_changed = false;
+    // The tube follows the core's own picture: the emulator's log says how
+    // many lines it is drawing, and a game that changes it (a PlayStation
+    // menu going interlaced, a Saturn switching between 224 and 240) gets the
+    // mode it asks for. `follow_at` is when to look again, `following` the
+    // line count already applied.
+    let mut follow_at = 0.0f64;
+    let mut following: Option<u32> = None;
     // Pad buttons held, for the Select + Start pause combo.
     let mut held_back = false;
     let mut held_start = false;
@@ -487,6 +494,7 @@ fn run(args: &Args) -> Result<(), String> {
                     // end of play as far as the launcher is concerned.
                     scene.game_finished(status.success() || library::exited_after_unload());
                     omarchy_crt_shell::crt::output::expect_game_clear();
+                    following = None;
                     if lines_changed {
                         crt_mode(None);
                         lines_changed = false;
@@ -496,7 +504,26 @@ fn run(args: &Args) -> Result<(), String> {
                         omarchy_crt_shell::crt::output::raise(omarchy_crt_shell::crt::SHELL_CLASS);
                     }
                 }
-                Ok(None) => {}
+                Ok(None) => {
+                    // While it runs: read the tail of its log and follow the
+                    // resolution the core reports.
+                    if now() >= follow_at {
+                        follow_at = now() + 0.75;
+                        if let Some((_, h)) = library::core_geometry(&tail_of_game_log())
+                            && (180..=1200).contains(&h)
+                            && following != Some(h)
+                        {
+                            following = Some(h);
+                            eprintln!("the core is drawing {h} lines, following");
+                            crt_mode_async(Some(Geometry {
+                                lines: Some(h),
+                                shift_x: 0,
+                                shift_y: 0,
+                            }));
+                            lines_changed = true;
+                        }
+                    }
+                }
                 Err(e) => {
                     eprintln!("wait failed: {e}");
                     child = None;
@@ -841,6 +868,8 @@ fn run(args: &Args) -> Result<(), String> {
         }
 
         if let Some((mut cmd, title, lines)) = scene.take_launch() {
+            follow_at = now() + 2.0;
+            following = lines.and_then(|g| g.lines);
             if let Some(g) = lines
                 && crt_mode(Some(g))
             {
@@ -1146,6 +1175,24 @@ fn crt_focus() {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status();
+}
+
+/// The last part of the emulator's log. The file grows to megabytes over a
+/// long session and only the end of it says what the core is drawing now.
+fn tail_of_game_log() -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    const TAIL: u64 = 64 * 1024;
+    let path = library::game_log_path();
+    let Ok(mut f) = std::fs::File::open(&path) else {
+        return String::new();
+    };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    if len > TAIL && f.seek(SeekFrom::End(-(TAIL as i64))).is_err() {
+        return String::new();
+    }
+    let mut buf = Vec::new();
+    let _ = f.take(TAIL + 4096).read_to_end(&mut buf);
+    String::from_utf8_lossy(&buf).into_owned()
 }
 
 /// Like `crt_mode`, without waiting: for live adjustments while drawing.
