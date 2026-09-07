@@ -100,6 +100,88 @@ pub struct Crt {
     commits: std::collections::BTreeMap<String, u64>,
     /// The desktop side window (preview + keyboard), when opened.
     pub host: Option<crate::host::Host>,
+    /// Video capture of the tube through ffmpeg, when recording.
+    recorder: Option<Recorder>,
+}
+
+/// ffmpeg fed with raw frames of the tube (scaled to a 4:3 picture, each
+/// line four pixels tall) and the HDMI sink's monitor as the audio track.
+struct Recorder {
+    child: std::process::Child,
+    tx: std::sync::mpsc::SyncSender<Vec<u8>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    frames: u64,
+    path: String,
+}
+
+const REC_W: usize = 1280;
+const REC_H: usize = 960;
+
+impl Recorder {
+    fn start(path: &str, sink: Option<String>) -> Result<Recorder, String> {
+        let mut cmd = std::process::Command::new("ffmpeg");
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y"])
+            .args(["-f", "rawvideo", "-pix_fmt", "bgra"])
+            .args(["-s", &format!("{REC_W}x{REC_H}"), "-r", "30", "-i", "pipe:0"]);
+        if let Some(sink) = &sink {
+            cmd.args(["-f", "pulse", "-i", &format!("{sink}.monitor")]);
+        }
+        cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"]);
+        if sink.is_some() {
+            cmd.args(["-c:a", "aac", "-b:a", "192k", "-shortest"]);
+        }
+        cmd.arg(path)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit());
+        let mut child = cmd.spawn().map_err(|e| format!("ffmpeg: {e}"))?;
+        let mut stdin = child.stdin.take().ok_or("ffmpeg stdin")?;
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(8);
+        let thread = std::thread::spawn(move || {
+            use std::io::Write;
+            for frame in rx {
+                if stdin.write_all(&frame).is_err() {
+                    break;
+                }
+            }
+            let _ = stdin.flush();
+        });
+        Ok(Recorder {
+            child,
+            tx,
+            thread: Some(thread),
+            frames: 0,
+            path: path.to_string(),
+        })
+    }
+
+    /// Scale the tube's frame into the recording size (nearest: the wide
+    /// super resolution becomes 4:3, each of the tube's lines four pixels).
+    fn push(&mut self, bgra: &[u8], w: usize, h: usize) {
+        let mut out = vec![0u8; REC_W * REC_H * 4];
+        for y in 0..REC_H {
+            let sy = y * h / REC_H;
+            let src_row = &bgra[sy * w * 4..(sy + 1) * w * 4];
+            let dst_row = &mut out[y * REC_W * 4..(y + 1) * REC_W * 4];
+            for x in 0..REC_W {
+                let sx = x * w / REC_W;
+                dst_row[x * 4..x * 4 + 4].copy_from_slice(&src_row[sx * 4..sx * 4 + 4]);
+            }
+        }
+        // Drop the frame rather than stall the compositor when ffmpeg lags.
+        if self.tx.try_send(out).is_ok() {
+            self.frames += 1;
+        }
+    }
+
+    fn stop(mut self) -> String {
+        drop(self.tx);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+        let _ = self.child.wait();
+        format!("{} frames to {}", self.frames, self.path)
+    }
 }
 
 #[derive(Default)]
@@ -388,6 +470,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         last_stats: Instant::now(),
         commits: Default::default(),
         host: None,
+        recorder: None,
     };
     crt.handle
         .insert_source(
@@ -436,6 +519,37 @@ impl Crt {
                 }
             }
             "key" => self.inject_key(arg.trim()),
+            "record" => {
+                let (what, rest) = arg.trim().split_once(' ').unwrap_or((arg.trim(), ""));
+                // `record start <file> [sink]`: the sink's monitor is the audio track.
+                let (path, sink_arg) = rest.trim().rsplit_once(' ').unwrap_or((rest.trim(), ""));
+                let (path, sink_arg) = if sink_arg.starts_with("alsa_") || sink_arg.contains('.') && !sink_arg.contains('/') {
+                    (path, Some(sink_arg.to_string()))
+                } else {
+                    (rest.trim(), None)
+                };
+                match what {
+                    "start" if !path.is_empty() => {
+                        if let Some(r) = self.recorder.take() {
+                            println!("record: {}", r.stop());
+                        }
+                        let sink = sink_arg.or_else(|| std::env::var("OMARCHY_CRT_SINK").ok().filter(|s| !s.is_empty()));
+                        match Recorder::start(path.trim(), sink) {
+                            Ok(r) => {
+                                println!("record: started {}", path.trim());
+                                self.recorder = Some(r);
+                            }
+                            Err(e) => eprintln!("record: {e}"),
+                        }
+                    }
+                    "stop" => {
+                        if let Some(r) = self.recorder.take() {
+                            println!("record: {}", r.stop());
+                        }
+                    }
+                    _ => eprintln!("record: use `record start <file.mp4>` or `record stop`"),
+                }
+            }
             "monitor" => match arg.trim() {
                 "on" => {
                     if self.host.is_none() {
@@ -733,6 +847,13 @@ impl Crt {
         }
         self.frame_queued = false;
         self.frames += 1;
+        if self.recorder.is_some() && self.frames % 2 == 0 {
+            if let Ok((bgra, w, h)) = self.capture() {
+                if let Some(r) = self.recorder.as_mut() {
+                    r.push(&bgra, w, h);
+                }
+            }
+        }
         if self.last_stats.elapsed() >= Duration::from_secs(5) {
             self.last_stats = Instant::now();
             let commits: Vec<String> = self

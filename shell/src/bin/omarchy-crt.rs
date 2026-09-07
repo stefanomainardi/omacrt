@@ -28,6 +28,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
   shot <file.png>                what the tube shows right now (leased output)
   monitor on|off                 desktop window: live preview of the tube, keyboard to the tube when focused
+  record start <file.mp4>|stop   capture the tube, picture and sound, into a video
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
   dac status|reset|csync and|xor|separate|watch
@@ -45,6 +46,16 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   config                   config file path and contents
 
 Config: ~/.config/omarchy-crt/crt.toml (written with defaults on first run)";
+
+/// Keyboard to the tube. With the connector leased the tube's clients have
+/// no keyboard of their own: the desktop monitor window carries it.
+fn focus_note() -> String {
+    if display::running() {
+        display::monitor_focus()
+    } else {
+        launcher::focus().1
+    }
+}
 
 fn die(msg: &str) -> ! {
     eprintln!("omarchy-crt: {msg}");
@@ -498,7 +509,7 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
     state.standard = standard.into();
     state.lines = 0;
     state.save();
-    match display::start(&conn.name) {
+    match display::start_with_sink(&conn.name, crt_sink(cfg, conn).as_deref()) {
         Ok(note) => println!("display:    {note}"),
         Err(e) => die(&format!("display: {e}")),
     }
@@ -1174,6 +1185,40 @@ fn main() {
                 }
             );
         }
+        "record" => {
+            if !display::running() {
+                die("the display process is not running");
+            }
+            let sub = positional(args).first().map(|s| s.to_string()).unwrap_or_default();
+            match sub.as_str() {
+                "start" => {
+                    let given = positional(args)
+                        .get(1)
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| die("record start needs a file path"));
+                    let path = if given.starts_with('/') {
+                        given
+                    } else {
+                        match std::env::current_dir() {
+                            Ok(d) => d.join(&given).to_string_lossy().into_owned(),
+                            Err(_) => given,
+                        }
+                    };
+                    let conn = connector(&cfg);
+                    let sink = crt_sink(&cfg, &conn);
+                    display::record_start(&path, sink.as_deref()).unwrap_or_else(|e| die(&e.to_string()));
+                    println!(
+                        "recording the tube to {path}{} (omarchy-crt record stop)",
+                        sink.as_deref().map(|s| format!(" with audio from {s}")).unwrap_or_default()
+                    );
+                }
+                "stop" => {
+                    display::record_stop().unwrap_or_else(|e| die(&e.to_string()));
+                    println!("recording stopped");
+                }
+                _ => die("record start <file.mp4> | stop"),
+            }
+        }
         "shot" => {
             let given: String = positional(args)
                 .first()
@@ -1259,7 +1304,7 @@ fn main() {
                     );
                     launcher::focus();
                 }
-                "focus" => println!("{}", launcher::focus().1),
+                "focus" => println!("{}", focus_note()),
                 "key" => {
                     let names: Vec<&str> = positional(args)
                         .iter()
@@ -1291,7 +1336,7 @@ fn main() {
                 }
             }
         }
-        "focus" => println!("{}", launcher::focus().1),
+        "focus" => println!("{}", focus_note()),
         "audio" => {
             let conn = connector(&cfg);
             let target =

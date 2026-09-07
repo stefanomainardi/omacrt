@@ -105,6 +105,12 @@ fn binary() -> PathBuf {
 
 /// Start the display process on `connector` and wait for its socket.
 pub fn start(connector: &str) -> Result<String, String> {
+    start_with_sink(connector, None)
+}
+
+/// Start the display process; `sink` is the PipeWire sink whose monitor
+/// becomes the audio track of recordings.
+pub fn start_with_sink(connector: &str, sink: Option<&str>) -> Result<String, String> {
     if running() {
         return Ok("already running".into());
     }
@@ -116,6 +122,9 @@ pub fn start(connector: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(binary());
+    if let Some(s) = sink {
+        cmd.env("OMARCHY_CRT_SINK", s);
+    }
     cmd.arg("run")
         .arg(connector)
         .stdin(Stdio::null())
@@ -209,3 +218,35 @@ pub fn on_tube() -> bool {
         .map(|v| v == SOCKET)
         .unwrap_or(false)
 }
+
+/// Open the desktop monitor window (preview of the tube, keyboard to the
+/// tube) and give it focus, so typing goes to the program on the tube.
+pub fn monitor_focus() -> String {
+    if send("monitor on").is_err() {
+        return "display process not reachable".into();
+    }
+    for _ in 0..30 {
+        std::thread::sleep(Duration::from_millis(100));
+        let listed = super::run("hyprctl", &["clients", "-j"])
+            .map(|t| t.contains("\"omarchy-crt-monitor\""))
+            .unwrap_or(false);
+        if listed {
+            super::output::focus_class("omarchy-crt-monitor");
+            return "keyboard on the tube: the Omarchy CRT window has focus (close it to stop)".into();
+        }
+    }
+    "monitor window did not appear".into()
+}
+
+/// Record the tube (picture and its audio) to an mp4 until `record_stop`.
+pub fn record_start(path: &str, sink: Option<&str>) -> std::io::Result<()> {
+    match sink {
+        Some(s) => send(&format!("record start {path} {s}")),
+        None => send(&format!("record start {path}")),
+    }
+}
+
+pub fn record_stop() -> std::io::Result<()> {
+    send("record stop")
+}
+
