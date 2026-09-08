@@ -151,8 +151,15 @@ rather than promised.
       issues disabled with Discussions in their place, a pull request template
       that asks what a change ran on, and `CODEOWNERS`. The README's own
       section became a pointer rather than a second copy.
-- [ ] **The screenshots that are stale.** `library-overlay.png` and the
-      panel, after the plugin change reaches an unlocked session.
+- [ ] **The screenshots that are stale.** `library-overlay.png` and
+      `panel.png`. The overlay's two buttons are renamed ("Rescan sources"
+      and "Reload"), so both pictures are out of date, and the old overlay
+      one is also cut off on the right and predates the shortening of source
+      paths. The retake keeps the game count and shows the sources the way
+      the overlay writes them now, `~/Games/roms` and the removable disk's
+      own name, which is what `short()` in `Library.qml` already does. It
+      needs a desktop nobody is sharing: a grab of that screen catches
+      whatever else is on it.
 
 ## E. Publishing
 

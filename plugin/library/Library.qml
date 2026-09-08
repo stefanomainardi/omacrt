@@ -418,7 +418,7 @@ Item {
                     onClicked: root.scan(root.newRoot.trim())
                   }
                   Act {
-                    text: "Rescan"
+                    text: "Rescan sources"
                     enabled: root.roots.length > 0 && !actionProc.running && !scanProc.running
                     onClicked: root.scan("")
                   }
@@ -634,7 +634,7 @@ Item {
               width: parent.width
               spacing: Style.space(8)
               Act { text: "Doctor"; onClicked: root.inTerminal(root.helper + " doctor") }
-              Act { text: "Refresh"; onClicked: root.refresh() }
+              Act { text: "Reload"; onClicked: root.refresh() }
               Act { visible: scanProc.running; text: "Stop the scan"; onClicked: root.stopScan() }
               Text {
                 width: parent.width - Style.space(200)
