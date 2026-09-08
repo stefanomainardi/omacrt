@@ -13,6 +13,18 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- A clear sky has an aeroplane in it now and then: a speck of metal with a
+  contrail spreading and thinning behind it, twenty odd seconds to cross,
+  and at night the navigation lights blinking on their own rhythms with
+  nothing else to see. Brussels has an airport ten kilometres from the
+  Atomium, so a clear sky there always has one.
+- The sun notices clouds. The rays used to be switched off by the kind of
+  weather, so a cloud could drift across the sun and nothing happened; it is
+  geometry now, and as a cloud crosses, the halo dims, the rays pull in, and
+  the cloud's shade travels across the roofs of the town.
+- The sun lining up with a polished sphere of the Atomium puts a four
+  pointed flare on it, which grows as it comes into line and goes as it
+  leaves. That takes the best part of an hour of real sun.
 - One bolt in four goes for the Atomium rather than the ground, because it is
   the tallest thing for miles with a lightning rod in every tube. It lands on
   the top sphere, the lights go out, and then the nine come back from the
