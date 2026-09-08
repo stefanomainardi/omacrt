@@ -75,6 +75,9 @@ caveat for a 0.x project: anything may still move.
   its arguments over and exits without printing, which looks exactly like a
   menu row that does nothing.
 - `omarchy-crt audio volume` takes a step (`+10`, `-10`) as well as a percent.
+- `omarchy-crt doctor` surveys what has been left behind as well as what is
+  missing: an emulator no launcher owns, a watchdog pidfile whose process is
+  gone, half fetched files in the caches. `doctor --fix` clears them.
 - `AGENTS.md`: the working guide for the repository, for a coding agent or a
   person, with the rules that have each already cost a session.
 
@@ -177,6 +180,14 @@ The first release meant for somebody else's machine.
   plugin and whether its own directories can be written.
 
 ### Fixed
+
+- An emulator no longer outlives the launcher that started it. The signal went
+  to the launcher alone, so the child was reparented to systemd and kept
+  running, holding the audio and answering "something is playing" for as long
+  as the machine was up; one from a morning's testing blocked every launch
+  from the desktop for eleven hours. `shell stop` and `off` take them with
+  them, `on` and `shell start` clear what a previous life left, and the
+  watchdog sweeps once a minute while the tube is on.
 
 - The idle timer leaves alone a page that is already one of the screensaver's
   own: sitting on the photo frame used to get the wordmark over it after a

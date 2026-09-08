@@ -41,7 +41,12 @@ command -v "$crt" >/dev/null 2>&1 || { say "omarchy-crt is not on PATH"; exit 1;
 # on a desktop that swapped it out.
 pick() {
   local prompt="$1"
-  if command -v walker >/dev/null 2>&1; then
+  # A picker of your own, and how this is tested without a window in the way:
+  #   OMARCHY_CRT_PICKER='head -1' omarchy-crt-pick snes
+  if [ -n "${OMARCHY_CRT_PICKER-}" ]; then
+    log "picker: $OMARCHY_CRT_PICKER"
+    eval "$OMARCHY_CRT_PICKER"
+  elif command -v walker >/dev/null 2>&1; then
     # walker is a single instance application: started while another one is
     # up, the second process hands its arguments over and exits at once,
     # printing nothing. From here that looks exactly like a row that does
@@ -110,8 +115,12 @@ fi
 # Nothing chosen is somebody pressing escape, which needs no announcement.
 [ -n "$chosen" ] || exit 0
 
+# No `exit` in here on purpose. Leaving awk at the first match closes the
+# pipe while the writer still has twenty thousand lines to go, the writer
+# takes SIGPIPE, and with `pipefail` and `set -e` the whole script dies at
+# 141 without a word. Reading to the end of a list this size costs nothing.
 path="$(printf '%s\n' "$rows" |
-  awk -F'\t' -v want="$chosen" '{ if ($1 "  ·  " $2 == want) { print $3; exit } }')"
+  awk -F'\t' -v want="$chosen" '$1 "  ·  " $2 == want && !seen++ { print $3 }')"
 if [ -z "$path" ]; then
   say "could not find that game again" "$chosen"
   exit 1

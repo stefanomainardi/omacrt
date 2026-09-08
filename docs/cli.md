@@ -231,6 +231,33 @@ Names: `home`, `games`, `videos`, `youtube`, `music`, `favorites`, `recent`,
 a menu entry pressed by accident must not take the television away from what
 it is doing.
 
+## Clearing up after itself
+
+```
+omarchy-crt doctor            # what is wrong, and what has been left behind
+omarchy-crt doctor --fix      # clear what has been left behind
+```
+
+The survey looks for three things. An **emulator no launcher owns**: it is
+ours when its command line carries our own RetroArch configuration, which
+nothing else on the machine passes, and an orphan when no launcher is running
+above it in the process tree. A **watchdog pidfile** whose process is gone.
+And **half fetched files** in the caches, a download that was interrupted.
+
+Emulators are also swept where a leftover would get in the way, so this is
+rarely needed by hand:
+
+- **`shell stop` and `off`** take the launcher's emulators with it. An
+  emulator does not die with the launcher that started it: the signal goes to
+  the launcher, the child is reparented to systemd and keeps running, holding
+  the audio and answering "something is playing" for as long as the machine is
+  up. One from a morning's testing blocked every launch for eleven hours
+  before anybody asked why.
+- **`on` and `shell start`** clear whatever a previous life left, since with
+  no launcher running nothing can own it.
+- **the watchdog** sweeps once a minute while the tube is on, which is the one
+  process already awake to do it.
+
 ## Starting a game from anywhere
 
 ```

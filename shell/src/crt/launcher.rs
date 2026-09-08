@@ -68,6 +68,8 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
     if !pids().is_empty() {
         return Ok("already running".into());
     }
+    // Anything of ours still running belongs to a launcher that is gone.
+    super::tidy::sweep_orphans();
     output::window_rules(output_name);
     let _ = std::fs::create_dir_all(state_dir());
     let log = crate::logfile::open(&state_dir().join("shell.log")).map_err(|e| e.to_string())?;
@@ -125,7 +127,12 @@ pub fn stop() -> String {
     for _ in 0..30 {
         std::thread::sleep(std::time::Duration::from_millis(100));
         if pids().is_empty() {
-            return format!("stopped {}", list.len());
+            let swept = super::tidy::sweep_orphans();
+            return if swept > 0 {
+                format!("stopped {} ({swept} left behind)", list.len())
+            } else {
+                format!("stopped {}", list.len())
+            };
         }
     }
     let left = pids();
@@ -133,7 +140,17 @@ pub fn stop() -> String {
         unsafe { libc::kill(*pid as libc::pid_t, libc::SIGKILL) };
     }
     std::thread::sleep(std::time::Duration::from_millis(200));
-    format!("stopped {} ({} killed)", list.len(), left.len())
+    // An emulator does not die with the launcher that started it: the signal
+    // goes to the launcher alone, the child is reparented to systemd and
+    // keeps running, holding the audio and answering "something is playing"
+    // for as long as the machine is up. With the launcher gone it is an
+    // orphan by definition, so this is where it goes.
+    let swept = super::tidy::sweep_orphans();
+    let mut out = format!("stopped {} ({} killed)", list.len(), left.len());
+    if swept > 0 {
+        out.push_str(&format!(", {swept} left behind"));
+    }
+    out
 }
 
 /// Bring the tube's current program to the front: the game while one runs,
