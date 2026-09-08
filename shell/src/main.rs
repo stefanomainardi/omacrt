@@ -48,6 +48,7 @@ struct Args {
     no_audio: bool,
     auto_boot: bool,
     headless: bool,
+    realtime: bool,
     pads: bool,
     theme: Option<PathBuf>,
     systems: Option<PathBuf>,
@@ -77,6 +78,9 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --browse [SYSTEM] boot straight into the game browser (or settings, saver, diag, about, power, profile, pair)
   --pads            what SDL sees on every connected pad, then exit
   --headless        render without a window; use with --dump
+  --realtime        with --headless, run at the real frame rate: anything drawn
+                    from live data (the monitor, the weather, the photo frame)
+                    needs the wall clock to move at the same speed as the scene
   --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
   --dump-dir DIR    where dumps go (default .)
   --idle SECONDS    start the screensaver after this much idle time (default 60, 0 = never)
@@ -112,6 +116,7 @@ fn parse_args() -> Result<Args, String> {
         no_audio: false,
         auto_boot: false,
         headless: false,
+        realtime: false,
         pads: false,
         theme: None,
         systems: None,
@@ -142,6 +147,7 @@ fn parse_args() -> Result<Args, String> {
             "--no-audio" => a.no_audio = true,
             "--auto-boot" => a.auto_boot = true,
             "--headless" => a.headless = true,
+            "--realtime" => a.realtime = true,
             "--pads" => a.pads = true,
             "--theme" => a.theme = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--systems" => a.systems = Some(PathBuf::from(take(&mut it, &arg)?)),
@@ -234,7 +240,19 @@ fn run_headless(args: &Args) -> Result<(), String> {
     let dt = 1.0 / 60.0;
     let mut t = 0.0;
     let mut next = 0;
+    let started = std::time::Instant::now();
     while t <= end {
+        // Without this the loop runs as fast as it can, which is about sixty
+        // times real time. That is what makes the system monitor read zero:
+        // it asks the kernel for its counters more often than the kernel
+        // moves them.
+        if args.realtime {
+            let due = std::time::Duration::from_secs_f64(t);
+            let now = started.elapsed();
+            if due > now {
+                std::thread::sleep(due - now);
+            }
+        }
         scene.draw(&mut fb, t);
         fb.roll(scene.roll(), t as f32);
         fb.apply_gain(scene.power());
