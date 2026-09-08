@@ -64,7 +64,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library unknown          files the scan could not place
   library systems          the systems catalogue
   library collections [import DIR]  curated lists (RePlayOS _favorites folders import)
-  doctor                   checks with plain answers
+  doctor [--fix]           checks with plain answers; --fix clears what has been
+                           left behind (an emulator no launcher owns, stale files)
   config                   config file path and contents
   config set KEY VALUE     change one setting (output.csync, output.standard, audio.volume, shell.autostart, ...)
 
@@ -665,11 +666,24 @@ fn cmd_watchdog(cfg: &Config) -> i32 {
     // launcher for the desktop leaves the tube on and must stay that way.
     let mut had_launcher = !launcher::pids().is_empty();
     let mut was_up = display::running();
+    // The watchdog is the one thing already awake while the tube is on, so
+    // the sweep for what has been left behind rides along on a slow beat
+    // rather than on every tick: reading every process's command line twice
+    // a second would be its own kind of mess.
+    let mut ticks: u64 = 0;
+    let sweep_every = (60.0 / watchdog::TICK.as_secs_f64()) as u64;
     loop {
         std::thread::sleep(watchdog::TICK);
         // A newer `on` has started its own watchdog, or `off` has cleared us.
         if !watchdog::still_ours() {
             return 0;
+        }
+        ticks += 1;
+        if ticks.is_multiple_of(sweep_every) {
+            let swept = crt::tidy::sweep_orphans();
+            if swept > 0 {
+                eprintln!("cleared {swept} emulator(s) no launcher owned");
+            }
         }
         if !State::load().on {
             eprintln!("the tube is off, standing down");
@@ -1026,7 +1040,7 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
     0
 }
 
-fn cmd_doctor(cfg: &Config) -> i32 {
+fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
     let mut rows: Vec<(String, bool, String)> = Vec::new();
     rows.push((
         "interlaced modes".into(),
@@ -1240,6 +1254,19 @@ fn cmd_doctor(cfg: &Config) -> i32 {
             format!("{} missing", miss.len())
         },
     ));
+    // What has been left behind, which is a different question from what is
+    // missing: a survey of the machine's own mess.
+    let mess = crt::tidy::survey();
+    rows.push((
+        "nothing left behind".into(),
+        mess.is_empty(),
+        if mess.is_empty() {
+            "no orphans, no stale files".into()
+        } else {
+            format!("{} to clear (doctor --fix)", mess.len())
+        },
+    ));
+
     let width = rows.iter().map(|r| r.0.len()).max().unwrap_or(10);
     let mut bad = 0;
     for (label, ok, note) in &rows {
@@ -1252,6 +1279,21 @@ fn cmd_doctor(cfg: &Config) -> i32 {
             label,
             note
         );
+    }
+    if !mess.is_empty() {
+        println!();
+        let fix = has(args, "--fix");
+        for m in &mess {
+            if fix {
+                let done = crt::tidy::clear(m);
+                println!("     {}  {}: {done}", m.what, m.detail);
+            } else {
+                println!("     {}  {}: {}", m.what, m.detail, m.fix);
+            }
+        }
+        if !fix {
+            println!("\n     omarchy-crt doctor --fix clears these");
+        }
     }
     if bad == 0 { 0 } else { 1 }
 }
@@ -2499,7 +2541,7 @@ fn main() {
                 println!("playing on the tube: {target}");
             }
         }
-        "doctor" => exit(cmd_doctor(&cfg)),
+        "doctor" => exit(cmd_doctor(&cfg, args)),
         "config" => {
             let pos = positional(args);
             if pos.first().map(|s| s.as_str()) == Some("set") {
