@@ -30,6 +30,13 @@ caveat for a 0.x project: anything may still move.
 - `omarchy-crt shell screen NAME` opens a launcher screen by name, which is
   how the menu reaches it without counting rows.
 - `omarchy-crt audio volume` takes a step (`+10`, `-10`) as well as a percent.
+- `AGENTS.md`: the working guide for the repository, for a coding agent or a
+  person, with the rules that have each already cost a session.
+
+### Changed
+
+- The home menu carries **System** where **About** was, and About moved into
+  Settings. Eight rows is what fits under the wordmark on a 240 line screen.
 
 - GameCube, through the Dolphin core: native internal resolution, 480 lines,
   the widescreen hacks off and the boot animation skipped. The files the core

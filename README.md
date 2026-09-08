@@ -56,6 +56,10 @@ television outright. Written in Rust, drawn at 320x240.
   page on the tube.
 - **Video.** Local films fitted to the tube, YouTube searched and played from
   the television, a link sent from the desktop.
+- **When nothing is playing.** A photo frame reading the house's own Immich
+  server, an ambient page with the clock, the weather and the next
+  appointment, and a system monitor drawn as a 16 bit status screen. Either
+  can stand in for the screensaver.
 - **Omarchy all the way.** Theme colours, the bar widget and its panel, a full
   screen library overlay, the shell's plugin system, cliamp, mpv, yt-dlp: the
   desktop's own tools drive the CRT.
@@ -385,6 +389,7 @@ collapse onto one title and systems show up when they have games. Details in
 | --- | --- |
 | `shell/` | The Rust workspace: `omarchy-crt-shell` (launcher), `omarchy-crt` (CLI), `omarchy-crt-display` (lease and compositor), shared library |
 | `plugin/` | The bar widget and panel; `plugin/library/` the library overlay |
+| `menu/` | The Television rows the installer writes into Omarchy's menu extension file |
 | `bin/omarchy-crt-install` | Build and install everything, `--system` for the boot time lease |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
@@ -409,6 +414,12 @@ modelines, the video fit, the durable writes. CI runs those plus `cargo fmt
 --check`, clippy with warnings denied, and a headless boot of the launcher
 whose frames have to come out as pictures rather than a blank screen. What
 needs the television is checked in the living room, and always will be.
+
+[`AGENTS.md`](AGENTS.md) is the working guide for this repository: what the
+pieces are, how to check a change without a television, the conventions the
+code and the commits follow, and the handful of rules that have each cost a
+broken session to learn. It is written for a coding agent and reads fine for
+a person.
 
 [`SECURITY.md`](SECURITY.md) says what runs as root, what is downloaded and
 from where, and what is executed. [`CHANGELOG.md`](CHANGELOG.md) keeps the
