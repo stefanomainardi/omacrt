@@ -79,7 +79,7 @@ impl LibraryConfig {
     }
 }
 
-pub fn data_dir() -> PathBuf {
+fn data_dir() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| crate::library::home().join(".local/share"))
@@ -379,7 +379,7 @@ fn tokens(name: &str) -> Vec<String> {
 }
 
 /// System named by the words of one folder, longest alias first.
-pub fn system_from_folder_name(name: &str) -> Option<&'static str> {
+fn system_from_folder_name(name: &str) -> Option<&'static str> {
     let toks = tokens(name);
     if toks.is_empty() {
         return None;
@@ -510,7 +510,7 @@ fn cue_first_file(cue: &Path) -> Option<PathBuf> {
 }
 
 /// Files a `.m3u` playlist refers to.
-pub fn m3u_files(m3u: &Path) -> Vec<PathBuf> {
+fn m3u_files(m3u: &Path) -> Vec<PathBuf> {
     let Ok(text) = std::fs::read_to_string(m3u) else {
         return Vec::new();
     };
@@ -524,7 +524,7 @@ pub fn m3u_files(m3u: &Path) -> Vec<PathBuf> {
 
 /// Names inside a zip, from its central directory. Std only: the end of
 /// central directory record sits in the last 64 KB.
-pub fn zip_names(path: &Path) -> Vec<String> {
+fn zip_names(path: &Path) -> Vec<String> {
     let Ok(mut f) = File::open(path) else {
         return Vec::new();
     };

@@ -149,7 +149,7 @@ impl Wizard {
     }
 }
 
-pub fn db_path() -> PathBuf {
+fn db_path() -> PathBuf {
     crate::crt::config_dir().join("gamecontrollerdb.txt")
 }
 
@@ -197,7 +197,7 @@ pub const SYSTEM_AUTOCONFIG: &str = "/usr/share/libretro/autoconfig/udev";
 /// So the launcher translates. The face buttons cross over: RetroPad B is
 /// the bottom button, which SDL calls A, and RetroPad Y is the left one,
 /// which SDL calls X. Everything else is a name change.
-pub fn retroarch_profile(name: &str, vendor: u16, product: u16, sdl_mapping: &str) -> String {
+fn retroarch_profile(name: &str, vendor: u16, product: u16, sdl_mapping: &str) -> String {
     // field -> value, from `a:b0,b:b1,...`
     let mut f = std::collections::BTreeMap::new();
     for part in sdl_mapping.split(',').skip(2) {
@@ -301,7 +301,7 @@ fn binding(v: &str) -> Option<Bound> {
 
 /// True when RetroArch already ships a profile for this pad, by the ids it
 /// matches on. Nothing is written over a profile somebody tuned by hand.
-pub fn has_profile(dir: &std::path::Path, vendor: u16, product: u16) -> bool {
+fn has_profile(dir: &std::path::Path, vendor: u16, product: u16) -> bool {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return false;
     };

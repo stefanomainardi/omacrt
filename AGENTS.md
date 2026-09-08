@@ -141,7 +141,16 @@ alone.
 | Module | What |
 | --- | --- |
 | `main.rs` | SDL window, input, the frame loop, the control pipe, headless and offline rendering |
-| `scene.rs` | Every screen: the `Screen` enum, navigation, drawing. The big one |
+| `scene/mod.rs` | The `Screen` enum, the state, the dispatch, the frame loop and the helpers every screen uses |
+| `scene/browse.rs` | Systems, games, folders, search, the cover flow, the launch |
+| `scene/boot.rs` | The boot sequence and the home menu |
+| `scene/hifi.rs` | The music screens: sources, lists, the deck, the equaliser |
+| `scene/video.rs` | Films, YouTube, the player overlay, the fit settings |
+| `scene/pause.rs` | A running game and the pause menu over it |
+| `scene/settings.rs` | The settings pages, diagnostics, about, the pad wizard |
+| `scene/idle.rs` | Which page an idle television shows, and the rules for who wins |
+| `scene/frame.rs` | The photo frame and the ambient page |
+| `scene/monitor.rs` | The system monitor |
 | `fb.rs` | The framebuffer and the drawing primitives |
 | `art.rs` | Pictures on a worker thread: fetch, decode, scale |
 | `photos.rs` | The photo frame's supply thread, and the weather and calendar with it |
@@ -244,11 +253,13 @@ two have diverged once already.
 
 ## Adding the usual things
 
-**A screen.** `scene.rs`: a variant on `Screen`, an arm in the navigation
-match, an arm in the drawing match, an arm in `activate_browser` (or
-`Action::None` if A does nothing), a name in `open_screen` so the control pipe
-and the desktop menu can reach it, a name in `debug_browse` so it can be
-rendered headlessly, and a row in `HOME` or in the hub it belongs to. Watch
+**A screen.** A variant on `Screen` in `scene/mod.rs`, an arm in the
+navigation match and one in the drawing match (both in `scene/browse.rs`), an
+arm in `activate_browser` (or `Action::None` if A does nothing), a name in
+`open_screen` so the control pipe and the desktop menu can reach it, a name in
+`debug_browse` so it can be rendered headlessly, and a row in `HOME` or in the
+hub it belongs to. The drawing itself goes in the `scene/` file for its
+family, and a method another family calls is `pub(super)`. Watch
 the home menu's height: the wordmark and the CRT tag take the top half of a
 240 line screen, so eight rows fit and a ninth runs off the bottom. Render it
 and look before assuming otherwise; that is how About ended up in Settings.
@@ -262,14 +273,15 @@ same every evening and was never drawn by hand. Then render it and look at
 it, at 320x240 and at 320x288.
 
 **A page for an idle television.** It goes in the **Ambient** hub
-(`AMBIENT_ITEMS`) as well as in `SAVER_PAGES`: the hub is how somebody finds
-it on purpose, the list is how it takes its turn when the set is left alone.
+(`AMBIENT_ITEMS`) as well as in `settings::PAGES`: the hub is how somebody
+finds it on purpose, the list is how it takes its turn when the set is left
+alone.
 Putting one anywhere else because the home menu is full is how the photo
 frame briefly ended up under Videos.
 
-**A screensaver page.** `SAVER_PAGES` in `scene.rs` is the list, and
+**A screensaver page.** `PAGES` in `settings.rs` is the list, and
 `start_saver_page` puts one up. A page is a screen like any other, so it
-needs everything in the paragraph above as well; being in `SAVER_PAGES` is
+needs everything in the paragraph above as well; being in that list is
 what makes it take its turn in the mix and what makes the first key press
 give the previous screen back. The mix is turned at the top of `draw`,
 above every branch, because the effects page returns from the first one.
@@ -326,7 +338,7 @@ disk with an age. Nothing in the frame loop is allowed to block on a socket.
 
 | Question | File |
 | --- | --- |
-| Why any of this works at all | `docs/studio-15khz.md` (Italian), `docs/rgb-pi-2.md` |
+| Why any of this works at all | `docs/15khz.md`, `docs/rgb-pi-2.md` |
 | What every CLI command does | `docs/cli.md` |
 | What is set per console and why | `docs/systems.md` |
 | Pads, mapping, rumble | `docs/input.md` |

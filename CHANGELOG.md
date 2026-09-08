@@ -7,8 +7,19 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-08
+
+The release the repository opens with.
+
 ### Added
 
+- The weather has a sound, off by default (`[frame] weather_sound`, or
+  Settings, Photo frame). Rain with drops on it, gusting wind, thunder behind
+  a downpour, birds on a clear day, crickets at night, a horn in fog: eight
+  loops, each synthesized and then held at 8 kHz and quantised to five bits,
+  the way a sample was in 1990. It plays only while the ambient page is up
+  and fades in and out. `omarchy-crt-shell --dump-audio DIR` writes them all
+  as WAVs.
 - A photo frame: photographs from an Immich server on the same network, from
   what the server calls memories, an album, the favourites or anything at all,
   captioned with the place, the date and the faces the server already knows.
@@ -139,6 +150,39 @@ caveat for a 0.x project: anything may still move.
 - The library overlay writes a source folder as `~/...`, or from the name of
   the removable disk it sits on, rather than as a full path carrying the
   user's name.
+- The screensaver is two settings instead of one field meaning four things:
+  which pages are in the rotation, and which text effect the wordmark uses.
+- The turntable's track change sound is off by default, and quieter when it
+  is on (`[music] change_sound`).
+- `scene.rs` is a directory of ten files. Not a line was rewritten: the mover
+  proved it could put the file back together first, and every screen was
+  rendered before and after.
+- Contribution rules (`CONTRIBUTING.md`), a bug template that asks for the
+  machine, the tube and the output of `omarchy-crt doctor`, a pull request
+  template that asks what a change ran on, and Discussions in place of blank
+  issues.
+- The 15 kHz research is in English, as `docs/15khz.md`, and corrected where
+  what shipped disproved it.
+
+### Security
+
+- All eight network fetches go out through one function that restricts the
+  protocol list to HTTP and HTTPS before and after a redirect, sets a
+  timeout and a size cap, and fails on an error status. Three of them used
+  to save an error page as if it were the answer.
+- An identifier from the photograph server is checked against letters,
+  digits and dashes before it becomes a file name, so an answer of
+  `../../.ssh/authorized_keys` cannot decide where a file is written.
+- There is no shell anywhere in the launcher: the one command that went
+  through `sh -c` is an argument list, and the module that ran it cannot run
+  a command line at all.
+- The panics outside the tests are ten, each a mutex lock or a value the
+  framework guarantees, each with its reason written beside it. `--dump nan`
+  was one of them and is not.
+- `scripts/audit.py` asks the advisory database about every locked crate with
+  nothing installed but Python, and runs in CI.
+- `SECURITY.md` says what the project reads, runs, writes, downloads and
+  listens on, and how the photograph server's key is handled.
 
 ## [0.2.0] - 2026-09-07
 
@@ -180,6 +224,13 @@ The first release meant for somebody else's machine.
   plugin and whether its own directories can be written.
 
 ### Fixed
+
+- The deck no longer makes a noise every time the track changes. Stepping
+  through a list on the turntable played the radio's static, seven tenths of
+  a second of broadband noise at four times the level of any other sound in
+  the launcher, over the music. There is a sound for it now, a needle set
+  down, at a tenth of that energy, and `[music] change_sound` decides whether
+  anything is played at all. It is off.
 
 - An emulator no longer outlives the launcher that started it. The signal went
   to the launcher alone, so the child was reparented to systemd and kept

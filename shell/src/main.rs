@@ -22,6 +22,7 @@ mod scene;
 mod sky;
 mod sysmon;
 mod theme;
+mod weather_sound;
 use omarchy_crt_shell::padmap::Raw;
 use omarchy_crt_shell::{
     covers, index, library, music, padmap, player, profile, settings, states, videofit, yt,
@@ -235,7 +236,9 @@ fn run_headless(args: &Args) -> Result<(), String> {
         scene.start_screensaver(0.0, kind);
     }
     let mut dumps = args.dump.clone();
-    dumps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // `--dump nan` would panic a comparison that unwraps; a total order
+    // over floats has an answer for every pair.
+    dumps.sort_by(|a, b| a.total_cmp(b));
     let end = dumps.last().copied().unwrap_or(8.0) + 0.02;
     let dt = 1.0 / 60.0;
     let mut t = 0.0;
@@ -295,7 +298,7 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
                 .ok_or_else(|| format!("bad script line: {line}"))?;
             script.push((at, action.to_string(), parts.next().map(str::to_string)));
         }
-        script.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        script.sort_by(|a, b| a.0.total_cmp(&b.0));
     } else {
         script.push((0.5, "start".into(), None));
     }
@@ -383,7 +386,7 @@ fn run(args: &Args) -> Result<(), String> {
     let sdl = sdl2::init()?;
     let video = sdl.video()?;
     let gcs = sdl.game_controller()?;
-    let audio = if args.no_audio {
+    let mut audio = if args.no_audio {
         Audio::silent()
     } else {
         Audio::open(&sdl.audio()?)?
@@ -475,7 +478,9 @@ fn run(args: &Args) -> Result<(), String> {
     }
 
     let mut dumps = args.dump.clone();
-    dumps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // `--dump nan` would panic a comparison that unwraps; a total order
+    // over floats has an answer for every pair.
+    dumps.sort_by(|a, b| a.total_cmp(b));
     let mut next_dump = 0;
     if !dumps.is_empty() {
         std::fs::create_dir_all(&args.dump_dir).map_err(|e| e.to_string())?;
@@ -969,8 +974,8 @@ fn run(args: &Args) -> Result<(), String> {
                         eprintln!("restart failed: {err}");
                         break 'main;
                     }
-                    Action::Launch(cmd) => {
-                        if let Err(e) = menu::launch(&cmd) {
+                    Action::Launch(argv) => {
+                        if let Err(e) = menu::launch(&argv) {
                             eprintln!("launch failed: {e}");
                         }
                     }
@@ -1067,6 +1072,7 @@ fn run(args: &Args) -> Result<(), String> {
         for data in scene.take_samples() {
             audio.play_samples(data);
         }
+        audio.set_ambience(scene.ambience());
 
         if scene.boot_started() && next_dump < dumps.len() {
             let bt = scene_time(&scene, t);
@@ -1307,8 +1313,14 @@ fn main() {
             eprintln!("{e}");
             std::process::exit(1);
         }
-        for (kind, data) in audio::render_bank() {
-            let path = dir.join(format!("{kind:?}.wav").to_lowercase());
+        let bank = audio::render_bank()
+            .into_iter()
+            .map(|(kind, data)| (format!("{kind:?}").to_lowercase(), data));
+        let weather = weather_sound::Ambience::ALL
+            .into_iter()
+            .map(|a| (format!("weather-{}", a.name()), a.render()));
+        for (name, data) in bank.chain(weather) {
+            let path = dir.join(format!("{name}.wav"));
             if let Err(e) = audio::write_wav(&path, &data) {
                 eprintln!("{e}");
                 std::process::exit(1);
@@ -1339,9 +1351,10 @@ fn main() {
     }
 }
 
-/// Ask the CLI to switch the CRT to a program's geometry, or back to the
-/// full frame. Returns true when the command ran and succeeded.
-fn crt_mode(geometry: Option<Geometry>) -> bool {
+/// The `omarchy-crt mode` command for a geometry: the CLI beside this binary
+/// if it is there and the one on PATH otherwise, with the arguments that say
+/// what the tube should be doing. `None` is the launcher's own full frame.
+fn crt_mode_command(geometry: Option<Geometry>) -> std::process::Command {
     let name = "omarchy-crt";
     let bin = std::env::current_exe()
         .ok()
@@ -1354,21 +1367,25 @@ fn crt_mode(geometry: Option<Geometry>) -> bool {
         if let Some(h) = g.lines {
             cmd.arg("--lines").arg(h.to_string());
         }
-        if g.shift_x != 0 {
-            cmd.arg("--shift-x").arg(g.shift_x.to_string());
-        }
-        if g.shift_y != 0 {
-            cmd.arg("--shift-y").arg(g.shift_y.to_string());
-        }
+        // Both shifts, always, even at zero: centring is a property of the
+        // set in the room, and a mode change that says nothing about it
+        // leaves the CLI to fall back on what was saved.
+        cmd.arg("--shift-x").arg(g.shift_x.to_string());
+        cmd.arg("--shift-y").arg(g.shift_y.to_string());
     }
-    match cmd
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+    cmd.stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    cmd
+}
+
+/// Switch the CRT to a program's geometry and wait for it, which is what a
+/// game launch needs: the emulator must not draw into a mode that is going
+/// away. True when the command ran and succeeded.
+fn crt_mode(geometry: Option<Geometry>) -> bool {
+    crt_mode_command(geometry)
         .status()
-    {
-        Ok(s) => s.success(),
-        Err(_) => false,
-    }
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 /// Ask the CLI to put keyboard focus (and the CRT workspace) back on us.
@@ -1516,25 +1533,7 @@ fn tail_of_game_log() -> String {
     String::from_utf8_lossy(&buf).into_owned()
 }
 
-/// Like `crt_mode`, without waiting: for live adjustments while drawing.
+/// The same without waiting, for a live adjustment while the launcher draws.
 fn crt_mode_async(geometry: Option<Geometry>) {
-    let name = "omarchy-crt";
-    let bin = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join(name)))
-        .filter(|p| p.is_file())
-        .unwrap_or_else(|| PathBuf::from(name));
-    let mut cmd = std::process::Command::new(bin);
-    cmd.arg("mode");
-    if let Some(g) = geometry {
-        if let Some(h) = g.lines {
-            cmd.arg("--lines").arg(h.to_string());
-        }
-        cmd.arg("--shift-x").arg(g.shift_x.to_string());
-        cmd.arg("--shift-y").arg(g.shift_y.to_string());
-    }
-    let _ = cmd
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+    let _ = crt_mode_command(geometry).spawn();
 }

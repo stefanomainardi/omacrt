@@ -67,7 +67,7 @@ fn is_known(id: &str) -> bool {
 /// The ScummVM identifier of the game in `dir`, and the folder its data
 /// actually lives in. These arrive as a folder holding one more folder, and
 /// the launcher file has to sit with the data, not above it.
-pub fn detect_in(dir: &Path) -> Option<(String, PathBuf)> {
+fn detect_in(dir: &Path) -> Option<(String, PathBuf)> {
     if let Some(id) = detect_here(dir) {
         return Some((id, dir.to_path_buf()));
     }
@@ -171,7 +171,7 @@ pub enum Prepared {
 /// Write the launcher file for the game in `dir`, if it does not have one and
 /// the game can be placed. The file goes next to the data, since that is where
 /// the core looks for it.
-pub fn ensure_launcher(dir: &Path) -> Option<Prepared> {
+fn ensure_launcher(dir: &Path) -> Option<Prepared> {
     let (id, data) = detect_in(dir)?;
     let has_one = std::fs::read_dir(&data)
         .ok()?

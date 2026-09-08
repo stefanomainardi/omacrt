@@ -79,6 +79,9 @@ pub fn draw_cell(fb: &mut Framebuffer, x: i32, y: i32, s: i32, cell: &Cell, colo
     }
 }
 
+// A cell, its box and its phase: the arguments are the geometry, and a
+// struct for them would hide it rather than name it.
+#[allow(clippy::too_many_arguments)]
 fn draw_cell_at(
     fb: &mut Framebuffer,
     x: i32,
@@ -417,6 +420,9 @@ fn unit(h: u32) -> f32 {
 /// VHS tape, after TTE's `vhstape`: lines tear sideways in glitch colors, a
 /// tracking wave rolls through, the picture dissolves into snow, then it is
 /// redrawn row by row through white into the final gradient.
+// The tape effect draws a box with a tear, a wobble and a snow level: all
+// geometry and all per frame.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_vhs(
     fb: &mut Framebuffer,
     grid: &Grid,

@@ -1252,7 +1252,8 @@ pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), Stri
             );
             t.insert("video".into(), toml::Value::String("super".into()));
             arr.push(toml::Value::Table(t));
-            arr.last_mut().unwrap()
+            // Just pushed: the array cannot be empty on the next line.
+            arr.last_mut().expect("the table just pushed")
         }
     };
     let t = entry

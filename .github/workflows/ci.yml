@@ -89,6 +89,16 @@ jobs:
           sudo apt-get update && sudo apt-get install -y shellcheck
           shellcheck -S warning bin/* scripts/*.sh || true
 
+  advisories:
+    name: no new advisory against a locked crate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The same database cargo-audit reads, asked over OSV's API, so this
+      # needs nothing installed. The two advisories that stand are listed in
+      # the script with the reason; anything new fails here.
+      - run: python3 scripts/audit.py --list
+
   qml:
     name: plugin QML parses
     runs-on: ubuntu-latest

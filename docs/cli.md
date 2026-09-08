@@ -8,6 +8,7 @@ everything it does can be typed in a terminal.
 omarchy-crt setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
                                      first run: the DAC's connector and the standard
 omarchy-crt status [--json]          output, mode, DAC, audio, launcher, library, BIOS
+omarchy-crt version                  which version this is
 omarchy-crt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
 omarchy-crt off                      launcher closed, audio back, output disabled
 omarchy-crt boot                     login reset: output off, audio back to the desktop
@@ -323,8 +324,19 @@ as before.
 What the frame shows and for how long is in `settings.toml`, under `[frame]`,
 and on the television under Settings, Photo frame: `style` (`photos`, `clock`,
 `panel`), `seconds`, `source` (`memories`, `favorites`, `album`, `all`),
-`album`, `pan`, `weather` (a place name for wttr.in, empty asks by address)
-and `calendar` (an `.ics` address).
+`album`, `pan`, `weather` (a place name for wttr.in, empty asks by address),
+`calendar` (an `.ics` address) and `weather_sound`.
+
+`weather_sound` is off by default and gives the ambient page the sound of the
+weather it is drawing: rain with drops on it, wind that gusts, thunder behind
+a downpour, birds on a clear day and crickets at night, a foghorn in fog.
+Every one of them is synthesized and then held at 8 kHz and quantised, the
+way a sample was in 1990, so it belongs to the same television as the
+picture. It plays only while the ambient page is up, fades in and out over a
+second and a half, and is quieter than any sound the launcher makes: the
+loudest, a thunderstorm, measures 0.012 against the boot chime's 0.030. Hear
+them without the television: `omarchy-crt-shell --dump-audio DIR` writes
+every sound in the launcher as a WAV, `weather-*.wav` among them.
 
 ### Where the frame is
 

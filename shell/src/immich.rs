@@ -173,9 +173,32 @@ struct Person {
     name: String,
 }
 
+/// Is this an identifier, and only an identifier?
+///
+/// The id becomes part of a file name in the cache, so a server that sent
+/// `../../.ssh/authorized_keys` would otherwise decide where a picture is
+/// written. Immich's own ids are UUIDs; anything that is not letters, digits
+/// and dashes is not one, and a picture carrying it is skipped.
+fn is_id(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// One line of a note, with anything that would break the file's own shape
+/// taken out: it is four lines, and a name with a newline in it would move
+/// every field after it.
+fn one_line(s: &str) -> String {
+    s.chars()
+        .filter(|c| *c != '\n' && *c != '\r')
+        .take(120)
+        .collect()
+}
+
 impl RawAsset {
     fn shot(self, years_ago: Option<i32>) -> Option<Shot> {
         if self.kind != "IMAGE" || self.archived || self.trashed {
+            return None;
+        }
+        if !is_id(&self.id) {
             return None;
         }
         Some(Shot {
@@ -193,22 +216,9 @@ impl RawAsset {
 /// A key on a command line is readable by every process on the machine, and
 /// this one opens somebody's whole photograph collection.
 fn ask(cfg: &Config, path: &str, body: Option<&str>, out: Option<&Path>) -> Option<Vec<u8>> {
-    let mut cmd = std::process::Command::new("curl");
-    cmd.args([
-        "-fsSL",
-        "--max-time",
-        "40",
-        "-A",
-        "omarchy-crt",
-        "--proto",
-        "=http,https",
-        "--proto-redir",
-        "=http,https",
-        "--max-filesize",
-        "33554432",
-        "-K",
-        "-",
-    ]);
+    let mut cmd = crate::net::curl(40, 33_554_432);
+    // curl reads the key from its own standard input, not from a flag.
+    cmd.args(["-K", "-"]);
     if let Some(json) = body {
         cmd.args(["-H", "Content-Type: application/json", "-X", "POST", "-d"])
             .arg(json);
@@ -360,7 +370,7 @@ pub enum Fit {
 }
 
 /// Which way a picture of this shape should be fitted.
-pub fn fit_for(w: u32, h: u32, screen_w: u32, screen_h: u32) -> Fit {
+fn fit_for(w: u32, h: u32, screen_w: u32, screen_h: u32) -> Fit {
     if w == 0 || h == 0 || screen_h == 0 {
         return Fit::Blurred;
     }
@@ -466,17 +476,39 @@ pub struct Note {
 }
 
 impl Note {
-    fn path(picture: &Path) -> PathBuf {
+    /// The note for a picture: what the server says about it, and how long
+    /// ago it was. Derived here because both the launcher's own thread and
+    /// `omarchy-crt frame fill` need exactly the same answer.
+    pub fn of(shot: &Shot, details: &Details) -> Self {
+        let when = if details.taken.is_empty() {
+            spoken_date(&shot.taken)
+        } else {
+            spoken_date(&details.taken)
+        };
+        let ago = match shot.years_ago {
+            Some(1) => "a year ago today".to_string(),
+            Some(n) if n > 1 => format!("{n} years ago today"),
+            _ => String::new(),
+        };
+        Self {
+            place: details.place.clone(),
+            when,
+            ago,
+            people: details.people.clone(),
+        }
+    }
+
+    pub fn path(picture: &Path) -> PathBuf {
         picture.with_extension("txt")
     }
 
     pub fn write(&self, picture: &Path) {
         let text = format!(
             "{}\n{}\n{}\n{}\n",
-            self.place,
-            self.when,
-            self.ago,
-            self.people.join(", ")
+            one_line(&self.place),
+            one_line(&self.when),
+            one_line(&self.ago),
+            one_line(&self.people.join(", "))
         );
         let _ = std::fs::write(Self::path(picture), text);
     }
@@ -574,6 +606,47 @@ pub fn spoken_date(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_server_cannot_choose_where_a_picture_is_written() {
+        // The id becomes part of a file name, so only an identifier will do.
+        assert!(is_id("c159da59-3751-4d1e-b044-6e79277d104f"));
+        assert!(!is_id("../../.ssh/authorized_keys"));
+        assert!(!is_id("a/b"));
+        assert!(!is_id("a b"));
+        assert!(!is_id(""));
+        assert!(!is_id(&"a".repeat(65)));
+        // A picture carrying one is skipped rather than fetched.
+        let raw: Vec<RawAsset> = serde_json::from_str(
+            r#"[{"id":"../../escape","type":"IMAGE"},{"id":"ok-1","type":"IMAGE"}]"#,
+        )
+        .unwrap();
+        let ids: Vec<String> = raw
+            .into_iter()
+            .filter_map(|a| a.shot(None))
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(ids, vec!["ok-1"]);
+    }
+
+    #[test]
+    fn a_note_stays_four_lines_whatever_the_names_hold() {
+        let note = Note {
+            place: "Somewhere\nelse".into(),
+            when: "today".into(),
+            ago: String::new(),
+            people: vec!["a\r\nb".into()],
+        };
+        let dir = std::env::temp_dir().join(format!("omarchy-crt-note-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let picture = dir.join("x.png");
+        note.write(&picture);
+        let text = std::fs::read_to_string(Note::path(&picture)).unwrap();
+        assert_eq!(text.lines().count(), 4);
+        let back = Note::read(&picture);
+        assert_eq!(back.place, "Somewhereelse");
+        let _ = std::fs::remove_file(Note::path(&picture));
+    }
 
     #[test]
     fn a_video_is_not_a_photograph() {

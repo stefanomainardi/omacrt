@@ -19,7 +19,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Where the backup of `path` lives.
-pub fn backup_path(path: &Path) -> PathBuf {
+fn backup_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".bak");
     path.with_file_name(name)
