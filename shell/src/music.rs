@@ -12,8 +12,9 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const RADIO_BROWSER: &str = "https://all.api.radio-browser.info/json";
 /// Stations per country or genre list, most voted first.
@@ -843,6 +844,8 @@ fn ensure_daemon() -> Result<(), String> {
         cmd.process_group(0);
     }
     cmd.spawn().map_err(|e| format!("cliamp --daemon: {e}"))?;
+    // The daemon we start can be a newer build than the one that just died.
+    DIALECT.store(0, Ordering::Relaxed);
     for _ in 0..40 {
         std::thread::sleep(Duration::from_millis(100));
         if call(json!({ "cmd": "status" })).is_ok() {
@@ -852,21 +855,39 @@ fn ensure_daemon() -> Result<(), String> {
     Err("cliamp did not answer".into())
 }
 
-/// One request, one JSON line back. Errors carry cliamp's message.
+/// One request, one answer, in whichever envelope the daemon speaks. Errors
+/// carry cliamp's own message.
 fn call(req: Value) -> Result<Value, String> {
-    let mut s = UnixStream::connect(socket_path()).map_err(|e| format!("cliamp: {e}"))?;
-    s.set_read_timeout(Some(Duration::from_secs(30))).ok();
-    s.set_write_timeout(Some(Duration::from_secs(5))).ok();
-    let mut line = serde_json::to_string(&req).map_err(|e| e.to_string())?;
-    line.push('\n');
-    s.write_all(line.as_bytes())
-        .map_err(|e| format!("cliamp: {e}"))?;
-    let mut reader = BufReader::new(s);
-    let mut out = String::new();
-    reader
-        .read_line(&mut out)
-        .map_err(|e| format!("cliamp: {e}"))?;
-    let v: Value = serde_json::from_str(out.trim()).map_err(|e| format!("cliamp: {e}"))?;
+    match DIALECT.load(Ordering::Relaxed) {
+        TWO => two(&req),
+        ONE => one(&req),
+        _ => {
+            // A version 2 daemon answers a version 2 read with its own
+            // envelope; an older one does not know the request at all.
+            let probe = exchange(&json!({ "version": 2, "id": "probe", "method": "state.get" }))?;
+            let two_speaking = probe.get("version").and_then(Value::as_u64) == Some(2);
+            DIALECT.store(if two_speaking { TWO } else { ONE }, Ordering::Relaxed);
+            if two_speaking { two(&req) } else { one(&req) }
+        }
+    }
+}
+
+/// cliamp 2.0 made its socket version 2 only: every request carries
+/// `version: 2` and an `id`, reads answer at once with a snapshot and
+/// everything else answers with a job to follow. Daemons before it only know
+/// the flat `{"cmd": ...}` form. Which one is listening is learned from the
+/// first request and remembered; `ensure_daemon` forgets it again when it
+/// starts a daemon of its own.
+static DIALECT: AtomicU8 = AtomicU8::new(0);
+const ONE: u8 = 1;
+const TWO: u8 = 2;
+/// How long a version 2 job may take before the launcher gives up on it. A
+/// provider search or a lyrics fetch is the slow end of that.
+const JOB_WAIT: Duration = Duration::from_secs(30);
+
+/// The old flat envelope: `ok: false` carries the message.
+fn one(req: &Value) -> Result<Value, String> {
+    let v = exchange(req)?;
     if v.get("ok").and_then(Value::as_bool) == Some(false) {
         return Err(v
             .get("error")
@@ -877,6 +898,108 @@ fn call(req: Value) -> Result<Value, String> {
     Ok(v)
 }
 
+/// A flat request as its version 2 envelope. The two reads are methods of
+/// their own; everything else is an operation whose params are the request
+/// without its `cmd`, which is why the keys need no renaming.
+fn envelope(req: &Value) -> Value {
+    let cmd = req.get("cmd").and_then(Value::as_str).unwrap_or("");
+    let method = match cmd {
+        "status" => "state.get",
+        "bands" => "spectrum.get",
+        _ => "",
+    };
+    if !method.is_empty() {
+        return json!({ "version": 2, "id": cmd, "method": method });
+    }
+    let mut params = req.clone();
+    if let Some(m) = params.as_object_mut() {
+        m.remove("cmd");
+    }
+    json!({
+        "version": 2, "id": cmd, "method": "operation.submit",
+        "operation": cmd, "params": params
+    })
+}
+
+/// The version 2 envelope, answered with the same object shape the flat one
+/// used: a snapshot for a read, an operation's own result for a job.
+fn two(req: &Value) -> Result<Value, String> {
+    let sent = envelope(req);
+    let mut v = exchange(&sent)?;
+    if let Some(e) = fault(&v) {
+        return Err(e);
+    }
+    if sent.get("method").and_then(Value::as_str) != Some("operation.submit") {
+        return Ok(payload(&v, "result")
+            .or_else(|| payload(&v, "snapshot"))
+            .unwrap_or_else(|| json!({ "ok": true })));
+    }
+    let started = Instant::now();
+    loop {
+        let job = v.get("job").ok_or("cliamp: no job in the answer")?;
+        match job.get("state").and_then(Value::as_str).unwrap_or("") {
+            "succeeded" => return Ok(payload(job, "result").unwrap_or_else(|| json!({ "ok": true }))),
+            "failed" | "canceled" => {
+                return Err(fault(job).unwrap_or_else(|| "cliamp refused".into()));
+            }
+            _ => {}
+        }
+        let id = job
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .ok_or("cliamp: a job without an id")?
+            .to_string();
+        if started.elapsed() > JOB_WAIT {
+            return Err("cliamp is still working".into());
+        }
+        std::thread::sleep(Duration::from_millis(60));
+        v = exchange(&json!({ "version": 2, "id": "job", "method": "job.get", "job_id": id }))?;
+        if let Some(e) = fault(&v) {
+            return Err(e);
+        }
+    }
+}
+
+/// One object field of an answer, when it holds one.
+fn payload(v: &Value, key: &str) -> Option<Value> {
+    v.get(key).filter(|p| p.is_object()).cloned()
+}
+
+/// The message a version 2 answer or job carries when it went wrong. The
+/// diagnostic detail is the runtime's own wording, so it comes first.
+fn fault(v: &Value) -> Option<String> {
+    let e = v.get("error")?;
+    if let Some(s) = e.as_str() {
+        return (!s.is_empty()).then(|| s.to_string());
+    }
+    let field = |k: &str| e.get(k).and_then(Value::as_str).filter(|s| !s.is_empty());
+    Some(
+        field("detail")
+            .or_else(|| field("message"))
+            .or_else(|| field("code"))
+            .unwrap_or("cliamp refused")
+            .to_string(),
+    )
+}
+
+/// One request, one JSON line back, uninterpreted.
+fn exchange(req: &Value) -> Result<Value, String> {
+    let mut s = UnixStream::connect(socket_path()).map_err(|e| format!("cliamp: {e}"))?;
+    s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+    s.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    let mut line = serde_json::to_string(req).map_err(|e| e.to_string())?;
+    line.push('\n');
+    s.write_all(line.as_bytes())
+        .map_err(|e| format!("cliamp: {e}"))?;
+    let mut reader = BufReader::new(s);
+    let mut out = String::new();
+    reader
+        .read_line(&mut out)
+        .map_err(|e| format!("cliamp: {e}"))?;
+    serde_json::from_str(out.trim()).map_err(|e| format!("cliamp: {e}"))
+}
+
 fn parse_status(v: &Value) -> Status {
     let state = match v.get("state").and_then(Value::as_str) {
         Some("playing") => Some(State::Playing),
@@ -884,8 +1007,12 @@ fn parse_status(v: &Value) -> Status {
         Some(_) => Some(State::Stopped),
         None => None,
     };
+    // A version 2 snapshot names the sounding track and the playlist's own
+    // track apart, and drops the first while nothing plays: the deck shows
+    // whichever of the two is there.
     let track = v
         .get("track")
+        .or_else(|| v.get("logical_track"))
         .filter(|t| t.is_object())
         .map(Track::from_json);
     let num = |k: &str| v.get(k).and_then(Value::as_f64).unwrap_or(0.0);
@@ -1058,7 +1185,7 @@ fn list(src: &Source) -> Result<Vec<Item>, String> {
                 .and_then(Value::as_array)
                 .unwrap_or(&Vec::new())
             {
-                let mut t = Track::from_json(h);
+                let mut t = Track::from_json(h.get("track").unwrap_or(h));
                 if t.path.is_empty() {
                     continue;
                 }
@@ -1282,5 +1409,54 @@ mod tests {
         assert_eq!(t.label(), "Band - Song");
         assert_eq!(urlencode("classic rock"), "classic%20rock");
         assert_eq!(fold("Stereocittà è qui"), "Stereocitta e qui");
+    }
+
+    #[test]
+    fn a_read_is_a_method_and_the_rest_are_operations() {
+        let status = envelope(&json!({ "cmd": "status" }));
+        assert_eq!(status["method"], "state.get");
+        assert_eq!(status["version"], 2);
+        assert_eq!(envelope(&json!({ "cmd": "bands" }))["method"], "spectrum.get");
+
+        let search = envelope(
+            &json!({ "cmd": "provider.search", "provider": "local", "query": "ambient", "limit": 10 }),
+        );
+        assert_eq!(search["method"], "operation.submit");
+        assert_eq!(search["operation"], "provider.search");
+        assert_eq!(search["params"]["query"], "ambient");
+        assert_eq!(search["params"]["limit"], 10);
+        assert!(search["params"].get("cmd").is_none());
+    }
+
+    #[test]
+    fn a_fault_reads_in_both_envelopes() {
+        assert_eq!(
+            fault(&json!({ "ok": false, "error": "unknown command: " })).as_deref(),
+            Some("unknown command: ")
+        );
+        assert_eq!(
+            fault(&json!({
+                "ok": false,
+                "error": { "code": "internal_error", "message": "operation failed", "detail": "spotify: no token" }
+            }))
+            .as_deref(),
+            Some("spotify: no token")
+        );
+        assert_eq!(
+            fault(&json!({ "ok": false, "error": { "code": "conflict", "message": "" } })).as_deref(),
+            Some("conflict")
+        );
+        assert!(fault(&json!({ "ok": true })).is_none());
+    }
+
+    #[test]
+    fn a_history_entry_holds_its_track() {
+        let entry = json!({
+            "track": { "title": "Song", "path": "/music/song.flac" },
+            "played_at": "2026-09-08T08:31:21Z"
+        });
+        let t = Track::from_json(entry.get("track").unwrap_or(&entry));
+        assert_eq!(t.title, "Song");
+        assert_eq!(t.path, "/music/song.flac");
     }
 }

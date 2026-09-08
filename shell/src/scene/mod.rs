@@ -1135,6 +1135,7 @@ impl Scene {
             Some("soundsettings") => self.screen = Screen::SoundSettings { sel: 0 },
             Some("videoshub") => self.screen = Screen::Videos { sel: 0 },
             Some("musicsettings") => self.screen = Screen::MusicSettings { sel: 7 },
+            Some("music") => self.open_music(),
             Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },
             Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
             Some("ambient") => self.screen = Screen::Ambient,
