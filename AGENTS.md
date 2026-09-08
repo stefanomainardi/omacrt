@@ -240,6 +240,12 @@ stars come out of a small xorshift with a fixed seed, so the picture is the
 same every evening and was never drawn by hand. Then render it and look at
 it, at 320x240 and at 320x288.
 
+**A page for an idle television.** It goes in the **Ambient** hub
+(`AMBIENT_ITEMS`) as well as in `SAVER_PAGES`: the hub is how somebody finds
+it on purpose, the list is how it takes its turn when the set is left alone.
+Putting one anywhere else because the home menu is full is how the photo
+frame briefly ended up under Videos.
+
 **A screensaver page.** `SAVER_PAGES` in `scene.rs` is the list, and
 `start_saver_page` puts one up. A page is a screen like any other, so it
 needs everything in the paragraph above as well; being in `SAVER_PAGES` is
