@@ -8,6 +8,7 @@ everything it does can be typed in a terminal.
 omarchy-crt setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
                                      first run: the DAC's connector and the standard
 omarchy-crt status [--json]          output, mode, DAC, audio, launcher, library, BIOS
+omarchy-crt version                  which version this is
 omarchy-crt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
 omarchy-crt off                      launcher closed, audio back, output disabled
 omarchy-crt boot                     login reset: output off, audio back to the desktop
