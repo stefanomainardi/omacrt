@@ -281,10 +281,14 @@ enum SettingsLine {
     Row(icons::Icon, &'static str, Page),
 }
 
-/// The settings page as it is drawn. Grouped, because twelve pages in one
-/// flat list is a list nobody reads: the picture first, then the four things
-/// a television can be doing, then the set itself, then the machine under it.
-const SETTINGS_LINES: [SettingsLine; 16] = [
+/// The settings page as it is drawn, in two columns.
+///
+/// Grouped, because twelve pages in one flat list is a list nobody reads,
+/// and in two columns because one column of twelve rows with headings
+/// between them leaves no room to breathe on a 240 line screen. The left
+/// column is the picture and what the television can be showing; the right
+/// is the set itself and the machine under it.
+const SETTINGS_LEFT: [SettingsLine; 8] = [
     SettingsLine::Heading("THE PICTURE"),
     SettingsLine::Row(icons::TV, "TV profile", Page::Profile),
     SettingsLine::Row(icons::FIT, "Video fit", Page::Fit),
@@ -292,7 +296,10 @@ const SETTINGS_LINES: [SettingsLine; 16] = [
     SettingsLine::Row(icons::NOTE, "Music", Page::Music),
     SettingsLine::Row(icons::FILM, "Videos", Page::Videos),
     SettingsLine::Row(icons::PHOTO, "Photo frame", Page::Frame),
-    SettingsLine::Row(icons::CLOCK, "Clock and weather", Page::Ambient),
+    SettingsLine::Row(icons::CLOCK, "Clock & weather", Page::Ambient),
+];
+
+const SETTINGS_RIGHT: [SettingsLine; 8] = [
     SettingsLine::Heading("THE SET"),
     SettingsLine::Row(icons::SPEAKER, "Sound", Page::Sound),
     SettingsLine::Row(icons::SAVER, "Screensaver", Page::Saver),
@@ -303,51 +310,58 @@ const SETTINGS_LINES: [SettingsLine; 16] = [
     SettingsLine::Row(icons::INFO, "About", Page::About),
 ];
 
-/// How many rows the settings page has, counted from the list itself.
-const SETTINGS_ROWS: usize = {
+/// How many rows a column of the settings page has.
+const fn settings_count(lines: &[SettingsLine]) -> usize {
     let mut n = 0;
     let mut i = 0;
-    while i < SETTINGS_LINES.len() {
-        if let SettingsLine::Row(..) = SETTINGS_LINES[i] {
-            n += 1;
+    while i < lines.len() {
+        match &lines[i] {
+            SettingsLine::Row(..) => n += 1,
+            SettingsLine::Heading(_) => {}
         }
         i += 1;
     }
     n
-};
-
-/// The row a page sits on, for anything coming back to Settings.
-pub(super) fn settings_row(page: Page) -> usize {
-    let mut row = 0;
-    for line in SETTINGS_LINES.iter() {
-        if let SettingsLine::Row(_, _, p) = line {
-            if *p == page {
-                return row;
-            }
-            row += 1;
-        }
-    }
-    0
 }
 
-/// The page a row opens.
-fn settings_page(row: usize) -> Page {
-    SETTINGS_LINES
+/// Rows in the left column, which is also where the right column's rows
+/// start counting from.
+const SETTINGS_HALF: usize = settings_count(&SETTINGS_LEFT);
+/// Every row of the settings page, left column first.
+const SETTINGS_ROWS: usize = SETTINGS_HALF + settings_count(&SETTINGS_RIGHT);
+
+/// The pages a column opens, top to bottom.
+fn settings_column(lines: &[SettingsLine]) -> Vec<Page> {
+    lines
         .iter()
         .filter_map(|line| match line {
             SettingsLine::Row(_, _, p) => Some(*p),
             SettingsLine::Heading(_) => None,
         })
-        .nth(row)
-        .unwrap_or(Page::About)
+        .collect()
 }
 
-/// Ten pixels a row and ten a heading puts the last row's bottom exactly on
-/// the line a message would use, which is the most a 240 line screen has to
-/// give. A heading is a row's height and spends three of its pixels on the
-/// gap above its own letters.
-const SETTINGS_ROW_H: i32 = 10;
-const SETTINGS_HEAD_H: i32 = 10;
+/// The row a page sits on, for anything coming back to Settings.
+pub(super) fn settings_row(page: Page) -> usize {
+    let mut rows = settings_column(&SETTINGS_LEFT);
+    rows.extend(settings_column(&SETTINGS_RIGHT));
+    rows.iter().position(|p| *p == page).unwrap_or(0)
+}
+
+/// The page a row opens.
+fn settings_page(row: usize) -> Page {
+    let mut rows = settings_column(&SETTINGS_LEFT);
+    rows.extend(settings_column(&SETTINGS_RIGHT));
+    rows.get(row).copied().unwrap_or(Page::About)
+}
+
+/// Fifteen pixels a row, and twenty for a heading, which spends twelve of
+/// them on the gap that separates one group from the group above it. Eight
+/// lines a column comes to 130 of the 160 a 240 line screen has between the
+/// header and the line a message uses: the room the two columns bought, spent
+/// on air rather than on more rows.
+const SETTINGS_ROW_H: i32 = 15;
+const SETTINGS_HEAD_H: i32 = 20;
 
 /// Rows of the clock and weather page, and of the sound page.
 const AMBIENT_ROWS: usize = 3;

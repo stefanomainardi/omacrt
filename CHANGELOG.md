@@ -21,11 +21,12 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
-- The settings page is grouped rather than a list of twelve: **THE PICTURE**
-  (TV profile, Video fit), **CHANNELS** (Music, Videos, Photo frame, Clock and
-  weather), **THE SET** (Sound, Screensaver, Style, Pads) and **THIS MACHINE**
-  (Diagnostics, About). Everything stays one button away; the headings are
-  skipped by the cursor.
+- The settings page is two grouped columns rather than a list of twelve:
+  **THE PICTURE** (TV profile, Video fit) and **CHANNELS** (Music, Videos,
+  Photo frame, Clock & weather) on the left, **THE SET** (Sound, Screensaver,
+  Style, Pads) and **THIS MACHINE** (Diagnostics, About) on the right. Up and
+  down stay in a column, left and right cross to the other one, the headings
+  are skipped, and everything is still one button away.
 - Leaving the Pads page put the cursor on Video fit, and leaving About put it
   on Clock and weather. Screens named the row they came from by number and two
   of the numbers were wrong; they name the page now.
