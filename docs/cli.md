@@ -257,6 +257,19 @@ and on the television under Settings, Photo frame: `style` (`photos`, `clock`,
 `album`, `pan`, `weather` (a place name for wttr.in, empty asks by address)
 and `calendar` (an `.ics` address).
 
+### Where the frame is
+
+Four ways in, and none of them is the settings page:
+
+- **On the television**, Videos, Photo frame. Videos is where the pictures
+  live: films, YouTube, the frame, the clock.
+- **From the settings page** for it, Settings, Photo frame: A shows it now.
+  That page is where it is set up, not where it runs.
+- **On its own, when the television is left alone**: Settings, Screensaver,
+  set `when idle` to `photos`, or to `mix` to take turns with the other pages.
+- **From the desktop**: the Omarchy menu, Television, Channel, Photo frame, or
+  `omarchy-crt shell screen frame` in a terminal.
+
 ## What an idle television shows
 
 The screensaver is not only a text effect on the wordmark any more. Four pages

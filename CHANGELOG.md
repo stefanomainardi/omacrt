@@ -59,11 +59,6 @@ caveat for a 0.x project: anything may still move.
 - `AGENTS.md`: the working guide for the repository, for a coding agent or a
   person, with the rules that have each already cost a session.
 
-### Changed
-
-- The home menu carries **System** where **About** was, and About moved into
-  Settings. Eight rows is what fits under the wordmark on a 240 line screen.
-
 - GameCube, through the Dolphin core: native internal resolution, 480 lines,
   the widescreen hacks off and the boot animation skipped. The files the core
   needs but nobody ships with it are fetched once, on the first launch.
@@ -97,6 +92,11 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The home menu carries **System** where **About** was, and About moved into
+  Settings. Eight rows is what fits under the wordmark on a 240 line screen.
+- The Videos hub carries the photo frame and the clock and weather page beside
+  the films and YouTube, so both are one list away from the home menu rather
+  than reachable only from their own settings page or from the screensaver.
 - The television follows whichever picture is being looked at: a console
   drawing 224 lines gets 224 lines while it plays, and the tube goes back to
   the launcher's own 240 for as long as the pause menu is up.
