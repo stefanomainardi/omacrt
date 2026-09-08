@@ -17,6 +17,7 @@
 "tv.channel.music": {"icon":"","label":"Music","action":"omarchy-crt shell screen music"},
 "tv.channel.videos": {"icon":"","label":"Video","action":"omarchy-crt shell screen videos"},
 "tv.channel.frame": {"icon":"󰋩","label":"Photo frame","action":"omarchy-crt shell screen frame"},
+"tv.channel.ambient": {"icon":"","label":"Clock and weather","action":"omarchy-crt shell screen ambient"},
 "tv.channel.system": {"icon":"","label":"System monitor","action":"omarchy-crt shell screen monitor"},
 "tv.channel.home": {"icon":"","label":"Home menu","action":"omarchy-crt shell screen home"},
 
