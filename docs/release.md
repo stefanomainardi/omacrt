@@ -31,7 +31,11 @@ than guessed:
    buildbot, wttr.in and Immich were missing from the list and are in it.
 3. **A personal data pass.** The screenshots carry a hostname, a city, a live
    clock and the names of running programs. None of it is dangerous and all of
-   it is a choice; make the choice on purpose rather than by accident.
+   it is a choice; make the choice on purpose rather than by accident. The one
+   that needs a decision is `library-overlay.png`: it shows two source paths,
+   `/run/media/stefano/...` and `/home/stefano/Games/roms`, and a count of
+   games indexed. It has to be retaken anyway once the session is unlocked, so
+   the decision is whether the retake redacts the paths and the number.
 
 ## B. Security hardening
 
@@ -158,6 +162,12 @@ rather than promised.
       earlier passes, so the release the repository opens with is 0.3.0.
       `omarchy-crt version` says which one is installed, and the user agent
       the fetches send is built from the same number.
-- [ ] Repository settings: the description, the topics, Discussions on,
-      issues for verified bugs, `main` protected.
-- [ ] Private to public, once A1 has an answer.
+- [x] Repository settings: the description now says what the project is
+      rather than what it boots, twelve topics, Discussions on. **`main`
+      cannot be protected while the repository is private**: GitHub answers
+      403 and asks for Pro or a public repository, so that rule goes on
+      immediately after the flip, requiring the CI check and refusing force
+      pushes and deletion.
+- [ ] Private to public. Everything else is done and CI is green on `main`
+      at `v0.3.0`; what is left is the decision and the two screenshots
+      below.
