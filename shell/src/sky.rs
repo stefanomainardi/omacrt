@@ -33,6 +33,15 @@ fn dither(x: i32, y: i32, t: f32, a: Color, b: Color) -> Color {
     }
 }
 
+/// Where the sun or the moon sits on the screen at this point of its arc:
+/// a half circle from one side of the sky to the other, flattened to fit.
+fn sun_at(w: usize, horizon: i32, arc: f32) -> (f32, f32) {
+    let cx = (0.12 + arc * 0.76) * w as f32;
+    let top = 22.0;
+    let cy = horizon as f32 - (horizon as f32 - top) * (std::f32::consts::PI * arc).sin();
+    (cx, cy)
+}
+
 /// Brussels, and only Brussels: the one place this picture keeps a landmark
 /// for. The city has three spellings depending on who is answering, and the
 /// place has to be the city itself rather than merely contain its name, so
@@ -143,6 +152,13 @@ struct Air<'a> {
     horizon: i32,
     /// Seconds, for everything that moves.
     now: f64,
+    /// Where the sun (or the moon) is on the screen, for anything that has
+    /// to catch the light or hide from it.
+    sun: (f32, f32),
+    /// How much of the sun a cloud is covering, 0 to 1, and the middle and
+    /// half width of the shadow that cloud throws on the town.
+    cover: f32,
+    shadow: (f32, f32),
     /// How long ago a bolt landed on the Atomium: what the blackout and the
     /// lights coming back are measured from. Enormous when nothing has been
     /// struck, which is nearly always.
@@ -161,6 +177,20 @@ struct Cloud {
     /// Fraction of the wind this layer takes, so the sky has depth.
     layer: f32,
     width: f32,
+}
+
+/// An aeroplane crossing, with the trail it leaves behind it.
+///
+/// Over Brussels a clear sky always has one: the airport is ten kilometres
+/// from the Atomium and the approach passes over the city. It takes twenty
+/// odd seconds to cross, which is a long time in a picture and the reason it
+/// is worth having: something is happening, slowly.
+struct Plane {
+    /// Where it entered, where it is, how fast, and how high.
+    from: f32,
+    x: f32,
+    speed: f32,
+    y: f32,
 }
 
 /// A drop of rain, a flake of snow, or a speck the wind is carrying.
@@ -204,6 +234,9 @@ pub struct Sky {
     flash_at: f32,
     flash: f32,
     bolt: Vec<(i32, i32)>,
+    /// The aeroplane crossing the sky, and when the next one is due.
+    plane: Option<Plane>,
+    plane_at: f32,
     /// When a bolt last landed on the Atomium, in the same seconds
     /// everything else here moves in. A long way in the past to begin with,
     /// because nothing has been struck yet.
@@ -228,6 +261,10 @@ impl Sky {
             built_for: None,
             flash_at: 4.0,
             flash: 0.0,
+            plane: None,
+            // The first one comes soon enough to be caught, and the rest are
+            // a minute or two apart.
+            plane_at: 5.0,
             struck: -1000.0,
             bolt: Vec::new(),
             rng: Rng(0x1234_5678),
@@ -369,6 +406,11 @@ impl Sky {
         let dusk = if day { (1.0 - elevation).powi(2) } else { 0.0 };
         let wind = reading.wind_kmh.unwrap_or(6.0).clamp(0.0, 60.0);
 
+        // Where the sun is on the screen, which three layers need: the body
+        // itself, the reflection on the Atomium, and whatever a cloud in
+        // front of it does to the light.
+        let sun = sun_at(fb.w, horizon, arc);
+        let (cover, shadow) = self.sun_cover(sun);
         let air = Air {
             theme,
             kind,
@@ -378,6 +420,9 @@ impl Sky {
             horizon,
             now,
             darkness: reading.darkness(minutes),
+            sun,
+            cover,
+            shadow,
             struck_since: now as f32 - self.struck,
         };
 
@@ -387,6 +432,7 @@ impl Sky {
         }
         self.body(fb, &air, arc);
         self.draw_clouds(fb, &air);
+        self.draw_plane(fb, &air);
         if kind == Kind::Fog {
             // Over the clouds: fog is the thing between you and them.
             self.fog(fb, &air);
@@ -468,16 +514,39 @@ impl Sky {
         }
     }
 
+    /// How much of the sun the clouds are covering, and where the shadow of
+    /// the cloud doing it falls.
+    ///
+    /// The rays used to be switched off by the *kind* of weather, so a cloud
+    /// could drift across the sun and the sun would not notice. This is the
+    /// geometry instead: how near a cloud's blobs are to the sun, and which
+    /// cloud it is, so the town can be put in its shade.
+    fn sun_cover(&self, sun: (f32, f32)) -> (f32, (f32, f32)) {
+        let mut cover = 0.0f32;
+        let mut shadow = (0.0f32, 0.0f32);
+        for cloud in &self.clouds {
+            let mut mine = 0.0f32;
+            for (dx, dy, r) in &cloud.blobs {
+                let bx = cloud.x + dx;
+                let by = cloud.y + dy;
+                let d = ((bx - sun.0).powi(2) + (by - sun.1).powi(2)).sqrt();
+                // Inside the blob is covered, and it thins out over the last
+                // few pixels of the edge rather than ending on a line.
+                mine = mine.max((1.0 - (d - r * 0.6) / (r + 6.0)).clamp(0.0, 1.0));
+            }
+            if mine > cover {
+                cover = mine;
+                shadow = (cloud.x + cloud.width * 0.5, cloud.width * 0.6);
+            }
+        }
+        (cover.clamp(0.0, 1.0), shadow)
+    }
+
     /// The sun or the moon, on the arc between the two times the server
     /// gives, which is the part that makes the page feel like a window.
     fn body(&self, fb: &mut Framebuffer, air: &Air, arc: f32) {
-        let w = fb.w as f32;
-        let cx = (0.12 + arc * 0.76) * w;
-        // A half circle, flattened to fit the sky.
-        let top = 22.0;
-        let cy =
-            air.horizon as f32 - (air.horizon as f32 - top) * (std::f32::consts::PI * arc).sin();
-        let (cx, cy) = (cx as i32, cy as i32);
+        let (cx, cy) = (air.sun.0 as i32, air.sun.1 as i32);
+        let _ = arc;
         let r = if air.day { 13 } else { 11 };
 
         if air.day {
@@ -494,7 +563,8 @@ impl Sky {
                     let t = 1.0 - (d - r as f32) / reach;
                     let px = cx + x;
                     let py = cy + y;
-                    if BAYER[(py & 3) as usize][(px & 3) as usize] as f32 / 16.0 < t * 0.45 {
+                    let strength = t * 0.45 * (1.0 - air.cover);
+                    if BAYER[(py & 3) as usize][(px & 3) as usize] as f32 / 16.0 < strength {
                         fb.put(px, py, air.theme.yellow);
                     }
                 }
@@ -504,9 +574,11 @@ impl Sky {
                 air.kind,
                 Kind::Overcast | Kind::Heavy | Kind::Thunder | Kind::Fog
             );
-            if !hidden {
+            if !hidden && air.cover < 0.9 {
                 let turn = air.now as f32 * 0.22;
-                let breath = 1.0 + 0.16 * (air.now as f32 * 1.1).sin();
+                // The rays pull in as a cloud crosses the sun, and come back
+                // out the other side.
+                let breath = (1.0 + 0.16 * (air.now as f32 * 1.1).sin()) * (1.0 - air.cover);
                 let core = lerp_color(air.theme.paper, air.theme.yellow, 0.4);
                 for i in 0..8 {
                     let a = turn + i as f32 * std::f32::consts::TAU / 8.0;
@@ -568,6 +640,102 @@ impl Sky {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    /// The aeroplane, and the trail it leaves.
+    ///
+    /// Only on a sky you could see one through, and only now and then: it
+    /// takes twenty odd seconds to cross, and a minute or two passes before
+    /// the next. By day it is a speck of metal with a contrail spreading
+    /// behind it; at night it is the navigation lights, blinking, with
+    /// nothing else to see.
+    fn draw_plane(&mut self, fb: &mut Framebuffer, air: &Air) {
+        let w = fb.w as f32;
+        if !matches!(air.kind, Kind::Clear | Kind::Partly | Kind::Cloudy) {
+            self.plane = None;
+            return;
+        }
+        let t = air.now as f32;
+        if self.plane.is_none() {
+            if t < self.plane_at {
+                return;
+            }
+            // Left to right or the other way, high up, and at a speed that
+            // crosses the sky in twenty odd seconds.
+            let right = self.rng.upto(2) == 0;
+            let speed = 12.0 + self.rng.unit() * 6.0;
+            self.plane = Some(Plane {
+                from: if right { -14.0 } else { w + 14.0 },
+                x: if right { -14.0 } else { w + 14.0 },
+                speed: if right { speed } else { -speed },
+                y: 26.0 + self.rng.unit() * 26.0,
+            });
+            self.plane_at = t + 45.0 + self.rng.unit() * 60.0;
+        }
+        let Some(plane) = self.plane.as_mut() else {
+            return;
+        };
+        plane.x += plane.speed / 60.0;
+        let (x, y, from, speed) = (plane.x, plane.y, plane.from, plane.speed);
+        if (speed > 0.0 && x > w + 20.0) || (speed < 0.0 && x < -20.0) {
+            self.plane = None;
+            return;
+        }
+        let py = y as i32;
+        if air.day {
+            // The trail: it spreads and thins with age, so it is a wedge
+            // rather than a line, and the oldest of it has gone.
+            let life = 9.0 * speed.abs();
+            let mut back = 1.0f32;
+            while back < life {
+                let tx = x - speed.signum() * back;
+                if tx < -2.0 || tx > w + 2.0 {
+                    back += 1.0;
+                    continue;
+                }
+                let age = back / life;
+                let fade = (1.0 - age).powf(1.6) * 0.75;
+                let spread = 1.0 + age * 2.4;
+                let mut dy = -(spread as i32);
+                while dy <= spread as i32 {
+                    let ty = py + dy;
+                    let across = 1.0 - (dy as f32).abs() / (spread + 0.6);
+                    let strength = fade * across;
+                    if BAYER[(ty & 3) as usize][(tx as i32 & 3) as usize] as f32 / 16.0 < strength {
+                        fb.put(
+                            tx as i32,
+                            ty,
+                            lerp_color(fb.at(tx as i32, ty), air.theme.paper, 0.7),
+                        );
+                    }
+                    dy += 1;
+                }
+                back += 1.0;
+            }
+            let _ = from;
+            // The aircraft: three pixels of metal, with a wing.
+            let nose = x as i32;
+            let tail = nose - speed.signum() as i32 * 2;
+            fb.put(nose, py, air.theme.paper);
+            fb.put(tail, py, lerp_color(air.theme.paper, air.theme.dim, 0.4));
+            fb.put(
+                (nose + tail) / 2,
+                py + 1,
+                lerp_color(air.theme.paper, air.theme.dim, 0.5),
+            );
+        } else {
+            // At night there is nothing to see but the lights: the white
+            // strobe on top and the red one under a wing, on their own
+            // rhythms, which is how you tell a plane from a star.
+            let strobe = (t * 1.2).fract() < 0.09;
+            let beacon = (t * 0.7).fract() < 0.22;
+            if strobe {
+                fb.put(x as i32, py, air.theme.paper);
+            }
+            if beacon {
+                fb.put(x as i32 - speed.signum() as i32, py + 1, air.theme.red);
             }
         }
     }
@@ -810,6 +978,28 @@ impl Sky {
                     );
                 }
             }
+            // The sun lining up with a polished sphere: a four pointed star
+            // that grows as it comes into line and goes as it leaves, which
+            // takes the best part of an hour of real sun.
+            if air.day && air.darkness < 0.3 && !flash && has_light(i) {
+                let near = 1.0 - ((sun_x - cx as f32).abs() / 30.0).clamp(0.0, 1.0);
+                // The ones at the back do not catch it: a sphere in shadow
+                // of the frame has nothing to reflect with.
+                if near > 0.05 && depth < 0.4 {
+                    let twinkle = 0.78 + 0.22 * (air.now as f32 * 2.6 + i as f32).sin();
+                    let arm = (1.5 + 5.5 * near * twinkle * (1.0 - depth)) as i32;
+                    for k in 1..=arm {
+                        let fade = 1.0 - k as f32 / (arm + 1) as f32;
+                        let c = lerp_color(air.theme.paper, air.theme.yellow, 0.35);
+                        let c = scale(c, fade * near);
+                        fb.put(cx + k, cy, c);
+                        fb.put(cx - k, cy, c);
+                        fb.put(cx, cy + k, c);
+                        fb.put(cx, cy - k, c);
+                    }
+                    fb.put(cx, cy, air.theme.paper);
+                }
+            }
             if air.kind == Kind::Snow {
                 // A cap, because snow sits on a sphere the same way it sits
                 // on a roof.
@@ -902,13 +1092,24 @@ impl Sky {
     }
 
     fn draw_town(&self, fb: &mut Framebuffer, air: &Air) {
-        let body = if air.day {
+        let base = if air.day {
             lerp_color(air.theme.bg, rgb(40, 44, 62), 0.55)
         } else {
             lerp_color(air.theme.bg, rgb(18, 20, 34), 0.7)
         };
-        let edge = lerp_color(body, air.theme.paper, 0.12);
         for b in &self.town {
+            // A cloud over the sun throws its shade across the roofs, and the
+            // shade travels with the cloud. This is the whole reason the sun
+            // knows about clouds at all.
+            let mid = (b.x + b.w / 2) as f32;
+            let inside = 1.0 - ((mid - air.shadow.0).abs() / air.shadow.1.max(1.0)).clamp(0.0, 1.0);
+            let shade = if air.day {
+                air.cover * inside * 0.45
+            } else {
+                0.0
+            };
+            let body = lerp_color(base, air.theme.bg, shade);
+            let edge = lerp_color(body, air.theme.paper, 0.12);
             let top = air.horizon - b.h;
             fb.rect(b.x, top, b.w, b.h, body);
             fb.rect(b.x, top, b.w, 1, edge);
