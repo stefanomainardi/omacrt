@@ -450,24 +450,32 @@ pause menu, more screensaver effects.
 
 ## Contributing
 
-Work lands on `develop` and is merged to `main` when it runs on the
-television. Commits follow Conventional Commits. `cargo build --release` in
-`shell/` builds everything; `cargo test` runs the tests, which are the parts
-that can be checked without a tube: names into titles, titles into box art,
-modelines, the video fit, the durable writes. CI runs those plus `cargo fmt
---check`, clippy with warnings denied, and a headless boot of the launcher
-whose frames have to come out as pictures rather than a blank screen. What
-needs the television is checked in the living room, and always will be.
+This is one person's television, given away because it turned out well: not a
+product, and worked on when it is fun to work on. A good change is still
+welcome, and there is one rule that is not negotiable, because half of this
+cannot be checked any other way: **it has to have run on a real television**,
+and the pull request has to say what it ran on.
 
-[`AGENTS.md`](AGENTS.md) is the working guide for this repository: what the
-pieces are, how to check a change without a television, the conventions the
-code and the commits follow, and the handful of rules that have each cost a
-broken session to learn. It is written for a coding agent and reads fine for
-a person.
+`cargo build --release` in `shell/` builds everything. `cargo fmt`, `cargo
+clippy --all-targets -- -D warnings`, `cargo test` and `python3
+scripts/audit.py` are what CI runs, along with a headless boot whose frames
+have to come out as pictures rather than a blank screen. Tests cover what can
+be decided on a machine with no tube: names into titles, titles into box art,
+modelines, the video fit, the durable writes.
 
-[`SECURITY.md`](SECURITY.md) says what runs as root, what is downloaded and
-from where, and what is executed. [`CHANGELOG.md`](CHANGELOG.md) keeps the
-releases. Read the two notes at the top before opening an issue about either.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): what gets merged, what does not, and
+  the standards.
+- [`AGENTS.md`](AGENTS.md): the working guide. The modules, how to render a
+  screen without a television and look at it, how to add a screen, a console,
+  a setting or a CLI verb, and the rules that have each cost a broken session.
+  Written for a coding agent and fine for a person.
+- [`SECURITY.md`](SECURITY.md): what runs as root, what is downloaded and from
+  where, what is executed, what can be killed, and the one credential that can
+  exist.
+- [`CHANGELOG.md`](CHANGELOG.md): the releases.
+
+Bugs are issues, with the template filled in and the output of `omarchy-crt
+doctor`. Ideas and questions are discussions.
 
 ## Credits and licenses
 

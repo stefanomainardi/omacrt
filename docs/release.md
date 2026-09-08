@@ -101,9 +101,11 @@ rather than promised.
 - [ ] **The README's shape.** 492 lines is a long shop window. What a
       stranger needs in the first minute stays; the rest moves into `docs/`
       with a link.
-- [ ] **Contribution rules.** `CONTRIBUTING.md`, an issue template that asks
-      for the hardware and the output of `omarchy-crt doctor`, a pull request
-      template, `CODEOWNERS`. Issues for bugs, ideas in Discussions.
+- [x] **Contribution rules.** `CONTRIBUTING.md`, a bug template that asks for
+      the machine, the tube and the output of `omarchy-crt doctor`, blank
+      issues disabled with Discussions in their place, a pull request template
+      that asks what a change ran on, and `CODEOWNERS`. The README's own
+      section became a pointer rather than a second copy.
 - [ ] **The screenshots that are stale.** `library-overlay.png` and the
       panel, after the plugin change reaches an unlocked session.
 
