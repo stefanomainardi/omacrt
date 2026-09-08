@@ -13,7 +13,7 @@ impl Scene {
         }
         let m = &mut self.settings.music;
         match row {
-            0 => m.idle_secs = step(m.idle_secs, &[0, 3, 6, 10, 20, 60], dir),
+            0 => m.idle_secs = step(m.idle_secs, &[0, 30, 60, 180, 300, 600], dir),
             1 => m.cycle_secs = step(m.cycle_secs, &[0, 30, 45, 90, 180], dir),
             2 => m.saver = !m.saver,
             3 => m.lyrics = !m.lyrics,
@@ -392,12 +392,10 @@ impl Scene {
                 "off".to_string()
             }
         };
-        let secs = |s: u32| {
-            if s == 0 {
-                "never".to_string()
-            } else {
-                format!("{s} s")
-            }
+        let secs = |s: u32| match s {
+            0 => "never".to_string(),
+            s if s % 60 == 0 => format!("{} min", s / 60),
+            s => format!("{s} s"),
         };
         let mut rows: Vec<(String, String)> = vec![
             ("visualizer after".into(), secs(m.idle_secs)),
@@ -891,6 +889,14 @@ impl Scene {
         let visual = self.music_visual || self.music_saver.is_some() || (idle && st.playing());
         let now = self.now;
         let theme = self.theme.clone();
+        // Taking the screen is one of the moments the caption is wanted: the
+        // picture must not arrive without saying what it is a picture of.
+        if visual != self.visual_on {
+            self.visual_on = visual;
+            if visual {
+                self.deck.announce(now);
+            }
+        }
         if visual {
             // Cycle the modes while nobody touches anything.
             let cycle = self.settings.music.cycle_secs;
@@ -899,7 +905,17 @@ impl Scene {
             {
                 self.music_mode_step(1);
             }
-            self.deck.draw_visual(fb, &theme, now, &title);
+            // A station is what you want named when the picture has taken
+            // over; a song wants its artist. Whichever there is goes above
+            // the title.
+            let who = if !track.station.is_empty() {
+                track.station.clone()
+            } else if track.stream {
+                "radio".to_string()
+            } else {
+                track.artist.clone()
+            };
+            self.deck.draw_visual(fb, &theme, now, &who, &title);
             // Lyrics line up with a song's clock, not with a stream's.
             if self.settings.music.lyrics && !self.music.lyrics.is_empty() && st.duration > 0.0 {
                 // Lower third, shadowed glyphs straight on the picture.

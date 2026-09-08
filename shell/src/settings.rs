@@ -212,7 +212,7 @@ impl Default for Music {
         Self {
             country: String::new(),
             rumble: false,
-            idle_secs: 6,
+            idle_secs: 180,
             cycle_secs: 45,
             saver: true,
             lyrics: true,
@@ -224,7 +224,7 @@ impl Default for Music {
 }
 
 fn default_idle() -> u32 {
-    6
+    180
 }
 fn default_cycle() -> u32 {
     45
@@ -388,6 +388,14 @@ impl Settings {
         // turn one on.
         self.sound.weather |= self.frame.weather_sound;
         self.sound.deck |= self.music.change_sound;
+        // The visualizer used to arrive after six seconds, which is sooner
+        // than it takes to choose a station. Nobody picked six: it was the
+        // default, and it is written into every file the launcher has saved,
+        // so the old default becomes the new one. Any other number was
+        // chosen and is left alone.
+        if self.music.idle_secs == 6 {
+            self.music.idle_secs = default_idle();
+        }
     }
 
     pub fn save(&self, config_dir: &Path) -> std::io::Result<()> {
@@ -402,6 +410,25 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_visualizer_no_longer_arrives_after_six_seconds() {
+        // The old default is replaced; a number somebody chose is kept.
+        let mut moved = Settings::default();
+        moved.music.idle_secs = 6;
+        moved.migrate();
+        assert_eq!(moved.music.idle_secs, 180);
+
+        let mut chosen = Settings::default();
+        chosen.music.idle_secs = 30;
+        chosen.migrate();
+        assert_eq!(chosen.music.idle_secs, 30);
+
+        let mut never = Settings::default();
+        never.music.idle_secs = 0;
+        never.migrate();
+        assert_eq!(never.music.idle_secs, 0, "never stays never");
+    }
 
     #[test]
     fn an_older_file_keeps_its_place_its_calendar_and_its_sounds() {

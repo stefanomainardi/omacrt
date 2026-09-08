@@ -155,6 +155,19 @@ caveat for a 0.x project: anything may still move.
   They showed fifteen, twelve and twelve rows whatever the set was; a PAL
   television has 48 lines a 240 line one does not, and those lines sat empty.
 
+- The visualizer waits three minutes instead of six seconds, and the row that
+  sets it offers minutes (never, 30 s, 1, 3, 5, 10 min). Six seconds is less
+  than it takes to choose a station, so the picture arrived while you were
+  still reading the list. A file that says six seconds is a file that took the
+  old default, so it is moved to the new one; any other number was chosen and
+  is kept.
+- The visualizer says what is playing. It always carried the title, but only
+  for two and a half seconds after a mode change, which on the default
+  settings is two seconds out of every forty five. Now the station (or the
+  artist) and the title show when the picture takes the screen, again whenever
+  the title changes, and then for ten seconds of every minute, landing a few
+  pixels away each time so a tube never keeps them.
+
 ### Removed
 
 - The effect's name from the screensaver. `tte slide` in the corner was a
@@ -166,6 +179,12 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- A saved album on Spotify would not play. Albums come back in the same list
+  as the playlists and only their id says so; asking the provider to load one
+  leaves the album's own address in the queue as though it were a stream,
+  which fails at playback and leaves the deck on a track that never starts.
+  An album is expanded into its tracks now: the first plays, the rest queue
+  behind it.
 - Recently played was always empty: a history entry from cliamp wraps its
   track and the launcher was reading the envelope as one.
 - The deck showed nothing between tracks: a version 2 snapshot names the
