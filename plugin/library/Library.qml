@@ -302,7 +302,13 @@ Item {
     Rectangle {
       id: card
       width: Math.min(Style.space(920), parent.width - Style.space(80))
-      height: Math.min(Style.space(680), parent.height - Style.space(80))
+      // As tall as what is in it, up to the screen. A fixed height cut the
+      // last row in half on one collection and left a gap on another, and
+      // the number of systems is not something this can know in advance.
+      height: Math.min(
+        2 * Style.spacing.panelPadding + 3 * Style.space(10)
+          + head.height + hairline.height + content.implicitHeight + footer.height,
+        parent.height - Style.space(80))
       anchors.centerIn: parent
       radius: Style.cornerRadius
       color: root.bg
@@ -324,6 +330,7 @@ Item {
 
           // --------------------------------------------------------- header
           Row {
+            id: head
             width: parent.width
             spacing: Style.space(12)
             Column {
@@ -345,11 +352,14 @@ Item {
             }
             Act { id: closeBtn; text: "Close"; onClicked: root.dismiss(); anchors.verticalCenter: parent.verticalCenter }
           }
-          Line {}
+          Line { id: hairline }
 
           Flickable {
             width: parent.width
-            height: parent.height - y - footer.height - Style.space(10)
+            // What the list needs, or what is left of the screen, whichever
+            // is smaller: the scrollbar appears only when it is earned.
+            height: Math.min(content.implicitHeight,
+                             parent.height - y - footer.height - Style.space(10))
             contentWidth: width
             contentHeight: content.implicitHeight
             clip: true
@@ -405,7 +415,9 @@ Item {
                   spacing: Style.space(8)
                   TextField {
                     id: rootField
-                    width: parent.width - Style.space(230)
+                    // Room for both buttons beside it: the old reservation
+                    // of 230 cut the second one off the panel.
+                    width: parent.width - Style.space(390)
                     text: root.newRoot
                     foreground: root.fg
                     font.family: root.mono
@@ -413,11 +425,13 @@ Item {
                     onAccepted: if (root.newRoot.trim()) root.scan(root.newRoot.trim())
                   }
                   Act {
+                    id: addBtn
                     text: "Add folder and scan"
                     enabled: root.newRoot.trim() !== "" && !actionProc.running && !scanProc.running
                     onClicked: root.scan(root.newRoot.trim())
                   }
                   Act {
+                    id: rescanBtn
                     text: "Rescan sources"
                     enabled: root.roots.length > 0 && !actionProc.running && !scanProc.running
                     onClicked: root.scan("")
@@ -506,7 +520,11 @@ Item {
                   Row {
                     id: dirRow
                     required property var modelData
-                    property string edited: modelData.dir
+                    // Shown the way the sources are, `~/Videos` rather than
+                    // a path with somebody's name in it. The CLI expands a
+                    // tilde on the way in, and `default_systems` writes them
+                    // this way itself.
+                    property string edited: root.short(modelData.dir)
                     width: parent.width
                     spacing: Style.space(8)
                     Mono {
@@ -532,7 +550,7 @@ Item {
                     }
                     Act {
                       text: "Use this folder"
-                      enabled: dirRow.edited.trim() !== "" && dirRow.edited.trim() !== modelData.dir && !actionProc.running
+                      enabled: dirRow.edited.trim() !== "" && dirRow.edited.trim() !== root.short(modelData.dir) && !actionProc.running
                       onClicked: root.act(["library", "set", modelData.name, "dir=" + dirRow.edited.trim()])
                     }
                   }
@@ -543,8 +561,8 @@ Item {
               Section {
                 title: "BIOS"
                 hint: root.biosMissing.length > 0
-                  ? (root.biosMissing.length + " required file(s) missing in " + (root.biosReport.system_dir || ""))
-                  : ("all required files present in " + (root.biosReport.system_dir || ""))
+                  ? (root.biosMissing.length + " required file(s) missing in " + root.short(root.biosReport.system_dir || ""))
+                  : ("all required files present in " + root.short(root.biosReport.system_dir || ""))
                 Repeater {
                   model: root.biosMissing
                   Row {
