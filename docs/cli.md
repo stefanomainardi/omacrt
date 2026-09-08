@@ -261,8 +261,9 @@ and `calendar` (an `.ics` address).
 
 Four ways in, and none of them is the settings page:
 
-- **On the television**, Videos, Photo frame. Videos is where the pictures
-  live: films, YouTube, the frame, the clock.
+- **On the television**, home menu, **Ambient**, Photo frame. That row holds
+  the three pages for a set with nothing playing on it: the frame, the clock
+  and weather, and the system monitor.
 - **From the settings page** for it, Settings, Photo frame: A shows it now.
   That page is where it is set up, not where it runs.
 - **On its own, when the television is left alone**: Settings, Screensaver,

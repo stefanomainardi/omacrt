@@ -141,6 +141,10 @@ enum Screen {
     },
     /// The time, the day, the weather and what is next, on nothing.
     Ambient,
+    /// The three pages for a television with nothing playing on it.
+    AmbientHub {
+        sel: usize,
+    },
 }
 
 /// A row of the music screen.
@@ -225,9 +229,18 @@ const HOME: [(icons::Icon, &str, bool); 8] = [
     (icons::NOTE, "Music", true),
     (icons::STAR, "Favorites", true),
     (icons::CLOCK, "Recent", true),
-    (icons::CHART, "System", true),
+    (icons::PHOTO, "Ambient", true),
     (icons::GEAR, "Settings", true),
     (icons::POWER, "Power", true),
+];
+
+/// The Ambient submenu: what the television shows when nothing is playing.
+/// All three are also screensaver pages, and this is where they are found on
+/// purpose rather than by leaving the set alone.
+const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 3] = [
+    (icons::PHOTO, "Photo frame", true),
+    (icons::CLOCK, "Clock and weather", true),
+    (icons::CHART, "System monitor", true),
 ];
 
 /// Settings submenu entries.
@@ -334,12 +347,10 @@ const SAVER_PAGES: [(&str, &str); 4] = [
 /// Rows of the screensaver settings page: five, then one per page.
 const SAVER_ROWS: usize = 5 + SAVER_PAGES.len();
 /// Videos hub entries.
-const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 5] = [
+const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::FILM, "Local videos", true),
     (icons::RESUME, "YouTube", true),
     (icons::FOLDER, "Play the link in the clipboard", false),
-    (icons::PHOTO, "Photo frame", true),
-    (icons::CLOCK, "Clock and weather", true),
 ];
 
 /// YouTube hub entries.
@@ -921,11 +932,7 @@ impl Scene {
                 self.list_from_home = true;
                 self.open_virtual(&list);
             }
-            5 => {
-                self.sysmon.sample();
-                self.sysmon_at = 0.0;
-                self.go(Screen::Monitor { page: 0 });
-            }
+            5 => self.go(Screen::AmbientHub { sel: 0 }),
             6 => self.go(Screen::Settings { sel: 0 }),
             _ => self.go(Screen::Power { sel: 0 }),
         }
@@ -2200,9 +2207,25 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::AmbientHub { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < AMBIENT_ITEMS.len() => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.screen = Screen::Menu;
+                    self.sel = 5;
+                    moved = true;
+                }
+                _ => {}
+            },
             Screen::Ambient => {
                 if nav == Nav::Back {
-                    self.screen = Screen::Videos { sel: 4 };
+                    self.screen = Screen::AmbientHub { sel: 1 };
                     moved = true;
                 }
             }
@@ -2227,8 +2250,7 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
-                    self.screen = Screen::Menu;
-                    self.sel = 5;
+                    self.screen = Screen::AmbientHub { sel: 2 };
                     moved = true;
                 }
                 _ => {}
@@ -3010,14 +3032,6 @@ impl Scene {
             Screen::Settings { sel } => self.activate_settings(sel),
             Screen::Videos { sel } => {
                 self.pending.push(Sound::Select);
-                if sel == 3 {
-                    self.open_frame();
-                    return Action::None;
-                }
-                if sel == 4 {
-                    self.go(Screen::Ambient);
-                    return Action::None;
-                }
                 let Some(i) = self.video_system() else {
                     return Action::None;
                 };
@@ -3029,7 +3043,7 @@ impl Scene {
                         self.pending.push(Sound::Whoosh);
                     }
                     1 => self.go(Screen::YouTube { sel: 0 }),
-                    2 => match yt::clipboard_link() {
+                    _ => match yt::clipboard_link() {
                         Some(link) => {
                             let e = Entry {
                                 game: Game {
@@ -3048,7 +3062,6 @@ impl Scene {
                             self.pending.push(Sound::Crunch);
                         }
                     },
-                    _ => {}
                 }
                 Action::None
             }
@@ -3126,6 +3139,19 @@ impl Scene {
             | Screen::About { .. }
             | Screen::Monitor { .. }
             | Screen::Ambient => Action::None,
+            Screen::AmbientHub { sel } => {
+                self.pending.push(Sound::Select);
+                match sel {
+                    0 => self.open_frame(),
+                    1 => self.go(Screen::Ambient),
+                    _ => {
+                        self.sysmon.sample();
+                        self.sysmon_at = 0.0;
+                        self.go(Screen::Monitor { page: 0 });
+                    }
+                }
+                Action::None
+            }
             Screen::Frame => {
                 self.next_photo();
                 Action::None
@@ -3538,6 +3564,7 @@ impl Scene {
             Some("frame") => self.open_frame(),
             Some("framesettings") => self.screen = Screen::FrameSettings { sel: 0 },
             Some("videoshub") => self.screen = Screen::Videos { sel: 0 },
+            Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },
             Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
             Some("ambient") => self.screen = Screen::Ambient,
             Some("monitor") => {
@@ -3588,6 +3615,7 @@ impl Scene {
             }
             "frame" | "photos" => self.open_frame(),
             "ambient" | "clock" | "weather" => self.go(Screen::Ambient),
+            "idle" | "ambienthub" => self.go(Screen::AmbientHub { sel: 0 }),
             "monitor" | "system" => {
                 self.sysmon.sample();
                 self.go(Screen::Monitor { page: 0 });
@@ -4535,6 +4563,10 @@ impl Scene {
             }
             Screen::Frame => {
                 self.draw_frame(fb);
+                return;
+            }
+            Screen::AmbientHub { sel } => {
+                self.draw_menu_screen(fb, "Ambient", &AMBIENT_ITEMS, sel);
                 return;
             }
             Screen::Ambient => {
@@ -7379,7 +7411,7 @@ impl Scene {
     fn close_frame(&mut self) {
         // The pictures already prepared stay in hand: coming back to the
         // frame should not mean waiting for the network again.
-        self.screen = Screen::Videos { sel: 3 };
+        self.screen = Screen::AmbientHub { sel: 0 };
     }
 
     /// Put the next photograph up now, rather than at the end of its turn.

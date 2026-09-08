@@ -92,11 +92,12 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
-- The home menu carries **System** where **About** was, and About moved into
-  Settings. Eight rows is what fits under the wordmark on a 240 line screen.
-- The Videos hub carries the photo frame and the clock and weather page beside
-  the films and YouTube, so both are one list away from the home menu rather
-  than reachable only from their own settings page or from the screensaver.
+- The home menu carries an **Ambient** row where **About** was, holding the
+  three pages for a television with nothing playing on it: the photo frame,
+  the clock and weather, and the system monitor. About moved into Settings.
+  Eight rows is what fits under the wordmark on a 240 line screen, so the
+  three share one row rather than sitting under Videos, where photographs do
+  not belong.
 - The television follows whichever picture is being looked at: a console
   drawing 224 lines gets 224 lines while it plays, and the tube goes back to
   the launcher's own 240 for as long as the pause menu is up.
