@@ -71,15 +71,33 @@ is in [`15khz.md`](15khz.md) and
 - **A Television entry in the Omarchy menu**, through
   `~/.config/omarchy/extensions/omarchy-menu.jsonc`, which is the extension
   point Omarchy offers. Nothing patched. Every row calls the CLI, reaching the
-  launcher with `omarchy-crt shell screen NAME`.
+  launcher with `omarchy-crt shell screen NAME`, and *Play a game...* hands
+  the whole collection to Omarchy's own runner and plays what comes back.
+- **The weather, drawn.** The ambient page is a window rather than a text
+  field: the sun on its real arc between sunrise and sunset, the moon on the
+  same path at night, clouds at the speed of the real wind, rain that slants
+  with it and breaks on the ground, snow, fog, lightning, and a town along the
+  horizon whose windows come on after dark. Every gradient is an ordered
+  dither.
+- **Four screensaver pages that take turns.** `[screensaver] pages` is which of
+  them an idle television shows and `cycle_secs` is how long each keeps the
+  screen. Music playing still takes it for the visualizer, and a page opened
+  on purpose is never covered by another.
+- **Clearing up after itself.** An emulator no longer outlives its launcher.
+  `omarchy-crt doctor` surveys what has been left behind and `--fix` clears
+  it, and the same sweep runs when the launcher starts or stops and once a
+  minute from the watchdog.
 
 ## Next
 
-1. **Pause menu.** Aspect and shader choices.
-2. **Player count.** Not in the file names the collection uses; waits for a
+1. **Open the repository.** The checklist is [`release.md`](release.md): the
+   security read through and the contribution rules are done, the code review
+   and the last of the documentation are not.
+2. **Pause menu.** Aspect and shader choices.
+3. **Player count.** Not in the file names the collection uses; waits for a
    metadata source.
-3. **More screensaver effects** from the TerminalTextEffects catalog.
-4. **A kernel with the 15 kHz patches** only if a timing the DAC needs turns
+4. **More screensaver effects** from the TerminalTextEffects catalog.
+5. **A kernel with the 15 kHz patches** only if a timing the DAC needs turns
    out unreachable from userspace. Nothing so far has.
 
 ## Lessons kept
@@ -108,3 +126,14 @@ is in [`15khz.md`](15khz.md) and
 - The launcher's own keys reach a running game only through the compositor
   (`omarchy-crt game key`), and RetroArch reads its own bindings: start is
   enter, the arcade coin rshift, A is x.
+- An emulator does not die with the launcher that started it: the signal goes
+  to the launcher alone and the child is reparented to systemd, where it holds
+  the audio and answers "something is playing" for as long as the machine is
+  up. One of those blocked every launch from the desktop for eleven hours.
+- walker is a single instance application. Started while another one is open,
+  the second process hands its arguments over and exits without printing,
+  which from a menu row is indistinguishable from a row that does nothing.
+- A command that travels down the control pipe has to be understood at both
+  ends. Installing only the CLI after adding one leaves the launcher logging
+  `control: unknown input <name>`, and the mistake looks like a broken
+  feature rather than a stale binary.
