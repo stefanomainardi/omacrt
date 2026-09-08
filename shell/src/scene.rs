@@ -332,20 +332,23 @@ const MONITOR_PAGES: usize = 2;
 /// Rows of the photo frame settings page.
 const FRAME_ROWS: usize = 6;
 
-/// What an idle television can show, and what each one is.
+/// What each page an idle television can show is called on screen, and the
+/// line that says what it is. The list itself is `settings::PAGES`, because
+/// the file, its migration and this screen have to agree on the names.
 ///
-/// These take turns when the screensaver is set to `mix`, and any one of
-/// them can be named on its own instead. The music visualizer is not in the
-/// list: it stands in whenever music is playing, which is a stronger claim
-/// on the screen than a rotation.
-const SAVER_PAGES: [(&str, &str); 4] = [
-    ("effects", "the wordmark and a text effect"),
-    ("photos", "photographs from the house's server"),
-    ("ambient", "the time, the weather, what is next"),
-    ("system", "what the machine is doing"),
-];
+/// The music visualizer is not among them: it stands in whenever music is
+/// playing, which is a stronger claim on the screen than a rotation.
+fn saver_page_label(page: &str) -> (&'static str, &'static str) {
+    match page {
+        "photos" => ("the photographs", "the photo frame"),
+        "ambient" => ("the clock and weather", "the weather, drawn, and the time"),
+        "system" => ("the system monitor", "what the machine is doing"),
+        _ => ("the wordmark", "a text effect on the wordmark"),
+    }
+}
+
 /// Rows of the screensaver settings page: five, then one per page.
-const SAVER_ROWS: usize = 5 + SAVER_PAGES.len();
+const SAVER_ROWS: usize = 5 + omarchy_crt_shell::settings::PAGES.len();
 /// Videos hub entries.
 const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::FILM, "Local videos", true),
@@ -1183,25 +1186,15 @@ impl Scene {
         }
     }
 
-    /// The values the "when idle" row walks through: the mix first, then
-    /// any effect, then each page on its own.
+    /// The values the text effect row walks through.
     fn saver_choices() -> Vec<&'static str> {
-        std::iter::once("mix")
-            .chain(std::iter::once("random"))
+        std::iter::once("random")
             .chain(effects::ALL.iter().map(|k| k.name()))
-            // Not effects at all: whole screens that make more sense on an
-            // idle television than a text effect does.
-            .chain(
-                SAVER_PAGES
-                    .iter()
-                    .filter(|(n, _)| *n != "effects")
-                    .map(|(n, _)| *n),
-            )
             .collect()
     }
 
-    /// Screensaver settings rows: enabled, idle time, what it shows, how
-    /// long each page stays, preview, then one row per page.
+    /// Screensaver settings rows: enabled, idle time, how long each page
+    /// stays, which text effect, preview, then one row per page.
     fn adjust_saver(&mut self, row: usize, dir: i32) {
         let sv = &mut self.settings.screensaver;
         match row {
@@ -1211,33 +1204,26 @@ impl Scene {
                 sv.idle_secs = v.clamp(30, 900) as u32;
             }
             2 => {
+                let opts = [0u32, 60, 120, 240, 600, 1800];
+                let i = opts.iter().position(|o| *o == sv.cycle_secs).unwrap_or(3) as i32;
+                sv.cycle_secs = opts[(i + dir).rem_euclid(opts.len() as i32) as usize];
+            }
+            3 => {
                 let names = Self::saver_choices();
                 let i = names.iter().position(|n| *n == sv.effect).unwrap_or(0) as i32;
                 let next = (i + dir).rem_euclid(names.len() as i32) as usize;
                 sv.effect = names[next].to_string();
             }
-            3 => {
-                let opts = [0u32, 60, 120, 240, 600, 1800];
-                let i = opts.iter().position(|o| *o == sv.cycle_secs).unwrap_or(3) as i32;
-                sv.cycle_secs = opts[(i + dir).rem_euclid(opts.len() as i32) as usize];
-            }
             4 => {}
             row => {
-                // One page's own switch. The last one on cannot be switched
-                // off: an empty mix has nothing to show.
-                let Some((name, _)) = SAVER_PAGES.get(row - 5) else {
+                // One page in or out of the rotation. The last one cannot go:
+                // an idle television has to show something.
+                let Some(page) = omarchy_crt_shell::settings::PAGES.get(row - 5) else {
                     return;
                 };
-                let name = name.to_string();
-                match sv.off.iter().position(|n| *n == name) {
-                    Some(i) => {
-                        sv.off.remove(i);
-                    }
-                    None if sv.off.len() + 1 < SAVER_PAGES.len() => sv.off.push(name),
-                    None => {
-                        self.message = Some(("one page has to stay on".into(), self.now + 3.0));
-                        self.pending.push(Sound::Crunch);
-                    }
+                if !sv.toggle(page) {
+                    self.message = Some(("one page has to stay on".into(), self.now + 3.0));
+                    self.pending.push(Sound::Crunch);
                 }
             }
         }
@@ -4811,8 +4797,7 @@ impl Scene {
     ///
     /// Music playing wins: the visualizer has something to show that the
     /// other pages do not. Otherwise the screensaver setting decides, and it
-    /// can name one page or `mix` to take turns between the pages that are
-    /// on.
+    /// there is more than one, they take turns.
     fn idle_reached(&mut self, now: f64) {
         if self.music.status.playing() && self.settings.music.saver {
             self.music_saver_start(now);
@@ -4821,26 +4806,26 @@ impl Scene {
         if self.saver_run.is_some() {
             return;
         }
-        let asked = self.settings.screensaver.effect.clone();
-        let page = if asked == "mix" {
-            // Everything switched off: the wordmark is still better than a
-            // lit screen showing the menu all night, and page 0 is it.
-            self.next_saver_page(None).unwrap_or_default()
-        } else {
-            SAVER_PAGES
-                .iter()
-                .position(|(name, _)| *name == asked)
-                .unwrap_or(0)
-        };
+        // Nothing in the rotation leaves the wordmark, which is still better
+        // than a lit screen showing the menu all night.
+        let page = self.next_saver_page(None).unwrap_or_default();
         self.start_saver_page(page, now);
     }
 
-    /// The next page that is on, after `from`. `None` when none of them are.
+    /// Which pages are in the rotation, as indices into `settings::PAGES`.
+    fn saver_rotation(&self) -> Vec<usize> {
+        let sv = &self.settings.screensaver;
+        omarchy_crt_shell::settings::PAGES
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| sv.shows(p))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// The next page in the rotation after `from`. `None` when it is empty.
     fn next_saver_page(&mut self, from: Option<usize>) -> Option<usize> {
-        let off = &self.settings.screensaver.off;
-        let on: Vec<usize> = (0..SAVER_PAGES.len())
-            .filter(|i| !off.iter().any(|n| n == SAVER_PAGES[*i].0))
-            .collect();
+        let on = self.saver_rotation();
         if on.is_empty() {
             return None;
         }
@@ -4851,6 +4836,8 @@ impl Scene {
             Some(current) => {
                 let at = on.iter().position(|i| *i == current);
                 Some(match at {
+                    // After that they go round in the order they are drawn
+                    // in, whatever order they were switched on in.
                     Some(i) => on[(i + 1) % on.len()],
                     None => on[0],
                 })
@@ -4869,7 +4856,7 @@ impl Scene {
         // The idle clock starts again: the page is what idling looks like,
         // and the check must not fire on every frame from here on.
         self.last_input = now;
-        match SAVER_PAGES.get(page).map(|(name, _)| *name) {
+        match omarchy_crt_shell::settings::PAGES.get(page).copied() {
             Some("photos") => self.open_frame(),
             Some("ambient") => self.go(Screen::Ambient),
             Some("system") => {
@@ -4883,13 +4870,15 @@ impl Scene {
         }
     }
 
-    /// While mixing, turn the page when its time is up.
+    /// Turn the page when its time is up.
     fn cycle_saver_page(&mut self, now: f64) {
         let Some((page, since, back)) = self.saver_run else {
             return;
         };
         let sv = &self.settings.screensaver;
-        if sv.effect != "mix" || sv.cycle_secs == 0 {
+        // One page on its own stays up, and so does any page when the time
+        // is set to nothing.
+        if sv.cycle_secs == 0 || sv.pages.len() < 2 {
             return;
         }
         if now - since < sv.cycle_secs as f64 {
@@ -5287,9 +5276,10 @@ impl Scene {
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
-    /// Screensaver settings: what an idle television shows, and which pages
-    /// take turns at it.
+    /// Screensaver settings: which pages an idle television shows, and how
+    /// long each of them keeps the screen.
     fn draw_saver_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
+        use omarchy_crt_shell::settings::PAGES;
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32 + self.slide();
@@ -5297,71 +5287,71 @@ impl Scene {
         let y0 = self.draw_header(fb, "Screensaver");
         let sv = self.settings.screensaver.clone();
         let onoff = |b: bool| if b { "on" } else { "off" }.to_string();
-        let mut rows: Vec<(String, String, bool)> = vec![
-            ("enabled".into(), onoff(sv.enabled), true),
-            ("after".into(), format!("{} s", sv.idle_secs), true),
-            ("when idle".into(), sv.effect.clone(), true),
+        let turns = sv.rotation().len();
+        let mut rows: Vec<(String, String)> = vec![
+            ("enabled".into(), onoff(sv.enabled)),
+            ("after".into(), format!("{} s", sv.idle_secs)),
             (
-                "change page every".into(),
+                "each page stays".into(),
                 if sv.cycle_secs == 0 {
-                    "keep one".into()
+                    "for ever".into()
                 } else {
                     format!("{} s", sv.cycle_secs)
                 },
-                sv.effect == "mix",
             ),
-            ("preview".into(), String::new(), false),
+            ("text effect".into(), sv.effect.clone()),
+            ("show one now".into(), String::new()),
         ];
-        for (name, _) in SAVER_PAGES.iter() {
-            let on = !sv.off.iter().any(|n| n == name);
-            rows.push((format!("  {name}"), onoff(on), sv.effect == "mix"));
+        for page in PAGES.iter() {
+            let (label, _) = saver_page_label(page);
+            rows.push((format!("  {label}"), onoff(sv.shows(page))));
         }
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
         fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
-        for (i, (label, value, arrows)) in rows.iter().enumerate() {
+        for (i, (label, value)) in rows.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             let on = i == sel;
-            // A row that only matters while mixing is still there, dimmed,
-            // rather than appearing and disappearing under the cursor.
-            let live = i < 3 || *arrows || i == 4;
-            let c = match (on, live) {
-                (true, _) => self.theme.accent,
-                (false, true) => self.theme.paper,
-                (false, false) => scale(self.theme.dim, 0.8),
-            };
-            fb.text(left + 18, y + 2, label, c, 1);
-            let right = if *arrows {
-                format!("< {value} >")
-            } else {
-                value.clone()
-            };
-            let rc = if on {
+            let colour = if on {
                 self.theme.accent
-            } else if live {
-                self.theme.dim
             } else {
-                scale(self.theme.dim, 0.7)
+                self.theme.paper
+            };
+            fb.text(left + 18, y + 2, label, colour, 1);
+            // Every row here changes something; only the preview has no
+            // value of its own, so it is the only one without arrows.
+            let right = if i == 4 {
+                String::new()
+            } else {
+                format!("< {value} >")
             };
             fb.text(
                 left + width - 8 - Framebuffer::text_width(&right, 1),
                 y + 2,
                 &right,
-                rc,
+                if on {
+                    self.theme.accent
+                } else {
+                    self.theme.dim
+                },
                 1,
             );
         }
-        // The note is about the row under the cursor, which is the only
-        // place there is room to say what a page is.
+        // The note is about the row under the cursor: the only place there
+        // is room to say what a page is, or what a number means.
         let note: String = match sel {
             0 => "off leaves the menu up all night".into(),
             1 => "seconds of nothing before it starts".into(),
-            2 => format!("one page, or mix ({} effects)", effects::ALL.len()),
-            3 => "how long each page stays in the mix".into(),
-            4 => "start it now".into(),
-            row => SAVER_PAGES
+            2 => match turns {
+                0 | 1 => "one page on, so it keeps the screen".into(),
+                n if sv.cycle_secs == 0 => format!("{n} on, but the first keeps the screen"),
+                n => format!("{n} pages take turns, in this order"),
+            },
+            3 => format!("for the wordmark ({} of them)", effects::ALL.len()),
+            4 => "start the rotation now".into(),
+            row => PAGES
                 .get(row - 5)
-                .map(|(_, what)| (*what).to_string())
+                .map(|p| saver_page_label(p).1.to_string())
                 .unwrap_or_default(),
         };
         let max_cols = (width / 8) as usize;

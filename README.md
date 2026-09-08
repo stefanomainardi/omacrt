@@ -360,9 +360,13 @@ switches with a blend.
 - **System monitor.** What the machine is doing, drawn as a 16 bit status
   screen: a bank of little meters, one per processor, memory and graphics on
   bevelled plates, a minute and a half of history for load and network, the
-  rates and the busiest processes. Straight out of `/proc` and `/sys`. Set the
-  screensaver to `mix` and an idle television takes turns between this, the
-  photographs, the ambient clock and the text effects.
+  rates and the busiest processes. Straight out of `/proc` and `/sys`.
+- **When it is left alone.** Four pages can have an idle television: the
+  wordmark under a text effect, the photo frame, the weather, and the system
+  monitor. One of them keeps the screen, or several take turns every so many
+  seconds, switched on and off a page at a time under Settings, Screensaver.
+  Music playing takes the screen back for the visualizer, because a page
+  showing the time is a poor answer to a room with music in it.
 - **Pads.** SDL's database plus a wizard on the tube for the pads it does not
   know: press each control once and it is mapped for good.
 - **Sound.** Every click, whoosh, crackle and scrape is synthesized at

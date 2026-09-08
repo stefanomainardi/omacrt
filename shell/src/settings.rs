@@ -8,21 +8,81 @@ pub struct Screensaver {
     pub enabled: bool,
     /// Seconds of inactivity before the screensaver starts.
     pub idle_secs: u32,
-    /// What an idle television shows: an effect name from `effects::ALL`,
-    /// `random` for any of them, a page name (`photos`, `ambient`,
-    /// `system`), or `mix` to take turns between the pages that are on.
+    /// Which text effect the wordmark page uses: a name from `effects::ALL`,
+    /// or `random` for any of them. This says nothing about which pages an
+    /// idle television shows; that is `pages`.
     pub effect: String,
-    /// Seconds a page stays before the next one, while mixing. 0 keeps the
-    /// first one up.
+    /// Seconds a page stays before the next one. 0, or one page on its own,
+    /// keeps that page up.
     #[serde(default = "default_cycle_secs")]
     pub cycle_secs: u32,
-    /// Pages left out of the mix, by name.
+    /// The pages an idle television shows. One of them stays up; several
+    /// take turns, in the order of `PAGES`. Empty in a file written by an
+    /// older build, which `migrate` reads as its old `effect` value.
     #[serde(default)]
-    pub off: Vec<String>,
+    pub pages: Vec<String>,
 }
 
 fn default_cycle_secs() -> u32 {
     240
+}
+
+/// Everything an idle television can show, in the order pages take turns.
+///
+/// The launcher draws each of these and knows what to call them; this is the
+/// list itself, because the settings file, its migration and the screen all
+/// have to agree on the names.
+pub const PAGES: [&str; 4] = ["effects", "photos", "ambient", "system"];
+
+impl Screensaver {
+    /// Is this page in the rotation?
+    pub fn shows(&self, page: &str) -> bool {
+        self.pages.iter().any(|p| p == page)
+    }
+
+    /// The pages in the rotation, in the order they take turns.
+    pub fn rotation(&self) -> Vec<&'static str> {
+        PAGES.iter().copied().filter(|p| self.shows(p)).collect()
+    }
+
+    /// Add or remove a page, keeping the order of `PAGES`. The last page
+    /// cannot be removed: an idle television has to show something.
+    pub fn toggle(&mut self, page: &str) -> bool {
+        if self.shows(page) {
+            if self.pages.len() < 2 {
+                return false;
+            }
+            self.pages.retain(|p| p != page);
+        } else {
+            self.pages.push(page.to_string());
+            self.pages
+                .sort_by_key(|p| PAGES.iter().position(|q| q == p).unwrap_or(usize::MAX));
+        }
+        true
+    }
+
+    /// Read a file written before pages existed.
+    ///
+    /// The old `effect` said three different things at once: a text effect,
+    /// `random` for any of them, the name of a whole page, or `mix` for all
+    /// of them taking turns. Each of those becomes a rotation, and `effect`
+    /// goes back to meaning one thing.
+    fn migrate(&mut self) {
+        if !self.pages.is_empty() {
+            return;
+        }
+        match self.effect.as_str() {
+            "mix" => {
+                self.pages = PAGES.iter().map(|p| p.to_string()).collect();
+                self.effect = "random".into();
+            }
+            name if PAGES.contains(&name) && name != "effects" => {
+                self.pages = vec![name.to_string()];
+                self.effect = "random".into();
+            }
+            _ => self.pages = vec!["effects".into()],
+        }
+    }
 }
 
 /// How modern video is fitted to the tube.
@@ -227,7 +287,10 @@ impl Default for Settings {
                 idle_secs: 60,
                 effect: "random".into(),
                 cycle_secs: default_cycle_secs(),
-                off: Vec::new(),
+                // A new machine shows all of it, which is the point of
+                // having four pages. A file that already exists keeps
+                // whatever it asked for; see `Screensaver::migrate`.
+                pages: PAGES.iter().map(|p| p.to_string()).collect(),
             },
             theme: "system".into(),
             video: VideoFit::default(),
@@ -244,9 +307,11 @@ impl Settings {
     }
 
     pub fn load(config_dir: &Path) -> Self {
-        crate::config::read(&Self::path(config_dir))
+        let mut out: Self = crate::config::read(&Self::path(config_dir))
             .and_then(|t| toml::from_str(&t).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        out.screensaver.migrate();
+        out
     }
 
     pub fn save(&self, config_dir: &Path) -> std::io::Result<()> {
@@ -255,5 +320,75 @@ impl Settings {
         stamped.version = crate::config::VERSION;
         let text = toml::to_string_pretty(&stamped).map_err(std::io::Error::other)?;
         crate::store::save(&Self::path(config_dir), text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn saver(effect: &str, pages: &[&str]) -> Screensaver {
+        Screensaver {
+            enabled: true,
+            idle_secs: 60,
+            effect: effect.into(),
+            cycle_secs: 240,
+            pages: pages.iter().map(|p| p.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn a_file_from_before_pages_keeps_what_it_asked_for() {
+        // A text effect, or any of them, was the wordmark page all along.
+        let mut s = saver("random", &[]);
+        s.migrate();
+        assert_eq!(s.pages, vec!["effects"]);
+        assert_eq!(s.effect, "random");
+
+        let mut s = saver("vhstape", &[]);
+        s.migrate();
+        assert_eq!(s.pages, vec!["effects"]);
+        // The effect it named is still the effect the page uses.
+        assert_eq!(s.effect, "vhstape");
+
+        // A page name meant that page and nothing else.
+        let mut s = saver("photos", &[]);
+        s.migrate();
+        assert_eq!(s.pages, vec!["photos"]);
+        assert_eq!(s.effect, "random");
+
+        // `mix` meant all of them.
+        let mut s = saver("mix", &[]);
+        s.migrate();
+        assert_eq!(s.pages, PAGES.to_vec());
+        assert_eq!(s.effect, "random");
+    }
+
+    #[test]
+    fn a_file_that_already_has_pages_is_left_alone() {
+        let mut s = saver("burn", &["photos", "system"]);
+        s.migrate();
+        assert_eq!(s.pages, vec!["photos", "system"]);
+        assert_eq!(s.effect, "burn");
+    }
+
+    #[test]
+    fn pages_take_turns_in_one_order_however_they_were_switched_on() {
+        let mut s = saver("random", &["system"]);
+        assert!(s.toggle("photos"));
+        assert!(s.toggle("effects"));
+        // Not the order they were added: the order they are drawn in.
+        assert_eq!(s.rotation(), vec!["effects", "photos", "system"]);
+    }
+
+    #[test]
+    fn the_last_page_cannot_be_switched_off() {
+        let mut s = saver("random", &["photos"]);
+        assert!(!s.toggle("photos"));
+        assert_eq!(s.rotation(), vec!["photos"]);
+        // With two on, either can go.
+        assert!(s.toggle("ambient"));
+        assert!(s.toggle("photos"));
+        assert_eq!(s.rotation(), vec!["ambient"]);
     }
 }
