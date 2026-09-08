@@ -740,6 +740,15 @@ mod tests {
     }
 
     #[test]
+    fn the_ambient_row_names_every_page_the_hub_holds() {
+        assert_eq!(
+            AMBIENT_SUMMARY.split(", ").count(),
+            AMBIENT_ITEMS.len(),
+            "the home row's words and the hub's pages have to agree"
+        );
+    }
+
+    #[test]
     fn a_label_fits_the_column_it_is_in() {
         // Half the width, less the margins and the gutter, less the room the
         // icon takes: fifteen characters at eight pixels each.

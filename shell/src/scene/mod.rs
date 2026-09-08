@@ -254,6 +254,11 @@ const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::CHART, "System monitor", true),
 ];
 
+/// The three ambient pages in a few words, for the home row that opens them.
+/// A test counts these against `AMBIENT_ITEMS`, so a fourth page cannot be
+/// added without saying so here.
+const AMBIENT_SUMMARY: &str = "photos, weather, monitor";
+
 /// Settings submenu entries.
 /// Where a row of the settings page goes. Anything that comes back to
 /// Settings names the row it came from rather than counting to it, which is
