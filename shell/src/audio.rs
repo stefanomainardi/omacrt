@@ -1,10 +1,17 @@
 //! Synthesized sounds, mixed in the SDL audio callback.
 //! Every sound is rendered once at startup into a sample buffer.
 
+use crate::weather_sound::Ambience;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use std::sync::{Arc, Mutex};
 
 pub const RATE: u32 = 48_000;
+
+/// A sound effect is at the gain it asked for within about fifty
+/// milliseconds; the weather takes a second and a half to arrive and the
+/// same to leave, because a loop that starts at full volume is a jump scare.
+const EFFECT_RAMP: f32 = 0.0004;
+const AMBIENCE_RAMP: f32 = 0.000015;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Sound {
@@ -32,6 +39,9 @@ struct Voice {
     gain: f32,
     /// Target gain; the mixer ramps toward it (fade in and out).
     target: f32,
+    /// How fast it ramps, per sample. A sound effect arrives at once; the
+    /// weather takes a couple of seconds to come and to go.
+    ramp: f32,
 }
 
 pub struct Mixer {
@@ -54,7 +64,7 @@ impl AudioCallback for Mixer {
                         break;
                     }
                 }
-                v.gain += (v.target - v.gain) * 0.0004;
+                v.gain += (v.target - v.gain) * v.ramp;
                 *sample += v.data[v.pos] * v.gain;
                 v.pos += 1;
             }
@@ -72,6 +82,11 @@ pub struct Audio {
     _device: Option<AudioDevice<Mixer>>,
     voices: Arc<Mutex<Vec<Voice>>>,
     bank: Vec<(Sound, Arc<Vec<f32>>)>,
+    /// The weather playing now, and the loops rendered so far. A loop is
+    /// four seconds of samples, so they are kept once asked for rather than
+    /// all rendered at startup.
+    ambience: Option<Ambience>,
+    loops: Vec<(Ambience, Arc<Vec<f32>>)>,
 }
 
 impl Audio {
@@ -80,6 +95,8 @@ impl Audio {
             _device: None,
             voices: Arc::new(Mutex::new(Vec::new())),
             bank: Vec::new(),
+            ambience: None,
+            loops: Vec::new(),
         }
     }
 
@@ -101,7 +118,44 @@ impl Audio {
             _device: Some(device),
             voices,
             bank,
+            ambience: None,
+            loops: Vec::new(),
         })
+    }
+
+    /// What the weather sounds like, or nothing. Called every frame with
+    /// what the scene wants: the same answer twice changes nothing, a
+    /// different one fades the old loop out and the new one in, and `None`
+    /// leaves silence behind.
+    pub fn set_ambience(&mut self, want: Option<Ambience>) {
+        if self._device.is_none() || want == self.ambience {
+            return;
+        }
+        self.ambience = want;
+        let mut voices = self.voices.lock().unwrap();
+        for v in voices.iter_mut().filter(|v| v.looping) {
+            v.target = 0.0;
+            v.ramp = AMBIENCE_RAMP;
+        }
+        let Some(a) = want else {
+            return;
+        };
+        let data = match self.loops.iter().find(|(k, _)| *k == a) {
+            Some((_, data)) => data.clone(),
+            None => {
+                let data = Arc::new(a.render());
+                self.loops.push((a, data.clone()));
+                data
+            }
+        };
+        voices.push(Voice {
+            data,
+            pos: 0,
+            looping: true,
+            gain: 0.0,
+            target: 1.0,
+            ramp: AMBIENCE_RAMP,
+        });
     }
 
     /// Play a buffer generated at runtime (the laser etch follows a random walk).
@@ -116,6 +170,7 @@ impl Audio {
             looping: false,
             gain: 1.0,
             target: 1.0,
+            ramp: EFFECT_RAMP,
         });
     }
 
@@ -128,6 +183,7 @@ impl Audio {
                 looping: false,
                 gain: 1.0,
                 target: 1.0,
+                ramp: EFFECT_RAMP,
             });
         }
     }
@@ -173,21 +229,21 @@ pub fn write_wav(path: &std::path::Path, data: &[f32]) -> std::io::Result<()> {
     std::fs::write(path, out)
 }
 
-fn seconds(n: f32) -> usize {
+pub(crate) fn seconds(n: f32) -> usize {
     (n * RATE as f32) as usize
 }
 
 /// Deterministic noise, good enough for a click.
-struct Lcg(u32);
+pub(crate) struct Lcg(pub u32);
 impl Lcg {
-    fn next(&mut self) -> f32 {
+    pub(crate) fn next(&mut self) -> f32 {
         self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
         (self.0 >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
     }
 }
 
 /// One-pole lowpass over a buffer.
-fn lowpass(buf: &mut [f32], cutoff_hz: f32) {
+pub(crate) fn lowpass(buf: &mut [f32], cutoff_hz: f32) {
     let rc = 1.0 / (2.0 * std::f32::consts::PI * cutoff_hz);
     let dt = 1.0 / RATE as f32;
     let a = dt / (rc + dt);

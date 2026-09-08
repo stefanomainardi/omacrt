@@ -294,14 +294,16 @@ impl Scene {
                     step(&f.source, &["memories", "favorites", "album", "all"], dir).to_string();
             }
             3 => f.pan = !f.pan,
+            6 => f.weather_sound = !f.weather_sound,
             _ => {
                 // The album is a name typed into a file, not something to
                 // spell out with a pad; this row only says which one it is.
             }
         }
         // Anything that changes what comes next means starting the supply
-        // again, and dropping what is already in hand.
-        if row != 3 {
+        // again, and dropping what is already in hand. Drifting and the
+        // sound change nothing about what is fetched.
+        if row != 3 && row != 6 {
             self.photos = crate::photos::Feed::new();
             self.frame_now = None;
             self.frame_previous = None;
@@ -350,6 +352,14 @@ impl Scene {
                     f.weather.clone()
                 },
             ),
+            (
+                "weather sound".into(),
+                if f.weather_sound {
+                    "on".into()
+                } else {
+                    "off".into()
+                },
+            ),
         ];
         let notes = [
             "what is written over the photograph",
@@ -362,6 +372,7 @@ impl Scene {
             } else {
                 "the town, from settings.toml"
             },
+            "rain, wind and birds, on the ambient page",
         ];
         self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14, None);
         // A settings page for the frame is not the frame, and nothing else on

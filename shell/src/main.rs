@@ -22,6 +22,7 @@ mod scene;
 mod sky;
 mod sysmon;
 mod theme;
+mod weather_sound;
 use omarchy_crt_shell::padmap::Raw;
 use omarchy_crt_shell::{
     covers, index, library, music, padmap, player, profile, settings, states, videofit, yt,
@@ -385,7 +386,7 @@ fn run(args: &Args) -> Result<(), String> {
     let sdl = sdl2::init()?;
     let video = sdl.video()?;
     let gcs = sdl.game_controller()?;
-    let audio = if args.no_audio {
+    let mut audio = if args.no_audio {
         Audio::silent()
     } else {
         Audio::open(&sdl.audio()?)?
@@ -1071,6 +1072,7 @@ fn run(args: &Args) -> Result<(), String> {
         for data in scene.take_samples() {
             audio.play_samples(data);
         }
+        audio.set_ambience(scene.ambience());
 
         if scene.boot_started() && next_dump < dumps.len() {
             let bt = scene_time(&scene, t);
@@ -1311,8 +1313,14 @@ fn main() {
             eprintln!("{e}");
             std::process::exit(1);
         }
-        for (kind, data) in audio::render_bank() {
-            let path = dir.join(format!("{kind:?}.wav").to_lowercase());
+        let bank = audio::render_bank()
+            .into_iter()
+            .map(|(kind, data)| (format!("{kind:?}").to_lowercase(), data));
+        let weather = weather_sound::Ambience::ALL
+            .into_iter()
+            .map(|a| (format!("weather-{}", a.name()), a.render()));
+        for (name, data) in bank.chain(weather) {
+            let path = dir.join(format!("{name}.wav"));
             if let Err(e) = audio::write_wav(&path, &data) {
                 eprintln!("{e}");
                 std::process::exit(1);

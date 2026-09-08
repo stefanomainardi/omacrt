@@ -9,6 +9,13 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- The weather has a sound, off by default (`[frame] weather_sound`, or
+  Settings, Photo frame). Rain with drops on it, gusting wind, thunder behind
+  a downpour, birds on a clear day, crickets at night, a horn in fog: eight
+  loops, each synthesized and then held at 8 kHz and quantised to five bits,
+  the way a sample was in 1990. It plays only while the ambient page is up
+  and fades in and out. `omarchy-crt-shell --dump-audio DIR` writes them all
+  as WAVs.
 - A photo frame: photographs from an Immich server on the same network, from
   what the server calls memories, an album, the favourites or anything at all,
   captioned with the place, the date and the faces the server already knows.

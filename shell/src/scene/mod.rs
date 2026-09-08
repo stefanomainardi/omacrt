@@ -333,7 +333,7 @@ const SYS_PAGE: usize = 11;
 /// Pages of the system monitor: the machine, then the processes.
 const MONITOR_PAGES: usize = 2;
 /// Rows of the photo frame settings page.
-const FRAME_ROWS: usize = 6;
+const FRAME_ROWS: usize = 7;
 
 /// What each page an idle television can show is called on screen, and the
 /// line that says what it is. The list itself is `settings::PAGES`, because
@@ -712,6 +712,31 @@ impl Scene {
     /// Sounds queued during the last `draw`; the caller plays them.
     pub fn take_sounds(&mut self) -> Vec<Sound> {
         std::mem::take(&mut self.pending)
+    }
+
+    /// What the weather should sound like right now, or nothing.
+    ///
+    /// Only the ambient page has a sound, and only when the setting is on:
+    /// the page is the one screen that is all weather, and it is the one the
+    /// idle television puts up by itself. A game or a film is playing over
+    /// everything and gets the silence it is owed.
+    pub fn ambience(&self) -> Option<crate::weather_sound::Ambience> {
+        if !self.settings.frame.weather_sound
+            || self.running.is_some()
+            || self.launching.is_some()
+            || self.saver.is_some()
+            || !matches!(self.screen, Screen::Ambient)
+        {
+            return None;
+        }
+        let reading = &self.photos.info.sky;
+        if !reading.known {
+            return None;
+        }
+        let now = chrono::Local::now();
+        let minutes = now.format("%H").to_string().parse::<u32>().unwrap_or(0) * 60
+            + now.format("%M").to_string().parse::<u32>().unwrap_or(0);
+        crate::weather_sound::Ambience::of(reading.kind, reading.daylight(minutes))
     }
 
     /// Runtime-generated buffers queued during the last `draw`.
