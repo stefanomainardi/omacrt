@@ -2646,6 +2646,61 @@ impl Scene {
         let _ = self.run_entry(&entry);
     }
 
+    /// Start a game by its path, for `omarchy-crt play` and the desktop.
+    ///
+    /// The path comes already resolved: the CLI has the index and does the
+    /// matching, so what arrives here is a file the scan has seen. The system
+    /// it belongs to comes from the same index, and the game itself from the
+    /// library, so a launch from the desktop is the launch the launcher would
+    /// have done from its own list.
+    pub fn play(&mut self, target: &str) {
+        if self.running.is_some() || self.launching.is_some() || self.player.is_some() {
+            self.message = Some(("busy: something is already running".into(), self.now + 3.0));
+            return;
+        }
+        self.wake();
+        self.menu_live = true;
+        self.chime_played = true;
+        let path = PathBuf::from(target);
+        let Some(index) = crate::index::Index::load() else {
+            self.message = Some(("no library index; run a scan".into(), self.now + 4.0));
+            return;
+        };
+        let Some(item) = index.items.iter().find(|i| i.path == path) else {
+            self.message = Some(("not in the library".into(), self.now + 4.0));
+            return;
+        };
+        let Some(sys) = self
+            .library
+            .systems
+            .iter()
+            .position(|s| s.name == item.system)
+        else {
+            let missing = item.system.clone();
+            self.message = Some((
+                format!("no system {missing} in systems.toml"),
+                self.now + 4.0,
+            ));
+            return;
+        };
+        // The library's own game, so nothing about the launch differs from
+        // choosing it on the tube: the CRT ready conversion beside a video,
+        // the title as the list shows it.
+        let game = self
+            .library
+            .games(&self.library.systems[sys])
+            .into_iter()
+            .find(|g| g.path == path)
+            .unwrap_or(Game {
+                title: item.title.clone(),
+                path: path.clone(),
+                crt_path: None,
+                folder: false,
+            });
+        self.list_from_home = false;
+        let _ = self.run_entry(&Entry { game, sys });
+    }
+
     /// Entries kept with `omarchy-crt watch --later`, for the top of Videos.
     fn watch_later(&self, sys: usize) -> Vec<Entry> {
         let path = self.library.config_dir.join("watch-later.tsv");

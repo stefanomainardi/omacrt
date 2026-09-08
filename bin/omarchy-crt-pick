@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Pick a game on the desktop and start it on the television.
+#
+# The Omarchy menu cannot hold a collection: its providers are a fixed table
+# inside the menu plugin, so a third party cannot add a live list to it, and
+# twenty thousand static rows would not be a menu anyway. What the desktop
+# does have is a fuzzy runner, which is where a collection this size belongs.
+#
+#   omarchy-crt-pick           every game the scan has seen
+#   omarchy-crt-pick <system>  one system's games
+#
+# Used by the Television entry in the Omarchy menu, and fine to bind to a key.
+set -euo pipefail
+
+crt="${OMARCHY_CRT:-omarchy-crt}"
+command -v "$crt" >/dev/null || { echo "omarchy-crt is not on PATH" >&2; exit 1; }
+
+system="${1-}"
+if [ -n "$system" ]; then
+  rows="$("$crt" library games --system "$system")"
+  prompt="$system"
+else
+  rows="$("$crt" library games)"
+  prompt="Play on the television"
+fi
+[ -n "$rows" ] || { echo "nothing in the library: omarchy-crt library scan ~/Games" >&2; exit 1; }
+
+# The picker: walker is what Omarchy ships, and the others are here so this
+# works on a desktop that swapped it out.
+pick() {
+  if command -v walker >/dev/null; then
+    walker --dmenu --placeholder "$prompt"
+  elif command -v fuzzel >/dev/null; then
+    fuzzel --dmenu --prompt "$prompt: "
+  elif command -v rofi >/dev/null; then
+    rofi -dmenu -p "$prompt"
+  else
+    echo "no picker found: install walker, fuzzel or rofi" >&2
+    return 1
+  fi
+}
+
+# One line per game as `title  ·  system` for the eye, with the path behind
+# it: the picker shows the first field and this keeps the third.
+chosen="$(printf '%s\n' "$rows" |
+  awk -F'\t' '{ printf "%s  ·  %s\t%s\n", $1, $2, $3 }' |
+  cut -f1 |
+  pick)" || exit 0
+[ -n "$chosen" ] || exit 0
+
+path="$(printf '%s\n' "$rows" |
+  awk -F'\t' -v want="$chosen" '{ if ($1 "  ·  " $2 == want) { print $3; exit } }')"
+[ -n "$path" ] || { echo "could not find $chosen again" >&2; exit 1; }
+
+# The tube has to be on to have a launcher to send this to.
+if ! "$crt" status --json | grep -q '"active":true'; then
+  "$crt" on
+fi
+exec "$crt" play "$path"
