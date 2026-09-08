@@ -2,9 +2,13 @@
 
 This project drives a television, indexes a game collection and talks to a few
 programs on the same machine. It is a desktop tool for a single user, not a
-service: there is no network listener, no daemon accepting remote input and no
-credential of any kind stored by it. What follows is what it does touch, so you
-can decide whether you are comfortable running it.
+service: nothing listens on a network port and no daemon accepts remote input.
+One credential can exist, and only if you create it: an API key for your own
+photograph server. What follows is everything it touches, so you can decide
+whether you are comfortable running it.
+
+It was read through for this on 2026-09-08, and what that pass changed is at
+the end.
 
 ## Reporting a problem
 
@@ -53,26 +57,62 @@ Nothing is downloaded during installation. While running, the project fetches:
 - radio stations and their logos from the Radio Browser directory
 - album art through Spotify's public oEmbed endpoint
 - YouTube results and streams through `yt-dlp`, when you ask for them
+- the files a libretro core needs and does not ship, from the libretro buildbot
+- one line of weather from `wttr.in`, and a calendar from an `.ics` address,
+  both only when the ambient page is set up
+- your own photographs from your own Immich server, if you set one up
 
-Every fetch goes through `curl` with the protocol list restricted to HTTP and
-HTTPS, a size cap of 25 MB, a timeout, and arguments passed as arguments: a
-crafted URL cannot make it read a local file, and a redirect cannot leave those
-protocols. Downloads land in `~/.cache/omarchy-crt` and are shrunk with ffmpeg
-before use.
+Every one of those eight call sites goes through `curl` with the protocol list
+restricted to HTTP and HTTPS on the request and on any redirect, a size cap, a
+timeout, and arguments passed as arguments: a crafted URL cannot make it read a
+local file, and a redirect cannot leave those two protocols.
+
+A name that came from a server never becomes a path. The photograph server's
+asset identifiers are checked against letters, digits and dashes before they
+are used in a file name, so an answer of `../../.ssh/authorized_keys` is not a
+photograph and is skipped. Everything lands in `~/.cache/omarchy-crt`, written
+beside its final name and moved into place, so a fetch that is interrupted
+leaves nothing that looks finished.
+
+## Your photograph server, if you have one
+
+The photo frame reads an Immich server on your own network. It needs
+`~/.config/omarchy-crt/immich.toml` with an address and an API key, which you
+create in Immich and which needs read access and nothing else. The file is
+yours to write and this project only reads it.
+
+The key is handed to curl **on its standard input**, never as an argument, so
+it does not appear in the process list where every other program on the
+machine could read it. It is not logged, not printed by any command, and never
+sent anywhere but to the address in that file. Nothing else in the project
+holds a credential.
 
 ## What is executed
 
 The project runs external programs: `retroarch`, `mpv`, `yt-dlp`, `cliamp`,
-`bluetoothctl`, `curl`, `ffmpeg`, `hyprctl`, `pactl`. All of them are invoked
-with an argument list, never through a shell, with two exceptions:
+`bluetoothctl`, `curl`, `ffmpeg`, `hyprctl`, `pactl`, `systemctl`. Every one of
+them is given an argument list. **There is no shell anywhere in the launcher.**
+The one place that used one, for a single constant command, was changed to an
+argument list, so nothing a file, a server or a game's name contains can ever
+be read as a command.
 
-- `menu::launch` runs one constant command (`systemctl poweroff`) through
-  `sh -c`;
-- the library overlay opens a floating terminal for the few commands that need
-  a password or show long progress, quoting every path it passes.
+The one exception is on the desktop side: the library overlay opens a floating
+terminal for the few commands that need a password or show long progress, and
+quotes every path it passes.
 
 Media targets are placed after `--` so a file or URL beginning with a dash
 cannot become an option to the player.
+
+## What it kills
+
+`omarchy-crt doctor --fix`, and the sweep that runs when the launcher starts
+or stops, will stop an emulator. It decides in two steps and both have to
+hold: the process's command line carries **this project's own configuration
+file**, which nothing else on the machine passes, and **no launcher is above
+it** in the process tree. `/proc` is read directly rather than through
+`pgrep`, so the survey can never match the process doing the surveying. A
+polite signal first, then a hard one after two seconds for a core that has
+wedged. Nothing else on the machine is ever a candidate.
 
 ## Your files
 
@@ -84,8 +124,37 @@ temporary file and a rename, and the copy being replaced is kept as `.bak`.
 It never deletes a game, never writes inside your collection, and never uploads
 anything anywhere.
 
+## Dependencies
+
+Thirteen direct crates and 157 in the locked tree, and the lock file is
+committed so a build is the same build. `scripts/audit.py` checks every locked
+version against the RustSec advisory database over OSV's API, needs nothing
+installed but Python, and runs in CI. Two advisories stand today, both against
+`cgmath`, which arrives through `smithay` for the compositor and is never
+called from this code: one says it is unmaintained, the other that a matrix
+column swap is unsound when both indices are the same. They are listed in that
+script with those reasons, and anything new fails the build.
+
 ## What it does not do
 
 No telemetry. No analytics. No crash reporting. No auto update. No account, no
 token, no key. If you see it opening a connection to anything not listed above,
 that is a bug worth reporting.
+
+## What the read through of 2026-09-08 changed
+
+- The shell is gone from the launcher: the one command that went through
+  `sh -c` is an argument list now, and the module that ran it cannot run a
+  command line at all.
+- Identifiers from the photograph server are checked before they become file
+  names.
+- The photo cache is written beside its name and moved into place, like every
+  other file this project owns.
+- A note beside a picture cannot be broken by a name with a newline in it.
+- The float sorts behind `--dump` use a total order, so a value that is not a
+  number is sorted rather than a panic.
+- A DRM lease that arrives without a file descriptor is an error the display
+  process reports rather than a panic the watchdog would restart in a loop.
+- The eighteen places that could panic outside the tests are ten, and each of
+  those says on the line above why it cannot.
+- `scripts/audit.py`, and the two advisories it accepts, with reasons.

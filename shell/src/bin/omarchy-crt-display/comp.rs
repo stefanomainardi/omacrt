@@ -237,7 +237,12 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         "leased {} (DRM connector {})",
         lease.name, lease.connector_id
     );
-    let fd = lease.fd.take().unwrap();
+    // A granted lease always carries the descriptor; without it there is no
+    // output to drive, and the display process saying so beats a panic that
+    // the watchdog would restart in a loop.
+    let Some(fd) = lease.fd.take() else {
+        return Err("the lease arrived without a file descriptor".into());
+    };
 
     // DRM side: device, buffers, renderer.
     let dev_id = smithay::reexports::rustix::fs::fstat(fd.as_fd())

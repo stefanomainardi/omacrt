@@ -33,30 +33,39 @@ than guessed:
 
 ## B. Security hardening
 
-Nothing found so far is a hole. The work is to look properly and write down
-what was found, so `SECURITY.md` is a statement rather than a promise.
+Done on 2026-09-08. Two real findings, both in the newest code, both fixed;
+everything else was already right and is now written down in `SECURITY.md`
+rather than promised.
 
-- [ ] **What is executed.** `menu.rs` runs `sh -c` with a string. Confirm
-      every caller passes an internal constant and never anything a file or a
-      server chose, then say so in the comment and in `SECURITY.md`.
-- [ ] **What panics.** 51 `unwrap()`. In the launcher a panic is a black
-      television, so each one on a path that can be reached at run time
-      becomes a fallback. The ones on a mutex or after a checked `is_some`
-      can stay, with the reason written where they are.
-- [ ] **What is downloaded.** Eight fetches, all leashed. Check each cache
-      write goes through a temporary file and a rename, that a hostile answer
-      cannot escape its directory, and that a name from a server never
-      becomes a path.
-- [ ] **What listens.** The control pipe (`0600`), the mpv socket, cliamp's
-      socket. No port is opened. Confirm the modes and write it down.
-- [ ] **What runs as root.** One oneshot unit, one script, `CAP_DAC_OVERRIDE`
-      and `CAP_SYS_ADMIN`, `ProtectSystem=strict`. Re-read the script's
-      argument validation with fresh eyes.
-- [ ] **The dependency tree.** `cargo audit` once, and a note about which
-      advisories are accepted and why.
-- [ ] **The photograph server's key.** `immich.toml`, mode 600, handed to
-      curl on its standard input. Document it where somebody setting it up
-      will read it.
+- [x] **What is executed.** There was one caller and it passed a constant,
+      but the shell is gone rather than documented: `Action::Launch` carries an
+      argv now and `menu.rs` cannot run a command line at all.
+- [x] **What panics.** 51 counted, 18 outside the tests, 10 now. The three
+      float sorts behind `--dump` took a value from the command line into
+      `partial_cmp().unwrap()`, so `--dump nan` was a panic; they use a total
+      order. A lease without a file descriptor is an error rather than a panic
+      the watchdog would restart in a loop. The ten that stay are mutex locks
+      and one just-pushed vector, each with the reason on the line above.
+- [x] **What is downloaded.** All eight leashed. Two real findings: the
+      photograph server's asset id went straight into a file name, so an
+      answer of `../../.ssh/authorized_keys` would have decided where a file
+      was written, and the photo cache had ffmpeg write its final name
+      directly. The id is checked against letters, digits and dashes before
+      it is used, and the file is written beside its name and moved into
+      place. A note beside a picture also survives a name with a newline.
+- [x] **What listens.** Both named pipes are created `0600`, the launcher's
+      and the display process's. No port is opened anywhere.
+- [x] **What runs as root.** Unchanged and still right: the script refuses a
+      connector name that is not letters, digits and dashes and one that does
+      not exist, and the unit gives it two capabilities and three writable
+      paths.
+- [x] **The dependency tree.** `scripts/audit.py` asks OSV about all 157
+      locked crates with nothing installed but Python, and runs in CI. Two
+      advisories stand, both `cgmath` through `smithay`, never called from
+      here, listed with their reasons; anything new fails the build.
+- [x] **The photograph server's key.** Documented in `SECURITY.md`, which
+      also stopped claiming the project holds no credential at all, because
+      since the photo frame it can.
 
 ## C. Code review
 

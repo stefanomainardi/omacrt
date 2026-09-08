@@ -68,7 +68,10 @@ impl Theme {
                     .filter(|p| p.join("colors.toml").exists())
                     .map(|p| {
                         (
-                            p.file_name().unwrap().to_string_lossy().into_owned(),
+                            p.file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .into_owned(),
                             p.join("colors.toml"),
                         )
                     })

@@ -42,6 +42,8 @@ impl AudioCallback for Mixer {
     type Channel = f32;
     fn callback(&mut self, out: &mut [f32]) {
         out.fill(0.0);
+        // A poisoned lock means the audio thread panicked; there is no
+        // sound to salvage after that, and unwinding here is the honest end.
         let mut voices = self.voices.lock().unwrap();
         for v in voices.iter_mut() {
             for sample in out.iter_mut() {
