@@ -109,6 +109,7 @@ impl Audio {
         if self._device.is_none() {
             return;
         }
+        // Poisoned only if the audio callback panicked; see there.
         self.voices.lock().unwrap().push(Voice {
             data: Arc::new(data),
             pos: 0,
@@ -120,6 +121,7 @@ impl Audio {
 
     pub fn play(&self, s: Sound) {
         if let Some((_, data)) = self.bank.iter().find(|(k, _)| *k == s) {
+            // Poisoned only if the audio callback panicked; see there.
             self.voices.lock().unwrap().push(Voice {
                 data: data.clone(),
                 pos: 0,
