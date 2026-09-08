@@ -55,6 +55,87 @@ fn fog_veil(x: i32, y: i32, air: &Air) -> f32 {
     veil.clamp(0.0, 1.0)
 }
 
+/// Weather arrives rather than switching.
+///
+/// The server answers every half hour and the answer used to land in one
+/// frame: a sunny sky became a downpour between two sixtieths of a second.
+/// This holds the sky the picture is showing and the one coming over it, and
+/// hands out the blend between them. The colours of the sky, the number of
+/// clouds, how much is falling and the fog all cross on that one number, so
+/// the weather comes in the way weather does.
+struct Arrival {
+    showing: Kind,
+    arriving: Option<(Kind, f32)>,
+}
+
+/// How long a change takes. Long enough to be a change of weather rather
+/// than a cut, short enough that somebody watching sees it finish.
+const ARRIVES: f32 = 25.0;
+
+impl Default for Arrival {
+    fn default() -> Self {
+        Self {
+            showing: Kind::Clear,
+            arriving: None,
+        }
+    }
+}
+
+impl Arrival {
+    /// Tell it what the server says and what time it is; it answers with the
+    /// sky that is going, the sky that is coming, and how far through.
+    fn update(&mut self, kind: Kind, t: f32) -> (Kind, Kind, f32) {
+        let done = |at: f32| ((t - at) / ARRIVES).clamp(0.0, 1.0);
+        match self.arriving {
+            // The change finished: what was arriving is what is showing.
+            Some((to, at)) if done(at) >= 1.0 => {
+                self.showing = to;
+                self.arriving = None;
+                if kind != self.showing {
+                    self.arriving = Some((kind, t));
+                }
+            }
+            // It changed again while the last change was still coming in.
+            // Whatever is on the screen now is what the new one comes from,
+            // and the nearest of the two is close enough at this size.
+            Some((to, at)) if to != kind => {
+                if done(at) > 0.5 {
+                    self.showing = to;
+                }
+                self.arriving = Some((kind, t));
+            }
+            None if kind != self.showing => self.arriving = Some((kind, t)),
+            _ => {}
+        }
+        match self.arriving {
+            Some((to, at)) => (self.showing, to, done(at)),
+            None => (self.showing, self.showing, 1.0),
+        }
+    }
+}
+
+/// How many clouds a sky has, and how big they run.
+fn cloud_count(kind: Kind) -> (usize, f32) {
+    match kind {
+        Kind::Clear => (2, 0.7),
+        Kind::Partly => (4, 1.0),
+        Kind::Cloudy => (6, 1.15),
+        Kind::Overcast | Kind::Fog => (8, 1.35),
+        Kind::Rain | Kind::Snow => (7, 1.25),
+        Kind::Heavy | Kind::Thunder => (9, 1.45),
+    }
+}
+
+/// How much is falling out of a sky, and how fast and long each of it is.
+fn fall_of(kind: Kind) -> (usize, f32, f32) {
+    match kind {
+        Kind::Rain => (90, 110.0, 5.0),
+        Kind::Heavy | Kind::Thunder => (170, 150.0, 7.0),
+        Kind::Snow => (70, 14.0, 1.0),
+        _ => (0, 110.0, 5.0),
+    }
+}
+
 /// Where the street lamps stand, as a fraction of the width. Always the
 /// same four, because a lamp that moves is a car.
 const LAMPS: [f32; 4] = [0.14, 0.38, 0.66, 0.9];
@@ -178,6 +259,11 @@ struct Air<'a> {
     horizon: i32,
     /// Seconds, for everything that moves.
     now: f64,
+    /// The sky that is going and the one that is coming, and how far through
+    /// the change the picture is: 1 means `to` alone.
+    from: Kind,
+    to: Kind,
+    blend: f32,
     /// How far through its month the moon is, and how much light that gives:
     /// 0 at new, 1 at full.
     moon: f32,
@@ -283,11 +369,18 @@ pub struct Sky {
     stars: Vec<(i32, i32, f32)>,
     town: Vec<Building>,
     /// The kind the moving parts were built for, so a change rebuilds them.
-    built_for: Option<(Kind, usize, usize)>,
+    built_for: Option<(Kind, Kind, usize, usize)>,
     /// When the next flash of lightning is due, and how far into it we are.
     flash_at: f32,
     flash: f32,
     bolt: Vec<(i32, i32)>,
+    /// The sky the picture is showing and the one arriving over it. Weather
+    /// does not change in a frame.
+    arrival: Arrival,
+    /// Drops on the window this whole page pretends to be: where each one
+    /// is, how big, and how fast it is sliding.
+    pane: Vec<(f32, f32, f32, f32)>,
+    pane_at: f32,
     /// A light going up one of the Atomium's tubes: which tube, and how far
     /// along it is. Somebody on the escalator.
     bead: Option<(usize, f32)>,
@@ -335,6 +428,9 @@ impl Sky {
             built_for: None,
             flash_at: 4.0,
             flash: 0.0,
+            arrival: Arrival::default(),
+            pane: Vec::new(),
+            pane_at: 3.0,
             bead: None,
             bead_at: 9.0,
             tram: None,
@@ -363,24 +459,22 @@ impl Sky {
 
     // ------------------------------------------------------------- building
 
-    fn build(&mut self, kind: Kind, w: usize, h: usize) {
-        if self.built_for == Some((kind, w, h)) {
+    /// Build the moving parts for the two skies a change is between, so
+    /// there is always enough of everything for whichever of them is winning.
+    fn build(&mut self, from: Kind, to: Kind, w: usize, h: usize) {
+        if self.built_for == Some((from, to, w, h)) {
             return;
         }
-        self.built_for = Some((kind, w, h));
+        self.built_for = Some((from, to, w, h));
         let width = w as f32;
         let horizon = Self::horizon(h) as f32;
 
         // Clouds: how many and how big is the whole difference between a
         // clear sky and an overcast one.
-        let (count, size) = match kind {
-            Kind::Clear => (2, 0.7),
-            Kind::Partly => (4, 1.0),
-            Kind::Cloudy => (6, 1.15),
-            Kind::Overcast | Kind::Fog => (8, 1.35),
-            Kind::Rain | Kind::Snow => (7, 1.25),
-            Kind::Heavy | Kind::Thunder => (9, 1.45),
-        };
+        let (from_n, from_size) = cloud_count(from);
+        let (to_n, to_size) = cloud_count(to);
+        let count = from_n.max(to_n);
+        let size = from_size.max(to_size);
         self.clouds = (0..count)
             .map(|i| {
                 let layer = 0.45 + 0.55 * (i % 3) as f32 / 2.0;
@@ -408,17 +502,20 @@ impl Sky {
             })
             .collect();
 
-        // What is falling, and how much of it.
-        let motes = match kind {
-            Kind::Rain => 90,
-            Kind::Heavy | Kind::Thunder => 170,
-            Kind::Snow => 70,
-            _ => 0,
+        // What is falling, and how much of it: enough for the heavier of
+        // the two, and `falling` draws as many as the blend asks for.
+        let (from_motes, from_speed, from_len) = fall_of(from);
+        let (to_motes, to_speed, to_len) = fall_of(to);
+        let motes = from_motes.max(to_motes);
+        let speed = if to_motes >= from_motes {
+            to_speed
+        } else {
+            from_speed
         };
-        let (speed, len) = match kind {
-            Kind::Snow => (14.0, 1.0),
-            Kind::Heavy | Kind::Thunder => (150.0, 7.0),
-            _ => (110.0, 5.0),
+        let len = if to_motes >= from_motes {
+            to_len
+        } else {
+            from_len
         };
         self.motes = (0..motes)
             .map(|_| Mote {
@@ -476,9 +573,13 @@ impl Sky {
         minutes: u32,
         now: f64,
     ) {
-        let kind = reading.kind;
         let landmark = is_brussels(&reading.place);
-        self.build(kind, fb.w, fb.h);
+        let t = now as f32;
+        let (from, to, blend) = self.arrival.update(reading.kind, t);
+        // The kind everything that does not fade reads: the one that has more
+        // than half of the picture.
+        let kind = if blend > 0.5 { to } else { from };
+        self.build(from, to, fb.w, fb.h);
         let horizon = Self::horizon(fb.h);
         let day = reading.daylight(minutes);
         let arc = reading.arc(minutes);
@@ -504,6 +605,9 @@ impl Sky {
             horizon,
             now,
             darkness: reading.darkness(minutes),
+            from,
+            to,
+            blend,
             moon: reading.moon,
             // A full moon gives a whole moon's light and a new one none, and
             // the middle is the fraction of the disc that is lit.
@@ -521,7 +625,7 @@ impl Sky {
         self.body(fb, &air, arc);
         self.draw_clouds(fb, &air);
         self.draw_plane(fb, &air);
-        if kind == Kind::Fog {
+        if from == Kind::Fog || to == Kind::Fog {
             // Over the clouds: fog is the thing between you and them.
             self.fog(fb, &air);
         }
@@ -539,6 +643,7 @@ impl Sky {
         self.wind_streaks(fb, &air);
         self.falling(fb, &air);
         self.lightning(fb, &air, landmark);
+        self.pane(fb, &air);
     }
 
     /// The sky itself: two colours and a dither between them, chosen by the
@@ -551,8 +656,8 @@ impl Sky {
         // still feels like the same machine, and no further: a sky that has
         // lost its own colour is a grey rectangle.
         let tint = |c: Color| lerp_color(c, air.theme.bg, 0.14);
-        let pair = |day: bool| -> (Color, Color) {
-            match (day, air.kind) {
+        let pair = |day: bool, kind: Kind| -> (Color, Color) {
+            match (day, kind) {
                 (true, Kind::Clear | Kind::Partly) => (rgb(20, 62, 148), rgb(92, 162, 226)),
                 (true, Kind::Cloudy) => (rgb(58, 78, 112), rgb(150, 164, 180)),
                 (true, Kind::Overcast | Kind::Fog) => (rgb(70, 76, 88), rgb(148, 150, 156)),
@@ -565,8 +670,15 @@ impl Sky {
                 (false, _) => (rgb(8, 10, 22), rgb(28, 32, 52)),
             }
         };
-        let (day_top, day_bottom) = pair(true);
-        let (night_top, night_bottom) = pair(false);
+        // Two skies for the weather that is going and two for the one that is
+        // coming, mixed by how far through the change we are.
+        let mix = |day: bool| -> (Color, Color) {
+            let (at, ab) = pair(day, air.from);
+            let (bt, bb) = pair(day, air.to);
+            (lerp_color(at, bt, air.blend), lerp_color(ab, bb, air.blend))
+        };
+        let (day_top, day_bottom) = mix(true);
+        let (night_top, night_bottom) = mix(false);
         // A low sun pushes orange into the bottom of the sky, and a sun below
         // the horizon is as low as one gets, which is what the twilight blend
         // below fades in and out of.
@@ -859,8 +971,25 @@ impl Sky {
         // photograph.
         let base = 2.0 + air.wind * 0.55;
         let dark = matches!(air.kind, Kind::Heavy | Kind::Thunder | Kind::Overcast);
-        for cloud in self.clouds.iter_mut() {
+        // How many clouds each sky wants. The ones only the arriving sky
+        // wants fade in, and the ones only the leaving sky wanted fade out,
+        // so a sky fills and clears rather than switching.
+        let want_from = cloud_count(air.from).0;
+        let want_to = cloud_count(air.to).0;
+        for (i, cloud) in self.clouds.iter_mut().enumerate() {
+            let here = if i < want_from.min(want_to) {
+                1.0
+            } else if i < want_to {
+                air.blend
+            } else if i < want_from {
+                1.0 - air.blend
+            } else {
+                0.0
+            };
             cloud.x += base * cloud.layer * (1.0 / 60.0);
+            if here <= 0.02 {
+                continue;
+            }
             if cloud.x - cloud.width > w {
                 cloud.x = -cloud.width;
             }
@@ -907,6 +1036,16 @@ impl Sky {
                         } else {
                             body
                         };
+                        // A cloud that is arriving or leaving is dithered
+                        // into the sky rather than switched on: at this size
+                        // that reads as thinning out.
+                        if here < 0.98
+                            && (BAYER[(py & 3) as usize][((bx + x) & 3) as usize] as f32 + 0.5)
+                                / 16.0
+                                > here
+                        {
+                            continue;
+                        }
                         fb.put(bx + x, py, c);
                     }
                 }
@@ -917,6 +1056,14 @@ impl Sky {
     /// Fog: bands of dithered white drifting across each other.
     fn fog(&self, fb: &mut Framebuffer, air: &Air) {
         let w = fb.w as i32;
+        // Fog rolls in and clears rather than appearing: this is how much of
+        // it there is, from the change the picture is in the middle of.
+        let amount = match (air.from == Kind::Fog, air.to == Kind::Fog) {
+            (true, true) => 1.0,
+            (false, true) => air.blend,
+            (true, false) => 1.0 - air.blend,
+            (false, false) => return,
+        };
         // Five bands, thick, slow and overlapping, so the sky behind them
         // comes and goes rather than sitting behind a screen door.
         for band in 0..5 {
@@ -930,7 +1077,7 @@ impl Sky {
                 for x in 0..w {
                     // The pattern travels with the band, so the fog drifts
                     // rather than the sky flickering behind a fixed screen.
-                    let t = 0.85 * across;
+                    let t = 0.85 * across * amount;
                     if (BAYER[(y & 3) as usize][((x + off) & 3) as usize] as f32 + 0.5) / 16.0 < t {
                         let i = (y * w + x) as usize;
                         fb.px[i] = lerp_color(fb.px[i], air.theme.paper, 0.55);
@@ -1535,6 +1682,108 @@ impl Sky {
         }
     }
 
+    /// The rain on the glass, in front of everything else.
+    ///
+    /// The page is a window, and this is the pane. A dozen drops cling to it,
+    /// slide when they get heavy enough, and carry a lens with them: each one
+    /// shows the picture from a little further down, magnified, the way a
+    /// bead of water on glass does. They are the one thing here drawn in
+    /// front of the weather rather than in it, and they never touch the band
+    /// under the horizon, because the clock has to stay readable.
+    fn pane(&mut self, fb: &mut Framebuffer, air: &Air) {
+        if !matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder) {
+            self.pane.clear();
+            return;
+        }
+        let w = fb.w as f32;
+        let t = air.now as f32;
+        let heavy = matches!(air.kind, Kind::Heavy | Kind::Thunder);
+        if t > self.pane_at && self.pane.len() < if heavy { 16 } else { 9 } {
+            self.pane_at = t + if heavy { 0.5 } else { 1.4 };
+            let x = 6.0 + self.rng.unit() * (w - 12.0);
+            let y = 12.0 + self.rng.unit() * (air.horizon as f32 - 40.0);
+            let r = 2.0 + self.rng.unit() * 2.0;
+            self.pane.push((x, y, r, 0.0));
+        }
+        let limit = air.horizon as f32 - 4.0;
+        for (x, y, r, speed) in self.pane.iter_mut() {
+            // A drop hangs until it has gathered enough of itself to go, and
+            // then it accelerates and wanders a pixel as it goes.
+            *speed += (0.06 + *r * 0.05) / 60.0;
+            *y += *speed;
+            *x += ((t * 1.3 + *y * 0.3).sin()) * 0.06;
+            let (cx, cy, rr) = (*x, *y, *r);
+            // The lens: what is a little below, brought up and magnified.
+            let ri = rr as i32;
+            for dy in -ri..=ri {
+                for dx in -ri..=ri {
+                    let d2 = (dx * dx + dy * dy) as f32;
+                    if d2 > rr * rr {
+                        continue;
+                    }
+                    let px = cx as i32 + dx;
+                    let py = cy as i32 + dy;
+                    if py < 2 || py > limit as i32 {
+                        continue;
+                    }
+                    // Sampled from below and pulled in: a fisheye in four
+                    // pixels of water.
+                    let k = 1.0 - (d2.sqrt() / rr) * 0.45;
+                    let sx = cx + dx as f32 * k;
+                    let sy = cy + rr * 1.6 + dy as f32 * k;
+                    let c = fb.at(sx as i32, sy as i32);
+                    // Water on glass catches a little light of its own, and
+                    // holds the dark at its rim: without those two a lens
+                    // over a plain sky is invisible, which is true and no
+                    // use.
+                    let edge = d2.sqrt() / rr;
+                    let c = if edge > 0.72 {
+                        lerp_color(c, air.theme.bg, 0.30)
+                    } else {
+                        lerp_color(c, air.theme.paper, 0.12)
+                    };
+                    fb.put(px, py, c);
+                }
+            }
+            // The highlight and the shadow that make it a bead and not a
+            // hole: light comes from above, so the top is bright and the
+            // bottom edge holds the dark.
+            let hx = cx as i32 - (rr * 0.4) as i32;
+            let hy = cy as i32 - (rr * 0.5) as i32;
+            let spec = lerp_color(fb.at(cx as i32, cy as i32), air.theme.paper, 0.75);
+            fb.put(hx, hy, spec);
+            fb.put(hx + 1, hy, lerp_color(spec, air.theme.paper, 0.2));
+            fb.put(
+                cx as i32,
+                cy as i32 + ri,
+                lerp_color(fb.at(cx as i32, cy as i32 + ri), air.theme.bg, 0.35),
+            );
+            // The trail it leaves, which the next drop down the same track
+            // will follow.
+            if *speed > 0.02 {
+                let mut back = 1.0;
+                while back < 9.0 {
+                    let ty = cy - back;
+                    if ty > 2.0 {
+                        let fade = 1.0 - back / 9.0;
+                        if BAYER[(ty as i32 & 3) as usize][(cx as i32 & 3) as usize] as f32 / 16.0
+                            < fade * 0.5
+                        {
+                            let c = fb.at(cx as i32, ty as i32);
+                            fb.put(
+                                cx as i32,
+                                ty as i32,
+                                lerp_color(c, air.theme.paper, 0.14 * fade),
+                            );
+                        }
+                    }
+                    back += 1.0;
+                }
+            }
+        }
+        self.pane.retain(|(_, y, _, _)| *y < limit);
+    }
+
     /// The street lamps along the pavement, and the light they put on it.
     ///
     /// Four of them, always in the same places. They come on with the town's
@@ -2005,6 +2254,16 @@ impl Sky {
         if self.motes.is_empty() {
             return;
         }
+        // How much is falling right now: the two skies' amounts, mixed. A
+        // shower starts with a few drops and thins out the same way.
+        let want = {
+            let a = fall_of(air.from).0 as f32;
+            let b = fall_of(air.to).0 as f32;
+            (a + (b - a) * air.blend) as usize
+        };
+        if want == 0 {
+            return;
+        }
         let dt = 1.0 / 60.0;
         let w = fb.w as f32;
         let snow = air.kind == Kind::Snow;
@@ -2023,7 +2282,7 @@ impl Sky {
             lerp_color(air.theme.cyan, air.theme.paper, 0.45)
         };
         let mut landed: Vec<(f32, f32)> = Vec::new();
-        for m in self.motes.iter_mut() {
+        for m in self.motes.iter_mut().take(want) {
             m.y += m.speed * dt;
             // The lean is a ratio of the fall: a drop moving two pixels down
             // and three across is a drop in a strong air.wind, and anything more
@@ -2159,6 +2418,40 @@ impl Sky {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn weather_arrives_over_twenty_five_seconds() {
+        let mut a = Arrival::default();
+        // Nothing to do: the picture already shows what the server says.
+        assert_eq!(a.update(Kind::Clear, 0.0), (Kind::Clear, Kind::Clear, 1.0));
+        // Rain is announced. It comes in rather than landing.
+        let (from, to, blend) = a.update(Kind::Rain, 10.0);
+        assert_eq!((from, to), (Kind::Clear, Kind::Rain));
+        assert_eq!(blend, 0.0);
+        let (_, _, blend) = a.update(Kind::Rain, 10.0 + ARRIVES * 0.5);
+        assert!((blend - 0.5).abs() < 0.01, "{blend}");
+        // And when it has arrived it is simply the weather.
+        let done = a.update(Kind::Rain, 10.0 + ARRIVES + 1.0);
+        assert_eq!(done, (Kind::Rain, Kind::Rain, 1.0));
+    }
+
+    #[test]
+    fn a_change_part_way_through_a_change_starts_from_the_picture() {
+        let mut a = Arrival::default();
+        a.update(Kind::Heavy, 0.0);
+        // A third of the way into the downpour, the server says fog. The
+        // downpour is not what the picture is showing yet, so the fog comes
+        // from where it actually is.
+        let (from, to, blend) = a.update(Kind::Fog, ARRIVES / 3.0);
+        assert_eq!((from, to), (Kind::Clear, Kind::Fog));
+        assert_eq!(blend, 0.0);
+        // Past halfway it is the other way round: the downpour is what is on
+        // the screen, so that is what the next change leaves behind.
+        let mut b = Arrival::default();
+        b.update(Kind::Heavy, 0.0);
+        let (from, to, _) = b.update(Kind::Fog, ARRIVES * 0.8);
+        assert_eq!((from, to), (Kind::Heavy, Kind::Fog));
+    }
 
     #[test]
     fn only_brussels_gets_the_atomium() {
