@@ -3461,6 +3461,58 @@ impl Scene {
         }
     }
 
+    /// Open a screen by name, for the control pipe: the desktop menu, the
+    /// bar widget and a script all reach the launcher through this.
+    ///
+    /// Nothing happens while a game or a film is on: a menu entry pressed by
+    /// accident must not take the television away from what it is doing.
+    pub fn open_screen(&mut self, name: &str) -> bool {
+        if self.running.is_some() || self.launching.is_some() || self.player.is_some() {
+            return false;
+        }
+        self.menu_live = true;
+        self.chime_played = true;
+        self.last_input = self.now;
+        match name.trim().to_ascii_lowercase().as_str() {
+            "home" | "menu" => self.home(),
+            "games" | "systems" => self.go(Screen::Systems { sel: 0, top: 0 }),
+            "videos" | "video" => self.go(Screen::Videos { sel: 0 }),
+            "youtube" => self.go(Screen::YouTube { sel: 0 }),
+            "music" => self.open_music(),
+            "favorites" | "favourites" => {
+                let list = self.favorites.clone();
+                self.list_from_home = true;
+                self.open_virtual(&list);
+            }
+            "recent" => {
+                let list = self.recent.clone();
+                self.list_from_home = true;
+                self.open_virtual(&list);
+            }
+            "frame" | "photos" => self.open_frame(),
+            "monitor" | "system" => {
+                self.sysmon.sample();
+                self.go(Screen::Monitor { page: 0 });
+            }
+            "processes" => {
+                self.sysmon.sample();
+                self.go(Screen::Monitor { page: 1 });
+            }
+            "settings" => self.go(Screen::Settings { sel: 0 }),
+            "profile" | "picture" => self.go(Screen::Profile { sel: 0 }),
+            "style" | "theme" => self.go(Screen::Style { sel: 0 }),
+            "pads" | "pair" => self.go(Screen::Pair { sel: 0 }),
+            "diagnostics" | "diag" => {
+                self.diag = self.gather_diagnostics();
+                self.go(Screen::Diag { top: 0 });
+            }
+            "about" => self.go(Screen::About { top: 0 }),
+            "power" => self.go(Screen::Power { sel: 0 }),
+            _ => return false,
+        }
+        true
+    }
+
     pub fn is_running(&self) -> bool {
         self.running.is_some()
     }

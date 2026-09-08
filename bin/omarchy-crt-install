@@ -24,6 +24,53 @@ bin_dir="${HOME}/.local/bin"
 plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
 library_dir="${HOME}/.config/omarchy/plugins/${library_id}"
 build=1
+# The Television entry in the Omarchy menu. Omarchy reads
+# ~/.config/omarchy/extensions/omarchy-menu.jsonc for exactly this, so the
+# rows go in there between two markers: nothing patched, nothing forked, and
+# taken back out on --uninstall.
+menu_ext="${HOME}/.config/omarchy/extensions/omarchy-menu.jsonc"
+menu_block="${repo}/menu/omarchy-menu.jsonc"
+
+menu_strip() {  # print $menu_ext without our block
+  [ -f "$menu_ext" ] || return 0
+  awk '
+    /^\/\/ omarchy-crt: begin/ { skip = 1 }
+    !skip { print }
+    /^\/\/ omarchy-crt: end/ { skip = 0 }
+  ' "$menu_ext"
+}
+
+menu_install() {
+  [ -f "$menu_block" ] || return 0
+  mkdir -p "$(dirname "$menu_ext")"
+  local kept
+  kept="$(menu_strip)"
+  if [ -f "$menu_ext" ]; then
+    cp -f "$menu_ext" "${menu_ext}.omarchy-crt.bak"
+  else
+    kept='{'$'\n''}'
+  fi
+  # The block goes in before the closing brace of the object.
+  printf '%s\n' "$kept" | python3 -c '
+import sys, pathlib
+text = sys.stdin.read()
+block = pathlib.Path(sys.argv[1]).read_text()
+at = text.rfind("}")
+if at < 0:
+    text, at = "{\n}\n", 1
+sys.stdout.write(text[:at] + block + text[at:])
+' "$menu_block" > "${menu_ext}.new"
+  mv -f "${menu_ext}.new" "$menu_ext"
+  echo "== Television added to the Omarchy menu ($menu_ext)"
+}
+
+menu_remove() {
+  [ -f "$menu_ext" ] || return 0
+  menu_strip > "${menu_ext}.new"
+  mv -f "${menu_ext}.new" "$menu_ext"
+  echo "== Television removed from the Omarchy menu"
+}
+
 for arg in "$@"; do
   case "$arg" in
     --system)
@@ -43,6 +90,7 @@ for arg in "$@"; do
     --uninstall)
       # Everything this installer put in place, taken back out. The user's
       # games, configuration and cache are never touched.
+      menu_remove
       echo "== removing the binaries from $bin_dir"
       for b in omarchy-crt omarchy-crt-shell omarchy-crt-display; do
         rm -f "$bin_dir/$b"
@@ -144,6 +192,8 @@ sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
   enabled "$library_id" || omarchy plugin enable "$library_id"
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
 fi
+
+menu_install
 
 "$bin_dir/omarchy-crt" status || true
 echo "done. Try: omarchy-crt on"

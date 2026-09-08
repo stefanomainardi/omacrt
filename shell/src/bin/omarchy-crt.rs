@@ -29,6 +29,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   shell start|stop|restart|focus
   shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
                                  search osk del next prev first last
+  shell screen <name>            open a screen: home games videos music favorites recent frame
+                                 monitor settings picture style pads diagnostics about power
   shell type <text>              type into the launcher's search bar
   game key <key> [ms]            press a key inside the running game (enter, rshift, or an
                                  evdev code), held for that many milliseconds
@@ -39,7 +41,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   record start <file.mp4>|stop   capture the tube, picture and sound, into a video
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
-  audio volume N           TV sink volume in percent (up to 150), kept in the config
+  audio volume N|+N|-N     TV sink volume in percent (up to 150), or a step from where it is
   dac status|reset|csync and|xor|separate|watch
   bios [--json]            BIOS files the cores expect
   bios import DIR [--all]  copy BIOS files from another collection
@@ -2152,6 +2154,14 @@ fn main() {
                     }
                     crt::control::send(&names).unwrap_or_else(|e| die(&e.to_string()));
                 }
+                "screen" => {
+                    let pos = positional(args);
+                    let name = pos
+                        .get(1)
+                        .map(|s| s.as_str())
+                        .unwrap_or_else(|| die("shell screen needs a screen name"));
+                    crt::control::send_screen(name).unwrap_or_else(|e| die(&e.to_string()));
+                }
                 "type" => {
                     let words: Vec<&str> = positional(args)
                         .iter()
@@ -2195,10 +2205,26 @@ fn main() {
                 ),
                 Some("desktop") => println!("{}", audio::route_back(&mut state)),
                 Some("volume") => {
-                    let v: u32 = positional(args)
+                    // A percent, or a step up or down from where it is, so a
+                    // menu row or a key binding can be "louder".
+                    let raw = positional(args)
                         .get(1)
-                        .and_then(|s| s.trim_end_matches('%').parse().ok())
-                        .unwrap_or_else(|| die("audio volume needs a percent, 0 to 150"));
+                        .map(|s| s.trim_end_matches('%').to_string())
+                        .unwrap_or_else(|| {
+                            die("audio volume needs a percent, 0 to 150, or +10 or -10")
+                        });
+                    let v: u32 = match raw.strip_prefix(['+', '-']) {
+                        Some(step) => {
+                            let step: i32 = step
+                                .parse()
+                                .unwrap_or_else(|_| die("audio volume: not a number"));
+                            let step = if raw.starts_with('-') { -step } else { step };
+                            (cfg.audio.volume as i32 + step).clamp(0, 150) as u32
+                        }
+                        None => raw
+                            .parse()
+                            .unwrap_or_else(|_| die("audio volume: not a number")),
+                    };
                     let v = v.min(150);
                     omarchy_crt_shell::crt::set_value("audio.volume", &v.to_string())
                         .unwrap_or_else(|e| die(&e));
