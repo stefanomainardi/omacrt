@@ -1558,6 +1558,16 @@ impl Scene {
         }
     }
 
+    /// The aspect the player picked for this system, as the ratio the picture
+    /// should be shown at, or None when it is `fill` or when no core has run
+    /// for this system yet and there is nothing to work it out from.
+    fn chosen_aspect(&self, system: &crate::library::System) -> Option<f32> {
+        if system.is_video() || system.aspect.is_empty() || system.aspect == "fill" {
+            return None;
+        }
+        crate::library::picture_of(&system.name)?.wanted(&system.aspect)
+    }
+
     /// Launch, asking first when the game was left in the middle: RetroArch
     /// would otherwise pick the state up without a word.
     pub(super) fn run_entry(&mut self, entry: &Entry) -> Action {
@@ -1639,6 +1649,24 @@ impl Scene {
                     "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\nvideo_fullscreen_x = \"{w}\"\nvideo_fullscreen_y = \"{h}\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\nvideo_windowed_position_width = \"{w}\"\nvideo_windowed_position_height = \"{h}\"\nvideo_window_auto_width_max = \"{w}\"\nvideo_window_auto_height_max = \"{h}\"\n",
                     w as f32 / h as f32
                 ));
+                // The aspect the player chose in the pause menu, which wins
+                // because the emulator keeps the last value of a key. The
+                // frame here is thousands of pixels wide and the set shows it
+                // as 4:3, so the viewport is worked out from the picture the
+                // core last drew rather than left to RetroArch, which would
+                // fit square pixels into the frame and leave the game in a
+                // sliver in the middle of the screen.
+                if let Some(wanted) = self.chosen_aspect(&system) {
+                    keys.push_str(&crate::library::viewport_keys(w, h, 4.0 / 3.0, wanted));
+                }
+            } else if self.chosen_aspect(&system).is_some() {
+                // In a window the pixels are square and RetroArch's own
+                // choice does the fitting.
+                keys.push_str(if system.aspect == "pixel" {
+                    "aspect_ratio_index = \"21\"\n"
+                } else {
+                    "aspect_ratio_index = \"22\"\n"
+                });
             }
             keys
         };

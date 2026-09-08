@@ -189,7 +189,7 @@ magick /tmp/shot/frame_14.00.ppm -filter point -resize 300% /tmp/shot/a.png
 
 `--browse` takes a system name or one of the named screens: `settings`,
 `saver`, `diag`, `about`, `power`, `profile`, `pair`, `style`, `fit`,
-`monitor`, `processes`, `frame`, `ambient`, `music`. `--size WxH` renders at another
+`monitor`, `processes`, `frame`, `ambient`, `music`, `pause`. `--size WxH` renders at another
 shape, and
 320x288 is worth checking because a PAL tube is 288 lines, not 240. The dump
 times are seconds after boot, so anything past the boot sequence needs about

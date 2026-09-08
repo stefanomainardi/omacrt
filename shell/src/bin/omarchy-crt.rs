@@ -1707,7 +1707,7 @@ fn cmd_library(args: &[String]) {
                 die("library set needs a system and key=value, e.g. library set arcade core=fbneo");
             };
             let Some((key, value)) = assign.split_once('=') else {
-                die("library set needs key=value (core=... or dir=...)");
+                die("library set needs key=value (core, dir, aspect or shader)");
             };
             library::set_system_field(system, key, value).unwrap_or_else(|e| die(&e));
             println!("{system}: {key} = {value}");

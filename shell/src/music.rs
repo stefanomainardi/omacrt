@@ -938,7 +938,9 @@ fn two(req: &Value) -> Result<Value, String> {
     loop {
         let job = v.get("job").ok_or("cliamp: no job in the answer")?;
         match job.get("state").and_then(Value::as_str).unwrap_or("") {
-            "succeeded" => return Ok(payload(job, "result").unwrap_or_else(|| json!({ "ok": true }))),
+            "succeeded" => {
+                return Ok(payload(job, "result").unwrap_or_else(|| json!({ "ok": true })));
+            }
             "failed" | "canceled" => {
                 return Err(fault(job).unwrap_or_else(|| "cliamp refused".into()));
             }
@@ -1416,7 +1418,10 @@ mod tests {
         let status = envelope(&json!({ "cmd": "status" }));
         assert_eq!(status["method"], "state.get");
         assert_eq!(status["version"], 2);
-        assert_eq!(envelope(&json!({ "cmd": "bands" }))["method"], "spectrum.get");
+        assert_eq!(
+            envelope(&json!({ "cmd": "bands" }))["method"],
+            "spectrum.get"
+        );
 
         let search = envelope(
             &json!({ "cmd": "provider.search", "provider": "local", "query": "ambient", "limit": 10 }),
@@ -1443,7 +1448,8 @@ mod tests {
             Some("spotify: no token")
         );
         assert_eq!(
-            fault(&json!({ "ok": false, "error": { "code": "conflict", "message": "" } })).as_deref(),
+            fault(&json!({ "ok": false, "error": { "code": "conflict", "message": "" } }))
+                .as_deref(),
             Some("conflict")
         );
         assert!(fault(&json!({ "ok": true })).is_none());

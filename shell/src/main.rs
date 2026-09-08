@@ -1538,19 +1538,7 @@ fn crt_focus() {
 /// The last part of the emulator's log. The file grows to megabytes over a
 /// long session and only the end of it says what the core is drawing now.
 fn tail_of_game_log() -> String {
-    use std::io::{Read, Seek, SeekFrom};
-    const TAIL: u64 = 64 * 1024;
-    let path = library::game_log_path();
-    let Ok(mut f) = std::fs::File::open(&path) else {
-        return String::new();
-    };
-    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-    if len > TAIL && f.seek(SeekFrom::End(-(TAIL as i64))).is_err() {
-        return String::new();
-    }
-    let mut buf = Vec::new();
-    let _ = f.take(TAIL + 4096).read_to_end(&mut buf);
-    String::from_utf8_lossy(&buf).into_owned()
+    library::game_log_tail()
 }
 
 /// The same without waiting, for a live adjustment while the launcher draws.

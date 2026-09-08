@@ -416,16 +416,37 @@ const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::POWER, "Power off", false),
 ];
 
+/// A row of the pause menu. The two choices are not actions: they cycle with
+/// left and right and take effect the next time the game starts, because
+/// RetroArch reads both from its config and nothing reaches inside a running
+/// core to change them. Nothing is lost by restarting: the state is saved and
+/// picked up again on its own.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum PauseRow {
+    Resume,
+    Save,
+    Load,
+    Rewind,
+    FastForward,
+    SlowMotion,
+    Aspect,
+    Shader,
+    Reset,
+    Quit,
+}
+
 /// Pause menu over a running game.
-const PAUSE_ITEMS: [(icons::Icon, &str, bool); 8] = [
-    (icons::GAMEPAD, "Resume", false),
-    (icons::FOLDER, "Save state", false),
-    (icons::FOLDER, "Load state", false),
-    (icons::RESUME, "Rewind two seconds", false),
-    (icons::RESUME, "Fast forward", false),
-    (icons::PULSE, "Slow motion", false),
-    (icons::PULSE, "Reset game", false),
-    (icons::DESKTOP, "Back to launcher", false),
+const PAUSE_ROWS: [(PauseRow, icons::Icon, &str); 10] = [
+    (PauseRow::Resume, icons::GAMEPAD, "Resume"),
+    (PauseRow::Save, icons::FOLDER, "Save state"),
+    (PauseRow::Load, icons::FOLDER, "Load state"),
+    (PauseRow::Rewind, icons::RESUME, "Rewind two seconds"),
+    (PauseRow::FastForward, icons::RESUME, "Fast forward"),
+    (PauseRow::SlowMotion, icons::PULSE, "Slow motion"),
+    (PauseRow::Aspect, icons::FIT, "Picture"),
+    (PauseRow::Shader, icons::BRUSH, "Shader"),
+    (PauseRow::Reset, icons::PULSE, "Reset game"),
+    (PauseRow::Quit, icons::DESKTOP, "Back to launcher"),
 ];
 
 /// What the main loop has to do with the compositor after a pause action.
@@ -1136,6 +1157,13 @@ impl Scene {
             Some("videoshub") => self.screen = Screen::Videos { sel: 0 },
             Some("musicsettings") => self.screen = Screen::MusicSettings { sel: 7 },
             Some("music") => self.open_music(),
+            // The pause menu needs a game to be over: for a headless render
+            // it gets a made up one, which is enough for every row it draws.
+            Some("pause") => {
+                self.running = Some(("Chrono Trigger".into(), "snes".into()));
+                self.running_path = Some(("snes".into(), std::path::PathBuf::from("ct.sfc")));
+                self.paused = Some(6);
+            }
             Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },
             Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
             Some("ambient") => self.screen = Screen::Ambient,

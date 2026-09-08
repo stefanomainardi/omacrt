@@ -200,3 +200,73 @@ fn a_console_that_drew_480_lines_asks_for_480() {
     assert_eq!(default_lines("nes"), Some(240));
     assert_eq!(default_lines("videos"), None);
 }
+
+// ------------------------------------------------- the picture and its shape
+
+#[test]
+fn the_picture_the_core_draws_carries_its_aspect_too() {
+    use omarchy_crt_shell::library::picture_in;
+    let log = "\
+[INFO] [Core] Geometry: 256x224, Aspect: 1.333, FPS: 60.10, Sample rate: 96000.00 Hz.
+[INFO] [Environ] SET_GEOMETRY: 256x240, Aspect: 1.067.
+";
+    let p = picture_in(log).expect("the log holds a picture");
+    assert_eq!((p.width, p.height), (256, 240));
+    assert!((p.aspect - 1.067).abs() < 0.001);
+    // What each choice asks for: the core's own aspect, or square pixels.
+    assert!((p.wanted("core").unwrap() - 1.067).abs() < 0.001);
+    assert!((p.wanted("pixel").unwrap() - 256.0 / 240.0).abs() < 0.001);
+    assert_eq!(p.wanted("fill"), None);
+    assert_eq!(p.wanted(""), None);
+}
+
+#[test]
+fn square_pixels_in_a_wide_frame_land_in_the_middle_of_a_four_by_three_screen() {
+    use omarchy_crt_shell::library::viewport_keys;
+    // A super resolution frame the set shows as 4:3. A 256x224 picture at
+    // square pixels is 8:7, narrower than the screen, so it keeps every line
+    // and loses width on both sides evenly.
+    let keys = viewport_keys(3520, 240, 4.0 / 3.0, 256.0 / 224.0);
+    let value = |k: &str| -> i64 {
+        keys.lines()
+            .find(|l| l.starts_with(k))
+            .and_then(|l| l.split('"').nth(1).map(|v| v.parse().unwrap()))
+            .unwrap_or_else(|| panic!("{k} is not in the keys"))
+    };
+    assert_eq!(value("aspect_ratio_index"), 23);
+    assert_eq!(value("custom_viewport_height"), 240);
+    let w = value("custom_viewport_width");
+    assert_eq!(
+        w,
+        (3520.0f32 * (256.0 / 224.0) / (4.0 / 3.0)).round() as i64
+    );
+    assert_eq!(value("custom_viewport_x"), (3520 - w) / 2);
+    assert_eq!(value("custom_viewport_y"), 0);
+
+    // A picture wider than the screen keeps the whole width and loses lines.
+    let wide = viewport_keys(3520, 240, 4.0 / 3.0, 16.0 / 9.0);
+    assert!(wide.contains("custom_viewport_width = \"3520\""));
+    assert!(wide.contains("custom_viewport_height = \"180\""));
+
+    // The whole raster, when what is wanted is what the screen already is.
+    assert!(
+        viewport_keys(3520, 240, 4.0 / 3.0, 4.0 / 3.0).contains("custom_viewport_width = \"3520\"")
+    );
+    assert!(viewport_keys(0, 240, 4.0 / 3.0, 1.0).is_empty());
+    assert!(viewport_keys(3520, 240, 4.0 / 3.0, 0.0).is_empty());
+}
+
+#[test]
+fn every_shader_the_pause_menu_offers_is_installed_and_off_comes_first() {
+    use omarchy_crt_shell::library::{installed_shaders, shader_path};
+    let shaders = installed_shaders();
+    assert_eq!(shaders.first().map(|(name, _)| *name), Some(""));
+    for (name, label) in &shaders {
+        assert!(!label.is_empty());
+        if !name.is_empty() {
+            assert!(shader_path(name).is_some(), "{name} is not installed");
+        }
+    }
+    assert_eq!(shader_path(""), None);
+    assert_eq!(shader_path("nothing/at-all.slangp"), None);
+}
