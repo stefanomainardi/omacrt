@@ -282,9 +282,10 @@ The ambient page draws what the weather is doing: the sun on its real arc
 between sunrise and sunset, the moon on the same path at night, clouds at the
 speed of the real wind, rain that slants with it and breaks on the ground,
 snow, fog, lightning, and a town along the horizon whose windows come on after
-dark. It needs no photograph server, only `[frame] weather` for the place.
-With that empty, wttr.in guesses the place from the address, which a VPN moves
-a country.
+dark. It needs no photograph server. `[frame] weather` names the town; with that
+empty the town is the city in the machine's own timezone, so
+`Europe/Brussels` asks about Brussels. The Photo frame settings page on the
+television says which town it is using and where the name came from.
 
 `effect` takes one page name (`effects`, `photos`, `ambient`, `system`), one
 effect name (`laseretch`, `rain`, `beams`, `burn`, `slide`, `decrypt`,

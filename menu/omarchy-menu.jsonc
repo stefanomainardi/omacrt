@@ -5,60 +5,64 @@
 // Nothing is patched and nothing is forked. Every row calls the same
 // `omarchy-crt` command a terminal would.
 //
+// The icons are the code points Omarchy's own menu uses, so the font is known
+// to have them and the rows look like the rest of the list.
+//
 // `bin/omarchy-crt-install` copies the block between these markers into that
 // file and takes it back out again on `--uninstall`.
-"tv": {"icon":"","label":"Television","aliases":["crt","tube","retro"],"description":"the 15 kHz television: power, channels, picture, capture"},
-"tv.power": {"icon":"","label":"Turn the tube on or off","action":"omarchy-crt toggle","checked":"omarchy-crt status --json | grep -q '\"active\":true'"},
-"tv.clipboard": {"icon":"","label":"Watch the link in the clipboard","action":"omarchy-crt watch \"$(wl-paste 2>/dev/null)\""},
+
+"tv": {"icon":"󰍹","label":"Television","aliases":["crt","tube","retro"],"description":"the 15 kHz television: power, channels, picture, capture"},
+"tv.power": {"icon":"","label":"Turn the tube on or off","action":"omarchy-crt toggle","checked":"omarchy-crt status --json | grep -q '\"active\":true'"},
+"tv.clipboard": {"icon":"","label":"Watch the link in the clipboard","action":"omarchy-crt watch \"$(wl-paste 2>/dev/null)\""},
 
 // Channels: what the television is showing.
-"tv.channel": {"icon":"","label":"Channel","title":"Channel"},
-"tv.channel.games": {"icon":"","label":"Games","action":"omarchy-crt shell screen games"},
-"tv.channel.music": {"icon":"","label":"Music","action":"omarchy-crt shell screen music"},
-"tv.channel.videos": {"icon":"","label":"Video","action":"omarchy-crt shell screen videos"},
+"tv.channel": {"icon":"󰀻","label":"Channel","title":"Channel"},
+"tv.channel.games": {"icon":"󰯉","label":"Games","action":"omarchy-crt shell screen games"},
+"tv.channel.music": {"icon":"","label":"Music","action":"omarchy-crt shell screen music"},
+"tv.channel.videos": {"icon":"","label":"Video","action":"omarchy-crt shell screen videos"},
 "tv.channel.frame": {"icon":"󰋩","label":"Photo frame","action":"omarchy-crt shell screen frame"},
-"tv.channel.ambient": {"icon":"","label":"Clock and weather","action":"omarchy-crt shell screen ambient"},
-"tv.channel.system": {"icon":"","label":"System monitor","action":"omarchy-crt shell screen monitor"},
-"tv.channel.home": {"icon":"","label":"Home menu","action":"omarchy-crt shell screen home"},
+"tv.channel.ambient": {"icon":"","label":"Clock and weather","action":"omarchy-crt shell screen ambient"},
+"tv.channel.system": {"icon":"󰋊","label":"System monitor","action":"omarchy-crt shell screen monitor"},
+"tv.channel.home": {"icon":"󰍜","label":"Home menu","action":"omarchy-crt shell screen home"},
 
 // Picture: the standard, the lines, the centring.
-"tv.picture": {"icon":"","label":"Picture","title":"Picture"},
-"tv.picture.ntsc": {"icon":"","label":"NTSC, 240 lines at 60 Hz","action":"omarchy-crt mode ntsc"},
-"tv.picture.pal": {"icon":"","label":"PAL, 288 lines at 50 Hz","action":"omarchy-crt mode pal"},
-"tv.picture.480i": {"icon":"","label":"480i","action":"omarchy-crt mode 480i"},
-"tv.picture.576i": {"icon":"","label":"576i","action":"omarchy-crt mode 576i"},
-"tv.picture.centre": {"icon":"","label":"Centre the picture","action":"omarchy-crt shell screen picture"},
+"tv.picture": {"icon":"󰛧","label":"Picture","title":"Picture"},
+"tv.picture.ntsc": {"icon":"󰍹","label":"NTSC, 240 lines at 60 Hz","action":"omarchy-crt mode ntsc"},
+"tv.picture.pal": {"icon":"󰍹","label":"PAL, 288 lines at 50 Hz","action":"omarchy-crt mode pal"},
+"tv.picture.480i": {"icon":"󰍹","label":"480i","action":"omarchy-crt mode 480i"},
+"tv.picture.576i": {"icon":"󰍹","label":"576i","action":"omarchy-crt mode 576i"},
+"tv.picture.centre": {"icon":"󰐲","label":"Centre the picture","action":"omarchy-crt shell screen picture"},
 
-// Sound: the television's own volume, and where the desktop's audio goes.
-"tv.sound": {"icon":"","label":"Sound","title":"Sound"},
-"tv.sound.up": {"icon":"","label":"Louder","action":"omarchy-crt audio volume +10"},
-"tv.sound.down": {"icon":"","label":"Quieter","action":"omarchy-crt audio volume -10"},
-"tv.sound.crt": {"icon":"","label":"Games to the television","action":"omarchy-crt audio crt"},
-"tv.sound.all": {"icon":"","label":"Everything to the television","action":"omarchy-crt audio all"},
-"tv.sound.desktop": {"icon":"","label":"Sound back to the desktop","action":"omarchy-crt audio desktop"},
+// Sound: the television's own volume, and where the audio goes.
+"tv.sound": {"icon":"","label":"Sound","title":"Sound"},
+"tv.sound.up": {"icon":"","label":"Louder","action":"omarchy-crt audio volume +10"},
+"tv.sound.down": {"icon":"","label":"Quieter","action":"omarchy-crt audio volume -10"},
+"tv.sound.crt": {"icon":"󰍹","label":"Games to the television","action":"omarchy-crt audio crt"},
+"tv.sound.all": {"icon":"󰍹","label":"Everything to the television","action":"omarchy-crt audio all"},
+"tv.sound.desktop": {"icon":"󰛧","label":"Sound back to the desktop","action":"omarchy-crt audio desktop"},
 
 // The collection.
-"tv.library": {"icon":"","label":"Library","title":"Library"},
-"tv.library.scan": {"icon":"","label":"Scan the disks","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt library scan; read -n 1'\""},
+"tv.library": {"icon":"","label":"Library","title":"Library"},
+"tv.library.scan": {"icon":"󰋊","label":"Scan the disks","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt library scan; read -n 1'\""},
 "tv.library.covers": {"icon":"󰋩","label":"Fetch the missing box art","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt library covers; read -n 1'\""},
-"tv.library.bios": {"icon":"","label":"BIOS files","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt bios; read -n 1'\""},
+"tv.library.bios": {"icon":"","label":"BIOS files","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt bios; read -n 1'\""},
 "tv.library.frame": {"icon":"󰋩","label":"Fill the photo frame","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt frame fill; read -n 1'\""},
 
 // What the tube is showing, as a file.
-"tv.capture": {"icon":"","label":"Capture","title":"Capture"},
-"tv.capture.shot": {"icon":"","label":"Screenshot of the tube","action":"omarchy-crt shot \"$HOME/Pictures/omarchy-crt-$(date +%Y%m%d-%H%M%S).png\""},
-"tv.capture.record": {"icon":"","label":"Start recording","action":"omarchy-crt record start \"$HOME/Videos/omarchy-crt-$(date +%Y%m%d-%H%M%S).mp4\""},
-"tv.capture.stop": {"icon":"","label":"Stop recording","action":"omarchy-crt record stop"},
+"tv.capture": {"icon":"","label":"Capture","title":"Capture"},
+"tv.capture.shot": {"icon":"","label":"Screenshot of the tube","action":"omarchy-crt shot \"$HOME/Pictures/omarchy-crt-$(date +%Y%m%d-%H%M%S).png\""},
+"tv.capture.record": {"icon":"","label":"Start recording","action":"omarchy-crt record start \"$HOME/Videos/omarchy-crt-$(date +%Y%m%d-%H%M%S).mp4\""},
+"tv.capture.stop": {"icon":"󰒲","label":"Stop recording","action":"omarchy-crt record stop"},
 
 // Pads.
-"tv.pads": {"icon":"","label":"Pads","title":"Pads"},
-"tv.pads.pair": {"icon":"","label":"Pair a pad","action":"omarchy-crt shell screen pads"},
-"tv.pads.sdl": {"icon":"","label":"What SDL makes of them","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt-shell --pads; read -n 1'\""},
+"tv.pads": {"icon":"󰯉","label":"Pads","title":"Pads"},
+"tv.pads.pair": {"icon":"󰂯","label":"Pair a pad","action":"omarchy-crt shell screen pads"},
+"tv.pads.sdl": {"icon":"","label":"What SDL makes of them","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt-shell --pads; read -n 1'\""},
 
 // When something is wrong.
-"tv.diagnostics": {"icon":"","label":"Diagnostics","title":"Diagnostics"},
-"tv.diagnostics.doctor": {"icon":"","label":"Doctor","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt doctor; read -n 1'\""},
-"tv.diagnostics.status": {"icon":"","label":"Status","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt status; read -n 1'\""},
-"tv.diagnostics.log": {"icon":"","label":"The log","action":"omarchy-launch-or-focus-tui \"bash -c 'tail -n 200 ${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-crt/display.log; read -n 1'\""},
-"tv.diagnostics.onscreen": {"icon":"","label":"On the tube","action":"omarchy-crt shell screen diagnostics"},
+"tv.diagnostics": {"icon":"󰓅","label":"Diagnostics","title":"Diagnostics"},
+"tv.diagnostics.doctor": {"icon":"󰓅","label":"Doctor","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt doctor; read -n 1'\""},
+"tv.diagnostics.status": {"icon":"","label":"Status","action":"omarchy-launch-or-focus-tui \"bash -c 'omarchy-crt status; read -n 1'\""},
+"tv.diagnostics.log": {"icon":"󰴑","label":"The log","action":"omarchy-launch-or-focus-tui \"bash -c 'tail -n 200 ${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-crt/display.log; read -n 1'\""},
+"tv.diagnostics.onscreen": {"icon":"󰍹","label":"On the tube","action":"omarchy-crt shell screen diagnostics"},
 // omarchy-crt: end
