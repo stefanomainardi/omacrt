@@ -143,6 +143,10 @@ struct Air<'a> {
     horizon: i32,
     /// Seconds, for everything that moves.
     now: f64,
+    /// How long ago a bolt landed on the Atomium: what the blackout and the
+    /// lights coming back are measured from. Enormous when nothing has been
+    /// struck, which is nearly always.
+    struck_since: f32,
     /// How dark the sky is, 1 in the night and 0 in daylight, with twilight
     /// in between: what the stars fade on rather than blink out on.
     darkness: f32,
@@ -200,6 +204,10 @@ pub struct Sky {
     flash_at: f32,
     flash: f32,
     bolt: Vec<(i32, i32)>,
+    /// When a bolt last landed on the Atomium, in the same seconds
+    /// everything else here moves in. A long way in the past to begin with,
+    /// because nothing has been struck yet.
+    struck: f32,
     rng: Rng,
 }
 
@@ -220,6 +228,7 @@ impl Sky {
             built_for: None,
             flash_at: 4.0,
             flash: 0.0,
+            struck: -1000.0,
             bolt: Vec::new(),
             rng: Rng(0x1234_5678),
         }
@@ -347,6 +356,7 @@ impl Sky {
         now: f64,
     ) {
         let kind = reading.kind;
+        let landmark = is_brussels(&reading.place);
         self.build(kind, fb.w, fb.h);
         let horizon = Self::horizon(fb.h);
         let day = reading.daylight(minutes);
@@ -368,6 +378,7 @@ impl Sky {
             horizon,
             now,
             darkness: reading.darkness(minutes),
+            struck_since: now as f32 - self.struck,
         };
 
         self.sky(fb, &air);
@@ -382,14 +393,14 @@ impl Sky {
         }
         // Brussels only, and behind the roofline: the town is drawn after it
         // so its foot stands among the buildings.
-        if is_brussels(&reading.place) {
+        if landmark {
             self.atomium(fb, &air, arc);
         }
         self.draw_town(fb, &air);
         self.ground(fb, &air);
         self.wind_streaks(fb, &air);
         self.falling(fb, &air);
-        self.lightning(fb, &air);
+        self.lightning(fb, &air, landmark);
     }
 
     /// The sky itself: two colours and a dither between them, chosen by the
@@ -666,6 +677,17 @@ impl Sky {
         let wet = matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder);
         let flash = self.flash > 0.0;
 
+        // A bolt that lands on it puts the lights out: half a second of
+        // nothing, and then the nine come back from the ground up, the way a
+        // substation brings a street back. `lit(i)` is whether sphere `i` has
+        // its light yet, and nothing has been struck for a long time in the
+        // ordinary case, so it is true for all of them.
+        const OUT: f32 = 0.55;
+        const RETURN: f32 = 0.16;
+        let has_light = |i: usize| air.struck_since > OUT + i as f32 * RETURN;
+        // The moment of contact, on the top sphere.
+        let contact = air.struck_since < 0.12;
+
         // The metal, and the show. Both are a colour per sphere: by day the
         // same steel for all nine, by night a wave that walks through them.
         let steel = lerp_color(rgb(150, 162, 184), air.theme.paper, 0.14);
@@ -724,8 +746,13 @@ impl Sky {
             let (cx, cy, r, depth) = nodes[i];
             // Metal by day, the show by night, and mixed through twilight:
             // the lights come up as the sky goes down rather than at the
-            // stroke of sunset.
-            let colour = lerp_color(steel, show(i), air.darkness);
+            // stroke of sunset. A sphere with no light yet is metal whatever
+            // the hour.
+            let colour = if has_light(i) {
+                lerp_color(steel, show(i), air.darkness)
+            } else {
+                lerp_color(steel, air.theme.bg, 0.55)
+            };
             let far = 1.0 - depth * 0.35;
             let deep = fog * (1.0 - (air.horizon - cy) as f32 / 70.0).clamp(0.0, 1.0);
             let base = if flash {
@@ -738,7 +765,7 @@ impl Sky {
             // At night a lit sphere throws a little light into the air around
             // it, the same dithered halo the sun gets, in its own colour.
             // Without it the show reads as paint rather than as lamps.
-            if air.darkness > 0.05 && !flash && depth < 0.6 {
+            if air.darkness > 0.05 && !flash && depth < 0.6 && has_light(i) {
                 let reach = 4.0;
                 for dy in -r - 5..=r + 5 {
                     for dx in -r - 5..=r + 5 {
@@ -762,7 +789,7 @@ impl Sky {
             }
             self.sphere(fb, cx, cy, r, (sun_x, sun_y), dark, base, lit, flash);
 
-            if air.darkness > 0.05 && !flash {
+            if air.darkness > 0.05 && !flash && has_light(i) {
                 // The lamps round the equator of each sphere, one of them
                 // running ahead of the others.
                 let lamps = 8;
@@ -792,10 +819,21 @@ impl Sky {
             }
         }
 
+        let (tx, ty, tr, _) = nodes[nodes.len() - 1];
+        if contact {
+            // Where the bolt lands: white, and a ring of it thrown outward.
+            for dy in -tr - 2..=tr + 2 {
+                for dx in -tr - 2..=tr + 2 {
+                    if dx * dx + dy * dy <= (tr + 2) * (tr + 2) {
+                        fb.put(tx + dx, ty + dy, air.theme.paper);
+                    }
+                }
+            }
+        }
+
         // The red lamp on the top sphere, for aircraft. On for a moment every
         // four seconds, which is what the real one does.
-        let (tx, ty, tr, _) = nodes[nodes.len() - 1];
-        if (air.now % 4.0) < 0.18 {
+        if (air.now % 4.0) < 0.18 && has_light(nodes.len() - 1) {
             fb.put(tx, ty - tr - 2, air.theme.red);
             fb.put(
                 tx,
@@ -883,6 +921,9 @@ impl Sky {
             if air.darkness <= 0.02 {
                 continue;
             }
+            // The bolt takes the neighbourhood with it. Each window has its
+            // own moment to come back, decided by where it is rather than by
+            // chance, so the street fills in the same order every time.
             // Windows. The pattern was decided once, so they do not flicker,
             // and they go out over the same twilight the stars fade on.
             let cols = ((b.w - 6) / 6).max(1);
@@ -893,6 +934,10 @@ impl Sky {
                 let cx = b.x + 3 + (i as i32 % cols) * 6;
                 let cy = top + 3 + (i as i32 / cols) * 6;
                 if cy + 2 >= air.horizon {
+                    continue;
+                }
+                let wait = 0.55 + ((b.x as usize * 7 + i * 13) % 22) as f32 * 0.075;
+                if air.struck_since < wait {
                     continue;
                 }
                 let lamp = lerp_color(air.theme.yellow, air.theme.orange, 0.35);
@@ -1053,7 +1098,9 @@ impl Sky {
     }
 
     /// Lightning: the whole frame lit for two frames, and a bolt.
-    fn lightning(&mut self, fb: &mut Framebuffer, air: &Air) {
+    /// The storm. `landmark` says whether the Atomium is in the picture,
+    /// because one bolt in four goes for it when it is.
+    fn lightning(&mut self, fb: &mut Framebuffer, air: &Air, landmark: bool) {
         if air.kind != Kind::Thunder {
             return;
         }
@@ -1064,14 +1111,40 @@ impl Sky {
             // metronome.
             self.flash_at = t + 3.0 + self.rng.unit() * 8.0;
             self.flash = 0.35;
-            // A bolt down from a cloud, wandering as it goes.
-            let mut x = 30 + self.rng.upto((w as u32).saturating_sub(60)) as i32;
-            let mut y = 16 + self.rng.upto(24) as i32;
             self.bolt.clear();
-            while y < air.horizon {
-                self.bolt.push((x, y));
-                y += 2 + self.rng.upto(4) as i32;
-                x += self.rng.upto(9) as i32 - 4;
+            // The tallest thing for miles, with a lightning rod in every
+            // tube: one bolt in four goes for the Atomium rather than for
+            // the ground, and takes its lights out when it lands.
+            let hit = landmark && self.rng.upto(4) == 0;
+            if hit {
+                let nodes = atomium_nodes(w, air.horizon);
+                let (tx, ty, r, _) = nodes[nodes.len() - 1];
+                let sx = tx + self.rng.upto(41) as i32 - 20;
+                let sy = 14 + self.rng.upto(10) as i32;
+                // Straight enough to be aimed, crooked enough to be
+                // lightning, and it ends on the sphere rather than near it.
+                let steps = 9;
+                for k in 0..=steps {
+                    let f = k as f32 / steps as f32;
+                    let x = sx as f32 + (tx - sx) as f32 * f;
+                    let y = sy as f32 + (ty - r - sy) as f32 * f;
+                    let wander = if k == steps {
+                        0
+                    } else {
+                        self.rng.upto(9) as i32 - 4
+                    };
+                    self.bolt.push((x as i32 + wander, y as i32));
+                }
+                self.struck = t;
+            } else {
+                // A bolt down from a cloud, wandering as it goes.
+                let mut x = 30 + self.rng.upto((w as u32).saturating_sub(60)) as i32;
+                let mut y = 16 + self.rng.upto(24) as i32;
+                while y < air.horizon {
+                    self.bolt.push((x, y));
+                    y += 2 + self.rng.upto(4) as i32;
+                    x += self.rng.upto(9) as i32 - 4;
+                }
             }
         }
         if self.flash <= 0.0 {

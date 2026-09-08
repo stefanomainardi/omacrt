@@ -13,6 +13,10 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- One bolt in four goes for the Atomium rather than the ground, because it is
+  the tallest thing for miles with a lightning rod in every tube. It lands on
+  the top sphere, the lights go out, and then the nine come back from the
+  ground up while the street behind them fills in one window at a time.
 - The weather over Brussels has the Atomium in it: nine spheres, twenty
   tubes, a cube standing on one corner behind the roofline. By day it is
   metal with the reflection where the real sun is, and the sun passes behind
