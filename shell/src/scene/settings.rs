@@ -40,6 +40,8 @@ impl Scene {
             6 => self.go(Screen::MusicSettings { sel: 0 }),
             7 => self.go(Screen::VideoSettings { sel: 0 }),
             8 => self.go(Screen::FrameSettings { sel: 0 }),
+            9 => self.go(Screen::AmbientSettings { sel: 0 }),
+            10 => self.go(Screen::SoundSettings { sel: 0 }),
             _ => self.go(Screen::About { top: 0 }),
         }
         Action::None

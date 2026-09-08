@@ -137,18 +137,14 @@ pub struct Frame {
     /// Let a photograph that fills the screen drift while it is up.
     #[serde(default = "default_true")]
     pub pan: bool,
-    /// Place for the weather; empty asks about the city in the machine's
-    /// own timezone.
-    #[serde(default)]
+    /// Read from a file written before the clock and weather page had
+    /// settings of its own, and never written again: `Settings::migrate`
+    /// moves them to `[ambient]` and `[sound]`.
+    #[serde(default, skip_serializing)]
     pub weather: String,
-    /// A calendar to read the next appointment from, as an `.ics` address.
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub calendar: String,
-    /// Let the ambient page make the sound of its own weather. Off by
-    /// default: this page comes up on its own when the set is left alone,
-    /// and a television that starts making noise by itself at two in the
-    /// morning is not a feature.
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub weather_sound: bool,
 }
 
@@ -204,10 +200,10 @@ pub struct Music {
     /// Visualizer modes switched off, by name.
     #[serde(default)]
     pub disabled_visualizers: Vec<String>,
-    /// A sound when the deck changes what is playing: the needle set down on
-    /// a track, static between two stations. Off, because a noise every time
-    /// a track changes is a noise every three minutes.
-    #[serde(default)]
+    /// The needle on a track change. Read from a file written before the
+    /// sounds had a section of their own, and never written again;
+    /// `Settings::migrate` moves it to `[sound] deck`.
+    #[serde(default, skip_serializing)]
     pub change_sound: bool,
 }
 
@@ -267,6 +263,51 @@ impl Default for Videos {
     }
 }
 
+/// The clock and weather page: where the weather is from, and what is next.
+///
+/// These lived under `[frame]` while the ambient page had no settings of its
+/// own, because one supply thread fetches the photographs, the weather and
+/// the calendar together. They are the ambient page's, so they say so.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Ambient {
+    /// Place for the weather; empty asks about the city in the machine's own
+    /// timezone.
+    #[serde(default)]
+    pub place: String,
+    /// A calendar to read the next appointment from, as an `.ics` address.
+    #[serde(default)]
+    pub calendar: String,
+}
+
+/// Which sounds the launcher makes.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Sound {
+    /// Moving about: the beep on a move, the click of a select, the whoosh
+    /// of a page. On by default, because they are how the launcher answers
+    /// a button on a television nobody is sitting close to. The boot show
+    /// keeps its own sounds either way: it is a show.
+    #[serde(default = "default_true")]
+    pub menu: bool,
+    /// The needle set down when the record deck changes track. Off by
+    /// default: it interrupts the music it sits on.
+    #[serde(default)]
+    pub deck: bool,
+    /// The weather's own sound while the clock and weather page is up. Off by
+    /// default: that page comes up on its own when the set is left alone.
+    #[serde(default)]
+    pub weather: bool,
+}
+
+impl Default for Sound {
+    fn default() -> Self {
+        Self {
+            menu: true,
+            deck: false,
+            weather: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
     /// The shape of this file, so a build can tell an older one from a newer
@@ -285,6 +326,10 @@ pub struct Settings {
     pub videos: Videos,
     #[serde(default)]
     pub frame: Frame,
+    #[serde(default)]
+    pub ambient: Ambient,
+    #[serde(default)]
+    pub sound: Sound,
 }
 
 fn default_theme() -> String {
@@ -309,6 +354,8 @@ impl Default for Settings {
             video: VideoFit::default(),
             music: Music::default(),
             videos: Videos::default(),
+            ambient: Ambient::default(),
+            sound: Sound::default(),
             frame: Frame::default(),
         }
     }
@@ -324,7 +371,23 @@ impl Settings {
             .and_then(|t| toml::from_str(&t).ok())
             .unwrap_or_default();
         out.screensaver.migrate();
+        out.migrate();
         out
+    }
+
+    /// A file written before the sounds and the clock and weather page had
+    /// sections of their own keeps what it asked for.
+    fn migrate(&mut self) {
+        if self.ambient.place.is_empty() {
+            self.ambient.place = std::mem::take(&mut self.frame.weather);
+        }
+        if self.ambient.calendar.is_empty() {
+            self.ambient.calendar = std::mem::take(&mut self.frame.calendar);
+        }
+        // Both of these were off by default, so an older file can only ever
+        // turn one on.
+        self.sound.weather |= self.frame.weather_sound;
+        self.sound.deck |= self.music.change_sound;
     }
 
     pub fn save(&self, config_dir: &Path) -> std::io::Result<()> {
@@ -339,6 +402,56 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_older_file_keeps_its_place_its_calendar_and_its_sounds() {
+        // What a file written before the clock and weather page and the
+        // sounds had sections of their own looks like.
+        let text = r#"
+version = 1
+theme = "system"
+
+[screensaver]
+enabled = true
+idle_secs = 60
+effect = "random"
+pages = ["ambient"]
+
+[music]
+change_sound = true
+
+[frame]
+style = "clock"
+seconds = 25
+source = "memories"
+weather = "Brussels"
+calendar = "https://example.invalid/cal.ics"
+weather_sound = true
+"#;
+        let mut settings: Settings = toml::from_str(text).expect("an older settings file loads");
+        settings.migrate();
+        assert_eq!(settings.ambient.place, "Brussels");
+        assert_eq!(settings.ambient.calendar, "https://example.invalid/cal.ics");
+        assert!(settings.sound.weather, "the weather sound was on");
+        assert!(settings.sound.deck, "the track change sound was on");
+        // And the menu sounds, which the older file never mentioned, are on:
+        // they are how the launcher answers a button.
+        assert!(settings.sound.menu);
+        // Written again, the file says it in the new places and not the old.
+        let out = toml::to_string_pretty(&settings).expect("it writes");
+        assert!(out.contains("[ambient]"), "{out}");
+        assert!(out.contains("[sound]"), "{out}");
+        assert!(!out.contains("weather_sound"), "{out}");
+        assert!(!out.contains("change_sound"), "{out}");
+    }
+
+    #[test]
+    fn a_new_file_makes_a_noise_only_where_it_should() {
+        let fresh = Settings::default();
+        assert!(fresh.sound.menu, "moving about answers");
+        assert!(!fresh.sound.deck, "the deck is quiet until asked");
+        assert!(!fresh.sound.weather, "the weather is quiet until asked");
+    }
 
     fn saver(effect: &str, pages: &[&str]) -> Screensaver {
         Screensaver {

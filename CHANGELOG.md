@@ -7,8 +7,26 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- **Settings, Sound**: one page for every switch the launcher's noises have.
+  `[sound] menu` turns off the beep, the click and the page turn while leaving
+  the boot show alone; `deck` is the needle on a track change; `weather` is the
+  clock and weather page's own sound. The boot show keeps its sounds whatever
+  they say.
+- **Settings, Clock and weather**: the ambient page has settings of its own,
+  where the town and the calendar were only ever reachable through the photo
+  frame's page. `A` opens the page itself, and the third row is whether it
+  takes its turn on an idle television.
+
 ### Changed
 
+- The town, the calendar and the sounds moved out of the sections they were
+  camping in: `[frame] weather` and `[frame] calendar` are `[ambient] place`
+  and `[ambient] calendar`, `[frame] weather_sound` is `[sound] weather`, and
+  `[music] change_sound` is `[sound] deck`. A file written before that keeps
+  what it asked for: the old keys are read once, moved, and never written
+  again.
 - The library overlay's buttons say what they do: "Rescan sources" for the
   one that rescans the folders already listed, and "Reload" for the one that
   reloads what the overlay is showing.

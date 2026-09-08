@@ -324,19 +324,42 @@ as before.
 What the frame shows and for how long is in `settings.toml`, under `[frame]`,
 and on the television under Settings, Photo frame: `style` (`photos`, `clock`,
 `panel`), `seconds`, `source` (`memories`, `favorites`, `album`, `all`),
-`album`, `pan`, `weather` (a place name for wttr.in, empty asks by address),
-`calendar` (an `.ics` address) and `weather_sound`.
+`album` and `pan`.
 
-`weather_sound` is off by default and gives the ambient page the sound of the
-weather it is drawing: rain with drops on it, wind that gusts, thunder behind
-a downpour, birds on a clear day and crickets at night, a foghorn in fog.
-Every one of them is synthesized and then held at 8 kHz and quantised, the
-way a sample was in 1990, so it belongs to the same television as the
-picture. It plays only while the ambient page is up, fades in and out over a
-second and a half, and is quieter than any sound the launcher makes: the
-loudest, a thunderstorm, measures 0.012 against the boot chime's 0.030. Hear
-them without the television: `omarchy-crt-shell --dump-audio DIR` writes
-every sound in the launcher as a WAV, `weather-*.wav` among them.
+## The clock and weather page
+
+`[ambient]`, and Settings, Clock and weather: `place` (a name for wttr.in,
+empty asks about the city in the machine's own timezone) and `calendar` (an
+`.ics` address for the next appointment). Both are typed into the file rather
+than spelled out with a pad, so the page shows what they are and `A` opens the
+real page. The third row is whether this page takes its turn on an idle
+television, which is the same switch as Settings, Screensaver.
+
+## Sound
+
+`[sound]`, and Settings, Sound. Three switches, and the boot show makes its
+own noise whatever they say:
+
+| Key | Default | What it is |
+| --- | --- | --- |
+| `menu` | on | Moving about: the beep on a move, the click of a select, the page turn |
+| `deck` | off | The needle set down when the record deck changes track, or static between two stations |
+| `weather` | off | The weather's own sound while the clock and weather page is up |
+
+The weather's sound is eight loops, one per sky: rain with drops on it, wind
+that gusts, thunder behind a downpour, snow, a horn in fog, birds on a clear
+day and crickets at night. Every one is synthesized and then held at 8 kHz and
+quantised to five bits, the way a sample was in 1990, so it belongs to the same
+television as the picture. It plays only while that page is up, fades in and
+out over a second and a half, and is quieter than anything else the launcher
+does: the loudest, a thunderstorm, measures 0.012 against the boot chime's
+0.030. Hear them without the television with
+`omarchy-crt-shell --dump-audio DIR`, which writes every sound in the launcher
+as a WAV, `weather-*.wav` among them.
+
+A file written before these two sections existed keeps what it asked for: the
+old `[frame] weather`, `[frame] calendar`, `[frame] weather_sound` and
+`[music] change_sound` are read once, moved, and never written again.
 
 ### Where the frame is
 
