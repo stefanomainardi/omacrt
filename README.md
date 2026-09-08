@@ -89,6 +89,7 @@ glass. Both are the point.
 <p align="center">
   <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
 </p>
+
 <p align="center">
   <img src="docs/screens/coverflow.png" width="270" alt="Cover flow on the tube">
   <img src="docs/screens/systems.png" width="270" alt="Systems with console pictures">
@@ -96,20 +97,33 @@ glass. Both are the point.
   <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
   <img src="docs/screens/equalizer.png" width="270" alt="The ten band equaliser">
   <img src="docs/screens/visual-mode7.png" width="270" alt="Mode 7 equalizer visualizer">
-  <img src="docs/screens/system.png" width="270" alt="The system monitor: a bank of meters, one per processor">
 </p>
 
-An idle television is a window: the ambient page draws what the weather is
-doing, and the sun crosses the arc between the real sunrise and sunset.
+An idle television is a window. The ambient page draws what the weather is
+actually doing: the sun crosses the arc between the real sunrise and sunset,
+clouds drift at the speed of the real wind, rain slants with it and breaks on
+the ground, lightning lights the frame, and after dark the town along the
+horizon turns its windows on.
 
 <p align="center">
-  <img src="docs/screens/weather.png" width="640" alt="The ambient page in six kinds of weather: sun, rain, thunder, fog, snow, night">
+  <img src="docs/screens/weather.gif" width="560" alt="The ambient page cycling through sun, rain, a thunderstorm and a clear night">
 </p>
 
-Every picture above was captured from the tube's own framebuffer by
-`omarchy-crt shot`, and the boot by `omarchy-crt record`; the television adds
-the scanlines. The six skies are that same framebuffer rendered offline,
-because a screenshot of a thunderstorm has to wait for a thunderstorm.
+The other side of an idle set is what the machine itself is doing, drawn as a
+16 bit status screen: a bank of little meters, one per logical processor, that
+eases up fast and falls back slowly the way the meters on an amplifier do,
+memory and graphics on bevelled plates, a minute and a half of history for
+load and for the network, and the busiest processes at the foot. All of it out
+of `/proc` and `/sys`.
+
+<p align="center">
+  <img src="docs/screens/system.png" width="420" alt="The system monitor: a bank of meters, one per processor, memory and graphics on bevelled plates">
+</p>
+
+The pictures were captured from the tube's own framebuffer by `omarchy-crt
+shot`, and the boot by `omarchy-crt record`; the television adds the
+scanlines. The weather is that same framebuffer rendered offline, because a
+screenshot of a thunderstorm has to wait for a thunderstorm.
 
 ## How it works
 
@@ -317,6 +331,7 @@ switches with a blend.
   <img src="docs/screens/visual-ribbons.png" width="270" alt="Silk ribbons visualizer">
   <img src="docs/screens/youtube.png" width="270" alt="YouTube search on the tube">
 </p>
+
 - **Videos.** Local films through mpv with a themed on screen display and a
   fit pipeline for the tube (480i or 576i by frame rate, pulldown or PAL
   speed-up for film, letterbox or crop, a safe area, a retro 240p mode).
