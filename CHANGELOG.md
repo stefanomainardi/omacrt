@@ -7,6 +7,12 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Changed
+
+- The library overlay's buttons say what they do: "Rescan sources" for the
+  one that rescans the folders already listed, and "Reload" for the one that
+  reloads what the overlay is showing.
+
 ## [0.3.0] - 2026-09-08
 
 The release the repository opens with.
