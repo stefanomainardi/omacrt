@@ -17,7 +17,9 @@ mod font8x8;
 mod icons;
 mod menu;
 mod pad;
+mod photos;
 mod scene;
+mod sysmon;
 mod theme;
 use omarchy_crt_shell::padmap::Raw;
 use omarchy_crt_shell::{
@@ -848,6 +850,14 @@ fn run(args: &Args) -> Result<(), String> {
                 scene.home();
                 continue;
             }
+            // A screen asked for by name: the desktop menu and the bar
+            // widget both open the launcher this way.
+            if let Some(name) = inp.screen.clone() {
+                if !scene.open_screen(&name) {
+                    eprintln!("control: no screen named {name}");
+                }
+                continue;
+            }
 
             if scene.is_running() {
                 if inp.menu {
@@ -1080,6 +1090,8 @@ struct Input {
     edge: Option<bool>,
     /// A video file or URL to play now.
     watch: Option<String>,
+    /// A screen to open by name, from `omarchy-crt shell screen NAME`.
+    screen: Option<String>,
 }
 
 impl Input {
@@ -1097,6 +1109,7 @@ impl Input {
             || self.jump != 0
             || self.edge.is_some()
             || self.watch.is_some()
+            || self.screen.is_some()
     }
 }
 
@@ -1108,6 +1121,10 @@ fn control_input(line: &str) -> Option<Input> {
     }
     if let Some(target) = line.strip_prefix("watch ") {
         inp.watch = Some(target.trim().to_string());
+        return Some(inp);
+    }
+    if let Some(name) = line.strip_prefix("screen ") {
+        inp.screen = Some(name.trim().to_string());
         return Some(inp);
     }
     match omarchy_crt_shell::crt::control::normalize(line)? {

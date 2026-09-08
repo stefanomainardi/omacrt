@@ -81,8 +81,13 @@ fn temp_beside(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
+    /// A directory of its own per test. The tests run at the same time and
+    /// one of them lists the directory looking for temporary files, so a
+    /// shared one makes it fail whenever another test is mid-save.
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("omarchy-crt-store-{}", std::process::id()));
+        let stem = name.split('.').next().unwrap_or(name);
+        let dir =
+            std::env::temp_dir().join(format!("omarchy-crt-store-{}-{stem}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir.join(name)
     }
