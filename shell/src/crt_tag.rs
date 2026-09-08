@@ -7,7 +7,6 @@
 //! the wordmark, landing with a sparkle. Afterwards the tag idles with a faint
 //! glint every few seconds. Picture and sound come from the same timeline.
 
-use crate::assets::ICON_24 as ICON;
 use crate::fb::{Color, Framebuffer, add, lerp_color, scale};
 
 /// Letter glyphs, 5x7.
@@ -87,8 +86,6 @@ pub struct Look {
     pub bg: Color,
     pub floor_light: Color,
     pub floor_dark: Color,
-    /// The colour of the mark on the floor: see `draw_floor`.
-    pub mark: Color,
     pub orange: Color,
     pub yellow: Color,
 }
@@ -167,13 +164,6 @@ fn draw_floor(
         let fog = clamp01((dy - 2.0) / 34.0) * alpha;
         let row = (depth / 10.0).floor() as i32;
         let row_parity = row;
-        // The mark below spans two tiles by two, so it has its own coarser
-        // grid: this is where the scanline falls inside one of those.
-        // Deeper than it is wide: perspective squashes anything lying on the
-        // floor, so a mark that is square in the world reads as a letterbox
-        // on the screen. Thirty four against twenty puts it back.
-        let mark_row = (depth / 34.0).floor() as i32;
-        let mark_fv = (depth / 34.0).rem_euclid(1.0);
         for x in 0..w {
             let wx = (x - w / 2) as f32 * 50.0 / dy;
             let col = (wx / 10.0).floor() as i32;
@@ -183,21 +173,6 @@ fn draw_floor(
             } else {
                 look.floor_dark
             };
-            // One tile in the middle column, every thirteenth row, carries
-            // Omarchy's own mark, and the scroll walks it up out of the
-            // horizon and off the bottom of the screen. It is a floor in a
-            // title card rather than a window on anything, which is the one
-            // place a mark belongs.
-            let mut base = base;
-            if (wx / 20.0).floor() as i32 == 0 && mark_row.rem_euclid(5) == 0 {
-                let fu = (wx / 20.0).rem_euclid(1.0);
-                let n = ICON.len();
-                let gx = ((fu * n as f32) as usize).min(n - 1);
-                let gy = ((mark_fv * n as f32) as usize).min(n - 1);
-                if ICON[gy].as_bytes().get(gx).is_some_and(|b| *b == b'#') {
-                    base = lerp_color(base, look.mark, 0.85);
-                }
-            }
             let mut c = lerp_color(look.bg, base, fog);
             if flash {
                 c = lerp_color(c, 0xffffff, 0.6 * fog);

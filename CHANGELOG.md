@@ -151,6 +151,12 @@ caveat for a 0.x project: anything may still move.
   what the thing is; a status file that had to be edited by hand said neither
   for long.
 
+### Removed
+
+- The Omarchy mark that walked up the CRT tag's Mode 7 floor. On the tube it
+  read as a smear on the checkerboard rather than as a mark, and the floor is
+  better as a floor.
+
 ### Fixed
 
 - Recently played was always empty: a history entry from cliamp wraps its
