@@ -43,6 +43,10 @@ caveat for a 0.x project: anything may still move.
   timezone (`Europe/Brussels` is Brussels) rather than about wherever the
   address seems to be, which a VPN moves a country. The Photo frame settings
   page says which town the page is showing, and where the name came from.
+- `omarchy-crt-shell --headless --realtime` renders offline at the real frame
+  rate. Without it the loop runs about sixty times faster than the clock,
+  which is what made the system monitor read zero: it asked the kernel for its
+  counters more often than the kernel moves them.
 - The Television rows in Omarchy's menu carry icons, taken from the code
   points Omarchy's own menu uses so the font is known to have them.
 - The weather is read in full rather than as one line: the place, the

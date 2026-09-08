@@ -180,7 +180,20 @@ ten.
 
 Headless runs at sixty times real time and does not wait for threads, so a
 screen fed by the network (the frame) shows its waiting state unless the cache
-is already warm.
+is already warm. `--realtime` makes the loop keep the wall clock, which
+anything drawn from live data needs: without it the system monitor asks the
+kernel for its counters more often than the kernel moves them and reads zero.
+
+A sequence of frames for an animation is a `--dump` list rather than a loop of
+runs:
+
+```
+stamps=$(python3 -c "print(','.join(f'{12.0+i*0.4:.2f}' for i in range(26)))")
+omarchy-crt-shell --headless --realtime --browse monitor \
+  --dump "$stamps" --dump-dir /tmp/seq
+magick -delay 10 -loop 0 $(ls /tmp/seq/*.ppm | sort -V) \
+  -filter point -resize 200% -colors 96 -layers optimize out.gif
+```
 
 **Try a different configuration without touching the user's.** `--config-dir`
 points settings, profile and recents somewhere else:

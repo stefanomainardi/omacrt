@@ -117,13 +117,15 @@ load and for the network, and the busiest processes at the foot. All of it out
 of `/proc` and `/sys`.
 
 <p align="center">
-  <img src="docs/screens/system.png" width="420" alt="The system monitor: a bank of meters, one per processor, memory and graphics on bevelled plates">
+  <img src="docs/screens/system.gif" width="560" alt="The system monitor: a bank of meters, one per processor, moving with the machine">
 </p>
 
 The pictures were captured from the tube's own framebuffer by `omarchy-crt
 shot`, and the boot by `omarchy-crt record`; the television adds the
-scanlines. The weather is that same framebuffer rendered offline, because a
-screenshot of a thunderstorm has to wait for a thunderstorm.
+scanlines. The last two are that same framebuffer rendered offline with
+`--headless --realtime`, because a screenshot of a thunderstorm has to wait
+for a thunderstorm, and a monitor reads zero unless the clock runs at the
+speed the kernel moves its counters.
 
 ## How it works
 
