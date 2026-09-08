@@ -151,15 +151,24 @@ rather than promised.
       issues disabled with Discussions in their place, a pull request template
       that asks what a change ran on, and `CODEOWNERS`. The README's own
       section became a pointer rather than a second copy.
-- [ ] **The screenshots that are stale.** `library-overlay.png` and
-      `panel.png`. The overlay's two buttons are renamed ("Rescan sources"
-      and "Reload"), so both pictures are out of date, and the old overlay
-      one is also cut off on the right and predates the shortening of source
-      paths. The retake keeps the game count and shows the sources the way
-      the overlay writes them now, `~/Games/roms` and the removable disk's
-      own name, which is what `short()` in `Library.qml` already does. It
-      needs a desktop nobody is sharing: a grab of that screen catches
-      whatever else is on it.
+- [x] **`library-overlay.png`.** Retaken, and the retake found three real
+      layout faults rather than just being a picture: the card had a fixed
+      height and cut the last system in half, the folder field reserved too
+      little room and drew "Rescan sources" off the edge, and two paths
+      still carried a home directory. All three fixed, so the picture shows
+      `~/Games/roms`, `External HD/roms`, `~/Videos` and
+      `~/.config/retroarch/system` with the game count kept.
+      Quickshell loads an overlay's QML once, at the first summon, and keeps
+      it: `rescanPlugins` is not one of its IPC methods and disable/enable
+      does not drop it, so the fixes were verified against a separate
+      Quickshell instance rather than the running shell.
+- [ ] **`panel.png`.** Stale only in its numbers (21880 games in 14 systems
+      against 28852 in 15) and its launcher pid. Nothing personal in it. The
+      panel is a bar widget rather than a standalone overlay, so retaking it
+      wants either the shell reloaded or the same trick with a host widget.
+- [ ] **The hostname in `boot.gif`.** The POST lines read `/etc/hostname`,
+      so the boot sequence shows this machine's name. A choice rather than a
+      risk, and the only personal thing left in the pictures.
 
 ## E. Publishing
 
