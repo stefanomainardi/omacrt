@@ -178,6 +178,10 @@ struct Air<'a> {
     horizon: i32,
     /// Seconds, for everything that moves.
     now: f64,
+    /// How far through its month the moon is, and how much light that gives:
+    /// 0 at new, 1 at full.
+    moon: f32,
+    moonlight: f32,
     /// Where the sun (or the moon) is on the screen, for anything that has
     /// to catch the light or hide from it.
     sun: (f32, f32),
@@ -484,6 +488,10 @@ impl Sky {
             horizon,
             now,
             darkness: reading.darkness(minutes),
+            moon: reading.moon,
+            // A full moon gives a whole moon's light and a new one none, and
+            // the middle is the fraction of the disc that is lit.
+            moonlight: (1.0 - (std::f32::consts::TAU * reading.moon).cos()) * 0.5,
             sun,
             cover,
             shadow,
@@ -678,22 +686,42 @@ impl Sky {
                 }
             }
         } else {
-            // The moon: a disc with a bite out of it and a few craters.
-            let bite = 7;
+            // The moon, in the phase the server says it is in rather than a
+            // crescent forever. `phase` runs 0 to 1 through the month, and
+            // the terminator is where the sunlit half of a sphere ends: at
+            // each row it is an ellipse of half width `k * sqrt(r2 - y2)`,
+            // which is the whole of the geometry.
+            let phase = air.moon.rem_euclid(1.0);
+            let waxing = phase < 0.5;
+            let k = (std::f32::consts::TAU * phase).cos();
+            let face = lerp_color(air.theme.paper, air.theme.dim, 0.15);
+            // The dark limb is not black: earthshine, and it keeps the disc
+            // a disc rather than a shape.
+            let ash = lerp_color(air.theme.bg, air.theme.paper, 0.12);
             for y in -r..=r {
+                let across = ((r * r - y * y) as f32).sqrt();
+                let edge = k * across;
                 for x in -r..=r {
                     if x * x + y * y > r * r {
                         continue;
                     }
-                    let dx = x - bite;
-                    if dx * dx + y * y <= r * r {
-                        continue;
-                    }
-                    let c = lerp_color(air.theme.paper, air.theme.dim, 0.15);
-                    fb.put(cx + x, cy + y, c);
+                    let xf = x as f32;
+                    let lit = if waxing { xf > edge } else { xf < -edge };
+                    fb.put(cx + x, cy + y, if lit { face } else { ash });
                 }
             }
-            for (ox, oy, cr) in [(-6, -2, 2), (-3, 5, 1), (-8, 4, 1)] {
+            for (ox, oy, cr) in [(-6, -2, 2), (-3, 5, 1), (-8, 4, 1), (5, -4, 1)] {
+                // A crater on the dark side of the terminator is not a
+                // crater, it is a mistake.
+                let across = ((r * r - oy * oy) as f32).sqrt();
+                let visible = if air.moon.rem_euclid(1.0) < 0.5 {
+                    ox as f32 > k * across
+                } else {
+                    (ox as f32) < -k * across
+                };
+                if !visible {
+                    continue;
+                }
                 for y in -cr..=cr {
                     for x in -cr..=cr {
                         if x * x + y * y > cr * cr {
@@ -827,7 +855,17 @@ impl Sky {
             } else {
                 lerp_color(rgb(46, 50, 70), air.theme.bg, 0.35)
             };
-            let lit = lerp_color(body, air.theme.paper, if air.day { 0.35 } else { 0.18 });
+            // At night the tops catch the moon, and how much depends on the
+            // phase: a full moon silvers them, a new one leaves them flat.
+            let lit = lerp_color(
+                body,
+                air.theme.paper,
+                if air.day {
+                    0.35
+                } else {
+                    0.10 + 0.30 * air.moonlight
+                },
+            );
             let shade = lerp_color(body, air.theme.bg, 0.45);
             for (dx, dy, r) in &cloud.blobs {
                 let bx = (cloud.x + dx) as i32;
@@ -1245,6 +1283,27 @@ impl Sky {
         // windows and the Atomium's own colours end up in the ground.
         if matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder) {
             self.puddles(fb, air);
+        }
+        // And the moon on the wet street: a band of it right under the
+        // horizon, brightest where the moon is and only when there is a moon
+        // to speak of.
+        if matches!(
+            air.kind,
+            Kind::Rain | Kind::Heavy | Kind::Thunder | Kind::Snow
+        ) && air.darkness > 0.4
+            && air.moonlight > 0.15
+        {
+            let mx = air.sun.0 as i32;
+            for y in air.horizon + 1..(air.horizon + 7).min(h) {
+                let down = (y - air.horizon) as f32;
+                for x in (mx - 40).max(0)..(mx + 40).min(w) {
+                    let across = 1.0 - ((x - mx).abs() as f32 / 40.0);
+                    let t = across * (1.0 - down / 7.0) * air.moonlight * air.darkness;
+                    if BAYER[(y & 3) as usize][(x & 3) as usize] as f32 / 16.0 < t * 0.5 {
+                        fb.put(x, y, lerp_color(fb.at(x, y), air.theme.paper, 0.25 * t));
+                    }
+                }
+            }
         }
         // Wet ground: the town's lights smeared down into it.
         if matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder) && !air.day {

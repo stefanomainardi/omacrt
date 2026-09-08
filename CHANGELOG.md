@@ -13,6 +13,11 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- The moon is the moon outside. The server sends the phase and the picture
+  drew a crescent whatever it said; it draws the real one now, terminator and
+  earthshine and craters only on the lit side, and a full moon silvers the
+  tops of the clouds and puts a band of light on the wet street where a new
+  one leaves them flat.
 - Four street lamps stand along the pavement and light it. They come on with
   the town's windows and go off with them, they put a pool of warm light on
   the ground that the puddles pick up, and they are why anybody can see the

@@ -22,7 +22,7 @@ pub struct Info {
 }
 
 /// What the sky is doing, in the parts a drawing needs.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Reading {
     pub kind: Kind,
     /// Where, shortened to something that fits: "Milano".
@@ -32,11 +32,33 @@ pub struct Reading {
     /// The server's own words: "Patchy rain nearby".
     pub condition: String,
     pub wind_kmh: Option<f32>,
+    /// How far through its month the moon is: 0 and 1 are new, 0.5 is full.
+    /// The server sends the phase and the picture draws that one, so the moon
+    /// on the television is the moon outside.
+    pub moon: f32,
     /// Sunrise and sunset as minutes since midnight, for the sun's arc.
     pub sunrise: Option<u32>,
     pub sunset: Option<u32>,
     /// Is there a reading at all, or is this the empty default?
     pub known: bool,
+}
+
+impl Default for Reading {
+    /// Nothing known yet. The moon is full rather than new, because a new
+    /// moon is a moon you cannot see and the picture would look broken.
+    fn default() -> Self {
+        Self {
+            kind: Kind::default(),
+            place: String::new(),
+            temp: None,
+            condition: String::new(),
+            wind_kmh: None,
+            moon: 0.5,
+            sunrise: None,
+            sunset: None,
+            known: false,
+        }
+    }
 }
 
 /// The weather, in the few kinds a 240 line picture can tell apart.
@@ -139,10 +161,38 @@ fn parse_reading(line: &str) -> Reading {
         temp: number_in(f[1]),
         condition,
         wind_kmh: f.get(3).and_then(|w| number_in(w)),
+        // Set by `read_reading` from the raw line, because the glyph does
+        // not survive tidying.
+        moon: 0.5,
         sunrise: f.get(6).and_then(|t| minutes_of(t)),
         sunset: f.get(7).and_then(|t| minutes_of(t)),
         known: true,
     }
+}
+
+/// The moon the server draws, as how far through its month it is: 0 and 1
+/// are new, 0.5 is full.
+///
+/// wttr.in answers with one of the eight moon emoji somewhere in its line,
+/// which is exactly the eight phases anybody names. Anything else, or
+/// nothing, is read as full, because a picture of the sky needs *a* moon and
+/// half of one is the least wrong guess.
+fn moon_phase(line: &str) -> f32 {
+    for (glyph, phase) in [
+        ("\u{1f311}", 0.0),
+        ("\u{1f312}", 0.125),
+        ("\u{1f313}", 0.25),
+        ("\u{1f314}", 0.375),
+        ("\u{1f315}", 0.5),
+        ("\u{1f316}", 0.625),
+        ("\u{1f317}", 0.75),
+        ("\u{1f318}", 0.875),
+    ] {
+        if line.contains(glyph) {
+            return phase;
+        }
+    }
+    0.5
 }
 
 impl Reading {
@@ -318,7 +368,7 @@ pub fn weather(place: &str) -> Reading {
     if fresh(&file, 1800)
         && let Ok(text) = std::fs::read_to_string(&file)
     {
-        return parse_reading(&tidy_weather(&text));
+        return read_reading(&text);
     }
     // One line with the parts in it, rather than the whole forecast: the
     // place, the temperature, the condition, the wind, the rain, the moon and
@@ -329,7 +379,19 @@ pub fn weather(place: &str) -> Reading {
         Some(text) => text,
         None => std::fs::read_to_string(&file).unwrap_or_default(),
     };
-    parse_reading(&tidy_weather(&text))
+    read_reading(&text)
+}
+
+/// One line from the server into a reading.
+///
+/// The moon is read from the raw line and everything else from the tidied
+/// one, because tidying throws away anything the 8x8 font cannot draw and
+/// the moon arrives as an emoji. It was worth one wasted afternoon to learn
+/// that the phase was being filtered out before it was ever parsed.
+fn read_reading(text: &str) -> Reading {
+    let mut reading = parse_reading(&tidy_weather(text));
+    reading.moon = moon_phase(text);
+    reading
 }
 
 /// wttr.in's line, cleaned up for an 8x8 font: no degree sign, no plus in
@@ -450,6 +512,26 @@ pub fn info(place: &str, calendar: &str) -> Info {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_moon_survives_the_tidying() {
+        // The phase arrives as an emoji and tidying throws away everything
+        // the 8x8 font cannot draw, so it is read from the raw line. This is
+        // the bug this test exists for.
+        let raw = "Brussels|+12C|Clear|8km/h|0.0mm|\u{1f313}|07:06:54|20:14:11";
+        let r = read_reading(raw);
+        assert_eq!(r.moon, 0.25, "first quarter");
+        assert_eq!(r.place, "Brussels");
+        // Every glyph the server can send, and nothing else.
+        assert_eq!(moon_phase("\u{1f311}"), 0.0);
+        assert_eq!(moon_phase("\u{1f315}"), 0.5);
+        assert_eq!(moon_phase("\u{1f318}"), 0.875);
+        assert_eq!(
+            moon_phase("no moon here"),
+            0.5,
+            "a guess, and a visible one"
+        );
+    }
 
     #[test]
     fn a_weather_line_loses_what_the_font_cannot_draw() {
