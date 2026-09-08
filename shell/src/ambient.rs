@@ -217,23 +217,7 @@ fn fetch(url: &str, dest: &Path) -> Option<String> {
     if let Some(dir) = dest.parent() {
         std::fs::create_dir_all(dir).ok()?;
     }
-    let out = std::process::Command::new("curl")
-        .args([
-            "-fsSL",
-            "--max-time",
-            "20",
-            "-A",
-            "omarchy-crt",
-            "--proto",
-            "=http,https",
-            "--proto-redir",
-            "=http,https",
-            "--max-filesize",
-            "4194304",
-            url,
-        ])
-        .output()
-        .ok()?;
+    let out = crate::net::curl(20, 4_194_304).arg(url).output().ok()?;
     if !out.status.success() || out.stdout.is_empty() {
         return None;
     }

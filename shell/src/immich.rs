@@ -216,22 +216,9 @@ impl RawAsset {
 /// A key on a command line is readable by every process on the machine, and
 /// this one opens somebody's whole photograph collection.
 fn ask(cfg: &Config, path: &str, body: Option<&str>, out: Option<&Path>) -> Option<Vec<u8>> {
-    let mut cmd = std::process::Command::new("curl");
-    cmd.args([
-        "-fsSL",
-        "--max-time",
-        "40",
-        "-A",
-        "omarchy-crt",
-        "--proto",
-        "=http,https",
-        "--proto-redir",
-        "=http,https",
-        "--max-filesize",
-        "33554432",
-        "-K",
-        "-",
-    ]);
+    let mut cmd = crate::net::curl(40, 33_554_432);
+    // curl reads the key from its own standard input, not from a flag.
+    cmd.args(["-K", "-"]);
     if let Some(json) = body {
         cmd.args(["-H", "Content-Type: application/json", "-X", "POST", "-d"])
             .arg(json);
