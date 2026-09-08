@@ -288,6 +288,10 @@ pub struct Sky {
     flash_at: f32,
     flash: f32,
     bolt: Vec<(i32, i32)>,
+    /// A light going up one of the Atomium's tubes: which tube, and how far
+    /// along it is. Somebody on the escalator.
+    bead: Option<(usize, f32)>,
+    bead_at: f32,
     /// The tram, and when the next one is due along.
     tram: Option<f32>,
     tram_at: f32,
@@ -331,6 +335,8 @@ impl Sky {
             built_for: None,
             flash_at: 4.0,
             flash: 0.0,
+            bead: None,
+            bead_at: 9.0,
             tram: None,
             tram_at: 12.0,
             birds: Vec::new(),
@@ -948,7 +954,7 @@ impl Sky {
     /// after it. At night it does what the real one does on a good evening: a
     /// wave of colour travels through the spheres, a lamp chases round each
     /// one, and the red light on the top sphere answers to aircraft.
-    fn atomium(&self, fb: &mut Framebuffer, air: &Air, arc: f32) {
+    fn atomium(&mut self, fb: &mut Framebuffer, air: &Air, arc: f32) {
         let nodes = atomium_nodes(fb.w as i32, air.horizon);
         // Where the light comes from, as a direction on the screen: the real
         // sun's place in its arc by day, and the moon's the same way at
@@ -1134,6 +1140,41 @@ impl Sky {
                         fb.put(tx + dx, ty + dy, air.theme.paper);
                     }
                 }
+            }
+        }
+
+        // Somebody on the escalator. The real one has lit tubes with
+        // escalators in them, so every so often a bead of light travels up
+        // one of the twenty, which turns a monument into a place where
+        // somebody is.
+        let t = air.now as f32;
+        if self.bead.is_none() && t > self.bead_at {
+            // Not the diagonals to the middle: those are the ones without an
+            // escalator in them.
+            let tube = self.rng.upto(12) as usize;
+            self.bead = Some((tube, 0.0));
+            self.bead_at = t + 7.0 + self.rng.unit() * 9.0;
+        }
+        if let Some((tube, along)) = self.bead.as_mut() {
+            *along += 1.0 / 60.0 / 3.4;
+            if *along > 1.0 {
+                self.bead = None;
+            } else {
+                let (a, b) = ATOMIUM_TUBES[*tube];
+                // Always upward: an escalator that runs down is a different
+                // escalator.
+                let (from, to) = if nodes[a].1 > nodes[b].1 {
+                    (a, b)
+                } else {
+                    (b, a)
+                };
+                let k = *along;
+                let x = nodes[from].0 as f32 + (nodes[to].0 - nodes[from].0) as f32 * k;
+                let y = nodes[from].1 as f32 + (nodes[to].1 - nodes[from].1) as f32 * k;
+                let warm = lerp_color(air.theme.yellow, air.theme.paper, 0.35);
+                fb.put(x as i32, y as i32, warm);
+                fb.put(x as i32, y as i32 - 1, scale(warm, 0.55));
+                fb.put(x as i32 + 1, y as i32, scale(warm, 0.4));
             }
         }
 
