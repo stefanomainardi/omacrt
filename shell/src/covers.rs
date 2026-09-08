@@ -76,7 +76,7 @@ pub fn thumb_name(stem: &str) -> String {
         .collect()
 }
 
-pub fn percent_encode(s: &str) -> String {
+fn percent_encode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {

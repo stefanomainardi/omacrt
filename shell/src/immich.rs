@@ -383,7 +383,7 @@ pub enum Fit {
 }
 
 /// Which way a picture of this shape should be fitted.
-pub fn fit_for(w: u32, h: u32, screen_w: u32, screen_h: u32) -> Fit {
+fn fit_for(w: u32, h: u32, screen_w: u32, screen_h: u32) -> Fit {
     if w == 0 || h == 0 || screen_h == 0 {
         return Fit::Blurred;
     }

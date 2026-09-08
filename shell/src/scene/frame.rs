@@ -4,6 +4,21 @@
 use super::*;
 
 impl Scene {
+    /// What the photo supply should be fetching, out of the settings and the
+    /// shape of the screen it is drawn on.
+    fn photo_supply(&self, width: usize, height: usize) -> crate::photos::Wanted {
+        let f = &self.settings.frame;
+        crate::photos::Wanted {
+            config_dir: self.library.config_dir.clone(),
+            source: omarchy_crt_shell::immich::Source::named(&f.source),
+            album: f.album.clone(),
+            place: f.weather.clone(),
+            calendar: f.calendar.clone(),
+            width,
+            height,
+        }
+    }
+
     /// Open the photo frame, starting the supply if it is not running.
     pub fn open_frame(&mut self) {
         self.frame_since = self.now;
@@ -87,19 +102,10 @@ impl Scene {
     pub(super) fn draw_frame(&mut self, fb: &mut Framebuffer) {
         // The supply runs for the size of this screen; asking again while it
         // is already running for this size does nothing.
-        let f = self.settings.frame.clone();
-        let dir = self.library.config_dir.clone();
-        self.photos.start(
-            &dir,
-            omarchy_crt_shell::immich::Source::named(&f.source),
-            f.album.clone(),
-            f.weather.clone(),
-            f.calendar.clone(),
-            fb.w,
-            fb.h,
-        );
+        self.photos.start(self.photo_supply(fb.w, fb.h));
         self.photos.poll();
 
+        let f = self.settings.frame.clone();
         let dwell = f.seconds.clamp(5, 600) as f64;
         let up_for = self.now - self.frame_since;
         if self.frame_now.is_none() || up_for >= dwell {
@@ -378,17 +384,7 @@ impl Scene {
         // The supply thread carries the weather and the calendar as well as
         // the photographs, so this page starts it too. With no photograph
         // server set up it goes on fetching the outside world alone.
-        let f = self.settings.frame.clone();
-        let dir = self.library.config_dir.clone();
-        self.photos.start(
-            &dir,
-            omarchy_crt_shell::immich::Source::named(&f.source),
-            f.album.clone(),
-            f.weather.clone(),
-            f.calendar.clone(),
-            fb.w,
-            fb.h,
-        );
+        self.photos.start(self.photo_supply(fb.w, fb.h));
         self.photos.poll();
 
         let w = fb.w as i32;

@@ -1300,6 +1300,8 @@ impl Scene {
     /// A glint: every `period` seconds a narrow diagonal highlight sweeps
     /// across the box in under a second, brightening only what is drawn
     /// there. The small movement that keeps a logo alive.
+    // A box, a period and a phase. The argument list is the geometry.
+    #[allow(clippy::too_many_arguments)]
     fn glint(
         &self,
         fb: &mut Framebuffer,

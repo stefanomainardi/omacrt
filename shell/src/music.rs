@@ -26,7 +26,7 @@ pub fn stop_now() {
     let _ = call(json!({ "cmd": "stop" }));
 }
 
-pub fn socket_path() -> PathBuf {
+fn socket_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
     PathBuf::from(home).join(".config/cliamp/cliamp.sock")
 }
@@ -946,7 +946,7 @@ fn tracks_of(v: &Value) -> Vec<Item> {
         .unwrap_or_default()
 }
 
-pub fn favorites_path() -> PathBuf {
+fn favorites_path() -> PathBuf {
     crate::crt::config_dir().join("radio-favorites.tsv")
 }
 

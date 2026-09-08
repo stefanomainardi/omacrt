@@ -50,6 +50,8 @@ impl Scene {
 
     /// A horizontal meter in blocks. Unlit blocks stay visible, so the meter
     /// has a length even when nothing is happening.
+    // A rectangle, a level and whether it is a hot one.
+    #[allow(clippy::too_many_arguments)]
     fn meter(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, level: f32, hot: bool) {
         const BLOCK: i32 = 4;
         let lit = if hot {
@@ -111,6 +113,8 @@ impl Scene {
     }
 
     /// A filled graph of one history line, newest at the right.
+    // A rectangle, the samples and their colour.
+    #[allow(clippy::too_many_arguments)]
     fn graph(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, data: &[f32], c: Color) {
         let fill = lerp_color(self.theme.bg, c, 0.35);
         let from = data.len().saturating_sub(w as usize);
