@@ -213,7 +213,11 @@ impl SysInfo {
 const MARK_SCALE: i32 = 3;
 const ETCH_START: f32 = 4.15;
 /// Home menu entries: icon, label, opens a submenu.
-const HOME: [(icons::Icon, &str, bool); 9] = [
+///
+/// Eight rows, and eight is the limit: the wordmark and the CRT tag take the
+/// top half of a 240 line screen, so a ninth row runs off the bottom. About
+/// lives in Settings for that reason.
+const HOME: [(icons::Icon, &str, bool); 8] = [
     (icons::GAMEPAD, "Games", true),
     (icons::FILM, "Videos", true),
     (icons::NOTE, "Music", true),
@@ -221,12 +225,11 @@ const HOME: [(icons::Icon, &str, bool); 9] = [
     (icons::CLOCK, "Recent", true),
     (icons::CHART, "System", true),
     (icons::GEAR, "Settings", true),
-    (icons::INFO, "About", true),
     (icons::POWER, "Power", true),
 ];
 
 /// Settings submenu entries.
-const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 9] = [
+const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 10] = [
     (icons::TV, "TV profile", true),
     (icons::FIT, "Video fit", true),
     (icons::PAD, "Pads", true),
@@ -236,6 +239,7 @@ const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 9] = [
     (icons::NOTE, "Music", true),
     (icons::FILM, "Videos", true),
     (icons::PHOTO, "Photo frame", true),
+    (icons::INFO, "About", true),
 ];
 
 /// Rows of the Music settings page before the one per visualizer.
@@ -883,7 +887,6 @@ impl Scene {
                 self.go(Screen::Monitor { page: 0 });
             }
             6 => self.go(Screen::Settings { sel: 0 }),
-            7 => self.go(Screen::About { top: 0 }),
             _ => self.go(Screen::Power { sel: 0 }),
         }
         Action::None
@@ -924,7 +927,8 @@ impl Scene {
             }
             6 => self.go(Screen::MusicSettings { sel: 0 }),
             7 => self.go(Screen::VideoSettings { sel: 0 }),
-            _ => self.go(Screen::FrameSettings { sel: 0 }),
+            8 => self.go(Screen::FrameSettings { sel: 0 }),
+            _ => self.go(Screen::About { top: 0 }),
         }
         Action::None
     }
@@ -2400,7 +2404,7 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
-                    self.screen = Screen::Menu;
+                    self.screen = Screen::Settings { sel: 9 };
                     moved = true;
                 }
                 _ => {}

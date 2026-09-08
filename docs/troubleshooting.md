@@ -152,3 +152,53 @@ A file written by a newer build than the one running is not overwritten: it is
 copied aside as `settings.toml.v<N>` first, and a line about it goes to the
 launcher's log. Going back to the newer build and moving that copy over the
 current file restores what it held.
+
+## The photo frame says "reading the collection..."
+
+That line is the frame with nothing to show yet, and it names its own reason
+underneath. In order:
+
+- **`no immich.toml in ~/.config/omarchy-crt`.** The frame is not set up. Write
+  the file with `url` and `key`; `docs/cli.md` says where the key comes from.
+- **`... did not answer, or refused the key`** from `omarchy-crt frame check`.
+  Either the address is wrong or the key has been revoked. The address must
+  carry no trailing slash and no path: `https://immich.example.lan`.
+- **`the memories source has no photographs`.** The server has no memory for
+  today, which happens on a young collection. Set `source` to `favorites` or
+  `all` in `[frame]`, or name an album.
+
+With the server reachable, the first picture takes as long as one fetch and
+one ffmpeg pass. `omarchy-crt frame fill 60` does that work ahead of an
+evening, and after it the frame fills in the first second even with the server
+switched off, because the prepared pictures are its own collection.
+
+A photograph with nothing written under it was prepared before the caption
+files existed. `omarchy-crt frame clear` and one `frame fill` puts them back.
+
+## The frame's pictures are all fetched again
+
+The cache is keyed by the size of the screen: pictures prepared for 240 lines
+are not the pictures for 288. Changing standard, or the line count of the
+launcher, is a new set. `omarchy-crt frame fill` prepares for whatever the
+tube is set to now, so run it after changing standard, not before.
+
+## The weather line is the wrong town
+
+wttr.in guesses from the address when `[frame] weather` is empty, and a VPN
+moves that guess a country. Put a place in the setting. The line is cached
+half an hour under the name of the place it was asked for, so a change shows
+up on the next fetch rather than on the next picture.
+
+## The monitor says the graphics have no counters
+
+`gpu_busy_percent` and the video memory files are an amdgpu feature. On
+anything else that panel says so and the rest of the page carries on: nothing
+here is worth a driver-specific dependency.
+
+Temperatures come from whichever chip `hwmon` names: `k10temp` and `coretemp`
+for the processor, `amdgpu` for the card, `nvme` for the disk. A machine that
+names none of them leaves those numbers out.
+
+The processor number is high the moment the monitor opens because the
+launcher is drawing it, which is honest: at 320 by 240 with a bank of meters
+moving, the launcher really is the busiest thing on the machine.
