@@ -217,6 +217,64 @@ too. This is how `scripts/shoot.sh` records the tour and how tests drive the
 menu; a game already running keeps the real keyboard and pad, nothing from
 the pipe reaches it.
 
+A whole screen can be asked for by name, which is what the desktop menu does
+rather than counting rows:
+
+```
+omarchy-crt shell screen music
+omarchy-crt shell screen frame
+```
+
+Names: `home`, `games`, `videos`, `youtube`, `music`, `favorites`, `recent`,
+`frame`, `monitor`, `processes`, `settings`, `picture`, `style`, `pads`,
+`diagnostics`, `about`, `power`. Nothing happens while a game or a film is on:
+a menu entry pressed by accident must not take the television away from what
+it is doing.
+
+## The photo frame
+
+```
+omarchy-crt frame check       # is the server there, does it take the key
+omarchy-crt frame fill [N]    # prepare N photographs ahead of an evening
+omarchy-crt frame clear       # throw the prepared ones away
+```
+
+The frame needs `~/.config/omarchy-crt/immich.toml`:
+
+```toml
+url = "https://immich.example.lan"
+key = "an API key with read access to assets, albums and memories"
+```
+
+Make the key in Immich under the account menu, API Keys. It is handed to curl
+on its standard input, never on a command line, so it does not show up in the
+process list. Without that file the frame says so and everything else works
+as before.
+
+What the frame shows and for how long is in `settings.toml`, under `[frame]`,
+and on the television under Settings, Photo frame: `style` (`photos`, `clock`,
+`panel`), `seconds`, `source` (`memories`, `favorites`, `album`, `all`),
+`album`, `pan`, `weather` (a place name for wttr.in, empty asks by address)
+and `calendar` (an `.ics` address).
+
+Setting the screensaver's effect to `photos` makes an idle television the
+frame; `system` makes it the monitor.
+
+## The Omarchy menu
+
+`bin/omarchy-crt-install` adds a **Television** entry to Omarchy's own menu by
+writing the block in `menu/omarchy-menu.jsonc` into
+`~/.config/omarchy/extensions/omarchy-menu.jsonc`, between two markers, with
+the previous file kept beside it as `.omarchy-crt.bak`. That path is the
+extension point Omarchy offers: nothing is patched and nothing is forked.
+`--uninstall` takes the block out again.
+
+The rows are power, the link in the clipboard, then Channel (games, music,
+video, the photo frame, the system monitor), Picture (standard, lines,
+centring), Sound (volume, where the audio goes), Library (scan, box art,
+BIOS, fill the frame), Capture (screenshot, record), Pads and Diagnostics.
+Every one of them runs a command from this page.
+
 ## The display process
 
 ```

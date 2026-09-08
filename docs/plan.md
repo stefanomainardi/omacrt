@@ -62,6 +62,17 @@ is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
   launcher draws at the full height. Whether a film looks better as fields
   than as a deinterlaced 240p picture is still a judgement for the eye.
 
+- **The television when nothing is playing.** A photo frame reading the
+  house's own Immich server (memories, an album, the favourites), an ambient
+  page with the clock, the weather and the next appointment, and a system
+  monitor in the shape of a 16 bit status screen. Either can stand in for the
+  screensaver. The prepared pictures are kept, so the frame works with the
+  server switched off.
+- **A Television entry in the Omarchy menu**, through
+  `~/.config/omarchy/extensions/omarchy-menu.jsonc`, which is the extension
+  point Omarchy offers. Nothing patched. Every row calls the CLI, reaching the
+  launcher with `omarchy-crt shell screen NAME`.
+
 ## Next
 
 1. **Pause menu.** Aspect and shader choices.

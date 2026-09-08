@@ -9,6 +9,28 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- A photo frame: photographs from an Immich server on the same network, from
+  what the server calls memories, an album, the favourites or anything at all,
+  captioned with the place, the date and the faces the server already knows.
+  Three amounts of furniture over the picture (`photos`, `clock`, `panel`),
+  the ambient page carrying the weather, the next appointment from an `.ics`
+  calendar and what is playing. Pictures close to 4:3 fill the screen and
+  drift a pixel a frame; the rest are fitted whole against a blurred copy of
+  themselves. The prepared pictures are the frame's own collection, so it
+  works with the server off. `omarchy-crt frame check|fill|clear`.
+- A system monitor drawn as a 16 bit status screen: a bank of meters, one per
+  logical processor, memory, graphics, load and network history, the rates and
+  the busiest processes, with a second page of processes and their pids. Read
+  from `/proc` and `/sys` only.
+- The screensaver can be a whole screen instead of a text effect: `photos`
+  leaves an idle television showing the photographs, `system` the monitor.
+- A **Television** entry in Omarchy's own menu, written into the extension
+  file Omarchy reads for it, with power, channels, picture, sound, library,
+  capture, pads and diagnostics. `--uninstall` takes it back out.
+- `omarchy-crt shell screen NAME` opens a launcher screen by name, which is
+  how the menu reaches it without counting rows.
+- `omarchy-crt audio volume` takes a step (`+10`, `-10`) as well as a percent.
+
 - GameCube, through the Dolphin core: native internal resolution, 480 lines,
   the widescreen hacks off and the boot animation skipped. The files the core
   needs but nobody ships with it are fetched once, on the first launch.

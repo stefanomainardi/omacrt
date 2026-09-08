@@ -174,6 +174,14 @@ can send to a television once the television is just another output it owns.
 - **RetroArch.** Driven without its menu: a configuration written per launch
   from `systems.toml`, hotkeys pressed by the compositor, save states read
   back for the launcher's rows.
+- **The menu.** A **Television** entry in Omarchy's own menu, through the
+  extension file Omarchy reads for exactly that
+  (`~/.config/omarchy/extensions/omarchy-menu.jsonc`): power, channels,
+  picture, sound, the library, capture, pads and diagnostics, each row calling
+  the same CLI a terminal would. Nothing patched.
+- **Immich.** The photo frame reads the house's own photograph server: this
+  day in the years before, an album, the favourites, with where and when and
+  who from the server's own metadata. The pictures never leave the network.
 - **The rest of the box.** PipeWire routes the launcher, RetroArch, mpv and
   cliamp to the television's audio and back; the I2C bus of the HDMI port
   configures the DAC's sync; systemd hands the tube over at boot; pads come
@@ -301,6 +309,21 @@ switches with a blend.
   **YouTube** on the television: search from the tube, watch later, recently
   watched, the link in the clipboard, or `omarchy-crt watch URL` from a
   terminal; streams are fetched at 480p, all a 240 line tube can show.
+- **Photo frame.** The house's photographs on the television, from an Immich
+  server on the same network: this day in the years before, an album or the
+  favourites, with the place, the date and the faces the server already knows.
+  Nothing over the picture, or the time and the caption in the corners, or the
+  whole ambient page with a clock, the weather, the next appointment and what
+  is playing. A photograph that fills the screen drifts a pixel a frame while
+  it is up, so it never looks like a photograph of a television, and one held
+  upright is fitted whole against a blurred copy of itself rather than black
+  bars. The prepared pictures are the frame's own collection, so it works with
+  the server switched off.
+- **System monitor.** What the machine is doing, drawn as a 16 bit status
+  screen: a bank of little meters, one per processor, memory and graphics on
+  bevelled plates, a minute and a half of history for load and network, the
+  rates and the busiest processes. Straight out of `/proc` and `/sys`. Set the
+  screensaver to `photos` or `system` and an idle television becomes either.
 - **Pads.** SDL's database plus a wizard on the tube for the pads it does not
   know: press each control once and it is mapped for good.
 - **Sound.** Every click, whoosh, crackle and scrape is synthesized at

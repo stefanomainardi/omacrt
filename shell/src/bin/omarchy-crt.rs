@@ -29,6 +29,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   shell start|stop|restart|focus
   shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
                                  search osk del next prev first last
+  shell screen <name>            open a screen: home games videos music favorites recent frame
+                                 monitor settings picture style pads diagnostics about power
   shell type <text>              type into the launcher's search bar
   game key <key> [ms]            press a key inside the running game (enter, rshift, or an
                                  evdev code), held for that many milliseconds
@@ -39,7 +41,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   record start <file.mp4>|stop   capture the tube, picture and sound, into a video
   focus                    keyboard focus to the launcher
   audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
-  audio volume N           TV sink volume in percent (up to 150), kept in the config
+  audio volume N|+N|-N     TV sink volume in percent (up to 150), or a step from where it is
   dac status|reset|csync and|xor|separate|watch
   bios [--json]            BIOS files the cores expect
   bios import DIR [--all]  copy BIOS files from another collection
@@ -49,6 +51,9 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library set SYS core=X|dir=D   change a system's core or folder in systems.toml
   library covers [SYS...] [--limit N] [--force]   fetch box art for the collection, matching titles when names differ
   library scan [DIR...]    index every game under the roots (any layout)
+  frame check              is the Immich server there and does it take the key
+  frame fill [N]           fetch and prepare N photographs for the frame (default 40)
+  frame clear              throw away the prepared photographs
   library discover [--json]  mounted places that look like collections
   library roots add|remove DIR
   library assign DIR SYS   tell the scan what a folder holds
@@ -1332,6 +1337,94 @@ fn cmd_bios(args: &[String]) {
     );
 }
 
+/// The photo frame: check the server, fill the cache, empty it.
+fn cmd_frame(args: &[String]) {
+    use omarchy_crt_shell::immich;
+    let pos = positional(args);
+    let what = pos.first().map(|s| s.as_str()).unwrap_or("check");
+    let dir = crt::config_dir();
+    if what == "clear" {
+        match immich::clear_cache() {
+            Ok(()) => println!("frame: cache emptied"),
+            Err(e) => die(&format!("frame: {e}")),
+        }
+        return;
+    }
+    let Some(cfg) = immich::Config::load(&dir) else {
+        die(&format!(
+            "no {}/immich.toml: write `url` and `key` into it (an Immich API key with read access)",
+            dir.display()
+        ));
+    };
+    match immich::check(&cfg) {
+        Ok(version) => println!("server:     {} ({version})", cfg.url),
+        Err(e) => die(&format!("frame: {e}")),
+    }
+    if what == "check" {
+        return;
+    }
+    if what != "fill" {
+        die("frame takes check, fill or clear");
+    }
+    let want: usize = pos
+        .get(1)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(40)
+        .clamp(1, 250);
+    let settings = omarchy_crt_shell::settings::Settings::load(&dir);
+    let source = immich::Source::named(&settings.frame.source);
+    let shots = immich::list(&cfg, source, &settings.frame.album, want);
+    if shots.is_empty() {
+        die(&format!(
+            "frame: the {} source gave no photographs",
+            source.label()
+        ));
+    }
+    println!(
+        "source:     {} ({} photographs)",
+        source.label(),
+        shots.len()
+    );
+    let state = State::load();
+    let (w, h) = frame_size(&state);
+    let mut done = 0;
+    for shot in &shots {
+        let Some(path) = immich::prepare(&cfg, shot, w, h) else {
+            continue;
+        };
+        done += 1;
+        // The caption is written beside the picture, so the frame can put it
+        // up without asking the server anything.
+        if immich::Note::read(&path) == immich::Note::default() {
+            let details = immich::details(&cfg, &shot.id);
+            let when = if details.taken.is_empty() {
+                immich::spoken_date(&shot.taken)
+            } else {
+                immich::spoken_date(&details.taken)
+            };
+            let ago = match shot.years_ago {
+                Some(1) => "a year ago today".to_string(),
+                Some(n) if n > 1 => format!("{n} years ago today"),
+                _ => String::new(),
+            };
+            immich::Note {
+                place: details.place,
+                when,
+                ago,
+                people: details.people,
+            }
+            .write(&path);
+        }
+    }
+    println!("prepared:   {done} of {} at {w}x{h}", shots.len());
+}
+
+/// The size the frame prepares pictures for: the launcher's own framebuffer.
+fn frame_size(state: &State) -> (u32, u32) {
+    let lines = if state.lines > 0 { state.lines } else { 240 };
+    (320, lines)
+}
+
 fn cmd_library(args: &[String]) {
     use omarchy_crt_shell::index::{self, Index, LibraryConfig};
     let pos = positional(args);
@@ -2084,6 +2177,14 @@ fn main() {
                     }
                     crt::control::send(&names).unwrap_or_else(|e| die(&e.to_string()));
                 }
+                "screen" => {
+                    let pos = positional(args);
+                    let name = pos
+                        .get(1)
+                        .map(|s| s.as_str())
+                        .unwrap_or_else(|| die("shell screen needs a screen name"));
+                    crt::control::send_screen(name).unwrap_or_else(|e| die(&e.to_string()));
+                }
                 "type" => {
                     let words: Vec<&str> = positional(args)
                         .iter()
@@ -2127,10 +2228,26 @@ fn main() {
                 ),
                 Some("desktop") => println!("{}", audio::route_back(&mut state)),
                 Some("volume") => {
-                    let v: u32 = positional(args)
+                    // A percent, or a step up or down from where it is, so a
+                    // menu row or a key binding can be "louder".
+                    let raw = positional(args)
                         .get(1)
-                        .and_then(|s| s.trim_end_matches('%').parse().ok())
-                        .unwrap_or_else(|| die("audio volume needs a percent, 0 to 150"));
+                        .map(|s| s.trim_end_matches('%').to_string())
+                        .unwrap_or_else(|| {
+                            die("audio volume needs a percent, 0 to 150, or +10 or -10")
+                        });
+                    let v: u32 = match raw.strip_prefix(['+', '-']) {
+                        Some(step) => {
+                            let step: i32 = step
+                                .parse()
+                                .unwrap_or_else(|_| die("audio volume: not a number"));
+                            let step = if raw.starts_with('-') { -step } else { step };
+                            (cfg.audio.volume as i32 + step).clamp(0, 150) as u32
+                        }
+                        None => raw
+                            .parse()
+                            .unwrap_or_else(|_| die("audio volume: not a number")),
+                    };
                     let v = v.min(150);
                     omarchy_crt_shell::crt::set_value("audio.volume", &v.to_string())
                         .unwrap_or_else(|e| die(&e));
@@ -2215,6 +2332,7 @@ fn main() {
         }
         "bios" => cmd_bios(args),
         "library" => cmd_library(args),
+        "frame" => cmd_frame(args),
         "watch" => {
             let pos = positional(args);
             let Some(target) = pos.first() else {

@@ -45,6 +45,57 @@ impl Default for VideoFit {
     }
 }
 
+/// The photo frame and the ambient screen.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Frame {
+    /// How much furniture goes over the picture: `photos` for none, `clock`
+    /// for the time and the caption, `panel` for the whole ambient page.
+    #[serde(default = "default_frame_style")]
+    pub style: String,
+    /// Seconds a photograph stays up.
+    #[serde(default = "default_frame_seconds")]
+    pub seconds: u32,
+    /// Where the pictures come from: `memories`, `album`, `favorites`, `all`.
+    #[serde(default = "default_frame_source")]
+    pub source: String,
+    /// The album's name, when the source is an album.
+    #[serde(default)]
+    pub album: String,
+    /// Let a photograph that fills the screen drift while it is up.
+    #[serde(default = "default_true")]
+    pub pan: bool,
+    /// Place for the weather line; empty asks by address.
+    #[serde(default)]
+    pub weather: String,
+    /// A calendar to read the next appointment from, as an `.ics` address.
+    #[serde(default)]
+    pub calendar: String,
+}
+
+fn default_frame_style() -> String {
+    "clock".into()
+}
+fn default_frame_seconds() -> u32 {
+    25
+}
+fn default_frame_source() -> String {
+    "memories".into()
+}
+
+impl Default for Frame {
+    fn default() -> Self {
+        Self {
+            style: default_frame_style(),
+            seconds: default_frame_seconds(),
+            source: default_frame_source(),
+            album: String::new(),
+            pan: true,
+            weather: String::new(),
+            calendar: String::new(),
+        }
+    }
+}
+
 /// The music screen (cliamp).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Music {
@@ -145,6 +196,8 @@ pub struct Settings {
     pub music: Music,
     #[serde(default)]
     pub videos: Videos,
+    #[serde(default)]
+    pub frame: Frame,
 }
 
 fn default_theme() -> String {
@@ -164,6 +217,7 @@ impl Default for Settings {
             video: VideoFit::default(),
             music: Music::default(),
             videos: Videos::default(),
+            frame: Frame::default(),
         }
     }
 }

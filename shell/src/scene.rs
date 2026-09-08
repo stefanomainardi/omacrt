@@ -127,6 +127,18 @@ enum Screen {
     YouTube {
         sel: usize,
     },
+    /// What the machine is doing, drawn the way a 16 bit game drew a status
+    /// screen. `page` is 0 for the whole machine and 1 for the processes.
+    Monitor {
+        page: usize,
+    },
+    /// Photographs from the house's own server, with as much or as little
+    /// over them as the settings ask for.
+    Frame,
+    /// How the photo frame behaves.
+    FrameSettings {
+        sel: usize,
+    },
 }
 
 /// A row of the music screen.
@@ -201,19 +213,20 @@ impl SysInfo {
 const MARK_SCALE: i32 = 3;
 const ETCH_START: f32 = 4.15;
 /// Home menu entries: icon, label, opens a submenu.
-const HOME: [(icons::Icon, &str, bool); 8] = [
+const HOME: [(icons::Icon, &str, bool); 9] = [
     (icons::GAMEPAD, "Games", true),
     (icons::FILM, "Videos", true),
     (icons::NOTE, "Music", true),
     (icons::STAR, "Favorites", true),
     (icons::CLOCK, "Recent", true),
+    (icons::CHART, "System", true),
     (icons::GEAR, "Settings", true),
     (icons::INFO, "About", true),
     (icons::POWER, "Power", true),
 ];
 
 /// Settings submenu entries.
-const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 8] = [
+const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 9] = [
     (icons::TV, "TV profile", true),
     (icons::FIT, "Video fit", true),
     (icons::PAD, "Pads", true),
@@ -222,6 +235,7 @@ const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 8] = [
     (icons::PULSE, "Diagnostics", true),
     (icons::NOTE, "Music", true),
     (icons::FILM, "Videos", true),
+    (icons::PHOTO, "Photo frame", true),
 ];
 
 /// Rows of the Music settings page before the one per visualizer.
@@ -294,11 +308,16 @@ pub enum PauseOutcome {
 
 /// Rows per page in the systems list.
 const SYS_PAGE: usize = 11;
+/// Pages of the system monitor: the machine, then the processes.
+const MONITOR_PAGES: usize = 2;
+/// Rows of the photo frame settings page.
+const FRAME_ROWS: usize = 5;
 /// Videos hub entries.
-const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
+const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 4] = [
     (icons::FILM, "Local videos", true),
     (icons::RESUME, "YouTube", true),
     (icons::FOLDER, "Play the link in the clipboard", false),
+    (icons::PHOTO, "Photo frame", true),
 ];
 
 /// YouTube hub entries.
@@ -480,6 +499,19 @@ pub struct Scene {
     music_query: Option<String>,
     /// Visualiser bars eased toward the last spectrum frame.
     vis: Vec<f32>,
+    /// Kernel counters for the system monitor, sampled while it is on screen.
+    sysmon: crate::sysmon::Monitor,
+    /// When the monitor last read the counters.
+    sysmon_at: f64,
+    /// Core bars eased toward the sample, so the bank moves like a meter.
+    sysmon_bars: Vec<f32>,
+    /// Photographs for the frame, prepared on a thread.
+    photos: crate::photos::Feed,
+    /// What is on the frame now, and what it is fading up from.
+    frame_now: Option<crate::photos::Shown>,
+    frame_previous: Option<crate::photos::Shown>,
+    /// When the picture on the frame went up.
+    frame_since: f64,
 }
 
 impl Scene {
@@ -575,6 +607,13 @@ impl Scene {
             music_hub_sel: 0,
             music_query: None,
             vis: vec![0.0; 10],
+            sysmon: crate::sysmon::Monitor::new(),
+            sysmon_at: 0.0,
+            sysmon_bars: Vec::new(),
+            photos: crate::photos::Feed::new(),
+            frame_now: None,
+            frame_previous: None,
+            frame_since: 0.0,
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
             recent_at: load_times(&library.config_dir.join("recent.txt")),
@@ -838,8 +877,13 @@ impl Scene {
                 self.list_from_home = true;
                 self.open_virtual(&list);
             }
-            5 => self.go(Screen::Settings { sel: 0 }),
-            6 => self.go(Screen::About { top: 0 }),
+            5 => {
+                self.sysmon.sample();
+                self.sysmon_at = 0.0;
+                self.go(Screen::Monitor { page: 0 });
+            }
+            6 => self.go(Screen::Settings { sel: 0 }),
+            7 => self.go(Screen::About { top: 0 }),
             _ => self.go(Screen::Power { sel: 0 }),
         }
         Action::None
@@ -879,7 +923,8 @@ impl Scene {
                 self.go(Screen::Diag { top: 0 });
             }
             6 => self.go(Screen::MusicSettings { sel: 0 }),
-            _ => self.go(Screen::VideoSettings { sel: 0 }),
+            7 => self.go(Screen::VideoSettings { sel: 0 }),
+            _ => self.go(Screen::FrameSettings { sel: 0 }),
         }
         Action::None
     }
@@ -1099,6 +1144,9 @@ impl Scene {
             2 => {
                 let names: Vec<&str> = std::iter::once("random")
                     .chain(effects::ALL.iter().map(|k| k.name()))
+                    // Not effects at all: whole screens that make more sense
+                    // on an idle television than a text effect does.
+                    .chain(["photos", "system"])
                     .collect();
                 let i = names.iter().position(|n| *n == sv.effect).unwrap_or(0) as i32;
                 let next = (i + dir).rem_euclid(names.len() as i32) as usize;
@@ -2072,6 +2120,33 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::Frame => match nav {
+                Nav::Right | Nav::Down => {
+                    self.next_photo();
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.close_frame();
+                    moved = true;
+                }
+                _ => {}
+            },
+            Screen::Monitor { page } => match nav {
+                Nav::Left | Nav::Up if *page > 0 => {
+                    *page -= 1;
+                    moved = true;
+                }
+                Nav::Right | Nav::Down if *page + 1 < MONITOR_PAGES => {
+                    *page += 1;
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.screen = Screen::Menu;
+                    self.sel = 5;
+                    moved = true;
+                }
+                _ => {}
+            },
             Screen::Settings { sel } => match nav {
                 Nav::Up if *sel > 0 => {
                     *sel -= 1;
@@ -2264,6 +2339,29 @@ impl Scene {
                 Nav::Back => {
                     self.save_settings();
                     self.screen = Screen::Settings { sel: 6 };
+                    self.pending.push(Sound::Lock);
+                    return;
+                }
+                _ => {}
+            },
+            Screen::FrameSettings { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < FRAME_ROWS => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    let row = *sel;
+                    let dir = if nav == Nav::Right { 1 } else { -1 };
+                    self.adjust_frame(row, dir);
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.save_settings();
+                    self.screen = Screen::Settings { sel: 8 };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -2826,6 +2924,10 @@ impl Scene {
             Screen::Settings { sel } => self.activate_settings(sel),
             Screen::Videos { sel } => {
                 self.pending.push(Sound::Select);
+                if sel == 3 {
+                    self.open_frame();
+                    return Action::None;
+                }
                 let Some(i) = self.video_system() else {
                     return Action::None;
                 };
@@ -2837,7 +2939,7 @@ impl Scene {
                         self.pending.push(Sound::Whoosh);
                     }
                     1 => self.go(Screen::YouTube { sel: 0 }),
-                    _ => match yt::clipboard_link() {
+                    2 => match yt::clipboard_link() {
                         Some(link) => {
                             let e = Entry {
                                 game: Game {
@@ -2856,6 +2958,7 @@ impl Scene {
                             self.pending.push(Sound::Crunch);
                         }
                     },
+                    _ => {}
                 }
                 Action::None
             }
@@ -2929,7 +3032,16 @@ impl Scene {
                 }
                 Action::None
             }
-            Screen::Diag { .. } | Screen::About { .. } => Action::None,
+            Screen::Diag { .. } | Screen::About { .. } | Screen::Monitor { .. } => Action::None,
+            Screen::Frame => {
+                self.next_photo();
+                Action::None
+            }
+            Screen::FrameSettings { .. } => {
+                self.save_settings();
+                self.open_frame();
+                Action::None
+            }
             Screen::Music { sel, .. } => {
                 match self.music_rows().get(sel).map(|r| r.3.clone()) {
                     Some(MusicRow::Now) => {
@@ -3330,6 +3442,15 @@ impl Scene {
                 self.screen = Screen::Diag { top: 0 };
             }
             Some("power") => self.screen = Screen::Power { sel: 0 },
+            Some("frame") => self.open_frame(),
+            Some("monitor") => {
+                self.sysmon.sample();
+                self.screen = Screen::Monitor { page: 0 };
+            }
+            Some("processes") => {
+                self.sysmon.sample();
+                self.screen = Screen::Monitor { page: 1 };
+            }
             Some("style") => self.screen = Screen::Style { sel: 0 },
             Some("fit") => self.screen = Screen::VideoFit { sel: 0 },
             Some(n) => match self.library.systems.iter().position(|s| s.name == n) {
@@ -3338,6 +3459,58 @@ impl Scene {
             },
             None => self.screen = Screen::Systems { sel: 0, top: 0 },
         }
+    }
+
+    /// Open a screen by name, for the control pipe: the desktop menu, the
+    /// bar widget and a script all reach the launcher through this.
+    ///
+    /// Nothing happens while a game or a film is on: a menu entry pressed by
+    /// accident must not take the television away from what it is doing.
+    pub fn open_screen(&mut self, name: &str) -> bool {
+        if self.running.is_some() || self.launching.is_some() || self.player.is_some() {
+            return false;
+        }
+        self.menu_live = true;
+        self.chime_played = true;
+        self.last_input = self.now;
+        match name.trim().to_ascii_lowercase().as_str() {
+            "home" | "menu" => self.home(),
+            "games" | "systems" => self.go(Screen::Systems { sel: 0, top: 0 }),
+            "videos" | "video" => self.go(Screen::Videos { sel: 0 }),
+            "youtube" => self.go(Screen::YouTube { sel: 0 }),
+            "music" => self.open_music(),
+            "favorites" | "favourites" => {
+                let list = self.favorites.clone();
+                self.list_from_home = true;
+                self.open_virtual(&list);
+            }
+            "recent" => {
+                let list = self.recent.clone();
+                self.list_from_home = true;
+                self.open_virtual(&list);
+            }
+            "frame" | "photos" => self.open_frame(),
+            "monitor" | "system" => {
+                self.sysmon.sample();
+                self.go(Screen::Monitor { page: 0 });
+            }
+            "processes" => {
+                self.sysmon.sample();
+                self.go(Screen::Monitor { page: 1 });
+            }
+            "settings" => self.go(Screen::Settings { sel: 0 }),
+            "profile" | "picture" => self.go(Screen::Profile { sel: 0 }),
+            "style" | "theme" => self.go(Screen::Style { sel: 0 }),
+            "pads" | "pair" => self.go(Screen::Pair { sel: 0 }),
+            "diagnostics" | "diag" => {
+                self.diag = self.gather_diagnostics();
+                self.go(Screen::Diag { top: 0 });
+            }
+            "about" => self.go(Screen::About { top: 0 }),
+            "power" => self.go(Screen::Power { sel: 0 }),
+            _ => return false,
+        }
+        true
     }
 
     pub fn is_running(&self) -> bool {
@@ -4222,6 +4395,10 @@ impl Scene {
                 self.draw_video_settings(fb, sel);
                 return;
             }
+            Screen::FrameSettings { sel } => {
+                self.draw_frame_settings(fb, sel);
+                return;
+            }
             Screen::Music { sel, top } => {
                 self.draw_music(fb, sel, top);
                 return;
@@ -4252,6 +4429,14 @@ impl Scene {
             }
             Screen::YouTube { sel } => {
                 self.draw_menu_screen(fb, "YouTube", &YOUTUBE_ITEMS, sel);
+                return;
+            }
+            Screen::Monitor { page } => {
+                self.draw_monitor(fb, page);
+                return;
+            }
+            Screen::Frame => {
+                self.draw_frame(fb);
                 return;
             }
             Screen::Menu => {}
@@ -4444,12 +4629,7 @@ impl Scene {
             }
             let limit = self.idle_limit();
             if limit > 0.0 && (now - self.last_input) as f32 > limit {
-                if self.music.status.playing() && self.settings.music.saver {
-                    self.music_saver_start(now);
-                } else {
-                    let kind = self.chosen_effect();
-                    self.start_screensaver(now, kind);
-                }
+                self.idle_reached(now);
             }
             return;
         }
@@ -4483,12 +4663,39 @@ impl Scene {
         }
         let limit = self.idle_limit();
         if self.menu_live && limit > 0.0 && (now - self.last_input) as f32 > limit {
-            if self.music.status.playing() && self.settings.music.saver {
-                self.music_saver_start(now);
-            } else {
-                let kind = self.chosen_effect();
-                self.start_screensaver(now, kind);
+            self.idle_reached(now);
+        }
+    }
+
+    /// What an idle television does. Usually a text effect over the
+    /// wordmark, but the screensaver setting can name a whole screen
+    /// instead: the photographs, or what the machine is doing.
+    fn idle_reached(&mut self, now: f64) {
+        match self.settings.screensaver.effect.as_str() {
+            "photos" => {
+                if !matches!(self.screen, Screen::Frame) {
+                    self.open_frame();
+                }
+                // The frame is what it does when idle, so the clock starts
+                // again rather than firing on every frame from here on.
+                self.last_input = now;
+                return;
             }
+            "system" => {
+                if !matches!(self.screen, Screen::Monitor { .. }) {
+                    self.sysmon.sample();
+                    self.go(Screen::Monitor { page: 0 });
+                }
+                self.last_input = now;
+                return;
+            }
+            _ => {}
+        }
+        if self.music.status.playing() && self.settings.music.saver {
+            self.music_saver_start(now);
+        } else {
+            let kind = self.chosen_effect();
+            self.start_screensaver(now, kind);
         }
     }
 
@@ -6539,4 +6746,754 @@ fn watch_title(target: &str, given: &str) -> String {
         return host.to_string();
     }
     crate::library::clean_title(Path::new(target))
+}
+
+// ===================================================================== monitor
+//
+// What the machine is doing, drawn the way a 16 bit game drew a status
+// screen: bevelled plates, segmented meters that read as blocks rather than
+// as smooth gradients, and a bank of little vertical bars for the processors
+// that moves like the level meters on the front of an amplifier. The numbers
+// come from `sysmon`, which only reads the kernel's own files.
+
+impl Scene {
+    /// Green while there is room, then yellow, orange and red.
+    fn heat(&self, level: f32) -> Color {
+        let t = level.clamp(0.0, 1.0);
+        if t < 0.5 {
+            lerp_color(self.theme.green, self.theme.yellow, t / 0.5)
+        } else if t < 0.8 {
+            lerp_color(self.theme.yellow, self.theme.orange, (t - 0.5) / 0.3)
+        } else {
+            lerp_color(self.theme.orange, self.theme.red, (t - 0.8) / 0.2)
+        }
+    }
+
+    /// A plate with a lit top left edge and a shadowed bottom right one, the
+    /// way every menu of the era framed a box, with its title cut into the
+    /// top edge.
+    fn plate(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, title: &str) {
+        let face = lerp_color(self.theme.bg, self.theme.paper, 0.06);
+        fb.rect(x, y, w, h, face);
+        // A dither of one lit pixel in four: at 240p this reads as a texture
+        // rather than as a pattern, and it stops the plate looking painted.
+        let speck = lerp_color(face, self.theme.paper, 0.07);
+        let mut yy = y + 1;
+        while yy < y + h - 1 {
+            let mut xx = x + 1 + ((yy - y) % 4);
+            while xx < x + w - 1 {
+                fb.put(xx, yy, speck);
+                xx += 4;
+            }
+            yy += 2;
+        }
+        let light = lerp_color(face, self.theme.paper, 0.30);
+        let dark = lerp_color(face, self.theme.bg, 0.85);
+        fb.rect(x, y, w, 1, light);
+        fb.rect(x, y, 1, h, light);
+        fb.rect(x, y + h - 1, w, 1, dark);
+        fb.rect(x + w - 1, y, 1, h, dark);
+        if !title.is_empty() {
+            let tw = Framebuffer::text_width(title, 1);
+            fb.rect(x + 5, y, tw + 4, 1, face);
+            fb.text(x + 7, y - 4, title, self.theme.cyan, 1);
+        }
+    }
+
+    /// A horizontal meter in blocks. Unlit blocks stay visible, so the meter
+    /// has a length even when nothing is happening.
+    fn meter(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, level: f32, hot: bool) {
+        const BLOCK: i32 = 4;
+        let lit = if hot {
+            self.heat(level)
+        } else {
+            self.theme.cyan
+        };
+        let off = lerp_color(self.theme.bg, self.theme.paper, 0.10);
+        let blocks = (w / BLOCK).max(1);
+        let on = (level.clamp(0.0, 1.0) * blocks as f32).round() as i32;
+        for i in 0..blocks {
+            let bx = x + i * BLOCK;
+            let c = if i < on { lit } else { off };
+            fb.rect(bx, y, BLOCK - 1, h, c);
+            if i < on && h >= 4 {
+                // The highlight along the top is what makes a bar look moulded.
+                fb.rect(bx, y, BLOCK - 1, 1, lerp_color(c, self.theme.paper, 0.45));
+            }
+        }
+    }
+
+    /// The bank of processor meters: one narrow vertical bar per logical
+    /// processor, lit from the bottom, with the last peak left behind.
+    fn core_bank(&mut self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32) {
+        let cores = self.sysmon.last.cores.clone();
+        if cores.is_empty() {
+            return;
+        }
+        if self.sysmon_bars.len() != cores.len() {
+            self.sysmon_bars = cores.clone();
+        }
+        // A meter that jumps to every sample is unreadable; one that eases up
+        // fast and falls slowly reads like a needle.
+        for (i, target) in cores.iter().enumerate() {
+            let cur = self.sysmon_bars[i];
+            let k = if *target > cur { 0.55 } else { 0.20 };
+            self.sysmon_bars[i] = cur + (target - cur) * k;
+        }
+        let n = cores.len() as i32;
+        let step = (w / n).max(2);
+        let bar = (step - 2).max(1);
+        let off = lerp_color(self.theme.bg, self.theme.paper, 0.13);
+        const SEG: i32 = 3;
+        let segments = (h / SEG).max(1);
+        for i in 0..n {
+            let level = self.sysmon_bars[i as usize].clamp(0.0, 1.0);
+            let on = (level * segments as f32).round() as i32;
+            let bx = x + i * step;
+            for s in 0..segments {
+                let sy = y + h - (s + 1) * SEG;
+                let c = if s < on {
+                    self.heat(s as f32 / segments as f32)
+                } else {
+                    off
+                };
+                fb.rect(bx, sy, bar, SEG - 1, c);
+            }
+        }
+    }
+
+    /// A filled graph of one history line, newest at the right.
+    fn graph(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, data: &[f32], c: Color) {
+        let fill = lerp_color(self.theme.bg, c, 0.35);
+        let from = data.len().saturating_sub(w as usize);
+        for (i, v) in data[from..].iter().enumerate() {
+            let px = x + i as i32;
+            let level = v.clamp(0.0, 1.0);
+            let top = y + h - (level * h as f32).round() as i32;
+            if top < y + h {
+                fb.rect(px, top, 1, y + h - top, fill);
+            }
+            fb.put(px, top.clamp(y, y + h - 1), c);
+        }
+    }
+
+    /// The system monitor. Page 0 is the machine, page 1 the processes.
+    fn draw_monitor(&mut self, fb: &mut Framebuffer, page: usize) {
+        // The counters are read twice a second, whatever the frame rate.
+        if self.now - self.sysmon_at >= 0.5 {
+            self.sysmon_at = self.now;
+            self.sysmon.sample();
+        }
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let width = w - 2 * left;
+        fb.clear(self.theme.bg);
+
+        // ---------------------------------------------------- the name plate
+        let s = self.sysmon.last.clone();
+        let plate_h = 13;
+        self.plate(fb, left, 4, width, plate_h, "");
+        let right = format!(
+            "UP {}  {}",
+            crate::sysmon::uptime(s.uptime_secs),
+            chrono::Local::now().format("%H:%M")
+        );
+        let right_w = Framebuffer::text_width(&right, 1);
+        fb.text(w - left - 4 - right_w, 6, &right, self.theme.dim, 1);
+        fb.text(left + 4, 6, "SYSTEM", self.theme.accent, 1);
+        let host_x = left + 4 + 8 * 7;
+        let room = ((w - left - 8 - right_w - host_x) / 8).max(0) as usize;
+        let host: String = self.info.host.to_uppercase().chars().take(room).collect();
+        fb.text(host_x, 6, &host, self.theme.paper, 1);
+
+        if page == 1 {
+            self.draw_monitor_processes(fb, left, width, 4 + plate_h + 8, h);
+            let hint = self.hint(&[("<>", "page"), ("B", "back")]);
+            fb.text(left, h - 12, &hint, scale(self.theme.dim, 0.7), 1);
+            return;
+        }
+
+        // ------------------------------------------------------- processors
+        let cpu_y = 4 + plate_h + 6;
+        let cpu_h = 52;
+        self.plate(fb, left, cpu_y, width, cpu_h, "CPU");
+        let pct = format!("{:>3.0}%", s.cpu * 100.0);
+        fb.text(left + 6, cpu_y + 6, &pct, self.heat(s.cpu), 2);
+        let load = format!("{:.2} {:.2} {:.2}", s.load[0], s.load[1], s.load[2]);
+        let load_x = left + 6 + Framebuffer::text_width(&pct, 2) + 10;
+        fb.text(load_x, cpu_y + 9, &load, self.theme.dim, 1);
+        let mut badge = String::new();
+        if let Some(t) = s.cpu_temp {
+            badge.push_str(&format!("{t:.0}C"));
+        }
+        // An idle fan that has stopped is not worth a line of its own.
+        if let Some(rpm) = s.fan_rpm.filter(|r| *r > 0) {
+            badge.push_str(&format!("  {rpm}RPM"));
+        }
+        if !badge.is_empty() {
+            let temp_level = s.cpu_temp.map(|t| (t - 40.0) / 50.0).unwrap_or(0.0);
+            fb.text(
+                w - left - 6 - Framebuffer::text_width(&badge, 1),
+                cpu_y + 9,
+                &badge,
+                self.heat(temp_level),
+                1,
+            );
+        }
+        self.core_bank(fb, left + 6, cpu_y + 24, width - 12, 24);
+
+        // ---------------------------------------------- memory and graphics
+        let half = (width - 6) / 2;
+        let mem_y = cpu_y + cpu_h + 6;
+        let mem_h = 36;
+        self.plate(fb, left, mem_y, half, mem_h, "MEM");
+        let mem_level = if s.mem_total_kb == 0 {
+            0.0
+        } else {
+            s.mem_used_kb as f32 / s.mem_total_kb as f32
+        };
+        self.meter(fb, left + 6, mem_y + 7, half - 12, 7, mem_level, true);
+        let mem_text = format!(
+            "{} / {}",
+            crate::sysmon::gib(s.mem_used_kb),
+            crate::sysmon::gib(s.mem_total_kb)
+        );
+        fb.text(left + 6, mem_y + 18, &mem_text, self.theme.paper, 1);
+        if s.swap_total_kb > 0 {
+            let swap = s.swap_used_kb as f32 / s.swap_total_kb as f32;
+            let bar = ((half - 12) as f32 * swap.clamp(0.0, 1.0)) as i32;
+            let track = lerp_color(self.theme.bg, self.theme.paper, 0.10);
+            fb.rect(left + 6, mem_y + mem_h - 6, half - 12, 2, track);
+            fb.rect(left + 6, mem_y + mem_h - 6, bar, 2, self.theme.magenta);
+        }
+
+        let gpu_x = left + half + 6;
+        self.plate(fb, gpu_x, mem_y, half, mem_h, "GPU");
+        match s.gpu_busy {
+            Some(busy) => {
+                self.meter(fb, gpu_x + 6, mem_y + 7, half - 12, 7, busy / 100.0, true);
+                fb.text(
+                    gpu_x + 6,
+                    mem_y + 18,
+                    &format!("{busy:.0}%"),
+                    self.theme.paper,
+                    1,
+                );
+                if let Some(t) = s.gpu_temp {
+                    let badge = format!("{t:.0}C");
+                    fb.text(
+                        gpu_x + half - 6 - Framebuffer::text_width(&badge, 1),
+                        mem_y + 18,
+                        &badge,
+                        self.heat((t - 40.0) / 50.0),
+                        1,
+                    );
+                }
+                if let (Some(used), Some(total)) = (s.vram_used_kb, s.vram_total_kb) {
+                    let vram = format!(
+                        "{} / {}",
+                        crate::sysmon::gib(used),
+                        crate::sysmon::gib(total)
+                    );
+                    fb.text(gpu_x + 6, mem_y + 28, &vram, self.theme.dim, 1);
+                }
+            }
+            None => fb.text(gpu_x + 6, mem_y + 12, "no counters", self.theme.dim, 1),
+        }
+
+        // --------------------------------------------------------- graphs
+        let graph_y = mem_y + mem_h + 6;
+        let graph_h = 40;
+        self.plate(fb, left, graph_y, half, graph_h, "LOAD");
+        let cpu_history = self.sysmon.cpu_history.clone();
+        self.graph(
+            fb,
+            left + 3,
+            graph_y + 4,
+            half - 6,
+            graph_h - 8,
+            &cpu_history,
+            self.theme.green,
+        );
+        let mem_history = self.sysmon.mem_history.clone();
+        self.graph(
+            fb,
+            left + 3,
+            graph_y + 4,
+            half - 6,
+            graph_h - 8,
+            &mem_history,
+            self.theme.magenta,
+        );
+
+        self.plate(fb, gpu_x, graph_y, half, graph_h, "NET");
+        let net: Vec<f32> = self
+            .sysmon
+            .net_history
+            .iter()
+            .map(|(d, _)| *d)
+            .collect::<Vec<_>>();
+        let up: Vec<f32> = self.sysmon.net_history.iter().map(|(_, u)| *u).collect();
+        self.graph(
+            fb,
+            gpu_x + 3,
+            graph_y + 4,
+            half - 6,
+            graph_h - 8,
+            &net,
+            self.theme.cyan,
+        );
+        self.graph(
+            fb,
+            gpu_x + 3,
+            graph_y + 4,
+            half - 6,
+            graph_h - 8,
+            &up,
+            self.theme.yellow,
+        );
+
+        // ----------------------------------------------------- the bottom line
+        let io_y = graph_y + graph_h + 5;
+        let io = format!(
+            "NET {} {}  DISK {} {}",
+            crate::sysmon::bytes(s.net_down),
+            crate::sysmon::bytes(s.net_up),
+            crate::sysmon::bytes(s.disk_read),
+            crate::sysmon::bytes(s.disk_write),
+        );
+        fb.text(left, io_y, &io, self.theme.paper, 1);
+        let procs = format!("{}R {}P", s.procs_running, s.procs_alive);
+        fb.text(
+            w - left - Framebuffer::text_width(&procs, 1),
+            io_y,
+            &procs,
+            self.theme.dim,
+            1,
+        );
+
+        // The three busiest processes, so the page answers "what is it doing"
+        // without turning to the next one.
+        let list_y = io_y + 14;
+        fb.text(left, list_y, "BUSIEST", self.theme.cyan, 1);
+        let top = s.top.clone();
+        for (i, p) in top.iter().take(3).enumerate() {
+            let y = list_y + 11 + i as i32 * 11;
+            let cpu = format!("{:>5.1}%", p.cpu);
+            let cpu_w = Framebuffer::text_width(&cpu, 1);
+            let mem = crate::sysmon::bytes(p.rss_kb as f64 * 1024.0);
+            let mem_w = Framebuffer::text_width(&mem, 1);
+            let room = ((width - cpu_w - mem_w - 20) / 8).max(4) as usize;
+            let name: String = p.name.chars().take(room).collect();
+            fb.text(left, y, &name, self.theme.paper, 1);
+            fb.text(
+                w - left - mem_w - cpu_w - 8,
+                y,
+                &cpu,
+                self.heat(p.cpu / 400.0),
+                1,
+            );
+            fb.text(w - left - mem_w, y, &mem, self.theme.dim, 1);
+        }
+
+        let hint = self.hint(&[("<>", "processes"), ("B", "back")]);
+        fb.text(left, h - 12, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// Page two: the processes using the machine, most demanding first.
+    fn draw_monitor_processes(
+        &mut self,
+        fb: &mut Framebuffer,
+        left: i32,
+        width: i32,
+        y0: i32,
+        h: i32,
+    ) {
+        let top = self.sysmon.last.top.clone();
+        let rows = ((h - y0 - 20) / 12).clamp(1, 12) as usize;
+        fb.text(left + 6, y0, "PROCESS", self.theme.cyan, 1);
+        let cpu_x = left + width - 6 - 8 * 11;
+        fb.text(cpu_x, y0, "CPU", self.theme.cyan, 1);
+        fb.text(left + width - 6 - 8 * 5, y0, "MEM", self.theme.cyan, 1);
+        fb.rect(
+            left,
+            y0 + 10,
+            width,
+            1,
+            lerp_color(self.theme.bg, self.theme.paper, 0.25),
+        );
+        for (i, p) in top.iter().take(rows).enumerate() {
+            let y = y0 + 14 + i as i32 * 12;
+            let pid = format!("{:>7}", p.pid);
+            fb.text(left + 6, y, &pid, scale(self.theme.dim, 0.8), 1);
+            let name_x = left + 6 + 8 * 8;
+            let room = ((cpu_x - name_x - 4) / 8).max(4) as usize;
+            let name: String = p.name.chars().take(room).collect();
+            fb.text(name_x, y, &name, self.theme.paper, 1);
+            let cpu = format!("{:>5.1}%", p.cpu);
+            fb.text(cpu_x, y, &cpu, self.heat(p.cpu / 400.0), 1);
+            let mem = crate::sysmon::bytes(p.rss_kb as f64 * 1024.0);
+            fb.text(
+                left + width - 6 - Framebuffer::text_width(&mem, 1),
+                y,
+                &mem,
+                self.theme.dim,
+                1,
+            );
+        }
+        if top.is_empty() {
+            fb.text(left + 6, y0 + 20, "reading...", self.theme.dim, 1);
+        }
+    }
+}
+
+// ======================================================================= frame
+//
+// Photographs from the house's own server, on the television in the living
+// room. The pictures arrive prepared for this exact screen, so all that is
+// left here is putting one up, drifting it a little while it is up, fading
+// to the next one, and writing over it as much or as little as the settings
+// ask for.
+
+impl Scene {
+    /// Open the photo frame, starting the supply if it is not running.
+    pub fn open_frame(&mut self) {
+        self.frame_since = self.now;
+        self.go(Screen::Frame);
+    }
+
+    fn close_frame(&mut self) {
+        // The pictures already prepared stay in hand: coming back to the
+        // frame should not mean waiting for the network again.
+        self.screen = Screen::Videos { sel: 3 };
+    }
+
+    /// Put the next photograph up now, rather than at the end of its turn.
+    fn next_photo(&mut self) {
+        match self.photos.take() {
+            Some(next) => {
+                self.frame_previous = self.frame_now.take();
+                self.frame_now = Some(next);
+                self.frame_since = self.now;
+                self.pending.push(Sound::Move);
+            }
+            None => self.pending.push(Sound::Crunch),
+        }
+    }
+
+    /// Paint one photograph over the whole screen, drifted and faded.
+    ///
+    /// A picture that fills the screen was prepared larger than it on
+    /// purpose, and drifts across that margin while it is up: a still
+    /// photograph on a television for half a minute is a photograph of a
+    /// television, and one pixel of movement a frame is enough to stop that
+    /// without the picture ever looking like it is moving.
+    fn paint_photo(&self, fb: &mut Framebuffer, shown: &crate::photos::Shown, alpha: f32, at: f32) {
+        let img = &shown.image;
+        let spare_x = img.w.saturating_sub(fb.w) as f32;
+        let spare_y = img.h.saturating_sub(fb.h) as f32;
+        // Which way it drifts is decided by the picture itself, so the frame
+        // does not pan the same way all evening.
+        let sign = if img.px.first().copied().unwrap_or(0) & 1 == 0 {
+            at
+        } else {
+            1.0 - at
+        };
+        let ox = (spare_x * sign).round() as usize;
+        let oy = (spare_y * sign).round() as usize;
+        let bg = self.theme.bg;
+        for y in 0..fb.h {
+            let sy = (y + oy).min(img.h.saturating_sub(1));
+            for x in 0..fb.w {
+                let sx = (x + ox).min(img.w.saturating_sub(1));
+                if sx >= img.w || sy >= img.h {
+                    continue;
+                }
+                let c = img.over(sx, sy, bg);
+                let out = if alpha >= 0.999 {
+                    c
+                } else {
+                    lerp_color(fb.px[y * fb.w + x], c, alpha)
+                };
+                fb.px[y * fb.w + x] = out;
+            }
+        }
+    }
+
+    /// Darken everything already drawn, so writing over it can be read.
+    fn scrim(&self, fb: &mut Framebuffer, amount: f32) {
+        let bg = self.theme.bg;
+        for p in fb.px.iter_mut() {
+            *p = lerp_color(*p, bg, amount);
+        }
+    }
+
+    /// Text with a hard shadow behind it, which is the only way small type
+    /// stays readable over a photograph.
+    fn shadowed(&self, fb: &mut Framebuffer, x: i32, y: i32, text: &str, c: Color, size: i32) {
+        fb.text(x + size, y + size, text, 0x0000_0000, size);
+        fb.text(x, y, text, c, size);
+    }
+
+    /// The photo frame.
+    fn draw_frame(&mut self, fb: &mut Framebuffer) {
+        // The supply runs for the size of this screen; asking again while it
+        // is already running for this size does nothing.
+        let f = self.settings.frame.clone();
+        let dir = self.library.config_dir.clone();
+        self.photos.start(
+            &dir,
+            omarchy_crt_shell::immich::Source::named(&f.source),
+            f.album.clone(),
+            f.weather.clone(),
+            f.calendar.clone(),
+            fb.w,
+            fb.h,
+        );
+        self.photos.poll();
+
+        let dwell = f.seconds.clamp(5, 600) as f64;
+        let up_for = self.now - self.frame_since;
+        if self.frame_now.is_none() || up_for >= dwell {
+            if let Some(next) = self.photos.take() {
+                self.frame_previous = self.frame_now.take();
+                self.frame_now = Some(next);
+                self.frame_since = self.now;
+            } else if self.frame_now.is_some() {
+                // Nothing new ready: keep the picture up rather than showing
+                // a hole, and try again on the next frame.
+                self.frame_since = self.now - dwell + 1.0;
+            }
+        }
+
+        fb.clear(self.theme.bg);
+        let h = fb.h as i32;
+        let w = fb.w as i32;
+        let left = (w as f32 * 0.05) as i32;
+
+        let Some(now_shown) = self.frame_now.take() else {
+            self.draw_frame_waiting(fb);
+            return;
+        };
+        let fade = clamp(((self.now - self.frame_since) / 1.4) as f32, 0.0, 1.0);
+        let at = clamp(((self.now - self.frame_since) / dwell) as f32, 0.0, 1.0);
+        if fade < 1.0
+            && let Some(before) = self.frame_previous.take()
+        {
+            self.paint_photo(fb, &before, 1.0, 1.0);
+            self.frame_previous = Some(before);
+        }
+        self.paint_photo(fb, &now_shown, ease(fade), at);
+
+        match f.style.as_str() {
+            // Nothing over the picture at all.
+            "photos" => {}
+            "panel" => self.draw_frame_panel(fb, &now_shown),
+            // The time, and what the picture is.
+            _ => {
+                let now = chrono::Local::now();
+                let clock = now.format("%H:%M").to_string();
+                let cw = Framebuffer::text_width(&clock, 4);
+                // The clock and the date stack in the corner; the caption
+                // gets the whole bottom line to itself, because a place and
+                // a date and three names need it.
+                let base = h - 14;
+                let middle = base - 12;
+                self.shadowed(fb, w - left - cw, base - 48, &clock, self.theme.paper, 4);
+                let date = now.format("%a %d %b").to_string().to_uppercase();
+                let dw = Framebuffer::text_width(&date, 1);
+                self.shadowed(fb, w - left - dw, middle, &date, self.theme.dim, 1);
+                if !now_shown.ago.is_empty() {
+                    let room = (((w - 2 * left - dw - 8) / 8).max(0)) as usize;
+                    let ago: String = now_shown.ago.to_uppercase().chars().take(room).collect();
+                    self.shadowed(fb, left, middle, &ago, self.theme.accent, 1);
+                }
+                let room = ((w - 2 * left) / 8).max(0) as usize;
+                let caption: String = now_shown.caption().chars().take(room).collect();
+                if !caption.is_empty() {
+                    self.shadowed(fb, left, base, &caption, self.theme.paper, 1);
+                }
+            }
+        }
+        self.frame_now = Some(now_shown);
+    }
+
+    /// The whole ambient page: the picture behind, everything else in front.
+    fn draw_frame_panel(&mut self, fb: &mut Framebuffer, shown: &crate::photos::Shown) {
+        self.scrim(fb, 0.62);
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let now = chrono::Local::now();
+
+        let clock = now.format("%H:%M").to_string();
+        let size = if w >= 320 { 6 } else { 4 };
+        let cw = Framebuffer::text_width(&clock, size);
+        self.shadowed(fb, (w - cw) / 2, 34, &clock, self.theme.paper, size);
+
+        let date = now.format("%A %d %B").to_string().to_uppercase();
+        let dw = Framebuffer::text_width(&date, 1);
+        self.shadowed(
+            fb,
+            (w - dw) / 2,
+            34 + size * 8 + 8,
+            &date,
+            self.theme.dim,
+            1,
+        );
+
+        let mut y = 34 + size * 8 + 30;
+        let room = ((w - 2 * left) / 8).max(4) as usize;
+        let info = self.photos.info.clone();
+        let mut middle = |fb: &mut Framebuffer, text: &str, colour: Color| {
+            let line: String = text.chars().take(room).collect();
+            let tw = Framebuffer::text_width(&line, 1);
+            fb.text((w - tw) / 2 + 1, y + 1, &line, 0x0000_0000, 1);
+            fb.text((w - tw) / 2, y, &line, colour, 1);
+            y += 13;
+        };
+        if !info.weather.is_empty() {
+            middle(fb, &info.weather, self.theme.cyan);
+        }
+        if !info.next.is_empty() {
+            let line = format!("NEXT  {}", info.next);
+            middle(fb, &line, self.theme.yellow);
+        }
+        if self.music.status.active()
+            && let Some(track) = self.music.status.track.as_ref()
+        {
+            let label = track.label();
+            middle(fb, &label, self.theme.green);
+        }
+
+        let base = h - 14;
+        let caption = shown.caption();
+        let ago = shown.ago.to_uppercase();
+        let aw = if ago.is_empty() {
+            0
+        } else {
+            Framebuffer::text_width(&ago, 1) + 8
+        };
+        if !ago.is_empty() {
+            self.shadowed(fb, w - left - aw + 8, base, &ago, self.theme.accent, 1);
+        }
+        if !caption.is_empty() {
+            let fits = (((w - 2 * left - aw) / 8).max(0)) as usize;
+            let caption: String = caption.chars().take(fits).collect();
+            self.shadowed(fb, left, base, &caption, self.theme.paper, 1);
+        }
+    }
+
+    /// Before the first picture arrives, or when none can.
+    fn draw_frame_waiting(&mut self, fb: &mut Framebuffer) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let now = chrono::Local::now();
+        let clock = now.format("%H:%M").to_string();
+        let size = if w >= 320 { 6 } else { 4 };
+        let cw = Framebuffer::text_width(&clock, size);
+        fb.text(
+            (w - cw) / 2,
+            h / 2 - size * 8,
+            &clock,
+            self.theme.paper,
+            size,
+        );
+        let date = now.format("%A %d %B").to_string().to_uppercase();
+        let dw = Framebuffer::text_width(&date, 1);
+        fb.text((w - dw) / 2, h / 2 + 6, &date, self.theme.dim, 1);
+        let line = match &self.photos.trouble {
+            Some(why) => why.clone(),
+            None => "reading the collection...".to_string(),
+        };
+        let room = ((w as f32 * 0.9) as i32 / 8) as usize;
+        let line: String = line.chars().take(room).collect();
+        let lw = Framebuffer::text_width(&line, 1);
+        fb.text((w - lw) / 2, h / 2 + 26, &line, self.theme.cyan, 1);
+        let hint = self.hint(&[("A", "next"), ("B", "back")]);
+        fb.text(
+            (w as f32 * 0.05) as i32,
+            h - 14,
+            &hint,
+            scale(self.theme.dim, 0.7),
+            1,
+        );
+    }
+}
+
+impl Scene {
+    /// Photo frame settings: what goes over the picture, how long each one
+    /// stays, and where they come from.
+    fn adjust_frame(&mut self, row: usize, dir: i32) {
+        fn step<'a>(cur: &str, opts: &[&'a str], dir: i32) -> &'a str {
+            let i = opts.iter().position(|o| *o == cur).unwrap_or(0) as i32;
+            opts[(i + dir).rem_euclid(opts.len() as i32) as usize]
+        }
+        let f = &mut self.settings.frame;
+        match row {
+            0 => f.style = step(&f.style, &["photos", "clock", "panel"], dir).to_string(),
+            1 => {
+                let opts = [10u32, 15, 25, 45, 90, 300];
+                let i = opts.iter().position(|o| *o == f.seconds).unwrap_or(2) as i32;
+                f.seconds = opts[(i + dir).rem_euclid(opts.len() as i32) as usize];
+            }
+            2 => {
+                f.source =
+                    step(&f.source, &["memories", "favorites", "album", "all"], dir).to_string();
+            }
+            3 => f.pan = !f.pan,
+            _ => {
+                // The album is a name typed into a file, not something to
+                // spell out with a pad; this row only says which one it is.
+            }
+        }
+        // Anything that changes what comes next means starting the supply
+        // again, and dropping what is already in hand.
+        if row != 3 {
+            self.photos = crate::photos::Feed::new();
+            self.frame_now = None;
+            self.frame_previous = None;
+        }
+    }
+
+    fn draw_frame_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let f = self.settings.frame.clone();
+        let style = match f.style.as_str() {
+            "photos" => "photographs only",
+            "panel" => "the whole ambient page",
+            _ => "the time and the caption",
+        };
+        let source = match f.source.as_str() {
+            "favorites" => "favourites",
+            "album" => "one album",
+            "all" => "anything at all",
+            _ => "this day, other years",
+        };
+        let rows: Vec<(String, String)> = vec![
+            ("over the picture".into(), style.into()),
+            ("each one stays".into(), format!("{} s", f.seconds)),
+            ("pictures from".into(), source.into()),
+            (
+                "let them drift".into(),
+                if f.pan { "on".into() } else { "off".into() },
+            ),
+            (
+                "album".into(),
+                if f.album.is_empty() {
+                    "not set".into()
+                } else {
+                    f.album.clone()
+                },
+            ),
+        ];
+        let notes = [
+            "what is written over the photograph",
+            "how long before the next one",
+            "which photographs the server sends",
+            "a picture that fills the screen moves a little",
+            "the album's name, from settings.toml",
+        ];
+        self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14);
+    }
 }
