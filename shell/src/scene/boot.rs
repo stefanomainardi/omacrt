@@ -277,7 +277,15 @@ impl Scene {
         } else {
             (self.theme.dim, self.theme.paper, self.theme.dim)
         };
-        fb.bitmap(x + 4, y + 2, icon, scale(icon_c, fade), 1, 8);
+        // The icon of the row under the cursor breathes, a slow half second
+        // in and out. Brightness rather than a pixel of movement: a menu that
+        // jitters is a menu with a fault.
+        let pulse = if on {
+            0.86 + 0.14 * (self.now as f32 * 2.2).sin()
+        } else {
+            1.0
+        };
+        fb.bitmap(x + 4, y + 2, icon, scale(icon_c, fade * pulse), 1, 8);
         fb.text(x + 18, y + 2, label, scale(text_c, fade), 1);
         if submenu {
             let cx = x + width - 8;
@@ -289,6 +297,65 @@ impl Scene {
     }
 
     /// Home menu under the logo: Play..., six entries, footer.
+    /// What the row under the cursor actually holds, for the dim line drawn
+    /// on the right of the row itself.
+    ///
+    /// Only the selected row carries one. Eight rows each holding a number
+    /// would be a table, and this is a menu; the cursor asks the question and
+    /// the row answers it. The Music row is the exception and says what is
+    /// playing whether it is selected or not, because that is live state
+    /// rather than context.
+    fn home_detail(&self, row: usize) -> Option<String> {
+        let label = HOME.get(row).map(|(_, l, _)| *l)?;
+        match label {
+            "Games" => {
+                let index = self.library.index.as_ref()?;
+                let games = index.items.iter().filter(|i| i.system != "videos").count();
+                // Systems the index actually found something for, not every
+                // system the catalogue knows about.
+                let mut names: Vec<&str> = index
+                    .items
+                    .iter()
+                    .filter(|i| i.system != "videos")
+                    .map(|i| i.system.as_str())
+                    .collect();
+                names.sort_unstable();
+                names.dedup();
+                let systems = names.len();
+                (games > 0).then(|| format!("{games} in {systems} systems"))
+            }
+            "Videos" => {
+                let index = self.library.index.as_ref()?;
+                let films = index.items.iter().filter(|i| i.system == "videos").count();
+                (films > 0).then(|| format!("{films} films"))
+            }
+            "Favorites" => {
+                let n = self.favorites.len();
+                (n > 0).then(|| format!("{n} starred"))
+            }
+            "Recent" => {
+                // The last thing played, named the way the lists name it.
+                let (_, path) = self.recent.first()?;
+                Some(crate::library::clean_title(path))
+            }
+            "Ambient" => {
+                let pages = self.settings.screensaver.rotation().len();
+                (pages > 0).then(|| {
+                    if pages == 1 {
+                        "1 page when left alone".into()
+                    } else {
+                        format!("{pages} pages when left alone")
+                    }
+                })
+            }
+            "Settings" => {
+                let theme = self.settings.theme.clone();
+                (theme != "system").then_some(theme)
+            }
+            _ => None,
+        }
+    }
+
     pub(super) fn draw_home(&mut self, fb: &mut Framebuffer, t: f32) {
         let fade = ease(clamp((t - 9.65) / 0.45, 0.0, 1.0));
         if fade <= 0.0 {
@@ -363,10 +430,57 @@ impl Scene {
             fb.text(tx, y + 2, &text, scale(self.theme.dim, 1.0), 1);
             self.draw_vis(fb, tx - vis_w - 6, y + 9, vis_w, 7);
         }
+        // The row under the cursor says what it holds, dim, on its own right,
+        // between the label and the chevron. Music has already written there.
+        if self.menu_live
+            && fade > 0.9
+            && HOME.get(self.sel).map(|(_, l, _)| *l) != Some("Music")
+            && let Some(detail) = self.home_detail(self.sel)
+        {
+            let y = rows_y + self.sel as i32 * row_h;
+            let label = HOME[self.sel].1;
+            let room = ((width - 30 - 18 - Framebuffer::text_width(label, 1)) / 8).max(0) as usize;
+            let text: String = detail.chars().take(room).collect();
+            let tx = left + width - 16 - Framebuffer::text_width(&text, 1);
+            fb.text(tx, y + 2, &text, scale(self.theme.dim, 0.95), 1);
+        }
+        // The two corners the wordmark leaves empty, which is the only room
+        // this screen has: what the set is doing on the left, and the time on
+        // the right, both spent right down.
+        if self.menu_live && fade > 0.9 {
+            fb.text(
+                left,
+                8,
+                &self.home_status(fb.h),
+                scale(self.theme.dim, 0.55),
+                1,
+            );
+            let clock = chrono::Local::now().format("%H:%M").to_string();
+            fb.text(
+                w - left - Framebuffer::text_width(&clock, 1),
+                8,
+                &clock,
+                scale(self.theme.dim, 0.55),
+                1,
+            );
+        }
         let max_cols = (width / 8) as usize;
         let cut = |s: &str| -> String { s.chars().take(max_cols).collect() };
         if let Some((msg, _)) = &self.message {
             fb.text(left, h - 28, &cut(msg), scale(self.theme.cyan, fade), 1);
+        }
+    }
+
+    /// What the set is doing with itself, for the corner the wordmark leaves
+    /// empty: the standard where there is one, the picture, and the line rate
+    /// that makes this a television rather than a monitor.
+    fn home_status(&self, height: usize) -> String {
+        match self.profile.monitor.as_str() {
+            "pal" => format!("PAL  {height}p  15.6 kHz"),
+            "ntsc" => format!("NTSC  {height}p  15.7 kHz"),
+            // Every other preset is an arcade monitor: the same line rate,
+            // and no broadcast standard to name.
+            _ => format!("{height}p  15.7 kHz"),
         }
     }
 
