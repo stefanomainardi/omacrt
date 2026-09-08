@@ -377,15 +377,23 @@ impl Scene {
         let row_h = 12;
         let max_cols = (width / 8) as usize;
         let rows = self.diag.clone();
-        for (i, (k, v)) in rows.iter().enumerate().skip(top).take(12) {
+        // As many rows as fit above the count and the hint, keeping a row of
+        // air: the twelve a television shows, four more on a PAL set.
+        let page = (((h - 28 - y0) / row_h - 1).max(1)) as usize;
+        for (i, (k, v)) in rows.iter().enumerate().skip(top).take(page) {
             let y = y0 + (i - top) as i32 * row_h;
             fb.text(left, y, k, self.theme.dim, 1);
             let room = max_cols.saturating_sub(11);
             let v: String = v.chars().take(room).collect();
             fb.text(left + 11 * 8, y, &v, self.theme.paper, 1);
         }
-        if rows.len() > 12 {
-            let pos = format!("{}-{}/{}", top + 1, (top + 12).min(rows.len()), rows.len());
+        if rows.len() > page {
+            let pos = format!(
+                "{}-{}/{}",
+                top + 1,
+                (top + page).min(rows.len()),
+                rows.len()
+            );
             fb.text(
                 w - left - Framebuffer::text_width(&pos, 1),
                 h - 28,
@@ -406,7 +414,9 @@ impl Scene {
         let width = w - 2 * (w as f32 * 0.05) as i32;
         let y0 = self.draw_header(fb, "Style");
         let row_h = 12;
-        let page = 12usize;
+        // The same: the twelve of a television, more where there are lines
+        // for them.
+        let page = (((h - 28 - y0) / row_h - 1).max(1)) as usize;
         let names: Vec<String> = std::iter::once("system (follow Omarchy)".to_string())
             .chain(self.themes.iter().map(|(n, _)| n.clone()))
             .collect();
@@ -543,7 +553,10 @@ impl Scene {
         let left = (w as f32 * 0.05) as i32 + self.slide();
         let y0 = self.draw_header(fb, "About");
         let row_h = 11;
-        for (i, line) in ABOUT.iter().enumerate().skip(top).take(15) {
+        // As many lines as there is room for between the header and the hint,
+        // which is the fifteen a television shows and five more on a PAL set.
+        let page = (((h - 14 - y0) / row_h).max(1)) as usize;
+        for (i, line) in ABOUT.iter().enumerate().skip(top).take(page) {
             let y = y0 + (i - top) as i32 * row_h;
             let c = if i == 0 {
                 self.theme.accent
