@@ -99,6 +99,12 @@ pub struct Deck {
     pub beat: bool,
     /// The record on the turntable is a single: it spins at 45, not 33.
     rpm45: bool,
+    /// When the current announcement cycle started, and what it is about.
+    /// The visualizer is a page to leave running for an hour, so what is
+    /// playing is said and then goes away again: a line of text that never
+    /// moves is how a tube ends up with a line of text burnt into it.
+    announced_at: f64,
+    announced: String,
     smooth: [f32; 10],
     energy: f32,
     stars: Vec<Star>,
@@ -117,6 +123,8 @@ impl Deck {
         let mut d = Self {
             mode: 0,
             mode_since: 0.0,
+            announced_at: 0.0,
+            announced: String::new(),
             reel: 0.0,
             vu: [0.0; 2],
             peak: [0.0; 2],
@@ -876,7 +884,47 @@ impl Deck {
 
     /// The whole frame: the current mode, then the title and the mode name
     /// in the corners, both fading out a few seconds after a change.
-    pub fn draw_visual(&mut self, fb: &mut Framebuffer, th: &Theme, now: f64, title: &str) {
+    /// Say what is playing again from now, whatever the cycle was doing:
+    /// called when the visualizer takes the screen.
+    pub fn announce(&mut self, now: f64) {
+        self.announced_at = now;
+        self.announced.clear();
+    }
+
+    /// How bright the caption is, and how far it has drifted, this many
+    /// seconds into an announcement. It shows for ten seconds of every
+    /// minute, fading at both ends, and each time it comes back it lands a
+    /// few pixels from where it was.
+    fn caption(since: f64) -> (f32, i32, i32) {
+        const SHOWN: f32 = 10.0;
+        const EVERY: f32 = 60.0;
+        const FADE: f32 = 0.6;
+        let round = (since / EVERY as f64).floor().max(0.0);
+        let phase = (since.max(0.0) as f32) % EVERY;
+        let alpha = if phase < FADE {
+            phase / FADE
+        } else if phase < SHOWN - FADE {
+            1.0
+        } else if phase < SHOWN {
+            (SHOWN - phase) / FADE
+        } else {
+            0.0
+        };
+        // Five places, so it takes five minutes to come back to the first.
+        let step = (round as i32).rem_euclid(5);
+        (alpha, step * 3, -step * 2)
+    }
+
+    /// `who` is the station or the artist, `what` the title. Both are drawn
+    /// only inside the caption's window.
+    pub fn draw_visual(
+        &mut self,
+        fb: &mut Framebuffer,
+        th: &Theme,
+        now: f64,
+        who: &str,
+        what: &str,
+    ) {
         fb.clear(th.bg);
         match self.mode {
             0 => self.mode7_eq(fb, th, now),
@@ -887,23 +935,40 @@ impl Deck {
             5 => self.fire(fb, th),
             _ => self.tower(fb, th),
         }
-        let since = (now - self.mode_since) as f32;
-        let fade = (1.0 - ((since - 2.5) / 1.0)).clamp(0.0, 1.0);
-        if fade > 0.0 {
-            let w = fb.w as i32;
-            let h = fb.h as i32;
-            let left = (w as f32 * 0.05) as i32;
-            let max_cols = ((w - 2 * left) / 8) as usize;
-            let t: String = title.chars().take(max_cols.saturating_sub(18)).collect();
-            fb.text(left, h - 14, &t, scale(th.paper, fade), 1);
-            let m = MODE_NAMES[self.mode];
-            fb.text(
-                w - left - Framebuffer::text_width(m, 1),
-                h - 14,
-                m,
-                scale(th.dim, fade),
-                1,
-            );
+        // A new song, or a station that changed its tag, is exactly when the
+        // words are wanted: the cycle starts again from there.
+        if self.announced != what {
+            self.announced = what.to_string();
+            self.announced_at = now;
+        }
+        let (alpha, dx, dy) = Self::caption(now - self.announced_at);
+        if alpha <= 0.0 {
+            return;
+        }
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + dx;
+        let cols = ((w - 2 * (w as f32 * 0.05) as i32) / 8) as usize;
+        let mode = MODE_NAMES[self.mode];
+        let base = h - 14 + dy;
+        // The title first, on the line the deck uses for it, and whoever is
+        // playing it above: a station name is the thing you actually want
+        // when the picture has taken over.
+        let what: String = what
+            .chars()
+            .take(cols.saturating_sub(mode.chars().count() + 2))
+            .collect();
+        fb.text(left, base, &what, scale(th.paper, alpha), 1);
+        fb.text(
+            w - (w as f32 * 0.05) as i32 - Framebuffer::text_width(mode, 1),
+            base,
+            mode,
+            scale(th.dim, alpha * 0.7),
+            1,
+        );
+        if !who.is_empty() {
+            let who: String = who.to_uppercase().chars().take(cols).collect();
+            fb.text(left, base - 11, &who, scale(th.cyan, alpha), 1);
         }
     }
 
@@ -1333,4 +1398,40 @@ fn text_shadow(fb: &mut Framebuffer, cx: i32, y: i32, s: &str, c: Color, shadow:
     let x = cx - tw / 2;
     fb.text(x + sc, y + sc, s, shadow, sc);
     fb.text(x, y, s, c, sc);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_caption_comes_and_goes_and_never_lands_twice_in_the_same_place() {
+        // It is there at once, so the picture never arrives without saying
+        // what it is a picture of.
+        let (alpha, _, _) = Deck::caption(0.7);
+        assert!(alpha > 0.9, "a fraction of a second in it is already up");
+
+        // Ten seconds of every minute, and nothing in between.
+        assert!(Deck::caption(5.0).0 > 0.9);
+        assert_eq!(Deck::caption(20.0).0, 0.0);
+        assert_eq!(Deck::caption(59.0).0, 0.0);
+        assert!(Deck::caption(65.0).0 > 0.9, "it comes back the next minute");
+
+        // Both ends fade rather than snap.
+        assert!(Deck::caption(0.3).0 < 1.0);
+        assert!((0.0..1.0).contains(&Deck::caption(9.7).0));
+
+        // Every appearance lands somewhere else: five places before the
+        // first one comes round again.
+        let places: Vec<(i32, i32)> = (0..6)
+            .map(|round| {
+                let (_, dx, dy) = Deck::caption(round as f64 * 60.0 + 2.0);
+                (dx, dy)
+            })
+            .collect();
+        assert_eq!(places[0], places[5], "five places, then it starts over");
+        for i in 1..5 {
+            assert_ne!(places[i], places[i - 1], "no two in a row are the same");
+        }
+    }
 }

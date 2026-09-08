@@ -588,6 +588,9 @@ pub struct Scene {
     library: Library,
     screen: Screen,
     games: Vec<Entry>,
+    /// Whether the visualizer had the screen on the previous frame, so the
+    /// caption can be shown again the moment it takes it.
+    visual_on: bool,
     /// Which virtual list is open: 0 recent, 1 favorites, 2 a collection.
     virtual_row: usize,
     /// The collection open in the game list, if any (index into collections()).
@@ -804,6 +807,7 @@ impl Scene {
             sky: crate::sky::Sky::new(),
             saver_run: None,
             profile: Profile::load(&library.config_dir),
+            visual_on: false,
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
             recent_at: load_times(&library.config_dir.join("recent.txt")),
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),

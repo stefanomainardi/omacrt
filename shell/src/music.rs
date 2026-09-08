@@ -683,9 +683,7 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
                 }
             }
             Request::Load(provider, playlist) => {
-                let r = call(json!({
-                    "cmd": "provider.load", "provider": provider, "playlist": playlist, "play": true
-                }));
+                let r = load_playlist(&provider, &playlist);
                 follow_sink(&sink);
                 match r {
                     Ok(_) => Reply::Played,
@@ -724,6 +722,39 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
             return;
         }
     }
+}
+
+/// Play a whole row of a provider's list.
+///
+/// `provider.load` is the operation for it, and it is what a playlist wants.
+/// An album is not a playlist: Spotify's saved albums come back in the same
+/// list with an id like `spotify:album:...`, and asking the provider to load
+/// one leaves the album's own address in the queue as though it were a
+/// stream, which fails at playback with "unsupported spotify type: album" and
+/// leaves the deck sitting on a track that will not start. The album's tracks
+/// are one request away, so an album is expanded here: the first one plays and
+/// the rest queue behind it, in order.
+fn load_playlist(provider: &str, playlist: &str) -> Result<Value, String> {
+    if !playlist.contains(":album:") {
+        return call(json!({
+            "cmd": "provider.load", "provider": provider, "playlist": playlist, "play": true
+        }));
+    }
+    let listing = call(json!({
+        "cmd": "provider.tracks", "provider": provider, "playlist": playlist
+    }))?;
+    let tracks: Vec<Value> = listing
+        .get("tracks")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let (first, rest) = tracks.split_first().ok_or("the album is empty")?;
+    let played = call(json!({ "cmd": "track.play", "track": first }))?;
+    for track in rest {
+        // One that will not queue does not stop the ones after it.
+        let _ = call(json!({ "cmd": "track.queue", "track": track }));
+    }
+    Ok(played)
 }
 
 fn fetch_lyrics() -> Vec<(f64, String)> {
@@ -1411,6 +1442,15 @@ mod tests {
         assert_eq!(t.label(), "Band - Song");
         assert_eq!(urlencode("classic rock"), "classic%20rock");
         assert_eq!(fold("Stereocittà è qui"), "Stereocitta e qui");
+    }
+
+    #[test]
+    fn an_album_is_not_a_playlist() {
+        // The shape the fix turns on: Spotify's saved albums arrive in the
+        // same list as the playlists, and only their id says so.
+        assert!("spotify:album:7m7wD23i4SVxU3IQ7LGMVq".contains(":album:"));
+        assert!(!"4e5Le37X6n7VCcMyxyNfVm".contains(":album:"));
+        assert!(!"YOUR MUSIC".contains(":album:"));
     }
 
     #[test]
