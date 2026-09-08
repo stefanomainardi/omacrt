@@ -254,9 +254,17 @@ has seen goes into walker (or fuzzel, or rofi), and what comes back is played
 on the television, turning the tube on first if it is off. It is the
 **Play a game...** row in the Omarchy menu, and it is worth a keybinding.
 
-Everything that stops it going through arrives as a notification, because a
-row run from a menu has no terminal to print to and a silent failure looks
-like a row that does nothing. With a game already playing the picker comes
+Everything that stops it going through arrives as a notification, and every
+step goes to `~/.local/state/omarchy-crt/pick.log`, because a row run from a
+menu has no terminal to print to and a silent failure looks like a row that
+does nothing.
+
+One thing about walker is worth knowing: it is a single instance
+application, so started while another one is open the second process hands
+its arguments over and exits at once, printing nothing. That is
+indistinguishable from a dead row. The picker closes whatever walker is open
+first, waits for it to go, and takes it down by pid if `-q` only closed its
+window. With a game already playing the picker comes
 back to ask, with the two answers as its own rows: stop that one and play
 this, or leave it alone.
 
