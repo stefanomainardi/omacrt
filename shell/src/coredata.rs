@@ -32,7 +32,7 @@ pub const TABLE: &[Extra] = &[Extra {
     what: "Dolphin's Sys folder: shaders, fonts and per game settings",
 }];
 
-pub fn extra_for(core: &str) -> Option<&'static Extra> {
+fn extra_for(core: &str) -> Option<&'static Extra> {
     TABLE.iter().find(|e| e.core == core)
 }
 

@@ -25,7 +25,7 @@ pub fn pad_can_rumble() -> bool {
 }
 
 /// The same, over the text of that file, so it can be checked without one.
-pub fn any_pad_rumbles(devices: &str) -> bool {
+fn any_pad_rumbles(devices: &str) -> bool {
     devices.split("\n\n").any(|block| {
         let ff = block
             .lines()

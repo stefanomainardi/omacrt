@@ -8,7 +8,7 @@
 
 use crate::art::{self, Image};
 use omarchy_crt_shell::{ambient, immich};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender, TryRecvError, sync_channel};
 
 /// A picture ready to go up, with what should be written under it.
@@ -48,6 +48,25 @@ enum Msg {
     Trouble(String),
 }
 
+/// What the supply needs to know: where to read the settings from, which
+/// photographs to ask for, and the shape of the screen they are prepared for.
+///
+/// One thing rather than seven arguments, and comparable, which is what lets
+/// the scene call `start` on every frame and have it do nothing until
+/// something actually changed.
+#[derive(Clone, PartialEq)]
+pub struct Wanted {
+    pub config_dir: PathBuf,
+    pub source: immich::Source,
+    pub album: String,
+    /// The town for the weather line; empty means the machine's timezone.
+    pub place: String,
+    /// An `.ics` address for the next appointment, or empty.
+    pub calendar: String,
+    pub width: usize,
+    pub height: usize,
+}
+
 /// The supply. Dropping it stops the thread at its next send.
 pub struct Feed {
     rx: Option<Receiver<Msg>>,
@@ -57,8 +76,9 @@ pub struct Feed {
     pub info: ambient::Info,
     /// What went wrong, when nothing is coming.
     pub trouble: Option<String>,
-    started: bool,
-    size: (usize, usize),
+    /// What the running thread was started for, so asking for the same thing
+    /// again changes nothing.
+    wanted: Option<Wanted>,
 }
 
 impl Feed {
@@ -68,35 +88,23 @@ impl Feed {
             queue: Vec::new(),
             info: ambient::Info::default(),
             trouble: None,
-            started: false,
-            size: (0, 0),
+            wanted: None,
         }
     }
 
-    /// Start the thread, or start it again for a different screen size or a
-    /// different source. Doing nothing when it is already up for this shape
-    /// is what lets the scene call it on every frame.
-    pub fn start(
-        &mut self,
-        config_dir: &Path,
-        source: immich::Source,
-        album: String,
-        place: String,
-        calendar: String,
-        w: usize,
-        h: usize,
-    ) {
-        if self.started && self.size == (w, h) {
+    /// Start the thread, or start it again for a different screen or a
+    /// different source. Doing nothing when what is wanted has not changed is
+    /// what lets the scene call this on every frame.
+    pub fn start(&mut self, wanted: Wanted) {
+        if self.wanted.as_ref() == Some(&wanted) {
             return;
         }
-        self.started = true;
-        self.size = (w, h);
+        self.wanted = Some(wanted.clone());
         self.queue.clear();
         self.trouble = None;
         let (tx, rx) = sync_channel::<Msg>(2);
         self.rx = Some(rx);
-        let dir = config_dir.to_path_buf();
-        std::thread::spawn(move || work(tx, dir, source, album, place, calendar, w, h));
+        std::thread::spawn(move || work(tx, wanted));
     }
 
     /// Collect whatever the thread has sent. Cheap; call it every frame.
@@ -133,16 +141,16 @@ impl Default for Feed {
 
 /// The thread: a list of pictures, then each one prepared and sent, and the
 /// list asked for again when it runs out.
-fn work(
-    tx: SyncSender<Msg>,
-    config_dir: PathBuf,
-    source: immich::Source,
-    album: String,
-    place: String,
-    calendar: String,
-    w: usize,
-    h: usize,
-) {
+fn work(tx: SyncSender<Msg>, wanted: Wanted) {
+    let Wanted {
+        config_dir,
+        source,
+        album,
+        place,
+        calendar,
+        width: w,
+        height: h,
+    } = wanted;
     // The weather and the calendar first: they are one request each, they
     // have nothing to do with the photographs, and the ambient page has
     // somewhere to put them straight away.

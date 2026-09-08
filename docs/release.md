@@ -82,13 +82,21 @@ rather than promised.
       identical, and the seventeen that differ do so only where a clock or a
       live counter is drawn, which two runs of the same binary a minute apart
       also do.
-- [ ] **The nine `too_many_arguments` allowances.** Each is a drawing
-      function that wants a struct. Take the ones where a struct is clearer
-      and leave the ones where the geometry is the argument list.
+- [x] **The `too_many_arguments` allowances.** The lint was allowed for the
+      whole crate, which made the nine attributes dead decoration. The lint is
+      on now and the exceptions are five, each with a line saying why: a
+      rectangle, a level and a phase are the geometry, and a struct would hide
+      it. Two were not geometry and got their struct: the sky's seven
+      conditions became `Air`, threaded through ten layers as one thing, and
+      the photo supply's seven arguments became `Wanted`, which is comparable,
+      so asking for the same thing twice now changes nothing by construction
+      rather than by a pair of extra fields.
 - [ ] **Duplication in the drawing code.** The settings pages, the menu
       screens and the list rows have each been copied once too often.
-- [ ] **Every `pub` in `lib.rs`.** Anything the CLI and the launcher do not
-      both use should not be shared.
+- [x] **Every `pub` in `lib.rs`.** Twenty six public functions were called
+      from nowhere outside their own file, so the shared library's surface was
+      describing itself rather than what is shared. Twenty five are private
+      now and one, `crt::applied_standard`, was dead and is gone.
 - [ ] **Read the whole thing once, out loud.** Comments that restate their
       line, names that lie, a function that grew a second job.
 
