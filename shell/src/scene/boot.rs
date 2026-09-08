@@ -338,16 +338,11 @@ impl Scene {
                 let (_, path) = self.recent.first()?;
                 Some(crate::library::clean_title(path))
             }
-            "Ambient" => {
-                let pages = self.settings.screensaver.rotation().len();
-                (pages > 0).then(|| {
-                    if pages == 1 {
-                        "1 page when left alone".into()
-                    } else {
-                        format!("{pages} pages when left alone")
-                    }
-                })
-            }
+            // What the hub holds, not what the idle rotation is: on this row
+            // a count of pages reads as a count of *this* page, and which
+            // pages an idle television shows is the screensaver's business
+            // and is written on its own settings page.
+            "Ambient" => Some(AMBIENT_SUMMARY.into()),
             "Settings" => {
                 let theme = self.settings.theme.clone();
                 (theme != "system").then_some(theme)
