@@ -746,12 +746,18 @@ impl Scene {
                 _ => {}
             },
             Screen::Settings { sel } => match nav {
-                Nav::Up if *sel > 0 => {
+                // Two columns: up and down stay in one, left and right cross
+                // to the other at the same height.
+                Nav::Up if *sel % SETTINGS_HALF > 0 => {
                     *sel -= 1;
                     moved = true;
                 }
-                Nav::Down if *sel + 1 < SETTINGS_ROWS => {
+                Nav::Down if *sel % SETTINGS_HALF + 1 < SETTINGS_HALF => {
                     *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    *sel = (*sel + SETTINGS_HALF) % SETTINGS_ROWS;
                     moved = true;
                 }
                 Nav::Back => {

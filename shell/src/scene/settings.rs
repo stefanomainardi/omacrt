@@ -47,57 +47,51 @@ impl Scene {
         Action::None
     }
 
-    /// The settings page: four headings the cursor skips, and the rows.
+    /// The settings page: two columns, four headings the cursor skips over,
+    /// and twelve rows.
     ///
-    /// Rows are eleven pixels and a heading nine, which puts the last row
-    /// clear of the line the message uses on a 240 line screen. `sel` counts
-    /// rows, so the drawing has to find where the selected one landed.
+    /// `sel` counts rows, the left column first, so the drawing has to work
+    /// out which column the cursor is in and where in it the row landed.
     pub(super) fn draw_settings_menu(&mut self, fb: &mut Framebuffer, sel: usize) {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32 + self.slide();
         let width = w - 2 * (w as f32 * 0.05) as i32;
+        let gutter = 10;
+        let col_w = (width - gutter) / 2;
         let y0 = self.draw_header(fb, "Settings");
 
-        // Where the cursor is, in pixels, before anything is drawn: the band
-        // goes down first so the row's own colours sit on top of it.
-        let mut y = y0;
-        let mut row = 0;
-        let mut band = y0;
-        for line in SETTINGS_LINES.iter() {
-            match line {
-                SettingsLine::Heading(_) => y += SETTINGS_HEAD_H,
-                SettingsLine::Row(..) => {
-                    if row == sel {
-                        band = y;
+        for (i, lines) in [SETTINGS_LEFT, SETTINGS_RIGHT].iter().enumerate() {
+            let x = left + i as i32 * (col_w + gutter);
+            // Rows of this column, in the numbering `sel` uses.
+            let first = i * SETTINGS_HALF;
+            let mut y = y0;
+            let mut row = first;
+            for line in lines.iter() {
+                match line {
+                    SettingsLine::Heading(text) => {
+                        // The gap belongs above the heading, which is what
+                        // separates one group from the one before it.
+                        fb.text(x, y + 10, text, scale(self.theme.dim, 0.62), 1);
+                        y += SETTINGS_HEAD_H;
                     }
-                    row += 1;
-                    y += SETTINGS_ROW_H;
-                }
-            }
-        }
-        fb.rect(
-            left,
-            self.band(band),
-            width,
-            SETTINGS_ROW_H - 1,
-            self.theme.selection,
-        );
-
-        let mut y = y0;
-        let mut row = 0;
-        for line in SETTINGS_LINES.iter() {
-            match line {
-                SettingsLine::Heading(text) => {
-                    // Hanging left of the rows, so the grouping reads without
-                    // spending pixels on blank lines.
-                    fb.text(left, y + 3, text, scale(self.theme.dim, 0.62), 1);
-                    y += SETTINGS_HEAD_H;
-                }
-                SettingsLine::Row(icon, label, _) => {
-                    self.draw_menu_row(fb, left, y, width, icon, label, true, row == sel, 1.0);
-                    row += 1;
-                    y += SETTINGS_ROW_H;
+                    SettingsLine::Row(icon, label, _) => {
+                        let on = row == sel;
+                        if on {
+                            fb.rect(
+                                x,
+                                self.band(y),
+                                col_w,
+                                SETTINGS_ROW_H - 2,
+                                self.theme.selection,
+                            );
+                        }
+                        // No chevron: every row here opens a page, so one on
+                        // each of them says nothing and sits in the gutter.
+                        self.draw_menu_row(fb, x, y, col_w, icon, label, false, on, 1.0);
+                        row += 1;
+                        y += SETTINGS_ROW_H;
+                    }
                 }
             }
         }
@@ -107,7 +101,7 @@ impl Scene {
             let m: String = msg.chars().take(max_cols).collect();
             fb.text(left, h - 28, &m, self.theme.cyan, 1);
         }
-        let hint = self.hint(&[("A", "select"), ("B", "back")]);
+        let hint = self.hint(&[("^v<>", "move"), ("A", "select"), ("B", "back")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
@@ -712,11 +706,16 @@ mod tests {
     #[test]
     fn the_page_holds_twelve_rows_under_four_headings() {
         assert_eq!(SETTINGS_ROWS, 12);
-        let headings = SETTINGS_LINES
-            .iter()
-            .filter(|l| matches!(l, SettingsLine::Heading(_)))
-            .count();
-        assert_eq!(headings, 4);
+        let headings = |lines: &[SettingsLine]| {
+            lines
+                .iter()
+                .filter(|l| matches!(l, SettingsLine::Heading(_)))
+                .count()
+        };
+        assert_eq!(headings(&SETTINGS_LEFT) + headings(&SETTINGS_RIGHT), 4);
+        // The two columns hold the same number of rows, which is what makes
+        // left and right cross at the same height.
+        assert_eq!(SETTINGS_HALF, SETTINGS_ROWS - SETTINGS_HALF);
         // No two rows open the same page, and none of them is missed.
         let mut seen = pages();
         let before = seen.len();
@@ -725,15 +724,33 @@ mod tests {
     }
 
     #[test]
-    fn the_last_row_clears_the_message_line() {
+    fn a_column_clears_the_message_line() {
         // 52 is what `draw_header` leaves, and a message is drawn at h - 28.
-        let rows = SETTINGS_ROWS as i32 * SETTINGS_ROW_H;
-        let heads = SETTINGS_LINES
-            .iter()
-            .filter(|l| matches!(l, SettingsLine::Heading(_)))
-            .count() as i32
-            * SETTINGS_HEAD_H;
-        let bottom = 52 + rows + heads;
-        assert!(bottom <= 240 - 28, "the list ends at {bottom} of 240");
+        for lines in [SETTINGS_LEFT, SETTINGS_RIGHT] {
+            let bottom: i32 = 52
+                + lines
+                    .iter()
+                    .map(|l| match l {
+                        SettingsLine::Heading(_) => SETTINGS_HEAD_H,
+                        SettingsLine::Row(..) => SETTINGS_ROW_H,
+                    })
+                    .sum::<i32>();
+            assert!(bottom <= 240 - 28, "a column ends at {bottom} of 240");
+        }
+    }
+
+    #[test]
+    fn a_label_fits_the_column_it_is_in() {
+        // Half the width, less the margins and the gutter, less the room the
+        // icon takes: fifteen characters at eight pixels each.
+        let col = (320 - 2 * 16 - 10) / 2;
+        for lines in [SETTINGS_LEFT, SETTINGS_RIGHT] {
+            for line in lines.iter() {
+                if let SettingsLine::Row(_, label, _) = line {
+                    let wide = 18 + Framebuffer::text_width(label, 1);
+                    assert!(wide <= col, "{label} needs {wide} of {col}");
+                }
+            }
+        }
     }
 }
