@@ -6,8 +6,8 @@ room, the conventions the code and the commits follow, and the handful of
 rules that each cost a broken session to learn. Read the rules first: they are
 the part that does damage.
 
-`README.md` is the project's own description. `docs/plan.md` says what works
-and what is next. This file is about the work.
+`README.md` is the project's own description, `CHANGELOG.md` is what has
+landed. This file is about the work.
 
 ## What this is
 
@@ -381,5 +381,4 @@ disk with an age. Nothing in the frame loop is allowed to block on a socket.
 | Pads, mapping, rumble | `docs/input.md` |
 | Fitting modern video to a 4:3 tube | `docs/video.md`, `docs/video-policy.md` |
 | Something is broken | `docs/troubleshooting.md` |
-| What works and what is next | `docs/plan.md` |
 | What runs as root, what is downloaded | `SECURITY.md` |
