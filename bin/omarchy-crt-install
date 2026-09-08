@@ -12,8 +12,8 @@
 #   sudo bin/omarchy-crt-install --system
 #                                      one-time root part: mark the DAC's
 #                                      connector non-desktop at every boot so
-#                                      omarchy-crt can lease it (see docs/plan.md,
-#                                      phase A3); the connector name comes from
+#                                      omarchy-crt can lease it (see
+#                                      docs/15khz.md); the connector name comes from
 #                                      OMARCHY_CRT_CONNECTOR (default HDMI-A-1)
 set -euo pipefail
 
