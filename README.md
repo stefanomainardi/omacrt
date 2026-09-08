@@ -404,18 +404,23 @@ Everything the plugin and the launcher do can be typed:
 
 ```text
 omarchy-crt setup [--connector NAME] [--standard ntsc|pal] [--dry-run]
-omarchy-crt on | off | status | mode ntsc|pal|film|480i|576i [--lines N]
-omarchy-crt shell start|stop|restart | shell key <input>... | shell type <text>
+omarchy-crt on | off | toggle | status | boot | doctor [--fix]
+omarchy-crt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
+omarchy-crt shell start|stop|restart|focus | shell key <input>... | shell type <text>
+omarchy-crt shell screen games|music|videos|frame|ambient|monitor|settings|...
+omarchy-crt play <title|path> [--force] | watch <file|url> [--later [TITLE]]
+omarchy-crt library scan|games|discover|covers|cores|set|assign|unknown|roots
+omarchy-crt bios [import DIR|discover] | frame check|fill|clear
 omarchy-crt shot out.png | record start out.mp4 | record stop | monitor on|off
-omarchy-crt game menu|pause|save|load|reset|quit
-omarchy-crt watch <file|url> [--later [TITLE]]
-omarchy-crt library scan|discover|covers|cores|set|assign|unknown | bios [import DIR|discover]
-omarchy-crt audio crt|desktop|all|apps | audio volume N | dac csync and|xor | doctor | config set KEY VALUE
+omarchy-crt game menu|pause|save|load|reset|quit | game key <key> [ms]
+omarchy-crt audio crt|desktop|all|apps | audio volume N|+N|-N
+omarchy-crt dac status|csync and|xor|separate | config [set KEY VALUE]
 ```
 
-Details in [`docs/cli.md`](docs/cli.md). `shell key` and `shell type` drive
-the launcher over its control pipe, which is how every screenshot and video in
-this repository was made.
+Details in [`docs/cli.md`](docs/cli.md). `shell key`, `shell type` and `shell
+screen` drive the launcher over its control pipe, which is how every
+screenshot and video in this repository was made, and how the desktop menu
+reaches it. `omarchy-crt-pick` puts a fuzzy picker in front of `play`.
 
 ## The library scans anything
 
@@ -439,6 +444,7 @@ collapse onto one title and systems show up when they have games. Details in
 | `systemd/` | The oneshot unit that hands the tube over at boot |
 | `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting, state of the project |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
+| `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
 
 ## State and what is next
@@ -479,8 +485,14 @@ doctor`. Ideas and questions are discussions.
 
 ## Credits and licenses
 
-- Omarchy icon and wordmark: Omacom Foundation, MIT. Used here as the theme
-  of a fan project; Omarchy CRT is not part of Omarchy.
+Every piece of this that somebody else wrote, and under what terms, is in
+[`THIRD-PARTY.md`](THIRD-PARTY.md). The short version:
+
+- Omarchy's wordmark and icon: Copyright (c) David Heinemeier Hansson, MIT,
+  with the licence shipped beside the copy at
+  [`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy). Used here as
+  the theme of a fan project; Omarchy CRT is not part of Omarchy, is not
+  endorsed by the Omacom Foundation, and speaks for neither.
 - `font8x8` bitmap font: Daniel Hepper, public domain, after the IBM VGA fonts.
 - `laseretch` and the effect catalog: inspired by
   [TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects) by

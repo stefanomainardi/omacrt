@@ -21,12 +21,14 @@ than guessed:
    2026-09-08. The name stays, and the credits and the footer keep saying what
    the letter promised: Omarchy and its marks belong to the Omacom Foundation,
    this is a fan project, and it speaks for nobody but itself.
-2. **Third party review.** `LICENSE` is MIT and `THIRD-PARTY.md` is 55 lines.
-   Every asset that ships in the binary has to be in it: `font8x8`, the
-   TerminalTextEffects ports, the Omarchy icon and wordmark decoded from
-   Omarchy's own `logo.txt`, RetroArch's `systematic` pictures, and the
-   libretro thumbnails fetched at runtime. The wordmark is the one that needs
-   the letter above.
+2. ~~**Third party review.**~~ Done. Three things are compiled into the
+   binary and all three are now named with their terms: `font8x8` (public
+   domain), the TerminalTextEffects ports (MIT, behaviour followed rather than
+   code copied), and **Omarchy's own wordmark**, which is a committed copy of
+   its `logo.txt`. That last one is the finding: MIT asks for the notice to
+   travel with the copy, so `shell/assets/LICENSE.omarchy` now does, and the
+   README says whose it is. RetroArch's `systematic` pictures, the libretro
+   buildbot, wttr.in and Immich were missing from the list and are in it.
 3. **A personal data pass.** The screenshots carry a hostname, a city, a live
    clock and the names of running programs. None of it is dangerous and all of
    it is a choice; make the choice on purpose rather than by accident.
