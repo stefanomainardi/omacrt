@@ -7,6 +7,7 @@ This makes the track out of the launcher's own loops instead, which is why
 the sound on a video of the page is the sound on the television.
 
     omarchy-crt-shell --dump-audio sfx
+    scripts/weather-track.py loop rain 8.0 out.wav
     scripts/weather-track.py night 6.0 out.wav
     scripts/weather-track.py storm 6.0 out.wav --thunder-at 4.0
     scripts/weather-track.py dawn  8.0 out.wav
@@ -63,8 +64,16 @@ def write(path, data):
 
 
 def main():
-    scene, seconds, out = sys.argv[1], float(sys.argv[2]), sys.argv[3]
-    if scene == "night":
+    scene = sys.argv[1]
+    seconds = float(sys.argv[2]) if scene != "loop" else 0.0
+    out = sys.argv[3] if scene != "loop" else ""
+    if scene == "loop":
+        # Any of the loops, straight: `loop rain 8.0 out.wav`.
+        which = sys.argv[2]
+        seconds = float(sys.argv[3])
+        out = sys.argv[4]
+        data = looped(which, seconds)
+    elif scene == "night":
         data = looped("night", seconds)
     elif scene == "storm":
         # The near roll sits 0.6 s into the loop; put it a beat after the

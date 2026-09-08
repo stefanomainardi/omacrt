@@ -13,6 +13,12 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- Somebody walks home in the rain. Thirteen pixels of him, head down,
+  umbrella tilted into the wind, along the pavement at the foot of the town;
+  he stops now and then to look up at the sky, which never helps, and on the
+  hardest squall of a downpour the umbrella turns inside out and he stands
+  there holding it until it turns back. The wet pavement takes his
+  reflection and his feet ring the puddles.
 - Rain leaves puddles, and a puddle shows what is above it: the town's lit
   windows and the Atomium's own colours, upside down, squashed into a few
   pixels of water the way a city a mile off ends up in a puddle at your feet,
