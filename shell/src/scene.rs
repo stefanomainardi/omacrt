@@ -782,6 +782,16 @@ impl Scene {
         false
     }
 
+    /// Put away whatever the idle timer put up, without consuming an input
+    /// the way `touch` does. Anything that changes the screen from outside
+    /// the television calls this first.
+    fn wake(&mut self) {
+        self.saver = None;
+        self.saver_run = None;
+        self.music_saver = None;
+        self.last_input = self.now;
+    }
+
     pub fn start_screensaver(&mut self, now: f64, kind: Option<Kind>) {
         let kind = kind
             .unwrap_or_else(|| effects::ALL[(self.rand() % effects::ALL.len() as u32) as usize]);
@@ -894,6 +904,7 @@ impl Scene {
         if self.running.is_some() || self.launching.is_some() {
             return;
         }
+        self.wake();
         self.screen = Screen::Menu;
         self.sel = 0;
         self.list_from_home = false;
@@ -3582,7 +3593,11 @@ impl Scene {
         }
         self.menu_live = true;
         self.chime_played = true;
-        self.last_input = self.now;
+        // A screen asked for from outside is input, so whatever the idle
+        // timer put up has to come down first. Without this the effects
+        // saver keeps drawing over the screen that was just opened, and the
+        // channel looks like it did not change.
+        self.wake();
         match name.trim().to_ascii_lowercase().as_str() {
             "home" | "menu" => self.home(),
             "games" | "systems" => self.go(Screen::Systems { sel: 0, top: 0 }),
@@ -4806,10 +4821,25 @@ impl Scene {
         if self.saver_run.is_some() {
             return;
         }
+        // A page that draws itself is already a screensaver, and one you
+        // opened on purpose is the one you want up: putting another over it
+        // is an error of category, whether or not it is in the rotation.
+        // Somewhere static, a list of games, is what a screensaver is for.
+        if self.on_saver_page() {
+            return;
+        }
         // Nothing in the rotation leaves the wordmark, which is still better
         // than a lit screen showing the menu all night.
         let page = self.next_saver_page(None).unwrap_or_default();
         self.start_saver_page(page, now);
+    }
+
+    /// Is the screen already one of the pages an idle television shows?
+    fn on_saver_page(&self) -> bool {
+        matches!(
+            self.screen,
+            Screen::Frame | Screen::Ambient | Screen::Monitor { .. }
+        )
     }
 
     /// Which pages are in the rotation, as indices into `settings::PAGES`.

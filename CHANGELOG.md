@@ -166,6 +166,17 @@ The first release meant for somebody else's machine.
 
 ### Fixed
 
+- The idle timer leaves alone a page that is already one of the screensaver's
+  own: sitting on the photo frame used to get the wordmark over it after a
+  minute. A page that draws itself is a screensaver already, and one opened on
+  purpose is the one that was wanted. Somewhere static, a list of games, is
+  what the timer is for.
+- A screen asked for from outside, by the desktop menu or `omarchy-crt shell
+  screen`, puts the screensaver away first. It used to change the screen
+  underneath an effect that went on drawing, so choosing a channel from the
+  Omarchy menu looked as if it had done nothing. `shell key home` had the same
+  fault.
+
 - I2C transfers time out instead of waiting for ever, and the bus lock is taken
   without blocking: a television that was off used to leave one stuck process
   per poll of the bar plugin, until everything that touched the DAC hung.
