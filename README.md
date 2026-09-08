@@ -10,35 +10,48 @@ refresh, real scanlines, no scaler in between. A launcher on the tube in the
 Omarchy look, a bar plugin on the desktop, and a display process that owns the
 television outright. Written in Rust, drawn at 320x240.
 
-> **Three things to know before you read on.**
->
-> **This project is written with an AI.** Design, code, tests and this very
-> README are the work of a human directing Claude, commit after commit, on a
-> real television in a real living room. If a codebase built that way is not
-> for you, no hard feelings: there are many other repositories.
->
-> **This project is for Omarchy.** It leans on Omarchy's shell, bar, theme
-> files, plugins and music player on purpose. It is not a generic Linux CRT
-> frontend and will not become one. If Omarchy is not your thing, this is not
-> either.
->
-> **This project is about preservation, not piracy.** It ships no games, no
-> BIOS files and no copyrighted material, and it links to none. It is a
-> frontend for hardware and software you already own: a television, a DAC,
-> emulators, and whatever you are entitled to run on them. Old machines and
-> the things made for them are disappearing into landfill and rot; keeping
-> them readable, and keeping a tube alive to show them on, is the point.
-> Where you get your files, and whether you have the right to them, is
-> between you and the law of your country.
->
-> Omarchy CRT is a fun project by one user. It is not affiliated with, endorsed
-> by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
-> every other name here belong to their owners.
->
-> **Tested on one setup so far:** Omarchy 4 with Hyprland 0.56, an AMD Radeon
-> RX 7700/7800 XT, an RGB-Pi 2 DAC and a Bang & Olufsen BeoCenter 1. Other
-> GPUs, DACs and televisions are uncharted; the code is written to cope, the
-> author has not seen them work.
+## What it looks like
+
+<p align="center">
+  <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
+</p>
+
+<p align="center">
+  <img src="docs/screens/coverflow.png" width="270" alt="Cover flow on the tube">
+  <img src="docs/screens/systems.png" width="270" alt="Systems with console pictures">
+  <img src="docs/screens/pause.png" width="270" alt="Pause menu over a game">
+  <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
+  <img src="docs/screens/equalizer.png" width="270" alt="The ten band equaliser">
+  <img src="docs/screens/visual-mode7.png" width="270" alt="Mode 7 equalizer visualizer">
+</p>
+
+An idle television is a window. The ambient page draws what the weather is
+actually doing: the sun crosses the arc between the real sunrise and sunset,
+clouds drift at the speed of the real wind, rain slants with it and breaks on
+the ground, lightning lights the frame, and after dark the town along the
+horizon turns its windows on.
+
+<p align="center">
+  <img src="docs/screens/weather.gif" width="560" alt="The ambient page cycling through sun, rain, a thunderstorm and a clear night">
+</p>
+
+The other side of an idle set is what the machine itself is doing, drawn as a
+16 bit status screen: a bank of little meters, one per logical processor, that
+eases up fast and falls back slowly the way the meters on an amplifier do,
+memory and graphics on bevelled plates, a minute and a half of history for
+load and for the network, and the busiest processes at the foot. All of it out
+of `/proc` and `/sys`.
+
+<p align="center">
+  <img src="docs/screens/system.gif" width="560" alt="The system monitor: a bank of meters, one per processor, moving with the machine">
+</p>
+
+The pictures were captured from the tube's own framebuffer by `omarchy-crt
+shot`, and the boot by `omarchy-crt record`; the television adds the
+scanlines. The last two are that same framebuffer rendered offline with
+`--headless --realtime`, because a screenshot of a thunderstorm has to wait
+for a thunderstorm, and a monitor reads zero unless the clock runs at the
+speed the kernel moves its counters.
 
 ## At a glance
 
@@ -84,48 +97,35 @@ a laser etching the wordmark at boot. Some of it is nostalgia, some of it is
 just the pleasure of drawing pixels at 320x240 and seeing them glow on
 glass. Both are the point.
 
-## What it looks like
-
-<p align="center">
-  <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
-</p>
-
-<p align="center">
-  <img src="docs/screens/coverflow.png" width="270" alt="Cover flow on the tube">
-  <img src="docs/screens/systems.png" width="270" alt="Systems with console pictures">
-  <img src="docs/screens/pause.png" width="270" alt="Pause menu over a game">
-  <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
-  <img src="docs/screens/equalizer.png" width="270" alt="The ten band equaliser">
-  <img src="docs/screens/visual-mode7.png" width="270" alt="Mode 7 equalizer visualizer">
-</p>
-
-An idle television is a window. The ambient page draws what the weather is
-actually doing: the sun crosses the arc between the real sunrise and sunset,
-clouds drift at the speed of the real wind, rain slants with it and breaks on
-the ground, lightning lights the frame, and after dark the town along the
-horizon turns its windows on.
-
-<p align="center">
-  <img src="docs/screens/weather.gif" width="560" alt="The ambient page cycling through sun, rain, a thunderstorm and a clear night">
-</p>
-
-The other side of an idle set is what the machine itself is doing, drawn as a
-16 bit status screen: a bank of little meters, one per logical processor, that
-eases up fast and falls back slowly the way the meters on an amplifier do,
-memory and graphics on bevelled plates, a minute and a half of history for
-load and for the network, and the busiest processes at the foot. All of it out
-of `/proc` and `/sys`.
-
-<p align="center">
-  <img src="docs/screens/system.gif" width="560" alt="The system monitor: a bank of meters, one per processor, moving with the machine">
-</p>
-
-The pictures were captured from the tube's own framebuffer by `omarchy-crt
-shot`, and the boot by `omarchy-crt record`; the television adds the
-scanlines. The last two are that same framebuffer rendered offline with
-`--headless --realtime`, because a screenshot of a thunderstorm has to wait
-for a thunderstorm, and a monitor reads zero unless the clock runs at the
-speed the kernel moves its counters.
+> **Three things worth knowing.**
+>
+> **This project is written with an AI.** Design, code, tests and this very
+> README are the work of a human directing Claude, commit after commit, on a
+> real television in a real living room. If a codebase built that way is not
+> for you, no hard feelings: there are many other repositories.
+>
+> **This project is for Omarchy.** It leans on Omarchy's shell, bar, theme
+> files, plugins and music player on purpose. It is not a generic Linux CRT
+> frontend and will not become one. If Omarchy is not your thing, this is not
+> either.
+>
+> **This project is about preservation, not piracy.** It ships no games, no
+> BIOS files and no copyrighted material, and it links to none. It is a
+> frontend for hardware and software you already own: a television, a DAC,
+> emulators, and whatever you are entitled to run on them. Old machines and
+> the things made for them are disappearing into landfill and rot; keeping
+> them readable, and keeping a tube alive to show them on, is the point.
+> Where you get your files, and whether you have the right to them, is
+> between you and the law of your country.
+>
+> Omarchy CRT is a fun project by one user. It is not affiliated with, endorsed
+> by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
+> every other name here belong to their owners.
+>
+> **Tested on one setup so far:** Omarchy 4 with Hyprland 0.56, an AMD Radeon
+> RX 7700/7800 XT, an RGB-Pi 2 DAC and a Bang & Olufsen BeoCenter 1. Other
+> GPUs, DACs and televisions are uncharted; the code is written to cope, the
+> author has not seen them work.
 
 ## How it works
 
@@ -133,36 +133,8 @@ speed the kernel moves its counters.
   <img src="docs/architecture.png" width="720" alt="Omarchy CRT architecture, drawn as a 16 bit illustration">
 </p>
 
-The same thing as a flowchart, for the parts a picture cannot hold:
-
-```mermaid
-flowchart LR
-  subgraph desktop["Omarchy desktop (Hyprland)"]
-    bar["Bar plugin<br/>Quickshell panel + library overlay"]
-    cli["omarchy-crt<br/>CLI"]
-    cliamp["cliamp --daemon<br/>music engine"]
-    bar --> cli
-  end
-
-  subgraph tube["The tube (leased DRM connector)"]
-    display["omarchy-crt-display<br/>own Wayland compositor (smithay)<br/>sets 15 kHz modelines through DRM"]
-    shell["omarchy-crt-shell<br/>launcher, 320x240"]
-    ra["RetroArch"]
-    mpv["mpv"]
-    display --- shell
-    display --- ra
-    display --- mpv
-  end
-
-  cli -- "on / off / mode<br/>lease + hotkeys" --> display
-  cli -- "control pipe:<br/>keys, type, watch" --> shell
-  shell -- "launch, pause menu<br/>(hotkeys pressed by the compositor)" --> ra
-  shell -- "JSON IPC" --> mpv
-  shell -- "Unix socket IPC<br/>status, spectrum, lyrics" --> cliamp
-  display -- "HDMI, 3520x240 @ 15.73 kHz<br/>+ audio" --> dac["RGB-Pi 2 DAC<br/>csync over I2C"]
-  dac -- "RGB SCART" --> tv["CRT television"]
-  shell -. "covers, radio directory,<br/>YouTube via yt-dlp" .-> net["Internet"]
-```
+The same thing with every process and channel named is a flowchart in
+[`docs/architecture.md`](docs/architecture.md).
 
 The desktop never touches the television. At boot a systemd unit installs an
 EDID override that marks the DAC's connector *non-desktop*, so Hyprland leaves

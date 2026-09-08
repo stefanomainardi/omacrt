@@ -111,12 +111,19 @@ rather than promised.
       Hyprland findings, the missing EDID) and replaces the rest with what
       actually happened and why, with the real modelines and the numbers
       checked against `crt.toml`.
-- [ ] **A drift pass.** Every claim in the README and in `docs/` checked
-      against the code that is there today. Anything the project no longer
-      does comes out.
-- [ ] **The README's shape.** 492 lines is a long shop window. What a
-      stranger needs in the first minute stays; the rest moves into `docs/`
-      with a link.
+- [x] **A drift pass.** Done by checking rather than rereading: the
+      launcher's flag table against the binary's own usage, the README's CLI
+      block against `--help`, the documented systems against
+      `default_systems`. Three findings, all fixed: a flag for a file that no
+      longer exists, thirteen verbs the README never named, and three systems
+      missing from the table.
+- [x] **The README's shape.** The three honest notes, the AI one included,
+      opened the file: thirty lines of caveats before a single picture. What
+      it is, what it looks like, what it does and why now come first, and the
+      notes sit where a reader can actually judge them. The mermaid flowchart,
+      which said the same thing as the drawn diagram above it, moved to
+      `docs/architecture.md`. 484 lines, and every internal link in every
+      markdown file resolves.
 - [x] **Contribution rules.** `CONTRIBUTING.md`, a bug template that asks for
       the machine, the tube and the output of `omarchy-crt doctor`, blank
       issues disabled with Discussions in their place, a pull request template
