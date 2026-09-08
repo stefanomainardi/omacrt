@@ -234,6 +234,10 @@ pub struct Sky {
     flash_at: f32,
     flash: f32,
     bolt: Vec<(i32, i32)>,
+    /// Rings on the puddles, as (x, y, how old), and when the next drop
+    /// lands in one.
+    ripples: Vec<(f32, f32, f32)>,
+    ripple_at: f32,
     /// The aeroplane crossing the sky, and when the next one is due.
     plane: Option<Plane>,
     plane_at: f32,
@@ -261,6 +265,8 @@ impl Sky {
             built_for: None,
             flash_at: 4.0,
             flash: 0.0,
+            ripples: Vec::new(),
+            ripple_at: 0.0,
             plane: None,
             // The first one comes soon enough to be caught, and the rest are
             // a minute or two apart.
@@ -1148,7 +1154,7 @@ impl Sky {
     }
 
     /// The band under the horizon: dark, textured, and wet when it rains.
-    fn ground(&self, fb: &mut Framebuffer, air: &Air) {
+    fn ground(&mut self, fb: &mut Framebuffer, air: &Air) {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let near = lerp_color(
@@ -1174,6 +1180,12 @@ impl Sky {
             1,
             lerp_color(air.theme.bg, air.theme.paper, 0.22),
         );
+        // Puddles. Standing water is the only thing in this picture that
+        // shows what is above it, which is worth having: at night the town's
+        // windows and the Atomium's own colours end up in the ground.
+        if matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder) {
+            self.puddles(fb, air);
+        }
         // Wet ground: the town's lights smeared down into it.
         if matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder) && !air.day {
             for b in &self.town {
@@ -1189,6 +1201,75 @@ impl Sky {
                         y,
                         lerp_color(near, air.theme.yellow, fade * 0.35),
                     );
+                }
+            }
+        }
+    }
+
+    /// The puddles: what is above the horizon, upside down and squashed, with
+    /// rings where the rain lands in them.
+    ///
+    /// The reflection is compressed two to one because the water is a floor
+    /// and not a mirror on a wall, and it wobbles by a pixel or so, which is
+    /// what stops it reading as a second picture.
+    fn puddles(&mut self, fb: &mut Framebuffer, air: &Air) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let t = air.now as f32;
+        // Where the water stands. Fixed, because a puddle that moves is a
+        // river, and these are the same four every time it rains.
+        // Only a few pixels of ground show before the clock is written over
+        // it, so the water is a thin strip: five pixels deep at the most.
+        let pools: [(f32, i32, i32); 4] =
+            [(0.05, 52, 8), (0.30, 38, 7), (0.55, 58, 8), (0.80, 34, 7)];
+        for (at, width, depth) in pools {
+            let x0 = (at * w as f32) as i32;
+            for y in air.horizon + 1..(air.horizon + depth).min(h) {
+                let down = y - air.horizon;
+                for x in x0..(x0 + width).min(w) {
+                    // The edge of a puddle is shallow, so it reflects less.
+                    let across = 1.0 - ((x - x0) as f32 / width as f32 * 2.0 - 1.0).abs().powf(2.5);
+                    if across <= 0.05 {
+                        continue;
+                    }
+                    let wobble = ((t * 1.7 + y as f32 * 0.9 + x as f32 * 0.12).sin() * 1.2) as i32;
+                    // Squashed hard, because this is a puddle at your feet
+                    // looking at a city a mile off: the whole skyline, the
+                    // Atomium included, ends up in four pixels of water.
+                    let src = air.horizon - down * 8;
+                    if src < 0 {
+                        continue;
+                    }
+                    let mirror = fb.at(x + wobble, src);
+                    let strength = across * 0.8 * (1.0 - down as f32 / depth as f32 * 0.4);
+                    if BAYER[(y & 3) as usize][(x & 3) as usize] as f32 / 16.0 < strength {
+                        fb.put(x, y, lerp_color(fb.at(x, y), mirror, 0.75));
+                    }
+                }
+            }
+        }
+        // A drop lands in one of them every so often, and rings out.
+        let heavy = matches!(air.kind, Kind::Heavy | Kind::Thunder);
+        if t > self.ripple_at {
+            self.ripple_at = t + if heavy { 0.09 } else { 0.22 };
+            let (at, width, depth) = pools[self.rng.upto(pools.len() as u32) as usize];
+            let x = (at * w as f32) as i32 + self.rng.upto(width as u32) as i32;
+            let y = air.horizon + 1 + self.rng.upto(depth as u32) as i32;
+            self.ripples.push((x as f32, y as f32, 0.0));
+        }
+        self.ripples.retain(|(_, _, age)| *age < 0.7);
+        for (x, y, age) in self.ripples.iter_mut() {
+            *age += 1.0 / 60.0;
+            let r = 1.0 + *age * 9.0;
+            let fade = 1.0 - *age / 0.7;
+            let c = lerp_color(fb.at(*x as i32, *y as i32), air.theme.paper, fade * 0.5);
+            for k in 0..12 {
+                let a = std::f32::consts::TAU * k as f32 / 12.0;
+                // Flatter than it is wide: a ring seen from this angle.
+                let px = *x + a.cos() * r;
+                let py = *y + a.sin() * r * 0.35;
+                if py > air.horizon as f32 && py < h as f32 {
+                    fb.put(px as i32, py as i32, c);
                 }
             }
         }
@@ -1231,8 +1312,15 @@ impl Sky {
         let dt = 1.0 / 60.0;
         let w = fb.w as f32;
         let snow = air.kind == Kind::Snow;
-        // Rain leans with the air.wind; snow is pushed sideways and wanders.
-        let slant = (air.wind / 12.0).clamp(0.0, 3.2);
+        // Rain leans with the wind, and the wind is not a constant: the same
+        // two swells the breeze is made of pass through the rain as squalls,
+        // so it leans further and then eases off instead of falling at one
+        // angle for ever.
+        let t = air.now as f32;
+        let gust = 1.0
+            + 0.30 * (t * std::f32::consts::TAU * 0.09).sin()
+            + 0.14 * (t * std::f32::consts::TAU * 0.23).sin();
+        let slant = (air.wind * gust / 12.0).clamp(0.0, 3.6);
         let colour = if snow {
             air.theme.paper
         } else {

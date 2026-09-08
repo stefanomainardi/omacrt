@@ -13,6 +13,13 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- Rain leaves puddles, and a puddle shows what is above it: the town's lit
+  windows and the Atomium's own colours, upside down, squashed into a few
+  pixels of water the way a city a mile off ends up in a puddle at your feet,
+  with rings where the drops land in them.
+- Rain comes in squalls. It used to fall at one angle for as long as the wind
+  held; the same two swells the breeze is made of now pass through it, so it
+  leans harder and then eases off.
 - A clear sky has an aeroplane in it now and then: a speck of metal with a
   contrail spreading and thinning behind it, twenty odd seconds to cross,
   and at night the navigation lights blinking on their own rhythms with
