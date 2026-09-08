@@ -444,7 +444,7 @@ impl Scene {
         ));
         // Fifteen rows: seven settings, the change sound, and one per
         // visualizer. At eleven pixels each the last one lands on the note.
-        self.draw_settings_table(fb, "Music", &rows, &notes, sel, 10);
+        self.draw_settings_table(fb, "Music", &rows, &notes, sel, 10, None);
     }
 
     /// Advance the music mirror and ease the visualiser toward the last frame.
