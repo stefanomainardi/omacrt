@@ -18,10 +18,20 @@ set -euo pipefail
 
 crt="${OMARCHY_CRT:-omarchy-crt}"
 
+# Run from a menu row this has no terminal at all, so every step goes to a
+# log as well. It is the only way to tell "the row did nothing" from "the row
+# ran and something said no".
+log_file="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-crt/pick.log"
+mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
+log() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >> "$log_file" 2>/dev/null || true; }
+log "--- started, args: ${*:-none}"
+trap 'log "exit $?"' EXIT
+
 say() {
   if command -v notify-send >/dev/null 2>&1; then
     notify-send -a "Omarchy CRT" "$1" "${2-}"
   fi
+  log "say: $1 ${2-}"
   printf '%s %s\n' "$1" "${2-}" >&2
 }
 
@@ -32,7 +42,30 @@ command -v "$crt" >/dev/null 2>&1 || { say "omarchy-crt is not on PATH"; exit 1;
 pick() {
   local prompt="$1"
   if command -v walker >/dev/null 2>&1; then
-    walker --dmenu --placeholder "$prompt" 2>/dev/null
+    # walker is a single instance application: started while another one is
+    # up, the second process hands its arguments over and exits at once,
+    # printing nothing. From here that looks exactly like a row that does
+    # nothing, so whatever is open goes first.
+    if pgrep -x walker >/dev/null 2>&1; then
+      log "another walker was open; closing it"
+      walker -q >/dev/null 2>&1 || true
+      gone=0
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if ! pgrep -x walker >/dev/null 2>&1; then gone=1; break; fi
+        sleep 0.2
+      done
+      # `-q` closes the window; the process itself can outlive it, and while
+      # it does ours would hand over and exit. Take it down by pid.
+      if [ "$gone" = 0 ]; then
+        for p in $(pgrep -x walker); do kill "$p" 2>/dev/null || true; done
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          if ! pgrep -x walker >/dev/null 2>&1; then break; fi
+          sleep 0.2
+        done
+      fi
+      log "walker clear: $(pgrep -cx walker 2>/dev/null || echo 0) left"
+    fi
+    walker --dmenu --placeholder "$prompt" 2>>"$log_file"
   elif command -v fuzzel >/dev/null 2>&1; then
     fuzzel --dmenu --prompt "$prompt: "
   elif command -v rofi >/dev/null 2>&1; then
@@ -51,6 +84,7 @@ else
   rows="$("$crt" library games)" || rows=""
   prompt="Play on the television"
 fi
+log "rows: $(printf '%s\n' "$rows" | wc -l)"
 if [ -z "$rows" ]; then
   say "nothing in the library" "omarchy-crt library scan ~/Games"
   exit 1
@@ -58,10 +92,21 @@ fi
 
 # One line per game as `title  ·  system` for the eye, with the path behind
 # it: the picker shows the first field and this keeps the third.
-chosen="$(printf '%s\n' "$rows" |
+# `set -o pipefail` would make a picker that exits non-zero take the whole
+# pipeline down, so the picker's own status is what decides here.
+listing="$(printf '%s\n' "$rows" |
   awk -F'\t' '{ printf "%s  ·  %s\t%s\n", $1, $2, $3 }' |
-  cut -f1 |
-  pick "$prompt")" || exit 0
+  cut -f1)"
+set +e
+chosen="$(printf '%s\n' "$listing" | pick "$prompt")"
+picked=$?
+set -e
+log "picker exit $picked"
+log "chosen: ${chosen:-<nothing>}"
+if [ "$picked" -ne 0 ] && [ -z "$chosen" ]; then
+  say "the picker did not come back" "exit $picked, see $log_file"
+  exit 1
+fi
 # Nothing chosen is somebody pressing escape, which needs no announcement.
 [ -n "$chosen" ] || exit 0
 
@@ -72,6 +117,7 @@ if [ -z "$path" ]; then
   exit 1
 fi
 title="${chosen%%  ·  *}"
+log "path: $path"
 
 # The tube has to be on to have a launcher to send this to.
 if ! "$crt" status --json | grep -q '"active":true'; then
@@ -85,6 +131,7 @@ fi
 # picker is right there to ask with.
 force=""
 playing="$("$crt" status --json | sed -n 's/.*"playing":"\([^"]*\)".*/\1/p')"
+log "playing: ${playing:-<nothing>}"
 if [ -n "$playing" ]; then
   answer="$(printf '%s\n%s\n' "Stop $playing and play $title" "Leave it running" |
     pick "Something is playing")" || exit 0
@@ -99,4 +146,5 @@ if [ -n "$force" ]; then
 else
   out="$("$crt" play "$path" 2>&1)" || { say "could not start $title" "$out"; exit 1; }
 fi
+log "play said: $out"
 say "$title" "on the television"
