@@ -54,23 +54,8 @@ pub fn ensure(core: &str, system_dir: &Path) -> Option<String> {
         extra.core,
         std::process::id()
     ));
-    let ok = std::process::Command::new("curl")
-        .args([
-            "-fsSL",
-            // The same leash as every other fetch: two protocols, a size cap,
-            // a timeout, and the URL as an argument rather than a shell word.
-            "--proto",
-            "=http,https",
-            "--proto-redir",
-            "=http,https",
-            "--max-filesize",
-            "134217728",
-            "--max-time",
-            "300",
-            "--retry",
-            "1",
-            "-o",
-        ])
+    let ok = crate::net::curl(300, 134_217_728)
+        .arg("-o")
         .arg(&tmp)
         .arg(extra.url)
         .status()
