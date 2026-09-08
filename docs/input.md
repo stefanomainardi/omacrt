@@ -86,9 +86,25 @@ exit). Games with no state start straight away.
 `Select` plus `Start` on the pad, the home button, `F1` on the keyboard, or
 `omarchy-crt shell key menu` pauses the game and raises the launcher's pause menu over it: resume,
 save state, load state, rewind two seconds, fast forward (toggles RetroArch's
-speed and resumes), slow motion (toggles it too), reset, back to the
-launcher. Rewind needs the system to allow it, since it costs memory and CPU
-and is off for the 3D consoles; the menu says so rather than doing nothing.
+speed and resumes), slow motion (toggles it too), the picture and the shader,
+reset, back to the launcher. Rewind needs the system to allow it, since it
+costs memory and CPU and is off for the 3D consoles; the menu says so rather
+than doing nothing.
+
+**Picture** and **Shader** are choices rather than actions: `A`, or left and
+right, cycles them, and they are kept per system in `systems.toml`. The
+picture is `fill the screen` (the default), `as the core asks` or `square
+pixels`. On the tube the emulator draws into a super resolution frame
+thousands of pixels wide that the set shows as 4:3, so the launcher works
+out the viewport itself from the picture the core last drew, which it reads
+from the emulator's own log; asking RetroArch for square pixels in that frame
+would leave the game in a sliver in the middle of the screen. Shaders are for
+the days a game runs in a window: the presets that ship are Slang, so a
+chosen one brings the `glcore` driver with it, and none of them belongs on a
+real tube, which is doing all of that in glass already. Both are read by
+RetroArch when a core starts, so both take effect at the next start; nothing
+is lost by restarting, because the state is saved on exit and picked up
+again.
 The menu shows when the game's latest save state was written. `B` or `Esc`
 resumes. `F1` reaches the launcher only while the launcher holds the
 keyboard, which is what the panel's "Keys to the launcher" button (and

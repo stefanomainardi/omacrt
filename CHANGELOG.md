@@ -9,6 +9,16 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- The pause menu chooses the picture and the shader. **Picture** is `fill the
+  screen`, `as the core asks` or `square pixels`, and on the tube the
+  viewport is worked out by the launcher from the size the core last drew
+  (read from the emulator's log), because RetroArch would fit square pixels
+  into the wide super resolution frame and leave the game in a sliver.
+  **Shader** offers the installed presets among a curated few and brings the
+  `glcore` driver with them, for the days a game runs in a window. Both are
+  kept per system in `systems.toml` and take effect at the next start.
+- `omarchy-crt library set SYSTEM aspect=...` and `shader=...`.
+
 - `omarchy-crt-shell --clock HH:MM` draws a time of day that is not now, and
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
@@ -132,6 +142,22 @@ caveat for a 0.x project: anything may still move.
 - The library overlay's buttons say what they do: "Rescan sources" for the
   one that rescans the folders already listed, and "Reload" for the one that
   reloads what the overlay is showing.
+- Music speaks cliamp's version 2 socket. cliamp 2.0 made its socket version
+  2 only: requests carry `version: 2` and an id, reads answer with a
+  snapshot and everything else answers with a job to follow. A daemon from
+  before 2.0 is still understood; which one is listening is learned from the
+  first request.
+- `docs/plan.md` is gone. The changelog says what landed and the README says
+  what the thing is; a status file that had to be edited by hand said neither
+  for long.
+
+### Fixed
+
+- Recently played was always empty: a history entry from cliamp wraps its
+  track and the launcher was reading the envelope as one.
+- The deck showed nothing between tracks: a version 2 snapshot names the
+  sounding track and the playlist's own track apart and drops the first while
+  nothing plays.
 
 ## [0.3.0] - 2026-09-08
 

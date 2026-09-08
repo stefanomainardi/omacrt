@@ -6,7 +6,7 @@
 //! rewind. RetroArch runs with a dedicated base config and a per launch
 //! override so its own menu never shows up.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
@@ -55,6 +55,16 @@ pub struct System {
     pub shift_x: i32,
     #[serde(default)]
     pub shift_y: i32,
+    /// How the picture fills the screen, picked in the pause menu: `fill`
+    /// (the whole raster, the default), `core` (the aspect the core asks
+    /// for) or `pixel` (square pixels). Empty means `fill`.
+    #[serde(default)]
+    pub aspect: String,
+    /// Shader preset picked in the pause menu, as a path under the shader
+    /// directory (`crt/crt-geom.slangp`), or empty for none. A tube needs no
+    /// shader; this is for the days the games run in a window.
+    #[serde(default)]
+    pub shader: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -260,6 +270,8 @@ fn default_systems() -> Vec<System> {
         lines: None,
         shift_x: 0,
         shift_y: 0,
+        aspect: String::new(),
+        shader: String::new(),
     };
     vec![
         sys(
@@ -506,6 +518,8 @@ fn default_systems() -> Vec<System> {
         lines: None,
         shift_x: 0,
         shift_y: 0,
+        aspect: String::new(),
+        shader: String::new(),
     }))
     .collect()
 }
@@ -599,6 +613,8 @@ impl Library {
                     lines: None,
                     shift_x: 0,
                     shift_y: 0,
+                    aspect: String::new(),
+                    shader: String::new(),
                 });
             }
         }
@@ -980,6 +996,18 @@ impl Library {
             );
             kv("global_core_options", "true");
             kv("core_options_path", &cores_cfg.display().to_string());
+            // A shader preset the player picked. The presets that ship on
+            // Arch are Slang, which the plain `gl` driver cannot compile, so
+            // a chosen shader brings `glcore` with it and no shader leaves
+            // the driver alone.
+            match shader_path(&system.shader) {
+                Some(path) => {
+                    kv("video_driver", "glcore");
+                    kv("video_shader_enable", "true");
+                    kv("video_shader", &path.display().to_string());
+                }
+                None => kv("video_shader_enable", "false"),
+            }
         }
         out.push_str(extra);
         dedupe_keys(&out)
@@ -1208,13 +1236,202 @@ joypad_autoconfig_dir = "/usr/share/libretro/autoconfig"
 input_max_users = "4"
 "#;
 
+/// How the picture fills the screen. The pause menu cycles these; the
+/// launcher turns the choice into a viewport at the next start, because
+/// RetroArch reads its aspect from the config and nothing can change it in a
+/// running game.
+pub const ASPECTS: [(&str, &str); 3] = [
+    ("fill", "fill the screen"),
+    ("core", "as the core asks"),
+    ("pixel", "square pixels"),
+];
+
+/// Shader presets worth offering, in the order the pause menu cycles them.
+/// Only the ones actually installed are shown, and a tube wants none of them:
+/// they are for a game running in a window on the desktop.
+pub const SHADERS: [(&str, &str); 4] = [
+    ("", "off"),
+    ("scanlines/scanline.slangp", "scanlines"),
+    ("crt/crt-aperture.slangp", "aperture grille"),
+    ("crt/crt-geom.slangp", "curved tube"),
+];
+
+/// Where RetroArch's Slang presets live, ours first.
+fn shader_dirs() -> Vec<PathBuf> {
+    vec![
+        home().join(".config/retroarch/shaders/shaders_slang"),
+        PathBuf::from("/usr/share/libretro/shaders/shaders_slang"),
+    ]
+}
+
+/// The full path of a preset, when it is installed. An empty name is no
+/// shader at all.
+pub fn shader_path(name: &str) -> Option<PathBuf> {
+    if name.trim().is_empty() {
+        return None;
+    }
+    shader_dirs()
+        .into_iter()
+        .map(|d| d.join(name))
+        .find(|p| p.is_file())
+}
+
+/// The presets the pause menu can offer on this machine: off, plus whichever
+/// of the curated ones are installed.
+pub fn installed_shaders() -> Vec<(&'static str, &'static str)> {
+    SHADERS
+        .iter()
+        .copied()
+        .filter(|(name, _)| name.is_empty() || shader_path(name).is_some())
+        .collect()
+}
+
+/// The picture a core draws: its size in pixels and the aspect it asks to be
+/// shown at. RetroArch logs both, and the line repeats whenever a core
+/// changes resolution, so the last one is the one on screen.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Picture {
+    pub width: u32,
+    pub height: u32,
+    pub aspect: f32,
+}
+
+impl Picture {
+    /// The aspect the picture wants under one of the choices, or None for
+    /// `fill`, which wants the whole raster whatever shape it is.
+    pub fn wanted(&self, choice: &str) -> Option<f32> {
+        match choice {
+            "core" => (self.aspect > 0.1).then_some(self.aspect),
+            "pixel" => (self.height > 0).then(|| self.width as f32 / self.height as f32),
+            _ => None,
+        }
+    }
+}
+
+/// The last 64k of the log the launcher keeps for the running game. The
+/// interesting lines are always near the end and a long session writes
+/// megabytes.
+pub fn game_log_tail() -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    const TAIL: u64 = 64 * 1024;
+    let Ok(mut f) = std::fs::File::open(game_log_path()) else {
+        return String::new();
+    };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    if len > TAIL && f.seek(SeekFrom::End(-(TAIL as i64))).is_err() {
+        return String::new();
+    }
+    let mut buf = Vec::new();
+    let _ = f.take(TAIL + 4096).read_to_end(&mut buf);
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
+/// The picture RetroArch last logged for the running game.
+pub fn logged_picture() -> Option<Picture> {
+    picture_in(&game_log_tail())
+}
+
+/// `Geometry: 256x240, Aspect: 1.067` in either of the two lines RetroArch
+/// writes it on, the last one winning because a core that changes resolution
+/// writes another.
+pub fn picture_in(log: &str) -> Option<Picture> {
+    let mut found = None;
+    for line in log.lines() {
+        let Some(rest) = line
+            .split_once("SET_GEOMETRY:")
+            .or_else(|| line.split_once("Geometry:"))
+            .map(|(_, r)| r.trim())
+        else {
+            continue;
+        };
+        let mut parts = rest.split(',');
+        let Some((w, h)) = parts.next().unwrap_or("").trim().split_once('x') else {
+            continue;
+        };
+        let (Ok(width), Ok(height)) = (w.trim().parse::<u32>(), h.trim().parse::<u32>()) else {
+            continue;
+        };
+        if !(1..=4096).contains(&width) || !(1..=1200).contains(&height) {
+            continue;
+        }
+        let aspect = parts
+            .find_map(|p| p.split_once("Aspect:").map(|(_, a)| a))
+            .map(|a| a.trim().trim_end_matches('.'))
+            .and_then(|a| a.parse::<f32>().ok())
+            .filter(|a| (0.5..=4.0).contains(a))
+            .unwrap_or(0.0);
+        found = Some(Picture {
+            width,
+            height,
+            aspect,
+        });
+    }
+    found
+}
+
+fn pictures_path() -> PathBuf {
+    crate::crt::state_dir().join("pictures.toml")
+}
+
+/// What each system's core last drew, remembered because the choice of
+/// aspect is applied at the next start, when no core is running to ask.
+pub fn remember_picture(system: &str, picture: Picture) {
+    let mut all = pictures();
+    if all.get(system) == Some(&picture) {
+        return;
+    }
+    all.insert(system.to_string(), picture);
+    let Ok(text) = toml::to_string_pretty(&all) else {
+        return;
+    };
+    let path = pictures_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = crate::store::save(&path, text);
+}
+
+pub fn pictures() -> BTreeMap<String, Picture> {
+    crate::store::load_string(&pictures_path())
+        .and_then(|t| toml::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+/// The picture remembered for one system.
+pub fn picture_of(system: &str) -> Option<Picture> {
+    pictures().get(system).copied()
+}
+
+/// RetroArch keys that put a picture of aspect `wanted` in the middle of a
+/// frame of `fw` by `fh` pixels which the screen shows as a rectangle of
+/// aspect `screen`. On the tube the frame is thousands of pixels wide and
+/// the screen is 4:3, so the viewport has to be worked out here: asking
+/// RetroArch for square pixels in that frame leaves the game in a sliver.
+pub fn viewport_keys(fw: u32, fh: u32, screen: f32, wanted: f32) -> String {
+    if fw == 0 || fh == 0 || wanted <= 0.0 || screen <= 0.0 {
+        return String::new();
+    }
+    let (mut vw, mut vh) = (fw as f32 * wanted / screen, fh as f32);
+    if vw > fw as f32 {
+        vh = fh as f32 * screen / wanted;
+        vw = fw as f32;
+    }
+    let (vw, vh) = (vw.round().max(1.0) as u32, vh.round().max(1.0) as u32);
+    let (vx, vy) = ((fw - vw) / 2, (fh - vh) / 2);
+    format!(
+        "aspect_ratio_index = \"23\"\ncustom_viewport_x = \"{vx}\"\ncustom_viewport_y = \"{vy}\"\ncustom_viewport_width = \"{vw}\"\ncustom_viewport_height = \"{vh}\"\nvideo_scale_integer = \"false\"\n"
+    )
+}
+
 /// Change one key (`core` or `dir`) of a system in `systems.toml`, adding the
 /// `[[system]]` block from the catalogue when the system only lives in the
 /// index. The file is ours (the header says so), so it is rewritten whole;
 /// per system option tables survive the round trip.
 pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), String> {
-    if !matches!(key, "core" | "dir") {
-        return Err(format!("{key}: only core and dir can be set"));
+    if !matches!(key, "core" | "dir" | "aspect" | "shader") {
+        return Err(format!(
+            "{key}: only core, dir, aspect and shader can be set"
+        ));
     }
     let path = default_path();
     let text = crate::config::read(&path).unwrap_or_default();
@@ -1311,25 +1528,98 @@ pub fn installed_cores(core_dir: &Path) -> Vec<String> {
 /// RetroArch will say it without a network command, and those crash the
 /// emulator often enough to be worth avoiding.
 pub fn core_geometry(log: &str) -> Option<(u32, u32)> {
-    let mut found = None;
-    for line in log.lines() {
-        let Some(rest) = line
-            .split_once("SET_GEOMETRY:")
-            .or_else(|| line.split_once("Geometry:"))
-            .map(|(_, r)| r.trim())
-        else {
-            continue;
+    picture_in(log).map(|p| (p.width, p.height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A system with a picture choice and a shader, launched into a temporary
+    /// config directory, and the config RetroArch would read.
+    fn launch_cfg(aspect: &str, shader: &str, extra: &str) -> String {
+        // A directory of its own per call: the tests run at the same time and
+        // each one deletes what it wrote.
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("omarchy-crt-launch-{}-{n}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let mut system = System {
+            name: "snes".into(),
+            dir: dir.display().to_string(),
+            core: "snes9x".into(),
+            extensions: vec!["sfc".into()],
+            video: "super".into(),
+            options: BTreeMap::new(),
+            devices: Vec::new(),
+            runahead: 0,
+            rewind: true,
+            analog_dpad: None,
+            player: String::new(),
+            lines: Some(224),
+            shift_x: 0,
+            shift_y: 0,
+            aspect: aspect.into(),
+            shader: shader.into(),
         };
-        let size = rest.split(',').next().unwrap_or("").trim();
-        let Some((w, h)) = size.split_once('x') else {
-            continue;
+        system.aspect = aspect.into();
+        let lib = Library {
+            systems: vec![system.clone()],
+            retroarch: "retroarch".into(),
+            core_dir: dir.clone(),
+            config_dir: dir.clone(),
+            switching: false,
+            index: None,
+            collections: Vec::new(),
+            path_system: HashMap::new(),
         };
-        if let (Ok(w), Ok(h)) = (w.trim().parse::<u32>(), h.trim().parse::<u32>())
-            && (1..=4096).contains(&w)
-            && (1..=1200).contains(&h)
-        {
-            found = Some((w, h));
-        }
+        let game = Game {
+            title: "Chrono Trigger".into(),
+            path: dir.join("ct.sfc"),
+            crt_path: None,
+            folder: false,
+        };
+        lib.command_resuming(&system, &game, extra, true)
+            .expect("the command is built");
+        let text = std::fs::read_to_string(dir.join("launch.cfg")).expect("launch.cfg is written");
+        let _ = std::fs::remove_dir_all(&dir);
+        text
     }
-    found
+
+    #[test]
+    fn a_shader_brings_the_driver_that_can_compile_it() {
+        let with = launch_cfg("fill", "crt/crt-aperture.slangp", "");
+        if shader_path("crt/crt-aperture.slangp").is_some() {
+            assert!(with.contains("video_shader_enable = \"true\""));
+            assert!(with.contains("video_driver = \"glcore\""));
+            assert!(with.contains("crt-aperture.slangp"));
+        }
+        let without = launch_cfg("fill", "", "");
+        assert!(without.contains("video_shader_enable = \"false\""));
+        assert!(!without.contains("video_driver"));
+        // A preset that is not installed is no shader at all.
+        let missing = launch_cfg("fill", "nothing/at-all.slangp", "");
+        assert!(missing.contains("video_shader_enable = \"false\""));
+    }
+
+    #[test]
+    fn the_viewport_the_shell_appends_wins_over_the_policy() {
+        // The shell writes the picture choice last, and RetroArch keeps the
+        // last value of a key.
+        let extra = viewport_keys(3520, 224, 4.0 / 3.0, 256.0 / 224.0);
+        let cfg = launch_cfg("pixel", "", &extra);
+        assert!(cfg.contains("aspect_ratio_index = \"23\""));
+        assert_eq!(
+            cfg.lines()
+                .filter(|l| l.starts_with("aspect_ratio_index"))
+                .count(),
+            1,
+            "the key is written once"
+        );
+        assert!(cfg.contains(&format!(
+            "custom_viewport_width = \"{}\"",
+            (3520.0f32 * (256.0 / 224.0) / (4.0 / 3.0)).round() as u32
+        )));
+    }
 }
