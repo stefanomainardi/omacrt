@@ -29,9 +29,21 @@ caveat for a 0.x project: anything may still move.
   page can be switched off with `[screensaver] off`, and music playing still
   takes the screen for the visualizer. The first page of an evening is picked
   at random, and the first key press puts back the screen that was up.
-- An ambient page of its own: the time with the colon on the second, the
-  minute filling up under it, the day, the weather and what is next. It needs
-  no photograph server, only the weather setting.
+- The ambient page is a window with the weather in it, drawn the way a 16 bit
+  game drew a sky. The sun crosses the arc between the real sunrise and sunset
+  and the moon takes the same path at night; clouds drift in three layers at
+  the speed of the real wind; rain slants with it and breaks on the ground;
+  snow wanders down; fog rolls over the clouds in bands; lightning lights the
+  whole frame and leaves a bolt behind; and a town sits along the horizon with
+  its windows coming on after dark. Every gradient is a 4x4 ordered dither,
+  the way a console with a fixed palette faked one. The time, the temperature,
+  the day and what is next are in the dark band underneath, where they can be
+  read.
+- The weather is read in full rather than as one line: the place, the
+  temperature, the condition, the wind and the two times the sun crosses the
+  horizon, in about sixty bytes from wttr.in. `[frame] weather` names the
+  place; empty leaves wttr.in guessing from the address, which a VPN moves a
+  country.
 - A **Television** entry in Omarchy's own menu, written into the extension
   file Omarchy reads for it, with power, channels, picture, sound, library,
   capture, pads and diagnostics. `--uninstall` takes it back out.
