@@ -14,8 +14,13 @@
 
 use std::process::Command;
 
-/// What this project calls itself to a server it does not own.
-pub const USER_AGENT: &str = "omarchy-crt/0.1 (https://github.com/stefanomainardi/omarchy-crt)";
+/// What this project calls itself to a server it does not own. The version
+/// comes from `Cargo.toml`, so it cannot drift from the one that is running.
+pub const USER_AGENT: &str = concat!(
+    "omarchy-crt/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/stefanomainardi/omarchy-crt)"
+);
 
 /// A curl that will not run longer than `seconds`, will not write more than
 /// `max_bytes`, and will not follow a redirect out of HTTP. Give it the URL,

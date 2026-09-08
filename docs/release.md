@@ -152,8 +152,12 @@ rather than promised.
 
 ## E. Publishing
 
-- [ ] `develop` into `main`, and `main` is what the world sees.
-- [ ] Tag `v0.1.0` and give the CHANGELOG a release section with a date.
+- [x] `develop` into `main`, and `main` is what the world sees.
+- [x] Tag `v0.3.0` and give the CHANGELOG a release section with a date. Not
+      `v0.1.0`: the CHANGELOG already carried 0.1.0 and 0.2.0 from the two
+      earlier passes, so the release the repository opens with is 0.3.0.
+      `omarchy-crt version` says which one is installed, and the user agent
+      the fetches send is built from the same number.
 - [ ] Repository settings: the description, the topics, Discussions on,
       issues for verified bugs, `main` protected.
 - [ ] Private to public, once A1 has an answer.

@@ -20,6 +20,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
                            first run: find the DAC's connector, write crt.toml
   status [--json]          output, mode, DAC, audio, launcher, BIOS at a glance
+  version                  which version this is
   on [ntsc|pal]            15 kHz modeline, DAC csync, audio to the TV, launcher
   off                      launcher closed, audio back, output disabled
   boot                     login reset: CRT output off, audio back to the desktop
@@ -2052,6 +2053,9 @@ fn main() {
     let cfg = Config::load();
     match cmd {
         "-h" | "--help" | "help" => println!("{HELP}"),
+        "-V" | "--version" | "version" => {
+            println!("omarchy-crt {}", env!("CARGO_PKG_VERSION"));
+        }
         "status" => {
             let st = status(&cfg);
             if has(args, "--json") {
