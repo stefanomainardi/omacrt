@@ -70,6 +70,10 @@ caveat for a 0.x project: anything may still move.
   worth a keybinding. Anything that stops a launch arrives as a notification,
   and with a game already playing the picker asks whether to stop it, with
   the answers as its own rows. `play --force` stops it and waits for the tube.
+  Every step goes to `~/.local/state/omarchy-crt/pick.log`, and a walker
+  already open is closed first: started alongside another instance it hands
+  its arguments over and exits without printing, which looks exactly like a
+  menu row that does nothing.
 - `omarchy-crt audio volume` takes a step (`+10`, `-10`) as well as a percent.
 - `AGENTS.md`: the working guide for the repository, for a coding agent or a
   person, with the rules that have each already cost a session.
