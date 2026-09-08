@@ -10,50 +10,93 @@
 #   omarchy-crt-pick <system>  one system's games
 #
 # Used by the Television entry in the Omarchy menu, and fine to bind to a key.
+#
+# Every way out of here says something. A picker run from a menu row has no
+# terminal to print to, so anything that stops it going through has to arrive
+# as a notification or it looks like the row did nothing at all.
 set -euo pipefail
 
 crt="${OMARCHY_CRT:-omarchy-crt}"
-command -v "$crt" >/dev/null || { echo "omarchy-crt is not on PATH" >&2; exit 1; }
 
-system="${1-}"
-if [ -n "$system" ]; then
-  rows="$("$crt" library games --system "$system")"
-  prompt="$system"
-else
-  rows="$("$crt" library games)"
-  prompt="Play on the television"
-fi
-[ -n "$rows" ] || { echo "nothing in the library: omarchy-crt library scan ~/Games" >&2; exit 1; }
+say() {
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a "Omarchy CRT" "$1" "${2-}"
+  fi
+  printf '%s %s\n' "$1" "${2-}" >&2
+}
 
-# The picker: walker is what Omarchy ships, and the others are here so this
-# works on a desktop that swapped it out.
+command -v "$crt" >/dev/null 2>&1 || { say "omarchy-crt is not on PATH"; exit 1; }
+
+# The picker: walker is what Omarchy ships, the others are here so this works
+# on a desktop that swapped it out.
 pick() {
-  if command -v walker >/dev/null; then
-    walker --dmenu --placeholder "$prompt"
-  elif command -v fuzzel >/dev/null; then
+  local prompt="$1"
+  if command -v walker >/dev/null 2>&1; then
+    walker --dmenu --placeholder "$prompt" 2>/dev/null
+  elif command -v fuzzel >/dev/null 2>&1; then
     fuzzel --dmenu --prompt "$prompt: "
-  elif command -v rofi >/dev/null; then
+  elif command -v rofi >/dev/null 2>&1; then
     rofi -dmenu -p "$prompt"
   else
-    echo "no picker found: install walker, fuzzel or rofi" >&2
+    say "no picker found" "install walker, fuzzel or rofi"
     return 1
   fi
 }
+
+system="${1-}"
+if [ -n "$system" ]; then
+  rows="$("$crt" library games --system "$system")" || rows=""
+  prompt="$system"
+else
+  rows="$("$crt" library games)" || rows=""
+  prompt="Play on the television"
+fi
+if [ -z "$rows" ]; then
+  say "nothing in the library" "omarchy-crt library scan ~/Games"
+  exit 1
+fi
 
 # One line per game as `title  ·  system` for the eye, with the path behind
 # it: the picker shows the first field and this keeps the third.
 chosen="$(printf '%s\n' "$rows" |
   awk -F'\t' '{ printf "%s  ·  %s\t%s\n", $1, $2, $3 }' |
   cut -f1 |
-  pick)" || exit 0
+  pick "$prompt")" || exit 0
+# Nothing chosen is somebody pressing escape, which needs no announcement.
 [ -n "$chosen" ] || exit 0
 
 path="$(printf '%s\n' "$rows" |
   awk -F'\t' -v want="$chosen" '{ if ($1 "  ·  " $2 == want) { print $3; exit } }')"
-[ -n "$path" ] || { echo "could not find $chosen again" >&2; exit 1; }
+if [ -z "$path" ]; then
+  say "could not find that game again" "$chosen"
+  exit 1
+fi
+title="${chosen%%  ·  *}"
 
 # The tube has to be on to have a launcher to send this to.
 if ! "$crt" status --json | grep -q '"active":true'; then
-  "$crt" on
+  if ! out="$("$crt" on 2>&1)"; then
+    say "could not turn the television on" "$out"
+    exit 1
+  fi
 fi
-exec "$crt" play "$path"
+
+# Something already playing is the one thing worth asking about, and the
+# picker is right there to ask with.
+force=""
+playing="$("$crt" status --json | sed -n 's/.*"playing":"\([^"]*\)".*/\1/p')"
+if [ -n "$playing" ]; then
+  answer="$(printf '%s\n%s\n' "Stop $playing and play $title" "Leave it running" |
+    pick "Something is playing")" || exit 0
+  case "$answer" in
+    Stop*) force="--force" ;;
+    *) exit 0 ;;
+  esac
+fi
+
+if [ -n "$force" ]; then
+  out="$("$crt" play --force "$path" 2>&1)" || { say "could not start $title" "$out"; exit 1; }
+else
+  out="$("$crt" play "$path" 2>&1)" || { say "could not start $title" "$out"; exit 1; }
+fi
+say "$title" "on the television"

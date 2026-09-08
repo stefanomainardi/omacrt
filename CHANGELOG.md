@@ -67,7 +67,9 @@ caveat for a 0.x project: anything may still move.
   every game the scan has seen. `omarchy-crt-pick` puts a fuzzy picker in
   front of that on the desktop and plays what comes back, turning the tube on
   if it is off; it is the **Play a game...** row in the Omarchy menu and it is
-  worth a keybinding.
+  worth a keybinding. Anything that stops a launch arrives as a notification,
+  and with a game already playing the picker asks whether to stop it, with
+  the answers as its own rows. `play --force` stops it and waits for the tube.
 - `omarchy-crt audio volume` takes a step (`+10`, `-10`) as well as a percent.
 - `AGENTS.md`: the working guide for the repository, for a coding agent or a
   person, with the rules that have each already cost a session.

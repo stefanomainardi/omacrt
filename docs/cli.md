@@ -247,10 +247,18 @@ it picked and sends the path to the launcher, which starts it exactly as
 choosing it on the tube would. It refuses while a game or a film is already
 running.
 
+`--force` stops whatever is playing first and waits for the tube to be free.
+
 `omarchy-crt-pick` is that with a picker in front of it: every game the scan
 has seen goes into walker (or fuzzel, or rofi), and what comes back is played
 on the television, turning the tube on first if it is off. It is the
 **Play a game...** row in the Omarchy menu, and it is worth a keybinding.
+
+Everything that stops it going through arrives as a notification, because a
+row run from a menu has no terminal to print to and a silent failure looks
+like a row that does nothing. With a game already playing the picker comes
+back to ask, with the two answers as its own rows: stop that one and play
+this, or leave it alone.
 
 A live list of games inside the Omarchy menu itself is not possible: its
 providers are a fixed table inside the menu plugin, so a third party cannot
