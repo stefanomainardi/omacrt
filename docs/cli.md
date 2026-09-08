@@ -267,58 +267,62 @@ Four ways in, and none of them is the settings page:
 - **From the settings page** for it, Settings, Photo frame: A shows it now.
   That page is where it is set up, not where it runs.
 - **On its own, when the television is left alone**: Settings, Screensaver,
-  set `when idle` to `photos`, or to `mix` to take turns with the other pages.
+  and switch **the photographs** on. Leave the other pages on too and they
+  take turns.
 - **From the desktop**: the Omarchy menu, Television, Channel, Photo frame, or
   `omarchy-crt shell screen frame` in a terminal.
 
 ## What an idle television shows
 
-The screensaver is not only a text effect on the wordmark any more. Four pages
-can have the screen, and they can take turns:
+Four pages can have the screen when the set is left alone:
 
-| Page | What |
+| Page | What it shows |
 | --- | --- |
-| `effects` | The wordmark taken apart and put back, one of nine effects |
+| `effects` | The wordmark taken apart and put back, by one of nine text effects |
 | `photos` | The photo frame |
-| `ambient` | A window with the weather drawn in it, and the time under it |
+| `ambient` | The weather drawn, with the time under it |
 | `system` | The system monitor |
+
+`pages` is which of them are in the rotation, `cycle_secs` is how long each
+one keeps the screen, and `effect` is only which text effect the wordmark page
+uses:
 
 ```toml
 [screensaver]
 enabled = true
-idle_secs = 60      # seconds of nothing before it starts
-effect = "mix"      # a page by name, an effect by name, random, or mix
-cycle_secs = 240    # while mixing, how long each page stays; 0 keeps one
-off = ["system"]    # pages left out of the mix
+idle_secs = 60                            # seconds of nothing before it starts
+pages = ["photos", "ambient", "system"]   # what an idle set shows
+cycle_secs = 240                          # how long each page keeps the screen
+effect = "random"                         # the wordmark page's own effect
 ```
 
-The ambient page draws what the weather is doing: the sun on its real arc
-between sunrise and sunset, the moon on the same path at night, clouds at the
-speed of the real wind, rain that slants with it and breaks on the ground,
-snow, fog, lightning, and a town along the horizon whose windows come on after
-dark. It needs no photograph server. `[frame] weather` names the town; with that
-empty the town is the city in the machine's own timezone, so
-`Europe/Brussels` asks about Brussels. The Photo frame settings page on the
-television says which town it is using and where the name came from.
+One page in `pages` keeps the screen for as long as the set is left alone.
+Several take turns, and four rules decide the rest:
 
-`effect` takes one page name (`effects`, `photos`, `ambient`, `system`), one
-effect name (`laseretch`, `rain`, `beams`, `burn`, `slide`, `decrypt`,
-`expand`, `unstable`, `vhstape`), `random` for any effect, or `mix` to take
-turns between the pages that are on. The same page is on the television under
-Settings, Screensaver, where every one of those is a row.
+- **The order is the order of the table above**, whatever order they were
+  switched on in, so it is the same every evening and the settings page reads
+  as the running order.
+- **The first page of an evening is picked at random** among them, so a
+  television left alone twice does not open the same way twice.
+- **`cycle_secs = 0` keeps whichever page came up first**, however many are in
+  the list.
+- **Music playing takes the screen** and the visualizer stands in, whatever
+  the rotation says, because a page showing the time is a poor answer to a
+  room with music in it. `[music] saver = false` turns that off.
 
-Two rules decide who wins:
-
-- **Music playing takes the screen**, and the visualizer stands in, whatever
-  the mix says. A page that shows the time is a poor answer to a room with
-  music in it. Turn it off with `[music] saver = false`.
-- **The first page of an evening is picked at random** among the ones that are
-  on, so a television left alone twice does not open the same way twice.
-  After that they go round in order.
+The same thing is on the television under Settings, Screensaver: one row per
+page with on and off, the seconds, the text effect, and *show one now* to
+start the rotation without waiting for the timer.
 
 The first key press puts back the screen that was up before, not the top of
 the menu: a page the idle timer started is a screensaver, whatever else it can
 do.
+
+A `settings.toml` written by an older build said all of this with one key.
+`effect` carried a text effect, or `random`, or the name of a page, or `mix`
+for all of them. It is read once and written back as a rotation: `mix` becomes
+all four pages, a page name becomes that page on its own, and anything else
+becomes the wordmark page with that effect.
 
 ## The Omarchy menu
 
