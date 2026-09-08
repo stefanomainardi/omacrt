@@ -9,6 +9,12 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- The home menu says a little more without saying it eight times over: the
+  row under the cursor carries what it holds on its own right (the size of
+  the collection, the last thing played, how many pages an idle television
+  shows, the theme), the icon of that row breathes, and the two corners the
+  wordmark leaves empty carry the picture and line rate on the left and the
+  time on the right.
 - **Settings, Sound**: one page for every switch the launcher's noises have.
   `[sound] menu` turns off the beep, the click and the page turn while leaving
   the boot show alone; `deck` is the needle on a track change; `weather` is the
