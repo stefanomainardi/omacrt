@@ -141,7 +141,16 @@ alone.
 | Module | What |
 | --- | --- |
 | `main.rs` | SDL window, input, the frame loop, the control pipe, headless and offline rendering |
-| `scene.rs` | Every screen: the `Screen` enum, navigation, drawing. The big one |
+| `scene/mod.rs` | The `Screen` enum, the state, the dispatch, the frame loop and the helpers every screen uses |
+| `scene/browse.rs` | Systems, games, folders, search, the cover flow, the launch |
+| `scene/boot.rs` | The boot sequence and the home menu |
+| `scene/hifi.rs` | The music screens: sources, lists, the deck, the equaliser |
+| `scene/video.rs` | Films, YouTube, the player overlay, the fit settings |
+| `scene/pause.rs` | A running game and the pause menu over it |
+| `scene/settings.rs` | The settings pages, diagnostics, about, the pad wizard |
+| `scene/idle.rs` | Which page an idle television shows, and the rules for who wins |
+| `scene/frame.rs` | The photo frame and the ambient page |
+| `scene/monitor.rs` | The system monitor |
 | `fb.rs` | The framebuffer and the drawing primitives |
 | `art.rs` | Pictures on a worker thread: fetch, decode, scale |
 | `photos.rs` | The photo frame's supply thread, and the weather and calendar with it |
@@ -244,11 +253,13 @@ two have diverged once already.
 
 ## Adding the usual things
 
-**A screen.** `scene.rs`: a variant on `Screen`, an arm in the navigation
-match, an arm in the drawing match, an arm in `activate_browser` (or
-`Action::None` if A does nothing), a name in `open_screen` so the control pipe
-and the desktop menu can reach it, a name in `debug_browse` so it can be
-rendered headlessly, and a row in `HOME` or in the hub it belongs to. Watch
+**A screen.** A variant on `Screen` in `scene/mod.rs`, an arm in the
+navigation match and one in the drawing match (both in `scene/browse.rs`), an
+arm in `activate_browser` (or `Action::None` if A does nothing), a name in
+`open_screen` so the control pipe and the desktop menu can reach it, a name in
+`debug_browse` so it can be rendered headlessly, and a row in `HOME` or in the
+hub it belongs to. The drawing itself goes in the `scene/` file for its
+family, and a method another family calls is `pub(super)`. Watch
 the home menu's height: the wordmark and the CRT tag take the top half of a
 240 line screen, so eight rows fit and a ninth runs off the bottom. Render it
 and look before assuming otherwise; that is how About ended up in Settings.
