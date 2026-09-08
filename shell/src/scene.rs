@@ -317,7 +317,7 @@ const SYS_PAGE: usize = 11;
 /// Pages of the system monitor: the machine, then the processes.
 const MONITOR_PAGES: usize = 2;
 /// Rows of the photo frame settings page.
-const FRAME_ROWS: usize = 5;
+const FRAME_ROWS: usize = 6;
 
 /// What an idle television can show, and what each one is.
 ///
@@ -7680,6 +7680,19 @@ impl Scene {
                     f.album.clone()
                 },
             ),
+            (
+                "weather for".into(),
+                if f.weather.trim().is_empty() {
+                    let zone = omarchy_crt_shell::ambient::zone_place();
+                    if zone.is_empty() {
+                        "wherever this is".into()
+                    } else {
+                        format!("{zone} (timezone)")
+                    }
+                } else {
+                    f.weather.clone()
+                },
+            ),
         ];
         let notes = [
             "what is written over the photograph",
@@ -7687,6 +7700,7 @@ impl Scene {
             "which photographs the server sends",
             "a picture that fills the screen moves a little",
             "the album's name, from settings.toml",
+            "the town on the ambient page, from settings.toml",
         ];
         self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14);
     }

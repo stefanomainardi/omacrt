@@ -77,7 +77,8 @@ pub struct Frame {
     /// Let a photograph that fills the screen drift while it is up.
     #[serde(default = "default_true")]
     pub pan: bool,
-    /// Place for the weather line; empty asks by address.
+    /// Place for the weather; empty asks about the city in the machine's
+    /// own timezone.
     #[serde(default)]
     pub weather: String,
     /// A calendar to read the next appointment from, as an `.ics` address.

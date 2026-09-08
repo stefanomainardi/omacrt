@@ -3,8 +3,9 @@
 //!
 //! Both are optional and both are cached, because a photo frame that stops to
 //! wait on the network is not a photo frame. The weather comes from wttr.in,
-//! which needs no key and guesses the place from the address when none is
-//! given. The calendar is any `.ics` a server will hand over, which is what
+//! which needs no key; with no place set it is asked about the city in the
+//! machine's own timezone, which is a better guess than the one it would make
+//! from the address. The calendar is any `.ics` a server will hand over, which is what
 //! Nextcloud, Google and Fastmail all offer for a single calendar.
 
 use std::path::{Path, PathBuf};
@@ -241,9 +242,53 @@ fn fetch(url: &str, dest: &Path) -> Option<String> {
     Some(text)
 }
 
-/// One line of weather for `place`, or for wherever the address says when it
-/// is empty. Cached for half an hour.
+/// The city in the machine's own timezone: "Europe/Brussels" is Brussels.
+///
+/// This is the answer to an empty weather setting. Asking wttr.in with no
+/// place at all makes it guess from the address, and an address is a country
+/// away the moment there is a VPN in the way, while the timezone is where the
+/// machine thinks it is. A zone with no region in it, `UTC`, is not a place
+/// and gets no guess.
+pub fn zone_place() -> String {
+    if let Ok(tz) = std::env::var("TZ") {
+        let named = place_from_zone(&tz);
+        if !named.is_empty() {
+            return named;
+        }
+    }
+    match std::fs::read_link("/etc/localtime") {
+        Ok(target) => place_from_zone(&target.to_string_lossy()),
+        Err(_) => String::new(),
+    }
+}
+
+/// "…/zoneinfo/America/New_York" as "New York".
+pub fn place_from_zone(path: &str) -> String {
+    let zone = match path.split_once("zoneinfo/") {
+        Some((_, rest)) => rest,
+        None => path,
+    };
+    let mut parts = zone.split('/');
+    let region = parts.next().unwrap_or("");
+    // The city is what follows the region, and there has to be a region:
+    // `UTC` on its own is a rule about clocks, not a town.
+    let city = match parts.next_back() {
+        Some(city) if !region.is_empty() && !city.is_empty() => city,
+        _ => return String::new(),
+    };
+    city.replace('_', " ")
+}
+
+/// One line of weather for `place`, or for the city in the machine's own
+/// timezone when it is empty. Cached for half an hour.
 pub fn weather(place: &str) -> Reading {
+    let asked = place.trim().to_string();
+    let place = if asked.is_empty() {
+        zone_place()
+    } else {
+        asked
+    };
+    let place = place.as_str();
     // The place is part of the cache's name: asking for Milan must not be
     // answered with the line that was fetched for wherever the address said.
     let slug: String = place
@@ -474,6 +519,25 @@ mod tests {
             "Watermael-Boitsfort"
         );
         assert_eq!(tidy_place(""), "");
+    }
+
+    #[test]
+    fn an_empty_setting_asks_about_the_city_in_the_timezone() {
+        assert_eq!(
+            place_from_zone("/usr/share/zoneinfo/Europe/Brussels"),
+            "Brussels"
+        );
+        assert_eq!(place_from_zone("Europe/Rome"), "Rome");
+        // An underscore stands in for the space in a name.
+        assert_eq!(place_from_zone("America/New_York"), "New York");
+        // Three parts: the city is still the last of them.
+        assert_eq!(
+            place_from_zone("America/Argentina/Buenos_Aires"),
+            "Buenos Aires"
+        );
+        // A rule about clocks is not a town.
+        assert_eq!(place_from_zone("/usr/share/zoneinfo/UTC"), "");
+        assert_eq!(place_from_zone(""), "");
     }
 
     #[test]

@@ -96,11 +96,20 @@ glass. Both are the point.
   <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
   <img src="docs/screens/equalizer.png" width="270" alt="The ten band equaliser">
   <img src="docs/screens/visual-mode7.png" width="270" alt="Mode 7 equalizer visualizer">
+  <img src="docs/screens/system.png" width="270" alt="The system monitor: a bank of meters, one per processor">
+</p>
+
+An idle television is a window: the ambient page draws what the weather is
+doing, and the sun crosses the arc between the real sunrise and sunset.
+
+<p align="center">
+  <img src="docs/screens/weather.png" width="640" alt="The ambient page in six kinds of weather: sun, rain, thunder, fog, snow, night">
 </p>
 
 Every picture above was captured from the tube's own framebuffer by
 `omarchy-crt shot`, and the boot by `omarchy-crt record`; the television adds
-the scanlines.
+the scanlines. The six skies are that same framebuffer rendered offline,
+because a screenshot of a thunderstorm has to wait for a thunderstorm.
 
 ## How it works
 
