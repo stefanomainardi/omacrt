@@ -363,7 +363,7 @@ impl Scene {
                 "the town, from settings.toml"
             },
         ];
-        self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14);
+        self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14, None);
         // A settings page for the frame is not the frame, and nothing else on
         // it says that the frame is one button away. The table wrote its own
         // hint on that line first, so the line is cleared before this one.

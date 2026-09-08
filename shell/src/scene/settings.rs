@@ -392,9 +392,10 @@ impl Scene {
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
-    /// Video fit settings: how modern video is adapted to the tube.
     /// A settings table: label left, `< value >` right, a note for the
-    /// selected row above the hints.
+    /// selected row above the hints. `footer` is a second line for a page
+    /// with something to say about itself rather than about one row.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_settings_table(
         &mut self,
         fb: &mut Framebuffer,
@@ -403,6 +404,7 @@ impl Scene {
         notes: &[&str],
         sel: usize,
         row_h: i32,
+        footer: Option<&str>,
     ) {
         let w = fb.w as i32;
         let h = fb.h as i32;
@@ -450,12 +452,23 @@ impl Scene {
             );
         }
         let max_cols = (width / 8) as usize;
+        // With a footer the note moves up a line to make room for it.
+        let note_y = if footer.is_some() { h - 40 } else { h - 28 };
         if let Some(note) = notes.get(sel) {
             fb.text(
                 left,
-                h - 28,
+                note_y,
                 &note.chars().take(max_cols).collect::<String>(),
                 scale(self.theme.dim, 0.8),
+                1,
+            );
+        }
+        if let Some(line) = footer {
+            fb.text(
+                left,
+                h - 28,
+                &line.chars().take(max_cols).collect::<String>(),
+                scale(self.theme.dim, 0.7),
                 1,
             );
         }

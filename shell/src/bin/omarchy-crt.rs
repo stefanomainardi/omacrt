@@ -1533,23 +1533,7 @@ fn cmd_frame(args: &[String]) {
         // up without asking the server anything.
         if immich::Note::read(&path) == immich::Note::default() {
             let details = immich::details(&cfg, &shot.id);
-            let when = if details.taken.is_empty() {
-                immich::spoken_date(&shot.taken)
-            } else {
-                immich::spoken_date(&details.taken)
-            };
-            let ago = match shot.years_ago {
-                Some(1) => "a year ago today".to_string(),
-                Some(n) if n > 1 => format!("{n} years ago today"),
-                _ => String::new(),
-            };
-            immich::Note {
-                place: details.place,
-                when,
-                ago,
-                people: details.people,
-            }
-            .write(&path);
+            immich::Note::of(shot, &details).write(&path);
         }
     }
     println!("prepared:   {done} of {} at {w}x{h}", shots.len());

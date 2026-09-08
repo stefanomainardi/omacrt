@@ -249,29 +249,14 @@ fn work(tx: SyncSender<Msg>, wanted: Wanted) {
             continue;
         };
         let details = immich::details(&cfg, &shot.id);
-        let when = if details.taken.is_empty() {
-            immich::spoken_date(&shot.taken)
-        } else {
-            immich::spoken_date(&details.taken)
-        };
-        let ago = match shot.years_ago {
-            Some(1) => "a year ago today".to_string(),
-            Some(n) if n > 1 => format!("{n} years ago today"),
-            _ => String::new(),
-        };
-        immich::Note {
-            place: details.place.clone(),
-            when: when.clone(),
-            ago: ago.clone(),
-            people: details.people.clone(),
-        }
-        .write(&path);
+        let note = immich::Note::of(&shot, &details);
+        note.write(&path);
         let shown = Shown {
             image,
-            place: details.place,
-            when,
-            ago,
-            people: details.people,
+            place: note.place,
+            when: note.when,
+            ago: note.ago,
+            people: note.people,
         };
         if tx.send(Msg::Photo(Box::new(shown))).is_err() {
             return;

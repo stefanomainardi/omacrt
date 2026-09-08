@@ -369,75 +369,20 @@ impl Scene {
             "hits per search from the tube",
             "standard, pulldown, aspect, overscan, retro 240p",
         ];
-        self.draw_settings_table(fb, "Videos", &rows, &notes, sel, 14);
+        self.draw_settings_table(fb, "Videos", &rows, &notes, sel, 14, None);
     }
 
     pub(super) fn draw_video_fit(&mut self, fb: &mut Framebuffer, sel: usize) {
-        let w = fb.w as i32;
-        let h = fb.h as i32;
-        let left = (w as f32 * 0.05) as i32 + self.slide();
-        let width = w - 2 * (w as f32 * 0.05) as i32;
-        let y0 = self.draw_header(fb, "Video fit");
         let v = self.settings.video.clone();
-        let rows: [(&str, String); FIT_ROWS] = [
-            ("standard", v.standard.clone()),
-            ("film 24 fps", v.film24.clone()),
-            ("16:9 to 4:3", v.aspect.clone()),
-            (
-                "overscan 5%",
-                if v.overscan {
-                    "on".into()
-                } else {
-                    "off".into()
-                },
-            ),
-            (
-                "retro 240p",
-                if v.retro_240p {
-                    "on".into()
-                } else {
-                    "off".into()
-                },
-            ),
-            (
-                "preview in games",
-                if v.monitor_in_games {
-                    "on".into()
-                } else {
-                    "off".into()
-                },
-            ),
+        let onoff = |b: bool| if b { "on" } else { "off" }.to_string();
+        let rows: Vec<(String, String)> = vec![
+            ("standard".into(), v.standard.clone()),
+            ("film 24 fps".into(), v.film24.clone()),
+            ("16:9 to 4:3".into(), v.aspect.clone()),
+            ("overscan 5%".into(), onoff(v.overscan)),
+            ("retro 240p".into(), onoff(v.retro_240p)),
+            ("preview in games".into(), onoff(v.monitor_in_games)),
         ];
-        let row_h = 14;
-        let band_y = self.band(y0 + sel as i32 * row_h);
-        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
-        for (i, (label, value)) in rows.iter().enumerate() {
-            let y = y0 + i as i32 * row_h;
-            let on = i == sel;
-            fb.text(
-                left + 18,
-                y + 2,
-                label,
-                if on {
-                    self.theme.accent
-                } else {
-                    self.theme.paper
-                },
-                1,
-            );
-            let right = format!("< {value} >");
-            fb.text(
-                left + width - 8 - Framebuffer::text_width(&right, 1),
-                y + 2,
-                &right,
-                if on {
-                    self.theme.accent
-                } else {
-                    self.theme.dim
-                },
-                1,
-            );
-        }
         let notes: [&str; FIT_ROWS] = [
             "auto: 25/50 fps -> 576i, else 480i",
             "3:2 pulldown at 59.94, or PAL +4%",
@@ -446,25 +391,14 @@ impl Scene {
             "4:3 sources back to 320x240",
             "keep the desktop preview window up while playing",
         ];
-        let max_cols = (width / 8) as usize;
-        fb.text(
-            left,
-            h - 40,
-            &notes[sel].chars().take(max_cols).collect::<String>(),
-            scale(self.theme.dim, 0.8),
-            1,
+        self.draw_settings_table(
+            fb,
+            "Video fit",
+            &rows,
+            &notes,
+            sel,
+            14,
+            Some("live in mpv; X converts a video"),
         );
-        fb.text(
-            left,
-            h - 28,
-            &"live in mpv; X on a video converts it"
-                .chars()
-                .take(max_cols)
-                .collect::<String>(),
-            scale(self.theme.dim, 0.7),
-            1,
-        );
-        let hint = self.hint(&[("<>", "change"), ("B", "back saves")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 }

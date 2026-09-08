@@ -489,6 +489,28 @@ pub struct Note {
 }
 
 impl Note {
+    /// The note for a picture: what the server says about it, and how long
+    /// ago it was. Derived here because both the launcher's own thread and
+    /// `omarchy-crt frame fill` need exactly the same answer.
+    pub fn of(shot: &Shot, details: &Details) -> Self {
+        let when = if details.taken.is_empty() {
+            spoken_date(&shot.taken)
+        } else {
+            spoken_date(&details.taken)
+        };
+        let ago = match shot.years_ago {
+            Some(1) => "a year ago today".to_string(),
+            Some(n) if n > 1 => format!("{n} years ago today"),
+            _ => String::new(),
+        };
+        Self {
+            place: details.place.clone(),
+            when,
+            ago,
+            people: details.people.clone(),
+        }
+    }
+
     pub fn path(picture: &Path) -> PathBuf {
         picture.with_extension("txt")
     }
