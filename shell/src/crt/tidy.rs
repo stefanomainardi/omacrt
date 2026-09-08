@@ -144,7 +144,7 @@ fn leftovers() -> Vec<Mess> {
         for entry in entries.flatten() {
             let path = entry.path();
             let name = path.file_name().unwrap_or_default().to_string_lossy();
-            if !(name.ends_with(".part") || name.ends_with(".small")) {
+            if !(name.ends_with(".part") || name.ends_with(".small") || name.ends_with(".half")) {
                 continue;
             }
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);

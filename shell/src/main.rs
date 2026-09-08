@@ -235,7 +235,9 @@ fn run_headless(args: &Args) -> Result<(), String> {
         scene.start_screensaver(0.0, kind);
     }
     let mut dumps = args.dump.clone();
-    dumps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // `--dump nan` would panic a comparison that unwraps; a total order
+    // over floats has an answer for every pair.
+    dumps.sort_by(|a, b| a.total_cmp(b));
     let end = dumps.last().copied().unwrap_or(8.0) + 0.02;
     let dt = 1.0 / 60.0;
     let mut t = 0.0;
@@ -295,7 +297,7 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
                 .ok_or_else(|| format!("bad script line: {line}"))?;
             script.push((at, action.to_string(), parts.next().map(str::to_string)));
         }
-        script.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        script.sort_by(|a, b| a.0.total_cmp(&b.0));
     } else {
         script.push((0.5, "start".into(), None));
     }
@@ -475,7 +477,9 @@ fn run(args: &Args) -> Result<(), String> {
     }
 
     let mut dumps = args.dump.clone();
-    dumps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // `--dump nan` would panic a comparison that unwraps; a total order
+    // over floats has an answer for every pair.
+    dumps.sort_by(|a, b| a.total_cmp(b));
     let mut next_dump = 0;
     if !dumps.is_empty() {
         std::fs::create_dir_all(&args.dump_dir).map_err(|e| e.to_string())?;
@@ -969,8 +973,8 @@ fn run(args: &Args) -> Result<(), String> {
                         eprintln!("restart failed: {err}");
                         break 'main;
                     }
-                    Action::Launch(cmd) => {
-                        if let Err(e) = menu::launch(&cmd) {
+                    Action::Launch(argv) => {
+                        if let Err(e) = menu::launch(&argv) {
                             eprintln!("launch failed: {e}");
                         }
                     }

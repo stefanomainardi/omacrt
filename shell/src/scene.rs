@@ -42,7 +42,10 @@ pub enum Action {
     Quit,
     /// Start the launcher again in place (same arguments).
     Restart,
-    Launch(String),
+    /// A program to run and forget, as a program and its arguments. Not a
+    /// command line: nothing here goes through a shell, so nothing a file or
+    /// a server chose could ever be read as one.
+    Launch(Vec<String>),
 }
 
 /// Which screen the menu is on after boot.
@@ -1193,7 +1196,7 @@ impl Scene {
                     return Action::None;
                 }
                 self.armed = None;
-                Action::Launch("systemctl poweroff".into())
+                Action::Launch(vec!["systemctl".into(), "poweroff".into()])
             }
         }
     }
@@ -4805,8 +4808,10 @@ impl Scene {
                 self.draw_pause(fb);
             } else if self.player.is_some() {
                 self.draw_player(fb);
-            } else if self.launching.is_some()
-                && ((now - self.launching.as_ref().unwrap().started) as f32) < LAUNCH_SECS
+            } else if self
+                .launching
+                .as_ref()
+                .is_some_and(|l| ((now - l.started) as f32) < LAUNCH_SECS)
             {
                 self.draw_launching(fb);
             } else {
