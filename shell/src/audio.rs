@@ -20,6 +20,9 @@ pub enum Sound {
     Click,
     /// Radio static between two stations.
     Static,
+    /// A needle set down on a record: a tick and a breath of surface noise.
+    /// What a change of track sounds like, if it sounds like anything.
+    Needle,
 }
 
 struct Voice {
@@ -140,6 +143,7 @@ pub fn render_bank() -> Vec<(Sound, Vec<f32>)> {
         (Sound::Insert, synth_insert()),
         (Sound::Click, synth_click()),
         (Sound::Static, synth_static()),
+        (Sound::Needle, synth_needle()),
     ]
 }
 
@@ -377,7 +381,36 @@ fn synth_static() -> Vec<f32> {
         } else {
             0.0
         };
-        *s = lp * env * 0.16;
+        // Broadband noise is heard as far louder than a beep of the same
+        // level, and this one lasts twenty times longer than the beeps do.
+        *s = lp * env * 0.075;
+    }
+    out
+}
+
+/// A needle set down: one soft tick, then a little surface noise that dies
+/// away. A fifth of a second, and quiet: a track change should be noticed
+/// rather than announced.
+fn synth_needle() -> Vec<f32> {
+    let n = seconds(0.2);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(31);
+    let mut lp = 0.0f32;
+    let tau = 2.0 * std::f32::consts::PI;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        // The tick: a very short thump, gone in twelve milliseconds.
+        let tick = if t < 0.012 {
+            let env = (1.0 - t / 0.012).powi(2);
+            (t * tau * 190.0).sin() * env * 0.05
+        } else {
+            0.0
+        };
+        // The groove: filtered noise fading out under it.
+        let a = 1.0 / (1.0 + RATE as f32 / (tau * 1800.0));
+        lp += a * (rng.next() - lp);
+        let hiss = lp * (1.0 - t / 0.2).max(0.0).powf(1.5) * 0.022;
+        *s = tick + hiss;
     }
     out
 }

@@ -181,6 +181,13 @@ The first release meant for somebody else's machine.
 
 ### Fixed
 
+- The deck no longer makes a noise every time the track changes. Stepping
+  through a list on the turntable played the radio's static, seven tenths of
+  a second of broadband noise at four times the level of any other sound in
+  the launcher, over the music. There is a sound for it now, a needle set
+  down, at a tenth of that energy, and `[music] change_sound` decides whether
+  anything is played at all. It is off.
+
 - An emulator no longer outlives the launcher that started it. The signal went
   to the launcher alone, so the child was reparented to systemd and kept
   running, holding the audio and answering "something is playing" for as long
