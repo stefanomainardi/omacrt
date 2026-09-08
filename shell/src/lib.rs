@@ -13,6 +13,7 @@ pub mod index;
 pub mod library;
 pub mod logfile;
 pub mod music;
+pub mod net;
 pub mod padmap;
 pub mod player;
 pub mod profile;

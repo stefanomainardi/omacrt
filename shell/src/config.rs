@@ -18,7 +18,7 @@ use std::path::Path;
 pub const VERSION: u32 = 1;
 
 /// The `version` key of a config file, 0 when it predates versioning.
-pub fn version_of(text: &str) -> u32 {
+fn version_of(text: &str) -> u32 {
     for line in text.lines() {
         let line = line.trim();
         // Stop at the first table header: `version` is a top level key, and a
@@ -57,7 +57,7 @@ pub fn migrate(text: &mut String, from: u32) -> bool {
 
 /// Keep a copy of a file written by a version this build does not understand,
 /// so that going back to it loses nothing. Returns the path of the copy.
-pub fn keep_newer(path: &Path, found: u32) -> Option<std::path::PathBuf> {
+fn keep_newer(path: &Path, found: u32) -> Option<std::path::PathBuf> {
     if found <= VERSION {
         return None;
     }

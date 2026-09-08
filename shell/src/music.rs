@@ -16,7 +16,6 @@ use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::time::Duration;
 
 const RADIO_BROWSER: &str = "https://all.api.radio-browser.info/json";
-const USER_AGENT: &str = "omarchy-crt/0.1 (https://github.com/stefanomainardi/omarchy-crt)";
 /// Stations per country or genre list, most voted first.
 const STATIONS: usize = 100;
 
@@ -26,7 +25,7 @@ pub fn stop_now() {
     let _ = call(json!({ "cmd": "stop" }));
 }
 
-pub fn socket_path() -> PathBuf {
+fn socket_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
     PathBuf::from(home).join(".config/cliamp/cliamp.sock")
 }
@@ -340,6 +339,8 @@ impl Music {
         let (tx, req_rx) = channel::<Request>();
         let (rep_tx, rx) = channel::<Reply>();
         let worker_sink = sink.clone();
+        // A machine that cannot start a thread cannot run the launcher
+        // either, and this is the launcher's own startup.
         std::thread::Builder::new()
             .name("music".into())
             .spawn(move || worker(req_rx, rep_tx, worker_sink))
@@ -766,22 +767,7 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
         // names the cover image.
         let mut url = url.to_string();
         if let Some(id) = url.strip_prefix("spotify:track:") {
-            let out = std::process::Command::new("curl")
-                .args([
-                    "-sL",
-                    "-m",
-                    "15",
-                    "-A",
-                    USER_AGENT,
-                    "--proto",
-                    "=http,https",
-                    "--proto-redir",
-                    "=http,https",
-                    "--max-filesize",
-                    "26214400",
-                    "--retry",
-                    "1",
-                ])
+            let out = crate::net::curl(15, 26_214_400)
                 .arg(format!(
                     "https://open.spotify.com/oembed?url=spotify:track:{id}"
                 ))
@@ -791,23 +777,8 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
             url = v.get("thumbnail_url")?.as_str()?.to_string();
         }
         let raw = cache.join(format!("{hash:016x}.tmp"));
-        let ok = std::process::Command::new("curl")
-            .args([
-                "-sL",
-                "-m",
-                "15",
-                "-A",
-                USER_AGENT,
-                "--proto",
-                "=http,https",
-                "--proto-redir",
-                "=http,https",
-                "--max-filesize",
-                "26214400",
-                "--retry",
-                "1",
-                "-o",
-            ])
+        let ok = crate::net::curl(15, 26_214_400)
+            .arg("-o")
             .arg(&raw)
             .arg(&url)
             .status()
@@ -946,7 +917,7 @@ fn tracks_of(v: &Value) -> Vec<Item> {
         .unwrap_or_default()
 }
 
-pub fn favorites_path() -> PathBuf {
+fn favorites_path() -> PathBuf {
     crate::crt::config_dir().join("radio-favorites.tsv")
 }
 
@@ -1152,22 +1123,7 @@ fn stations(url: &str) -> Result<Vec<Item>, String> {
 /// GET JSON with curl: the launcher has no HTTP client of its own and the
 /// directory is HTTPS.
 fn fetch(url: &str) -> Result<Value, String> {
-    let out = std::process::Command::new("curl")
-        .args([
-            "-sL",
-            "-m",
-            "12",
-            "-A",
-            USER_AGENT,
-            "--proto",
-            "=http,https",
-            "--proto-redir",
-            "=http,https",
-            "--max-filesize",
-            "26214400",
-            "--retry",
-            "1",
-        ])
+    let out = crate::net::curl(12, 26_214_400)
         .arg(url)
         .output()
         .map_err(|e| format!("curl: {e}"))?;

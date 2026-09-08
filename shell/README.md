@@ -31,12 +31,16 @@ Options:
 | `--no-audio`                               | disable sound                                                                 |
 | `--auto-boot`                              | start the boot sequence immediately                                           |
 | `--theme PATH`                             | alternative `colors.toml`                                                     |
-| `--menu PATH`                              | alternative `menu.toml`                                                       |
 | `--systems PATH`                           | alternative `systems.toml`                                                    |
-| `--browse [SYSTEM]`                        | boot straight into the game browser                                           |
+| `--config-dir DIR`                         | settings, profile, recents and the RetroArch configs somewhere else           |
+| `--browse [SYSTEM]`                        | boot straight into a screen: a system name, or `settings`, `frame`, `monitor`, `ambient`, `saversettings`, `diag`, `about`, `power`, `profile`, `pair`, `style`, `fit` |
 | `--idle SECONDS`                           | screensaver after this idle time, default 60, 0 disables                      |
 | `--screensaver [NAME]`                     | start in the screensaver, optionally with one effect                          |
+| `--pads`                                   | what SDL makes of every connected pad, then exit                              |
 | `--headless --dump 1.0,4.5 --dump-dir DIR` | render frames to PPM without a window                                         |
+| `--realtime`                               | with `--headless`, hold the loop to the wall clock: anything drawn from live data needs it |
+| `--record DIR --record-secs N --script F`  | offline render: every frame as PPM plus `audio.wav`, inputs replayed from a script |
+| `--dump-audio DIR`                         | write every synthesized sound as a WAV and exit                               |
 
 Controls: arrows or `hjkl` move, `Enter` or `Space` select (and skip the boot
 sequence while it plays), `Esc` or `Backspace` go back, `F` stars a game, `q`

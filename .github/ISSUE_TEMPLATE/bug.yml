@@ -1,0 +1,52 @@
+name: Bug
+description: Something is broken, and you can say what and how
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a hobby project given away for free, and half of it can only
+        be checked on a real television. The three fields below are what make
+        a report answerable instead of a guess.
+
+        A question or an idea belongs in Discussions rather than here.
+
+  - type: input
+    id: hardware
+    attributes:
+      label: The machine and the tube
+      description: Graphics card, the DAC between them, the television, and the standard.
+      placeholder: RX 7800 XT, RGB-Pi 2 over HDMI, Bang & Olufsen BeoCenter 1, NTSC
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `omarchy-crt doctor`
+      description: The whole thing, please. It says more about the state of a setup than any description can.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: >
+        What you did, what happened, and what you expected instead. If a game
+        or a video is involved, name it and name the core. If the picture is
+        wrong, a photograph of the screen says more than a paragraph.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything in the logs
+      description: >
+        `~/.local/state/omarchy-crt/` holds `display.log`, `shell.log` and
+        `game.log`. The last twenty lines of the relevant one are usually enough.
+      render: text
+    validations:
+      required: false

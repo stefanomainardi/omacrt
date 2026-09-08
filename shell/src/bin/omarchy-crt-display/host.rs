@@ -17,7 +17,7 @@ use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool,
     wl_surface,
 };
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, WEnum};
+use wayland_client::{Connection, Dispatch, QueueHandle, WEnum};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 pub const APP_ID: &str = "omarchy-crt-monitor";
@@ -495,7 +495,3 @@ impl Crt {
         self.key_event(code, state);
     }
 }
-
-// Unused Proxy import guard.
-#[allow(dead_code)]
-fn _proxy_marker<P: Proxy>(_: &P) {}

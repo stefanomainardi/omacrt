@@ -333,8 +333,11 @@ impl Player {
             self.send("{\"command\":[\"get_property\",\"media-title\"],\"request_id\":4}");
         }
         let mut chunk = [0u8; 4096];
-        loop {
-            let n = match self.stream.as_mut().unwrap().read(&mut chunk) {
+        // The socket is read until it would block. The stream goes away on
+        // the far end closing or on an error, and the condition here is what
+        // ends the loop in that case rather than an unwrap on the next line.
+        while let Some(stream) = self.stream.as_mut() {
+            let n = match stream.read(&mut chunk) {
                 Ok(0) => {
                     self.stream = None;
                     self.connected = false;

@@ -61,7 +61,7 @@ pub enum Kind {
 /// the phrases is what keeps this from being a table of two hundred lines,
 /// and the order matters: "thundery outbreaks in nearby" is thunder before it
 /// is rain, and "heavy snow" is snow before it is heavy.
-pub fn classify(condition: &str) -> Kind {
+fn classify(condition: &str) -> Kind {
     let c = condition.to_ascii_lowercase();
     let has = |w: &str| c.contains(w);
     if has("thunder") || has("thundery") {
@@ -94,7 +94,7 @@ pub fn classify(condition: &str) -> Kind {
 /// "Milano" out of "Milano", and "Brussels" out of
 /// ", Brussels Capital, BE": the server puts a town, a region and a country
 /// in one field and sometimes leaves the town out.
-pub fn tidy_place(raw: &str) -> String {
+fn tidy_place(raw: &str) -> String {
     let parts: Vec<&str> = raw.split(',').map(|p| p.trim()).collect();
     let first = parts.iter().find(|p| !p.is_empty()).copied().unwrap_or("");
     // A country code on its own says nothing; a region does.
@@ -127,7 +127,7 @@ fn number_in(field: &str) -> Option<f32> {
 
 /// The reading out of the line wttr.in was asked for:
 /// `place|temp|condition|wind|precipitation|moon|sunrise|sunset`.
-pub fn parse_reading(line: &str) -> Reading {
+fn parse_reading(line: &str) -> Reading {
     let f: Vec<&str> = line.trim().split('|').collect();
     if f.len() < 3 {
         return Reading::default();
@@ -217,23 +217,7 @@ fn fetch(url: &str, dest: &Path) -> Option<String> {
     if let Some(dir) = dest.parent() {
         std::fs::create_dir_all(dir).ok()?;
     }
-    let out = std::process::Command::new("curl")
-        .args([
-            "-fsSL",
-            "--max-time",
-            "20",
-            "-A",
-            "omarchy-crt",
-            "--proto",
-            "=http,https",
-            "--proto-redir",
-            "=http,https",
-            "--max-filesize",
-            "4194304",
-            url,
-        ])
-        .output()
-        .ok()?;
+    let out = crate::net::curl(20, 4_194_304).arg(url).output().ok()?;
     if !out.status.success() || out.stdout.is_empty() {
         return None;
     }
@@ -263,7 +247,7 @@ pub fn zone_place() -> String {
 }
 
 /// "…/zoneinfo/America/New_York" as "New York".
-pub fn place_from_zone(path: &str) -> String {
+fn place_from_zone(path: &str) -> String {
     let zone = match path.split_once("zoneinfo/") {
         Some((_, rest)) => rest,
         None => path,
@@ -324,7 +308,7 @@ pub fn weather(place: &str) -> Reading {
 
 /// wttr.in's line, cleaned up for an 8x8 font: no degree sign, no plus in
 /// front of a positive temperature, no double spaces.
-pub fn tidy_weather(raw: &str) -> String {
+fn tidy_weather(raw: &str) -> String {
     let line = raw.lines().next().unwrap_or("").trim();
     let line = line.replace(['°', '+'], "");
     let line: String = line
@@ -335,7 +319,7 @@ pub fn tidy_weather(raw: &str) -> String {
 }
 
 /// The next appointment from an `.ics` calendar. Cached for ten minutes.
-pub fn next_event(url: &str) -> String {
+fn next_event(url: &str) -> String {
     if url.trim().is_empty() {
         return String::new();
     }
@@ -355,7 +339,7 @@ pub fn next_event(url: &str) -> String {
 /// joined, `DTSTART` is taken with or without a timezone, and repeating
 /// events are left alone, because an ambient screen that is wrong about a
 /// weekly meeting is worse than one that says nothing.
-pub fn next_from_ics(text: &str, now: &str) -> String {
+fn next_from_ics(text: &str, now: &str) -> String {
     let mut best: Option<(String, String)> = None;
     let mut start = String::new();
     let mut summary = String::new();

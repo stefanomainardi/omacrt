@@ -144,6 +144,12 @@ pub struct Frame {
     /// A calendar to read the next appointment from, as an `.ics` address.
     #[serde(default)]
     pub calendar: String,
+    /// Let the ambient page make the sound of its own weather. Off by
+    /// default: this page comes up on its own when the set is left alone,
+    /// and a television that starts making noise by itself at two in the
+    /// morning is not a feature.
+    #[serde(default)]
+    pub weather_sound: bool,
 }
 
 fn default_frame_style() -> String {
@@ -166,6 +172,7 @@ impl Default for Frame {
             pan: true,
             weather: String::new(),
             calendar: String::new(),
+            weather_sound: false,
         }
     }
 }
@@ -197,6 +204,11 @@ pub struct Music {
     /// Visualizer modes switched off, by name.
     #[serde(default)]
     pub disabled_visualizers: Vec<String>,
+    /// A sound when the deck changes what is playing: the needle set down on
+    /// a track, static between two stations. Off, because a noise every time
+    /// a track changes is a noise every three minutes.
+    #[serde(default)]
+    pub change_sound: bool,
 }
 
 impl Default for Music {
@@ -210,6 +222,7 @@ impl Default for Music {
             lyrics: true,
             look: "auto".into(),
             disabled_visualizers: Vec::new(),
+            change_sound: false,
         }
     }
 }

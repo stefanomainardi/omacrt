@@ -10,35 +10,48 @@ refresh, real scanlines, no scaler in between. A launcher on the tube in the
 Omarchy look, a bar plugin on the desktop, and a display process that owns the
 television outright. Written in Rust, drawn at 320x240.
 
-> **Three things to know before you read on.**
->
-> **This project is written with an AI.** Design, code, tests and this very
-> README are the work of a human directing Claude, commit after commit, on a
-> real television in a real living room. If a codebase built that way is not
-> for you, no hard feelings: there are many other repositories.
->
-> **This project is for Omarchy.** It leans on Omarchy's shell, bar, theme
-> files, plugins and music player on purpose. It is not a generic Linux CRT
-> frontend and will not become one. If Omarchy is not your thing, this is not
-> either.
->
-> **This project is about preservation, not piracy.** It ships no games, no
-> BIOS files and no copyrighted material, and it links to none. It is a
-> frontend for hardware and software you already own: a television, a DAC,
-> emulators, and whatever you are entitled to run on them. Old machines and
-> the things made for them are disappearing into landfill and rot; keeping
-> them readable, and keeping a tube alive to show them on, is the point.
-> Where you get your files, and whether you have the right to them, is
-> between you and the law of your country.
->
-> Omarchy CRT is a fun project by one user. It is not affiliated with, endorsed
-> by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
-> every other name here belong to their owners.
->
-> **Tested on one setup so far:** Omarchy 4 with Hyprland 0.56, an AMD Radeon
-> RX 7700/7800 XT, an RGB-Pi 2 DAC and a Bang & Olufsen BeoCenter 1. Other
-> GPUs, DACs and televisions are uncharted; the code is written to cope, the
-> author has not seen them work.
+## What it looks like
+
+<p align="center">
+  <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
+</p>
+
+<p align="center">
+  <img src="docs/screens/coverflow.png" width="270" alt="Cover flow on the tube">
+  <img src="docs/screens/systems.png" width="270" alt="Systems with console pictures">
+  <img src="docs/screens/pause.png" width="270" alt="Pause menu over a game">
+  <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
+  <img src="docs/screens/equalizer.png" width="270" alt="The ten band equaliser">
+  <img src="docs/screens/visual-mode7.png" width="270" alt="Mode 7 equalizer visualizer">
+</p>
+
+An idle television is a window. The ambient page draws what the weather is
+actually doing: the sun crosses the arc between the real sunrise and sunset,
+clouds drift at the speed of the real wind, rain slants with it and breaks on
+the ground, lightning lights the frame, and after dark the town along the
+horizon turns its windows on.
+
+<p align="center">
+  <img src="docs/screens/weather.gif" width="560" alt="The ambient page cycling through sun, rain, a thunderstorm and a clear night">
+</p>
+
+The other side of an idle set is what the machine itself is doing, drawn as a
+16 bit status screen: a bank of little meters, one per logical processor, that
+eases up fast and falls back slowly the way the meters on an amplifier do,
+memory and graphics on bevelled plates, a minute and a half of history for
+load and for the network, and the busiest processes at the foot. All of it out
+of `/proc` and `/sys`.
+
+<p align="center">
+  <img src="docs/screens/system.gif" width="560" alt="The system monitor: a bank of meters, one per processor, moving with the machine">
+</p>
+
+The pictures were captured from the tube's own framebuffer by `omarchy-crt
+shot`, and the boot by `omarchy-crt record`; the television adds the
+scanlines. The last two are that same framebuffer rendered offline with
+`--headless --realtime`, because a screenshot of a thunderstorm has to wait
+for a thunderstorm, and a monitor reads zero unless the clock runs at the
+speed the kernel moves its counters.
 
 ## At a glance
 
@@ -84,48 +97,35 @@ a laser etching the wordmark at boot. Some of it is nostalgia, some of it is
 just the pleasure of drawing pixels at 320x240 and seeing them glow on
 glass. Both are the point.
 
-## What it looks like
-
-<p align="center">
-  <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
-</p>
-
-<p align="center">
-  <img src="docs/screens/coverflow.png" width="270" alt="Cover flow on the tube">
-  <img src="docs/screens/systems.png" width="270" alt="Systems with console pictures">
-  <img src="docs/screens/pause.png" width="270" alt="Pause menu over a game">
-  <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
-  <img src="docs/screens/equalizer.png" width="270" alt="The ten band equaliser">
-  <img src="docs/screens/visual-mode7.png" width="270" alt="Mode 7 equalizer visualizer">
-</p>
-
-An idle television is a window. The ambient page draws what the weather is
-actually doing: the sun crosses the arc between the real sunrise and sunset,
-clouds drift at the speed of the real wind, rain slants with it and breaks on
-the ground, lightning lights the frame, and after dark the town along the
-horizon turns its windows on.
-
-<p align="center">
-  <img src="docs/screens/weather.gif" width="560" alt="The ambient page cycling through sun, rain, a thunderstorm and a clear night">
-</p>
-
-The other side of an idle set is what the machine itself is doing, drawn as a
-16 bit status screen: a bank of little meters, one per logical processor, that
-eases up fast and falls back slowly the way the meters on an amplifier do,
-memory and graphics on bevelled plates, a minute and a half of history for
-load and for the network, and the busiest processes at the foot. All of it out
-of `/proc` and `/sys`.
-
-<p align="center">
-  <img src="docs/screens/system.gif" width="560" alt="The system monitor: a bank of meters, one per processor, moving with the machine">
-</p>
-
-The pictures were captured from the tube's own framebuffer by `omarchy-crt
-shot`, and the boot by `omarchy-crt record`; the television adds the
-scanlines. The last two are that same framebuffer rendered offline with
-`--headless --realtime`, because a screenshot of a thunderstorm has to wait
-for a thunderstorm, and a monitor reads zero unless the clock runs at the
-speed the kernel moves its counters.
+> **Three things worth knowing.**
+>
+> **This project is written with an AI.** Design, code, tests and this very
+> README are the work of a human directing Claude, commit after commit, on a
+> real television in a real living room. If a codebase built that way is not
+> for you, no hard feelings: there are many other repositories.
+>
+> **This project is for Omarchy.** It leans on Omarchy's shell, bar, theme
+> files, plugins and music player on purpose. It is not a generic Linux CRT
+> frontend and will not become one. If Omarchy is not your thing, this is not
+> either.
+>
+> **This project is about preservation, not piracy.** It ships no games, no
+> BIOS files and no copyrighted material, and it links to none. It is a
+> frontend for hardware and software you already own: a television, a DAC,
+> emulators, and whatever you are entitled to run on them. Old machines and
+> the things made for them are disappearing into landfill and rot; keeping
+> them readable, and keeping a tube alive to show them on, is the point.
+> Where you get your files, and whether you have the right to them, is
+> between you and the law of your country.
+>
+> Omarchy CRT is a fun project by one user. It is not affiliated with, endorsed
+> by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
+> every other name here belong to their owners.
+>
+> **Tested on one setup so far:** Omarchy 4 with Hyprland 0.56, an AMD Radeon
+> RX 7700/7800 XT, an RGB-Pi 2 DAC and a Bang & Olufsen BeoCenter 1. Other
+> GPUs, DACs and televisions are uncharted; the code is written to cope, the
+> author has not seen them work.
 
 ## How it works
 
@@ -133,36 +133,8 @@ speed the kernel moves its counters.
   <img src="docs/architecture.png" width="720" alt="Omarchy CRT architecture, drawn as a 16 bit illustration">
 </p>
 
-The same thing as a flowchart, for the parts a picture cannot hold:
-
-```mermaid
-flowchart LR
-  subgraph desktop["Omarchy desktop (Hyprland)"]
-    bar["Bar plugin<br/>Quickshell panel + library overlay"]
-    cli["omarchy-crt<br/>CLI"]
-    cliamp["cliamp --daemon<br/>music engine"]
-    bar --> cli
-  end
-
-  subgraph tube["The tube (leased DRM connector)"]
-    display["omarchy-crt-display<br/>own Wayland compositor (smithay)<br/>sets 15 kHz modelines through DRM"]
-    shell["omarchy-crt-shell<br/>launcher, 320x240"]
-    ra["RetroArch"]
-    mpv["mpv"]
-    display --- shell
-    display --- ra
-    display --- mpv
-  end
-
-  cli -- "on / off / mode<br/>lease + hotkeys" --> display
-  cli -- "control pipe:<br/>keys, type, watch" --> shell
-  shell -- "launch, pause menu<br/>(hotkeys pressed by the compositor)" --> ra
-  shell -- "JSON IPC" --> mpv
-  shell -- "Unix socket IPC<br/>status, spectrum, lyrics" --> cliamp
-  display -- "HDMI, 3520x240 @ 15.73 kHz<br/>+ audio" --> dac["RGB-Pi 2 DAC<br/>csync over I2C"]
-  dac -- "RGB SCART" --> tv["CRT television"]
-  shell -. "covers, radio directory,<br/>YouTube via yt-dlp" .-> net["Internet"]
-```
+The same thing with every process and channel named is a flowchart in
+[`docs/architecture.md`](docs/architecture.md).
 
 The desktop never touches the television. At boot a systemd unit installs an
 EDID override that marks the DAC's connector *non-desktop*, so Hyprland leaves
@@ -252,7 +224,7 @@ The HDMI path works with wide "super resolution" modelines (3520x240 at 72 MHz,
 back into 4:3, the emulator fills it, and every game line lands on one TV line.
 A DisplayPort DAC tier (Realtek RTD2166 adapters plus a VGA to SCART sync
 combiner) for native 320x240 timings is documented in
-[`docs/studio-15khz.md`](docs/studio-15khz.md) (Italian) and has not been
+[`docs/15khz.md`](docs/15khz.md) and has not been
 needed so far.
 
 ## Install
@@ -360,7 +332,11 @@ switches with a blend.
   real wind, rain slants with it and breaks on the ground, snow wanders down,
   fog rolls in bands, lightning lights the frame, and a town sits along the
   horizon with its windows coming on after dark. Every gradient is an ordered
-  dither, because a console with a fixed palette had no other way.
+  dither, because a console with a fixed palette had no other way. It can
+  have the sound as well, off by default: rain with drops on it, gusting
+  wind, thunder behind a downpour, birds by day and crickets by night, all
+  synthesized and then held at 8 kHz and quantised the way a sample was in
+  1990.
 - **System monitor.** What the machine is doing, drawn as a 16 bit status
   screen: a bank of little meters, one per processor, memory and graphics on
   bevelled plates, a minute and a half of history for load and network, the
@@ -404,18 +380,23 @@ Everything the plugin and the launcher do can be typed:
 
 ```text
 omarchy-crt setup [--connector NAME] [--standard ntsc|pal] [--dry-run]
-omarchy-crt on | off | status | mode ntsc|pal|film|480i|576i [--lines N]
-omarchy-crt shell start|stop|restart | shell key <input>... | shell type <text>
+omarchy-crt on | off | toggle | status | boot | doctor [--fix]
+omarchy-crt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
+omarchy-crt shell start|stop|restart|focus | shell key <input>... | shell type <text>
+omarchy-crt shell screen games|music|videos|frame|ambient|monitor|settings|...
+omarchy-crt play <title|path> [--force] | watch <file|url> [--later [TITLE]]
+omarchy-crt library scan|games|discover|covers|cores|set|assign|unknown|roots
+omarchy-crt bios [import DIR|discover] | frame check|fill|clear
 omarchy-crt shot out.png | record start out.mp4 | record stop | monitor on|off
-omarchy-crt game menu|pause|save|load|reset|quit
-omarchy-crt watch <file|url> [--later [TITLE]]
-omarchy-crt library scan|discover|covers|cores|set|assign|unknown | bios [import DIR|discover]
-omarchy-crt audio crt|desktop|all|apps | audio volume N | dac csync and|xor | doctor | config set KEY VALUE
+omarchy-crt game menu|pause|save|load|reset|quit | game key <key> [ms]
+omarchy-crt audio crt|desktop|all|apps | audio volume N|+N|-N
+omarchy-crt dac status|csync and|xor|separate | config [set KEY VALUE]
 ```
 
-Details in [`docs/cli.md`](docs/cli.md). `shell key` and `shell type` drive
-the launcher over its control pipe, which is how every screenshot and video in
-this repository was made.
+Details in [`docs/cli.md`](docs/cli.md). `shell key`, `shell type` and `shell
+screen` drive the launcher over its control pipe, which is how every
+screenshot and video in this repository was made, and how the desktop menu
+reaches it. `omarchy-crt-pick` puts a fuzzy picker in front of `play`.
 
 ## The library scans anything
 
@@ -439,6 +420,7 @@ collapse onto one title and systems show up when they have games. Details in
 | `systemd/` | The oneshot unit that hands the tube over at boot |
 | `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting, state of the project |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
+| `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
 
 ## State and what is next
@@ -450,29 +432,43 @@ pause menu, more screensaver effects.
 
 ## Contributing
 
-Work lands on `develop` and is merged to `main` when it runs on the
-television. Commits follow Conventional Commits. `cargo build --release` in
-`shell/` builds everything; `cargo test` runs the tests, which are the parts
-that can be checked without a tube: names into titles, titles into box art,
-modelines, the video fit, the durable writes. CI runs those plus `cargo fmt
---check`, clippy with warnings denied, and a headless boot of the launcher
-whose frames have to come out as pictures rather than a blank screen. What
-needs the television is checked in the living room, and always will be.
+This is one person's television, given away because it turned out well: not a
+product, and worked on when it is fun to work on. A good change is still
+welcome, and there is one rule that is not negotiable, because half of this
+cannot be checked any other way: **it has to have run on a real television**,
+and the pull request has to say what it ran on.
 
-[`AGENTS.md`](AGENTS.md) is the working guide for this repository: what the
-pieces are, how to check a change without a television, the conventions the
-code and the commits follow, and the handful of rules that have each cost a
-broken session to learn. It is written for a coding agent and reads fine for
-a person.
+`cargo build --release` in `shell/` builds everything. `cargo fmt`, `cargo
+clippy --all-targets -- -D warnings`, `cargo test` and `python3
+scripts/audit.py` are what CI runs, along with a headless boot whose frames
+have to come out as pictures rather than a blank screen. Tests cover what can
+be decided on a machine with no tube: names into titles, titles into box art,
+modelines, the video fit, the durable writes.
 
-[`SECURITY.md`](SECURITY.md) says what runs as root, what is downloaded and
-from where, and what is executed. [`CHANGELOG.md`](CHANGELOG.md) keeps the
-releases. Read the two notes at the top before opening an issue about either.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): what gets merged, what does not, and
+  the standards.
+- [`AGENTS.md`](AGENTS.md): the working guide. The modules, how to render a
+  screen without a television and look at it, how to add a screen, a console,
+  a setting or a CLI verb, and the rules that have each cost a broken session.
+  Written for a coding agent and fine for a person.
+- [`SECURITY.md`](SECURITY.md): what runs as root, what is downloaded and from
+  where, what is executed, what can be killed, and the one credential that can
+  exist.
+- [`CHANGELOG.md`](CHANGELOG.md): the releases.
+
+Bugs are issues, with the template filled in and the output of `omarchy-crt
+doctor`. Ideas and questions are discussions.
 
 ## Credits and licenses
 
-- Omarchy icon and wordmark: Omacom Foundation, MIT. Used here as the theme
-  of a fan project; Omarchy CRT is not part of Omarchy.
+Every piece of this that somebody else wrote, and under what terms, is in
+[`THIRD-PARTY.md`](THIRD-PARTY.md). The short version:
+
+- Omarchy's wordmark and icon: Copyright (c) David Heinemeier Hansson, MIT,
+  with the licence shipped beside the copy at
+  [`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy). Used here as
+  the theme of a fan project; Omarchy CRT is not part of Omarchy, is not
+  endorsed by the Omacom Foundation, and speaks for neither.
 - `font8x8` bitmap font: Daniel Hepper, public domain, after the IBM VGA fonts.
 - `laseretch` and the effect catalog: inspired by
   [TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects) by

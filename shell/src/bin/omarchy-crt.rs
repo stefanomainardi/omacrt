@@ -20,6 +20,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
                            first run: find the DAC's connector, write crt.toml
   status [--json]          output, mode, DAC, audio, launcher, BIOS at a glance
+  version                  which version this is
   on [ntsc|pal]            15 kHz modeline, DAC csync, audio to the TV, launcher
   off                      launcher closed, audio back, output disabled
   boot                     login reset: CRT output off, audio back to the desktop
@@ -1285,7 +1286,7 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         let fix = has(args, "--fix");
         for m in &mess {
             if fix {
-                let done = crt::tidy::clear(m);
+                let (_, done) = crt::tidy::clear(m);
                 println!("     {}  {}: {done}", m.what, m.detail);
             } else {
                 println!("     {}  {}: {}", m.what, m.detail, m.fix);
@@ -1533,23 +1534,7 @@ fn cmd_frame(args: &[String]) {
         // up without asking the server anything.
         if immich::Note::read(&path) == immich::Note::default() {
             let details = immich::details(&cfg, &shot.id);
-            let when = if details.taken.is_empty() {
-                immich::spoken_date(&shot.taken)
-            } else {
-                immich::spoken_date(&details.taken)
-            };
-            let ago = match shot.years_ago {
-                Some(1) => "a year ago today".to_string(),
-                Some(n) if n > 1 => format!("{n} years ago today"),
-                _ => String::new(),
-            };
-            immich::Note {
-                place: details.place,
-                when,
-                ago,
-                people: details.people,
-            }
-            .write(&path);
+            immich::Note::of(shot, &details).write(&path);
         }
     }
     println!("prepared:   {done} of {} at {w}x{h}", shots.len());
@@ -2068,6 +2053,9 @@ fn main() {
     let cfg = Config::load();
     match cmd {
         "-h" | "--help" | "help" => println!("{HELP}"),
+        "-V" | "--version" | "version" => {
+            println!("omarchy-crt {}", env!("CARGO_PKG_VERSION"));
+        }
         "status" => {
             let st = status(&cfg);
             if has(args, "--json") {

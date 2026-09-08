@@ -80,10 +80,32 @@ because 480 line content should be interlaced, not scaled).
 | psx                     | mednafen_psx_hw   | 1x internal resolution, native dithering, analog toggle                         |
 | n64                     | mupen64plus_next  | 320x240, native resolution factor 1, hardware dithering on, RDRAM dithering off |
 | dreamcast               | flycast           | 640x480 internal, no widescreen hack                                            |
+| gamecube                | dolphin           | none at all, on purpose: see below                                              |
+| scummvm                 | scummvm           | pointer on the left stick, hardware acceleration off, copy protection off       |
 
 The Nintendo 64 defaults follow the "authentic look" recipe documented by the
 RePlayOS project: shader dithering and quantization on, RDRAM image dithering
 off, native resolution.
+
+### GameCube, and why it carries no options
+
+Every graphics setting written for the Dolphin core here was a guess at a
+value string, and each guess left it drawing a screen of magenta. With none of
+them the core uses its own defaults and the games run. What decides the
+picture is the line count the television is set to, which comes from
+`default_lines`, not from the core.
+
+The files Dolphin needs and does not ship, its `Sys` folder, are fetched once
+from the libretro buildbot on the first launch.
+
+### ScummVM, which is a folder rather than a file
+
+The core wants a `.scummvm` launcher file holding a game id, beside the game's
+own data. The scan works out what each folder holds from its data files and
+writes that file itself, so a folder copied off a disc is playable without
+anybody reading a manual from 1997. A game still inside a disc image is
+reported rather than half configured, and `omarchy-crt library unpack` reads
+it out.
 
 ## The TV profile
 

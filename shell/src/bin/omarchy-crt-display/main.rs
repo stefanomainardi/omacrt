@@ -64,7 +64,9 @@ fn main() {
         leased.name, leased.connector_id
     );
     let target_id = leased.connector_id;
-    let fd = leased.fd.take().unwrap();
+    let Some(fd) = leased.fd.take() else {
+        die("the lease came back without a file descriptor");
+    };
     let card = Leased(fd);
     let res = card
         .resource_handles()

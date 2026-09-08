@@ -52,6 +52,25 @@ impl Rng {
     }
 }
 
+/// What the sky is doing this frame.
+///
+/// Every layer needs most of this and none of it changes while a frame is
+/// drawn, so it travels as one thing rather than as seven arguments each.
+struct Air<'a> {
+    theme: &'a Theme,
+    kind: Kind,
+    /// Is the sun up?
+    day: bool,
+    /// How much orange a low sun is putting into the sky, 0 to 1.
+    dusk: f32,
+    /// Kilometres an hour, which sets the drift, the lean and the streaks.
+    wind: f32,
+    /// The line the sky ends on.
+    horizon: i32,
+    /// Seconds, for everything that moves.
+    now: f64,
+}
+
 /// A cloud: a handful of overlapping blobs, drifting.
 struct Cloud {
     x: f32,
@@ -252,8 +271,6 @@ impl Sky {
     ) {
         let kind = reading.kind;
         self.build(kind, fb.w, fb.h);
-        let w = fb.w as i32;
-        let h = fb.h as i32;
         let horizon = Self::horizon(fb.h);
         let day = reading.daylight(minutes);
         let arc = reading.arc(minutes);
@@ -265,42 +282,44 @@ impl Sky {
         let dusk = if day { (1.0 - elevation).powi(2) } else { 0.0 };
         let wind = reading.wind_kmh.unwrap_or(6.0).clamp(0.0, 60.0);
 
-        self.sky(fb, theme, kind, day, dusk, horizon);
+        let air = Air {
+            theme,
+            kind,
+            day,
+            dusk,
+            wind,
+            horizon,
+            now,
+        };
+
+        self.sky(fb, &air);
         if !day {
-            self.draw_stars(fb, theme, now);
+            self.draw_stars(fb, &air);
         }
-        self.body(fb, theme, day, arc, horizon, now, kind);
-        self.draw_clouds(fb, theme, day, dusk, kind, wind, horizon);
+        self.body(fb, &air, arc);
+        self.draw_clouds(fb, &air);
         if kind == Kind::Fog {
             // Over the clouds: fog is the thing between you and them.
-            self.fog(fb, theme, horizon, wind, now);
+            self.fog(fb, &air);
         }
-        self.draw_town(fb, theme, day, horizon);
-        self.ground(fb, theme, kind, day, horizon, now);
-        self.wind_streaks(fb, theme, wind, horizon, now);
-        self.falling(fb, theme, kind, wind, horizon, now);
-        self.lightning(fb, theme, kind, horizon, now, w, h);
+        self.draw_town(fb, &air);
+        self.ground(fb, &air);
+        self.wind_streaks(fb, &air);
+        self.falling(fb, &air);
+        self.lightning(fb, &air);
     }
 
     /// The sky itself: two colours and a dither between them, chosen by the
     /// kind of weather and by how low the sun is.
-    fn sky(
-        &self,
-        fb: &mut Framebuffer,
-        theme: &Theme,
-        kind: Kind,
-        day: bool,
-        dusk: f32,
-        horizon: i32,
-    ) {
+    fn sky(&self, fb: &mut Framebuffer, air: &Air) {
         // Fixed colours, because a sunset has to look like a sunset, tinted
-        // a quarter of the way toward the theme so a green desktop still
+        // a quarter of the way toward the air.theme so a green desktop still
         // feels like the same machine.
-        // A little way toward the theme's background, so a green desktop
+        // A little way toward the air.theme's background, so a green desktop
         // still feels like the same machine, and no further: a sky that has
         // lost its own colour is a grey rectangle.
-        let tint = |c: Color| lerp_color(c, theme.bg, 0.14);
-        let (top, bottom) = match (day, kind) {
+        let tint = |c: Color| lerp_color(c, air.theme.bg, 0.14);
+        let (top, bottom) = match (air.day, air.kind) {
             (true, Kind::Clear | Kind::Partly) => (rgb(20, 62, 148), rgb(92, 162, 226)),
             (true, Kind::Cloudy) => (rgb(58, 78, 112), rgb(150, 164, 180)),
             (true, Kind::Overcast | Kind::Fog) => (rgb(70, 76, 88), rgb(148, 150, 156)),
@@ -313,25 +332,25 @@ impl Sky {
             (false, _) => (rgb(8, 10, 22), rgb(28, 32, 52)),
         };
         // A low sun pushes orange into the bottom of the sky.
-        let bottom = if dusk > 0.0 {
-            lerp_color(bottom, rgb(230, 128, 62), dusk * 0.75)
+        let bottom = if air.dusk > 0.0 {
+            lerp_color(bottom, rgb(230, 128, 62), air.dusk * 0.75)
         } else {
             bottom
         };
         let (top, bottom) = (tint(top), tint(bottom));
-        for y in 0..horizon.min(fb.h as i32) {
-            let t = y as f32 / horizon as f32;
+        for y in 0..air.horizon.min(fb.h as i32) {
+            let t = y as f32 / air.horizon as f32;
             for x in 0..fb.w as i32 {
                 fb.put(x, y, dither(x, y, t, top, bottom));
             }
         }
     }
 
-    fn draw_stars(&self, fb: &mut Framebuffer, theme: &Theme, now: f64) {
+    fn draw_stars(&self, fb: &mut Framebuffer, air: &Air) {
         for (x, y, phase) in &self.stars {
             // Every star has its own rhythm, so the sky does not blink.
-            let tw = 0.55 + 0.45 * ((now as f32 * 1.7 + phase).sin());
-            let c = lerp_color(theme.bg, theme.paper, tw.clamp(0.15, 1.0) * 0.9);
+            let tw = 0.55 + 0.45 * ((air.now as f32 * 1.7 + phase).sin());
+            let c = lerp_color(air.theme.bg, air.theme.paper, tw.clamp(0.15, 1.0) * 0.9);
             fb.put(*x, *y, c);
             if tw > 0.93 {
                 // The brightest few get the four points of a drawn star.
@@ -345,25 +364,17 @@ impl Sky {
 
     /// The sun or the moon, on the arc between the two times the server
     /// gives, which is the part that makes the page feel like a window.
-    fn body(
-        &self,
-        fb: &mut Framebuffer,
-        theme: &Theme,
-        day: bool,
-        arc: f32,
-        horizon: i32,
-        now: f64,
-        kind: Kind,
-    ) {
+    fn body(&self, fb: &mut Framebuffer, air: &Air, arc: f32) {
         let w = fb.w as f32;
         let cx = (0.12 + arc * 0.76) * w;
         // A half circle, flattened to fit the sky.
         let top = 22.0;
-        let cy = horizon as f32 - (horizon as f32 - top) * (std::f32::consts::PI * arc).sin();
+        let cy =
+            air.horizon as f32 - (air.horizon as f32 - top) * (std::f32::consts::PI * arc).sin();
         let (cx, cy) = (cx as i32, cy as i32);
-        let r = if day { 13 } else { 11 };
+        let r = if air.day { 13 } else { 11 };
 
-        if day {
+        if air.day {
             // A halo first, dithered so it has no edge, and the rays over
             // it: the other way round and the halo swallows them, because
             // they are the same yellow.
@@ -378,19 +389,19 @@ impl Sky {
                     let px = cx + x;
                     let py = cy + y;
                     if BAYER[(py & 3) as usize][(px & 3) as usize] as f32 / 16.0 < t * 0.45 {
-                        fb.put(px, py, theme.yellow);
+                        fb.put(px, py, air.theme.yellow);
                     }
                 }
             }
             // Rays: eight spokes turning, breathing in and out.
             let hidden = matches!(
-                kind,
+                air.kind,
                 Kind::Overcast | Kind::Heavy | Kind::Thunder | Kind::Fog
             );
             if !hidden {
-                let turn = now as f32 * 0.22;
-                let breath = 1.0 + 0.16 * (now as f32 * 1.1).sin();
-                let core = lerp_color(theme.paper, theme.yellow, 0.4);
+                let turn = air.now as f32 * 0.22;
+                let breath = 1.0 + 0.16 * (air.now as f32 * 1.1).sin();
+                let core = lerp_color(air.theme.paper, air.theme.yellow, 0.4);
                 for i in 0..8 {
                     let a = turn + i as f32 * std::f32::consts::TAU / 8.0;
                     let (sa, ca) = (a.sin(), a.cos());
@@ -401,7 +412,7 @@ impl Sky {
                         let x = cx + (ca * t) as i32;
                         let y = cy + (sa * t) as i32;
                         let fade = (t - from) / (to - from);
-                        fb.put(x, y, lerp_color(core, theme.orange, fade));
+                        fb.put(x, y, lerp_color(core, air.theme.orange, fade));
                         t += 1.0;
                     }
                 }
@@ -415,9 +426,9 @@ impl Sky {
                     }
                     let lit = (x + y) < -3;
                     let c = if lit {
-                        lerp_color(theme.yellow, theme.paper, 0.55)
+                        lerp_color(air.theme.yellow, air.theme.paper, 0.55)
                     } else {
-                        theme.yellow
+                        air.theme.yellow
                     };
                     fb.put(cx + x, cy + y, c);
                 }
@@ -434,7 +445,7 @@ impl Sky {
                     if dx * dx + y * y <= r * r {
                         continue;
                     }
-                    let c = lerp_color(theme.paper, theme.dim, 0.15);
+                    let c = lerp_color(air.theme.paper, air.theme.dim, 0.15);
                     fb.put(cx + x, cy + y, c);
                 }
             }
@@ -447,7 +458,7 @@ impl Sky {
                         fb.put(
                             cx + ox + x,
                             cy + oy + y,
-                            lerp_color(theme.paper, theme.dim, 0.5),
+                            lerp_color(air.theme.paper, air.theme.dim, 0.5),
                         );
                     }
                 }
@@ -456,38 +467,28 @@ impl Sky {
     }
 
     /// The clouds, drifting at the speed of the real wind.
-    #[allow(clippy::too_many_arguments)]
-    fn draw_clouds(
-        &mut self,
-        fb: &mut Framebuffer,
-        theme: &Theme,
-        day: bool,
-        dusk: f32,
-        kind: Kind,
-        wind: f32,
-        horizon: i32,
-    ) {
+    fn draw_clouds(&mut self, fb: &mut Framebuffer, air: &Air) {
         let w = fb.w as f32;
-        // Even a still day moves the clouds a little, or the sky is a
+        // Even a still air.day moves the clouds a little, or the sky is a
         // photograph.
-        let base = 2.0 + wind * 0.55;
-        let dark = matches!(kind, Kind::Heavy | Kind::Thunder | Kind::Overcast);
+        let base = 2.0 + air.wind * 0.55;
+        let dark = matches!(air.kind, Kind::Heavy | Kind::Thunder | Kind::Overcast);
         for cloud in self.clouds.iter_mut() {
             cloud.x += base * cloud.layer * (1.0 / 60.0);
             if cloud.x - cloud.width > w {
                 cloud.x = -cloud.width;
             }
-            let body = if day {
+            let body = if air.day {
                 if dark {
-                    lerp_color(rgb(74, 78, 92), theme.bg, 0.25)
+                    lerp_color(rgb(74, 78, 92), air.theme.bg, 0.25)
                 } else {
-                    lerp_color(rgb(226, 230, 238), rgb(230, 150, 90), dusk * 0.5)
+                    lerp_color(rgb(226, 230, 238), rgb(230, 150, 90), air.dusk * 0.5)
                 }
             } else {
-                lerp_color(rgb(46, 50, 70), theme.bg, 0.35)
+                lerp_color(rgb(46, 50, 70), air.theme.bg, 0.35)
             };
-            let lit = lerp_color(body, theme.paper, if day { 0.35 } else { 0.18 });
-            let shade = lerp_color(body, theme.bg, 0.45);
+            let lit = lerp_color(body, air.theme.paper, if air.day { 0.35 } else { 0.18 });
+            let shade = lerp_color(body, air.theme.bg, 0.45);
             for (dx, dy, r) in &cloud.blobs {
                 let bx = (cloud.x + dx) as i32;
                 let by = (cloud.y + dy) as i32;
@@ -500,7 +501,7 @@ impl Sky {
                             continue;
                         }
                         let py = by + y;
-                        if py >= horizon {
+                        if py >= air.horizon {
                             continue;
                         }
                         let c = if y < -r / 3 {
@@ -518,16 +519,16 @@ impl Sky {
     }
 
     /// Fog: bands of dithered white drifting across each other.
-    fn fog(&self, fb: &mut Framebuffer, theme: &Theme, horizon: i32, wind: f32, now: f64) {
+    fn fog(&self, fb: &mut Framebuffer, air: &Air) {
         let w = fb.w as i32;
         // Five bands, thick, slow and overlapping, so the sky behind them
         // comes and goes rather than sitting behind a screen door.
         for band in 0..5 {
-            let speed = 3.0 + wind * 0.25 + band as f32 * 1.5;
-            let off = (now as f32 * speed) as i32;
-            let y0 = horizon - 96 + band * 20;
+            let speed = 3.0 + air.wind * 0.25 + band as f32 * 1.5;
+            let off = (air.now as f32 * speed) as i32;
+            let y0 = air.horizon - 96 + band * 20;
             let tall = 22;
-            for y in y0.max(0)..(y0 + tall).min(horizon) {
+            for y in y0.max(0)..(y0 + tall).min(air.horizon) {
                 // Thickest through the middle of the band, nothing at its edges.
                 let across = 1.0 - ((y - y0) as f32 / tall as f32 - 0.5).abs() * 2.0;
                 for x in 0..w {
@@ -536,7 +537,7 @@ impl Sky {
                     let t = 0.85 * across;
                     if (BAYER[(y & 3) as usize][((x + off) & 3) as usize] as f32 + 0.5) / 16.0 < t {
                         let i = (y * w + x) as usize;
-                        fb.px[i] = lerp_color(fb.px[i], theme.paper, 0.55);
+                        fb.px[i] = lerp_color(fb.px[i], air.theme.paper, 0.55);
                     }
                 }
             }
@@ -545,15 +546,15 @@ impl Sky {
 
     /// The town along the horizon, in silhouette, with the windows coming on
     /// after dark and an aerial here and there.
-    fn draw_town(&self, fb: &mut Framebuffer, theme: &Theme, day: bool, horizon: i32) {
-        let body = if day {
-            lerp_color(theme.bg, rgb(40, 44, 62), 0.55)
+    fn draw_town(&self, fb: &mut Framebuffer, air: &Air) {
+        let body = if air.day {
+            lerp_color(air.theme.bg, rgb(40, 44, 62), 0.55)
         } else {
-            lerp_color(theme.bg, rgb(18, 20, 34), 0.7)
+            lerp_color(air.theme.bg, rgb(18, 20, 34), 0.7)
         };
-        let edge = lerp_color(body, theme.paper, 0.12);
+        let edge = lerp_color(body, air.theme.paper, 0.12);
         for b in &self.town {
-            let top = horizon - b.h;
+            let top = air.horizon - b.h;
             fb.rect(b.x, top, b.w, b.h, body);
             fb.rect(b.x, top, b.w, 1, edge);
             if b.aerial {
@@ -562,7 +563,7 @@ impl Sky {
                 fb.rect(ax - 3, top - 7, 7, 1, body);
                 fb.rect(ax - 2, top - 5, 5, 1, body);
             }
-            if day {
+            if air.day {
                 continue;
             }
             // Windows. The pattern was decided once, so they do not flicker.
@@ -573,49 +574,61 @@ impl Sky {
                 }
                 let cx = b.x + 3 + (i as i32 % cols) * 6;
                 let cy = top + 3 + (i as i32 / cols) * 6;
-                if cy + 2 >= horizon {
+                if cy + 2 >= air.horizon {
                     continue;
                 }
-                fb.rect(cx, cy, 2, 3, lerp_color(theme.yellow, theme.orange, 0.35));
+                fb.rect(
+                    cx,
+                    cy,
+                    2,
+                    3,
+                    lerp_color(air.theme.yellow, air.theme.orange, 0.35),
+                );
             }
         }
     }
 
     /// The band under the horizon: dark, textured, and wet when it rains.
-    fn ground(
-        &self,
-        fb: &mut Framebuffer,
-        theme: &Theme,
-        kind: Kind,
-        day: bool,
-        horizon: i32,
-        now: f64,
-    ) {
+    fn ground(&self, fb: &mut Framebuffer, air: &Air) {
         let w = fb.w as i32;
         let h = fb.h as i32;
-        let near = lerp_color(theme.bg, theme.paper, if day { 0.10 } else { 0.05 });
-        let far = lerp_color(theme.bg, theme.paper, if day { 0.02 } else { 0.01 });
-        for y in horizon..h {
-            let t = (y - horizon) as f32 / (h - horizon) as f32;
+        let near = lerp_color(
+            air.theme.bg,
+            air.theme.paper,
+            if air.day { 0.10 } else { 0.05 },
+        );
+        let far = lerp_color(
+            air.theme.bg,
+            air.theme.paper,
+            if air.day { 0.02 } else { 0.01 },
+        );
+        for y in air.horizon..h {
+            let t = (y - air.horizon) as f32 / (h - air.horizon) as f32;
             for x in 0..w {
                 fb.put(x, y, dither(x, y, t, near, far));
             }
         }
-        fb.rect(0, horizon, w, 1, lerp_color(theme.bg, theme.paper, 0.22));
+        fb.rect(
+            0,
+            air.horizon,
+            w,
+            1,
+            lerp_color(air.theme.bg, air.theme.paper, 0.22),
+        );
         // Wet ground: the town's lights smeared down into it.
-        if matches!(kind, Kind::Rain | Kind::Heavy | Kind::Thunder) && !day {
+        if matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder) && !air.day {
             for b in &self.town {
                 if !b.aerial {
                     continue;
                 }
                 let x = b.x + b.w / 2;
-                let wobble = ((now as f32 * 2.0 + x as f32).sin() * 1.5) as i32;
-                for y in horizon + 1..(horizon + 9).min(h) {
-                    let fade = 1.0 - (y - horizon) as f32 / 9.0;
+                let wobble = ((air.now as f32 * 2.0 + x as f32).sin() * 1.5) as i32;
+                for y in air.horizon + 1..(air.horizon + 9).min(h) {
+                    let fade = 1.0 - (y - air.horizon) as f32 / 9.0;
                     fb.put(
-                        x + wobble * (y - horizon) / 8,
+                        x + wobble * (y - air.horizon) / 8,
                         y,
-                        lerp_color(near, theme.yellow, fade * 0.35),
+                        lerp_color(near, air.theme.yellow, fade * 0.35),
                     );
                 }
             }
@@ -623,26 +636,19 @@ impl Sky {
     }
 
     /// Streaks of moving air. Only worth drawing when there is enough of it.
-    fn wind_streaks(
-        &mut self,
-        fb: &mut Framebuffer,
-        theme: &Theme,
-        wind: f32,
-        horizon: i32,
-        now: f64,
-    ) {
-        if wind < 12.0 {
+    fn wind_streaks(&mut self, fb: &mut Framebuffer, air: &Air) {
+        if air.wind < 12.0 {
             return;
         }
         let w = fb.w as f32;
-        let n = ((wind - 10.0) / 4.0) as i32;
+        let n = ((air.wind - 10.0) / 4.0) as i32;
         for i in 0..n.min(12) {
             // Each streak has its own height and speed, from its own index,
             // so no two of them line up.
             let seed = i as f32 * 37.0;
-            let y = 12.0 + ((seed * 1.7).sin().abs() * (horizon as f32 - 40.0));
-            let speed = 60.0 + wind * 4.0 + (seed * 3.1).sin() * 20.0;
-            let x = ((now as f32 * speed + seed * 53.0) % (w + 60.0)) - 30.0;
+            let y = 12.0 + ((seed * 1.7).sin().abs() * (air.horizon as f32 - 40.0));
+            let speed = 60.0 + air.wind * 4.0 + (seed * 3.1).sin() * 20.0;
+            let x = ((air.now as f32 * speed + seed * 53.0) % (w + 60.0)) - 30.0;
             let len = 5.0 + (seed * 0.7).sin().abs() * 7.0;
             for d in 0..len as i32 {
                 let t = d as f32 / len;
@@ -650,7 +656,7 @@ impl Sky {
                     fb.px[((y as i32).clamp(0, fb.h as i32 - 1) * fb.w as i32
                         + (x as i32 + d).clamp(0, fb.w as i32 - 1))
                         as usize],
-                    theme.paper,
+                    air.theme.paper,
                     0.30 * (1.0 - (t - 0.5).abs() * 2.0),
                 );
                 fb.put(x as i32 + d, y as i32, c);
@@ -659,36 +665,28 @@ impl Sky {
     }
 
     /// Rain, or snow, and what it does when it lands.
-    fn falling(
-        &mut self,
-        fb: &mut Framebuffer,
-        theme: &Theme,
-        kind: Kind,
-        wind: f32,
-        horizon: i32,
-        now: f64,
-    ) {
+    fn falling(&mut self, fb: &mut Framebuffer, air: &Air) {
         if self.motes.is_empty() {
             return;
         }
         let dt = 1.0 / 60.0;
         let w = fb.w as f32;
-        let snow = kind == Kind::Snow;
-        // Rain leans with the wind; snow is pushed sideways and wanders.
-        let slant = (wind / 12.0).clamp(0.0, 3.2);
+        let snow = air.kind == Kind::Snow;
+        // Rain leans with the air.wind; snow is pushed sideways and wanders.
+        let slant = (air.wind / 12.0).clamp(0.0, 3.2);
         let colour = if snow {
-            theme.paper
+            air.theme.paper
         } else {
-            lerp_color(theme.cyan, theme.paper, 0.45)
+            lerp_color(air.theme.cyan, air.theme.paper, 0.45)
         };
         let mut landed: Vec<(f32, f32)> = Vec::new();
         for m in self.motes.iter_mut() {
             m.y += m.speed * dt;
             // The lean is a ratio of the fall: a drop moving two pixels down
-            // and three across is a drop in a strong wind, and anything more
+            // and three across is a drop in a strong air.wind, and anything more
             // than that is a drop going sideways.
             m.x += if snow {
-                ((now as f32 * 1.3 + m.phase).sin() * 7.0 + wind * 0.4) * dt
+                ((air.now as f32 * 1.3 + m.phase).sin() * 7.0 + air.wind * 0.4) * dt
             } else {
                 slant * m.speed * dt
             };
@@ -698,9 +696,9 @@ impl Sky {
             if m.x < 0.0 {
                 m.x += w;
             }
-            if m.y > horizon as f32 {
+            if m.y > air.horizon as f32 {
                 if !snow {
-                    landed.push((m.x, horizon as f32));
+                    landed.push((m.x, air.horizon as f32));
                 }
                 m.y = -m.len - (m.phase * 3.0);
                 m.x = (m.x + m.phase * 41.0) % w;
@@ -742,21 +740,12 @@ impl Sky {
     }
 
     /// Lightning: the whole frame lit for two frames, and a bolt.
-    #[allow(clippy::too_many_arguments)]
-    fn lightning(
-        &mut self,
-        fb: &mut Framebuffer,
-        theme: &Theme,
-        kind: Kind,
-        horizon: i32,
-        now: f64,
-        w: i32,
-        h: i32,
-    ) {
-        if kind != Kind::Thunder {
+    fn lightning(&mut self, fb: &mut Framebuffer, air: &Air) {
+        if air.kind != Kind::Thunder {
             return;
         }
-        let t = now as f32;
+        let (w, h) = (fb.w as i32, fb.h as i32);
+        let t = air.now as f32;
         if self.flash <= 0.0 && t > self.flash_at {
             // Somewhere between three and eleven seconds, so it is never a
             // metronome.
@@ -766,7 +755,7 @@ impl Sky {
             let mut x = 30 + self.rng.upto((w as u32).saturating_sub(60)) as i32;
             let mut y = 16 + self.rng.upto(24) as i32;
             self.bolt.clear();
-            while y < horizon {
+            while y < air.horizon {
                 self.bolt.push((x, y));
                 y += 2 + self.rng.upto(4) as i32;
                 x += self.rng.upto(9) as i32 - 4;
@@ -782,14 +771,14 @@ impl Sky {
         for y in 0..h {
             for x in 0..w {
                 let i = (y * w + x) as usize;
-                fb.px[i] = lerp_color(fb.px[i], theme.paper, lit * 0.55);
+                fb.px[i] = lerp_color(fb.px[i], air.theme.paper, lit * 0.55);
             }
         }
         let mut last: Option<(i32, i32)> = None;
         for (x, y) in &self.bolt {
             if let Some((px, py)) = last {
-                fb.line(px, py, *x, *y, theme.paper);
-                fb.line(px + 1, py, *x + 1, *y, scale(theme.paper, 0.5));
+                fb.line(px, py, *x, *y, air.theme.paper);
+                fb.line(px + 1, py, *x + 1, *y, scale(air.theme.paper, 0.5));
             }
             last = Some((*x, *y));
         }

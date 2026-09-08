@@ -5,6 +5,10 @@
 //! decides what is seen; every mapped surface keeps receiving frame
 //! callbacks, so a program under the pause overlay keeps running and keeps
 //! answering. Clients reach us through `WAYLAND_DISPLAY=wayland-crt`.
+//!
+//! The `lock().unwrap()` on smithay's own surface data, which appears a few
+//! times below, panics only on a poisoned mutex: another thread panicked
+//! while holding it. There is no compositor left to run at that point.
 
 use crate::drm_mode;
 use crate::lease::Lease;
@@ -237,7 +241,12 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         "leased {} (DRM connector {})",
         lease.name, lease.connector_id
     );
-    let fd = lease.fd.take().unwrap();
+    // A granted lease always carries the descriptor; without it there is no
+    // output to drive, and the display process saying so beats a panic that
+    // the watchdog would restart in a loop.
+    let Some(fd) = lease.fd.take() else {
+        return Err("the lease arrived without a file descriptor".into());
+    };
 
     // DRM side: device, buffers, renderer.
     let dev_id = smithay::reexports::rustix::fs::fstat(fd.as_fd())
@@ -939,6 +948,8 @@ impl CompositorHandler for Crt {
         &mut self.compositor_state
     }
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        // Every client is inserted with a `ClientState`, by the only code
+        // that inserts one, a few hundred lines below.
         &client.get_data::<ClientState>().unwrap().compositor_state
     }
     fn commit(&mut self, surface: &WlSurface) {

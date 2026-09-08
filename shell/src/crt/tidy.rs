@@ -144,7 +144,7 @@ fn leftovers() -> Vec<Mess> {
         for entry in entries.flatten() {
             let path = entry.path();
             let name = path.file_name().unwrap_or_default().to_string_lossy();
-            if !(name.ends_with(".part") || name.ends_with(".small")) {
+            if !(name.ends_with(".part") || name.ends_with(".small") || name.ends_with(".half")) {
                 continue;
             }
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
@@ -192,8 +192,9 @@ pub fn survey() -> Vec<Mess> {
     out
 }
 
-/// Clear one thing. Returns what happened, for a line of output.
-pub fn clear(mess: &Mess) -> String {
+/// Clear one thing. Says whether it went, and what happened in words for a
+/// line of output.
+pub fn clear(mess: &Mess) -> (bool, String) {
     match &mess.kind {
         Kind::Orphan(pid) => {
             let pid = *pid as libc::pid_t;
@@ -203,33 +204,29 @@ pub fn clear(mess: &Mess) -> String {
             for _ in 0..20 {
                 std::thread::sleep(std::time::Duration::from_millis(100));
                 if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
-                    return "stopped".into();
+                    return (true, "stopped".into());
                 }
             }
             unsafe { libc::kill(pid, libc::SIGKILL) };
             std::thread::sleep(std::time::Duration::from_millis(200));
             if std::path::Path::new(&format!("/proc/{pid}")).exists() {
-                "would not stop".into()
+                (false, "would not stop".into())
             } else {
-                "killed".into()
+                (true, "killed".into())
             }
         }
         Kind::Stale(path) => match std::fs::remove_file(path) {
-            Ok(()) => "deleted".into(),
-            Err(e) => format!("could not delete: {e}"),
+            Ok(()) => (true, "deleted".into()),
+            Err(e) => (false, format!("could not delete: {e}")),
         },
     }
 }
 
-/// Clear the emulators nothing owns, and say how many went. Called where a
-/// mess would get in the way: starting the tube, stopping the launcher, and
-/// on the watchdog's own slow beat.
+/// Clear the emulators nothing owns, and say how many actually stopped.
+/// Called where a mess would get in the way: starting the tube, stopping the
+/// launcher, and on the watchdog's own slow beat.
 pub fn sweep_orphans() -> usize {
-    let found = orphans();
-    for mess in &found {
-        clear(mess);
-    }
-    found.len()
+    orphans().iter().filter(|mess| clear(mess).0).count()
 }
 
 #[cfg(test)]

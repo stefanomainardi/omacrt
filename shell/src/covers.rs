@@ -76,7 +76,7 @@ pub fn thumb_name(stem: &str) -> String {
         .collect()
 }
 
-pub fn percent_encode(s: &str) -> String {
+fn percent_encode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
@@ -142,25 +142,7 @@ impl NameIndex {
             std::fs::read_to_string(&file).ok()?
         } else {
             let url = format!("{THUMBS}/{}/Named_Boxarts/", percent_encode(label));
-            let out = std::process::Command::new("curl")
-                .args([
-                    "-fsSL",
-                    "--max-time",
-                    "60",
-                    "-A",
-                    "omarchy-crt",
-                    "--proto",
-                    "=http,https",
-                    "--proto-redir",
-                    "=http,https",
-                    "--max-filesize",
-                    "26214400",
-                    "--retry",
-                    "1",
-                ])
-                .arg(&url)
-                .output()
-                .ok()?;
+            let out = crate::net::curl(60, 26_214_400).arg(&url).output().ok()?;
             if !out.status.success() {
                 return std::fs::read_to_string(&file)
                     .ok()
@@ -383,23 +365,8 @@ pub fn download(label: &str, name: &str, dest: &Path) -> bool {
         percent_encode(name)
     );
     let tmp = dest.with_extension("part");
-    let ok = std::process::Command::new("curl")
-        .args([
-            "-fsSL",
-            "--max-time",
-            "30",
-            "-A",
-            "omarchy-crt",
-            "--proto",
-            "=http,https",
-            "--proto-redir",
-            "=http,https",
-            "--max-filesize",
-            "26214400",
-            "--retry",
-            "1",
-            "-o",
-        ])
+    let ok = crate::net::curl(30, 26_214_400)
+        .arg("-o")
         .arg(&tmp)
         .arg(&url)
         .status()
