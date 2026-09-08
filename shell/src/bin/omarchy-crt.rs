@@ -1285,7 +1285,7 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         let fix = has(args, "--fix");
         for m in &mess {
             if fix {
-                let done = crt::tidy::clear(m);
+                let (_, done) = crt::tidy::clear(m);
                 println!("     {}  {}: {done}", m.what, m.detail);
             } else {
                 println!("     {}  {}: {}", m.what, m.detail, m.fix);

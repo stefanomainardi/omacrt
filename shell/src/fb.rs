@@ -227,8 +227,9 @@ impl Framebuffer {
 }
 
 impl Framebuffer {
-    /// Like `blit_scaled`, but the left edge is `h_left` tall and the right
-    /// edge `h_right`, both centred on the box: a cover seen at an angle.
+    /// Like `blit`, but scaled into a box `w` wide whose left edge is
+    /// `h_left` tall and right edge `h_right`, both centred: a cover seen at
+    /// an angle.
     /// With `flip` the image is drawn upside down (a reflection); nothing is
     /// drawn at or below `clip_y`, and with `fade_rows` > 0 the alpha thins
     /// out over that many rows from the top of the box.

@@ -64,15 +64,21 @@ pub struct LaserEtch {
     rng: u32,
 }
 
+/// A ramp through `stops`, `steps[i]` colours between each pair and the last
+/// stop on the end. The callers pass constants, so an empty list is not a
+/// case that happens; it is answered rather than assumed.
 fn gradient(stops: &[Color], steps: &[usize]) -> Vec<Color> {
+    let Some(last) = stops.last() else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for (i, pair) in stops.windows(2).enumerate() {
-        let n = steps[i.min(steps.len() - 1)].max(1);
+        let n = steps.get(i).or(steps.last()).copied().unwrap_or(1).max(1);
         for k in 0..n {
             out.push(lerp_color(pair[0], pair[1], k as f32 / n as f32));
         }
     }
-    out.push(*stops.last().unwrap());
+    out.push(*last);
     out
 }
 
