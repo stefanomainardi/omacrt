@@ -17,6 +17,7 @@ mod font8x8;
 mod icons;
 mod menu;
 mod pad;
+mod photos;
 mod scene;
 mod sysmon;
 mod theme;

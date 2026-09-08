@@ -49,6 +49,9 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library set SYS core=X|dir=D   change a system's core or folder in systems.toml
   library covers [SYS...] [--limit N] [--force]   fetch box art for the collection, matching titles when names differ
   library scan [DIR...]    index every game under the roots (any layout)
+  frame check              is the Immich server there and does it take the key
+  frame fill [N]           fetch and prepare N photographs for the frame (default 40)
+  frame clear              throw away the prepared photographs
   library discover [--json]  mounted places that look like collections
   library roots add|remove DIR
   library assign DIR SYS   tell the scan what a folder holds
@@ -1332,6 +1335,71 @@ fn cmd_bios(args: &[String]) {
     );
 }
 
+/// The photo frame: check the server, fill the cache, empty it.
+fn cmd_frame(args: &[String]) {
+    use omarchy_crt_shell::immich;
+    let pos = positional(args);
+    let what = pos.first().map(|s| s.as_str()).unwrap_or("check");
+    let dir = crt::config_dir();
+    if what == "clear" {
+        match immich::clear_cache() {
+            Ok(()) => println!("frame: cache emptied"),
+            Err(e) => die(&format!("frame: {e}")),
+        }
+        return;
+    }
+    let Some(cfg) = immich::Config::load(&dir) else {
+        die(&format!(
+            "no {}/immich.toml: write `url` and `key` into it (an Immich API key with read access)",
+            dir.display()
+        ));
+    };
+    match immich::check(&cfg) {
+        Ok(version) => println!("server:     {} ({version})", cfg.url),
+        Err(e) => die(&format!("frame: {e}")),
+    }
+    if what == "check" {
+        return;
+    }
+    if what != "fill" {
+        die("frame takes check, fill or clear");
+    }
+    let want: usize = pos
+        .get(1)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(40)
+        .clamp(1, 250);
+    let settings = omarchy_crt_shell::settings::Settings::load(&dir);
+    let source = immich::Source::named(&settings.frame.source);
+    let shots = immich::list(&cfg, source, &settings.frame.album, want);
+    if shots.is_empty() {
+        die(&format!(
+            "frame: the {} source gave no photographs",
+            source.label()
+        ));
+    }
+    println!(
+        "source:     {} ({} photographs)",
+        source.label(),
+        shots.len()
+    );
+    let state = State::load();
+    let (w, h) = frame_size(&state);
+    let mut done = 0;
+    for shot in &shots {
+        if immich::prepare(&cfg, shot, w, h).is_some() {
+            done += 1;
+        }
+    }
+    println!("prepared:   {done} of {} at {w}x{h}", shots.len());
+}
+
+/// The size the frame prepares pictures for: the launcher's own framebuffer.
+fn frame_size(state: &State) -> (u32, u32) {
+    let lines = if state.lines > 0 { state.lines } else { 240 };
+    (320, lines)
+}
+
 fn cmd_library(args: &[String]) {
     use omarchy_crt_shell::index::{self, Index, LibraryConfig};
     let pos = positional(args);
@@ -2215,6 +2283,7 @@ fn main() {
         }
         "bios" => cmd_bios(args),
         "library" => cmd_library(args),
+        "frame" => cmd_frame(args),
         "watch" => {
             let pos = positional(args);
             let Some(target) = pos.first() else {

@@ -132,6 +132,13 @@ enum Screen {
     Monitor {
         page: usize,
     },
+    /// Photographs from the house's own server, with as much or as little
+    /// over them as the settings ask for.
+    Frame,
+    /// How the photo frame behaves.
+    FrameSettings {
+        sel: usize,
+    },
 }
 
 /// A row of the music screen.
@@ -219,7 +226,7 @@ const HOME: [(icons::Icon, &str, bool); 9] = [
 ];
 
 /// Settings submenu entries.
-const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 8] = [
+const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 9] = [
     (icons::TV, "TV profile", true),
     (icons::FIT, "Video fit", true),
     (icons::PAD, "Pads", true),
@@ -228,6 +235,7 @@ const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 8] = [
     (icons::PULSE, "Diagnostics", true),
     (icons::NOTE, "Music", true),
     (icons::FILM, "Videos", true),
+    (icons::PHOTO, "Photo frame", true),
 ];
 
 /// Rows of the Music settings page before the one per visualizer.
@@ -302,11 +310,14 @@ pub enum PauseOutcome {
 const SYS_PAGE: usize = 11;
 /// Pages of the system monitor: the machine, then the processes.
 const MONITOR_PAGES: usize = 2;
+/// Rows of the photo frame settings page.
+const FRAME_ROWS: usize = 5;
 /// Videos hub entries.
-const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
+const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 4] = [
     (icons::FILM, "Local videos", true),
     (icons::RESUME, "YouTube", true),
     (icons::FOLDER, "Play the link in the clipboard", false),
+    (icons::PHOTO, "Photo frame", true),
 ];
 
 /// YouTube hub entries.
@@ -494,6 +505,13 @@ pub struct Scene {
     sysmon_at: f64,
     /// Core bars eased toward the sample, so the bank moves like a meter.
     sysmon_bars: Vec<f32>,
+    /// Photographs for the frame, prepared on a thread.
+    photos: crate::photos::Feed,
+    /// What is on the frame now, and what it is fading up from.
+    frame_now: Option<crate::photos::Shown>,
+    frame_previous: Option<crate::photos::Shown>,
+    /// When the picture on the frame went up.
+    frame_since: f64,
 }
 
 impl Scene {
@@ -592,6 +610,10 @@ impl Scene {
             sysmon: crate::sysmon::Monitor::new(),
             sysmon_at: 0.0,
             sysmon_bars: Vec::new(),
+            photos: crate::photos::Feed::new(),
+            frame_now: None,
+            frame_previous: None,
+            frame_since: 0.0,
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
             recent_at: load_times(&library.config_dir.join("recent.txt")),
@@ -901,7 +923,8 @@ impl Scene {
                 self.go(Screen::Diag { top: 0 });
             }
             6 => self.go(Screen::MusicSettings { sel: 0 }),
-            _ => self.go(Screen::VideoSettings { sel: 0 }),
+            7 => self.go(Screen::VideoSettings { sel: 0 }),
+            _ => self.go(Screen::FrameSettings { sel: 0 }),
         }
         Action::None
     }
@@ -1121,6 +1144,9 @@ impl Scene {
             2 => {
                 let names: Vec<&str> = std::iter::once("random")
                     .chain(effects::ALL.iter().map(|k| k.name()))
+                    // Not effects at all: whole screens that make more sense
+                    // on an idle television than a text effect does.
+                    .chain(["photos", "system"])
                     .collect();
                 let i = names.iter().position(|n| *n == sv.effect).unwrap_or(0) as i32;
                 let next = (i + dir).rem_euclid(names.len() as i32) as usize;
@@ -2094,6 +2120,17 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::Frame => match nav {
+                Nav::Right | Nav::Down => {
+                    self.next_photo();
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.close_frame();
+                    moved = true;
+                }
+                _ => {}
+            },
             Screen::Monitor { page } => match nav {
                 Nav::Left | Nav::Up if *page > 0 => {
                     *page -= 1;
@@ -2302,6 +2339,29 @@ impl Scene {
                 Nav::Back => {
                     self.save_settings();
                     self.screen = Screen::Settings { sel: 6 };
+                    self.pending.push(Sound::Lock);
+                    return;
+                }
+                _ => {}
+            },
+            Screen::FrameSettings { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < FRAME_ROWS => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    let row = *sel;
+                    let dir = if nav == Nav::Right { 1 } else { -1 };
+                    self.adjust_frame(row, dir);
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.save_settings();
+                    self.screen = Screen::Settings { sel: 8 };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -2864,6 +2924,10 @@ impl Scene {
             Screen::Settings { sel } => self.activate_settings(sel),
             Screen::Videos { sel } => {
                 self.pending.push(Sound::Select);
+                if sel == 3 {
+                    self.open_frame();
+                    return Action::None;
+                }
                 let Some(i) = self.video_system() else {
                     return Action::None;
                 };
@@ -2875,7 +2939,7 @@ impl Scene {
                         self.pending.push(Sound::Whoosh);
                     }
                     1 => self.go(Screen::YouTube { sel: 0 }),
-                    _ => match yt::clipboard_link() {
+                    2 => match yt::clipboard_link() {
                         Some(link) => {
                             let e = Entry {
                                 game: Game {
@@ -2894,6 +2958,7 @@ impl Scene {
                             self.pending.push(Sound::Crunch);
                         }
                     },
+                    _ => {}
                 }
                 Action::None
             }
@@ -2968,6 +3033,15 @@ impl Scene {
                 Action::None
             }
             Screen::Diag { .. } | Screen::About { .. } | Screen::Monitor { .. } => Action::None,
+            Screen::Frame => {
+                self.next_photo();
+                Action::None
+            }
+            Screen::FrameSettings { .. } => {
+                self.save_settings();
+                self.open_frame();
+                Action::None
+            }
             Screen::Music { sel, .. } => {
                 match self.music_rows().get(sel).map(|r| r.3.clone()) {
                     Some(MusicRow::Now) => {
@@ -3368,6 +3442,7 @@ impl Scene {
                 self.screen = Screen::Diag { top: 0 };
             }
             Some("power") => self.screen = Screen::Power { sel: 0 },
+            Some("frame") => self.open_frame(),
             Some("monitor") => {
                 self.sysmon.sample();
                 self.screen = Screen::Monitor { page: 0 };
@@ -4268,6 +4343,10 @@ impl Scene {
                 self.draw_video_settings(fb, sel);
                 return;
             }
+            Screen::FrameSettings { sel } => {
+                self.draw_frame_settings(fb, sel);
+                return;
+            }
             Screen::Music { sel, top } => {
                 self.draw_music(fb, sel, top);
                 return;
@@ -4302,6 +4381,10 @@ impl Scene {
             }
             Screen::Monitor { page } => {
                 self.draw_monitor(fb, page);
+                return;
+            }
+            Screen::Frame => {
+                self.draw_frame(fb);
                 return;
             }
             Screen::Menu => {}
@@ -4494,12 +4577,7 @@ impl Scene {
             }
             let limit = self.idle_limit();
             if limit > 0.0 && (now - self.last_input) as f32 > limit {
-                if self.music.status.playing() && self.settings.music.saver {
-                    self.music_saver_start(now);
-                } else {
-                    let kind = self.chosen_effect();
-                    self.start_screensaver(now, kind);
-                }
+                self.idle_reached(now);
             }
             return;
         }
@@ -4533,12 +4611,39 @@ impl Scene {
         }
         let limit = self.idle_limit();
         if self.menu_live && limit > 0.0 && (now - self.last_input) as f32 > limit {
-            if self.music.status.playing() && self.settings.music.saver {
-                self.music_saver_start(now);
-            } else {
-                let kind = self.chosen_effect();
-                self.start_screensaver(now, kind);
+            self.idle_reached(now);
+        }
+    }
+
+    /// What an idle television does. Usually a text effect over the
+    /// wordmark, but the screensaver setting can name a whole screen
+    /// instead: the photographs, or what the machine is doing.
+    fn idle_reached(&mut self, now: f64) {
+        match self.settings.screensaver.effect.as_str() {
+            "photos" => {
+                if !matches!(self.screen, Screen::Frame) {
+                    self.open_frame();
+                }
+                // The frame is what it does when idle, so the clock starts
+                // again rather than firing on every frame from here on.
+                self.last_input = now;
+                return;
             }
+            "system" => {
+                if !matches!(self.screen, Screen::Monitor { .. }) {
+                    self.sysmon.sample();
+                    self.go(Screen::Monitor { page: 0 });
+                }
+                self.last_input = now;
+                return;
+            }
+            _ => {}
+        }
+        if self.music.status.playing() && self.settings.music.saver {
+            self.music_saver_start(now);
+        } else {
+            let kind = self.chosen_effect();
+            self.start_screensaver(now, kind);
         }
     }
 
@@ -6988,5 +7093,355 @@ impl Scene {
         if top.is_empty() {
             fb.text(left + 6, y0 + 20, "reading...", self.theme.dim, 1);
         }
+    }
+}
+
+// ======================================================================= frame
+//
+// Photographs from the house's own server, on the television in the living
+// room. The pictures arrive prepared for this exact screen, so all that is
+// left here is putting one up, drifting it a little while it is up, fading
+// to the next one, and writing over it as much or as little as the settings
+// ask for.
+
+impl Scene {
+    /// Open the photo frame, starting the supply if it is not running.
+    pub fn open_frame(&mut self) {
+        self.frame_since = self.now;
+        self.go(Screen::Frame);
+    }
+
+    fn close_frame(&mut self) {
+        // The pictures already prepared stay in hand: coming back to the
+        // frame should not mean waiting for the network again.
+        self.screen = Screen::Videos { sel: 3 };
+    }
+
+    /// Put the next photograph up now, rather than at the end of its turn.
+    fn next_photo(&mut self) {
+        match self.photos.take() {
+            Some(next) => {
+                self.frame_previous = self.frame_now.take();
+                self.frame_now = Some(next);
+                self.frame_since = self.now;
+                self.pending.push(Sound::Move);
+            }
+            None => self.pending.push(Sound::Crunch),
+        }
+    }
+
+    /// Paint one photograph over the whole screen, drifted and faded.
+    ///
+    /// A picture that fills the screen was prepared larger than it on
+    /// purpose, and drifts across that margin while it is up: a still
+    /// photograph on a television for half a minute is a photograph of a
+    /// television, and one pixel of movement a frame is enough to stop that
+    /// without the picture ever looking like it is moving.
+    fn paint_photo(&self, fb: &mut Framebuffer, shown: &crate::photos::Shown, alpha: f32, at: f32) {
+        let img = &shown.image;
+        let spare_x = img.w.saturating_sub(fb.w) as f32;
+        let spare_y = img.h.saturating_sub(fb.h) as f32;
+        // Which way it drifts is decided by the picture itself, so the frame
+        // does not pan the same way all evening.
+        let sign = if img.px.first().copied().unwrap_or(0) & 1 == 0 {
+            at
+        } else {
+            1.0 - at
+        };
+        let ox = (spare_x * sign).round() as usize;
+        let oy = (spare_y * sign).round() as usize;
+        let bg = self.theme.bg;
+        for y in 0..fb.h {
+            let sy = (y + oy).min(img.h.saturating_sub(1));
+            for x in 0..fb.w {
+                let sx = (x + ox).min(img.w.saturating_sub(1));
+                if sx >= img.w || sy >= img.h {
+                    continue;
+                }
+                let c = img.over(sx, sy, bg);
+                let out = if alpha >= 0.999 {
+                    c
+                } else {
+                    lerp_color(fb.px[y * fb.w + x], c, alpha)
+                };
+                fb.px[y * fb.w + x] = out;
+            }
+        }
+    }
+
+    /// Darken everything already drawn, so writing over it can be read.
+    fn scrim(&self, fb: &mut Framebuffer, amount: f32) {
+        let bg = self.theme.bg;
+        for p in fb.px.iter_mut() {
+            *p = lerp_color(*p, bg, amount);
+        }
+    }
+
+    /// Text with a hard shadow behind it, which is the only way small type
+    /// stays readable over a photograph.
+    fn shadowed(&self, fb: &mut Framebuffer, x: i32, y: i32, text: &str, c: Color, size: i32) {
+        fb.text(x + size, y + size, text, 0x0000_0000, size);
+        fb.text(x, y, text, c, size);
+    }
+
+    /// The photo frame.
+    fn draw_frame(&mut self, fb: &mut Framebuffer) {
+        // The supply runs for the size of this screen; asking again while it
+        // is already running for this size does nothing.
+        let f = self.settings.frame.clone();
+        let dir = self.library.config_dir.clone();
+        self.photos.start(
+            &dir,
+            omarchy_crt_shell::immich::Source::named(&f.source),
+            f.album.clone(),
+            f.weather.clone(),
+            f.calendar.clone(),
+            fb.w,
+            fb.h,
+        );
+        self.photos.poll();
+
+        let dwell = f.seconds.clamp(5, 600) as f64;
+        let up_for = self.now - self.frame_since;
+        if self.frame_now.is_none() || up_for >= dwell {
+            if let Some(next) = self.photos.take() {
+                self.frame_previous = self.frame_now.take();
+                self.frame_now = Some(next);
+                self.frame_since = self.now;
+            } else if self.frame_now.is_some() {
+                // Nothing new ready: keep the picture up rather than showing
+                // a hole, and try again on the next frame.
+                self.frame_since = self.now - dwell + 1.0;
+            }
+        }
+
+        fb.clear(self.theme.bg);
+        let h = fb.h as i32;
+        let w = fb.w as i32;
+        let left = (w as f32 * 0.05) as i32;
+
+        let Some(now_shown) = self.frame_now.take() else {
+            self.draw_frame_waiting(fb);
+            return;
+        };
+        let fade = clamp(((self.now - self.frame_since) / 1.4) as f32, 0.0, 1.0);
+        let at = clamp(((self.now - self.frame_since) / dwell) as f32, 0.0, 1.0);
+        if fade < 1.0
+            && let Some(before) = self.frame_previous.take()
+        {
+            self.paint_photo(fb, &before, 1.0, 1.0);
+            self.frame_previous = Some(before);
+        }
+        self.paint_photo(fb, &now_shown, ease(fade), at);
+
+        match f.style.as_str() {
+            // Nothing over the picture at all.
+            "photos" => {}
+            "panel" => self.draw_frame_panel(fb, &now_shown),
+            // The time, and what the picture is.
+            _ => {
+                let now = chrono::Local::now();
+                let clock = now.format("%H:%M").to_string();
+                let cw = Framebuffer::text_width(&clock, 4);
+                // The clock and the date stack in the corner; the caption
+                // gets the whole bottom line to itself, because a place and
+                // a date and three names need it.
+                let base = h - 14;
+                let middle = base - 12;
+                self.shadowed(fb, w - left - cw, base - 48, &clock, self.theme.paper, 4);
+                let date = now.format("%a %d %b").to_string().to_uppercase();
+                let dw = Framebuffer::text_width(&date, 1);
+                self.shadowed(fb, w - left - dw, middle, &date, self.theme.dim, 1);
+                if !now_shown.ago.is_empty() {
+                    let room = (((w - 2 * left - dw - 8) / 8).max(0)) as usize;
+                    let ago: String = now_shown.ago.to_uppercase().chars().take(room).collect();
+                    self.shadowed(fb, left, middle, &ago, self.theme.accent, 1);
+                }
+                let room = ((w - 2 * left) / 8).max(0) as usize;
+                let caption: String = now_shown.caption().chars().take(room).collect();
+                if !caption.is_empty() {
+                    self.shadowed(fb, left, base, &caption, self.theme.paper, 1);
+                }
+            }
+        }
+        self.frame_now = Some(now_shown);
+    }
+
+    /// The whole ambient page: the picture behind, everything else in front.
+    fn draw_frame_panel(&mut self, fb: &mut Framebuffer, shown: &crate::photos::Shown) {
+        self.scrim(fb, 0.62);
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let now = chrono::Local::now();
+
+        let clock = now.format("%H:%M").to_string();
+        let size = if w >= 320 { 6 } else { 4 };
+        let cw = Framebuffer::text_width(&clock, size);
+        self.shadowed(fb, (w - cw) / 2, 34, &clock, self.theme.paper, size);
+
+        let date = now.format("%A %d %B").to_string().to_uppercase();
+        let dw = Framebuffer::text_width(&date, 1);
+        self.shadowed(
+            fb,
+            (w - dw) / 2,
+            34 + size * 8 + 8,
+            &date,
+            self.theme.dim,
+            1,
+        );
+
+        let mut y = 34 + size * 8 + 30;
+        let room = ((w - 2 * left) / 8).max(4) as usize;
+        let info = self.photos.info.clone();
+        let mut middle = |fb: &mut Framebuffer, text: &str, colour: Color| {
+            let line: String = text.chars().take(room).collect();
+            let tw = Framebuffer::text_width(&line, 1);
+            fb.text((w - tw) / 2 + 1, y + 1, &line, 0x0000_0000, 1);
+            fb.text((w - tw) / 2, y, &line, colour, 1);
+            y += 13;
+        };
+        if !info.weather.is_empty() {
+            middle(fb, &info.weather, self.theme.cyan);
+        }
+        if !info.next.is_empty() {
+            let line = format!("NEXT  {}", info.next);
+            middle(fb, &line, self.theme.yellow);
+        }
+        if self.music.status.active()
+            && let Some(track) = self.music.status.track.as_ref()
+        {
+            let label = track.label();
+            middle(fb, &label, self.theme.green);
+        }
+
+        let base = h - 14;
+        let caption = shown.caption();
+        let ago = shown.ago.to_uppercase();
+        let aw = if ago.is_empty() {
+            0
+        } else {
+            Framebuffer::text_width(&ago, 1) + 8
+        };
+        if !ago.is_empty() {
+            self.shadowed(fb, w - left - aw + 8, base, &ago, self.theme.accent, 1);
+        }
+        if !caption.is_empty() {
+            let fits = (((w - 2 * left - aw) / 8).max(0)) as usize;
+            let caption: String = caption.chars().take(fits).collect();
+            self.shadowed(fb, left, base, &caption, self.theme.paper, 1);
+        }
+    }
+
+    /// Before the first picture arrives, or when none can.
+    fn draw_frame_waiting(&mut self, fb: &mut Framebuffer) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let now = chrono::Local::now();
+        let clock = now.format("%H:%M").to_string();
+        let size = if w >= 320 { 6 } else { 4 };
+        let cw = Framebuffer::text_width(&clock, size);
+        fb.text(
+            (w - cw) / 2,
+            h / 2 - size * 8,
+            &clock,
+            self.theme.paper,
+            size,
+        );
+        let date = now.format("%A %d %B").to_string().to_uppercase();
+        let dw = Framebuffer::text_width(&date, 1);
+        fb.text((w - dw) / 2, h / 2 + 6, &date, self.theme.dim, 1);
+        let line = match &self.photos.trouble {
+            Some(why) => why.clone(),
+            None => "reading the collection...".to_string(),
+        };
+        let room = ((w as f32 * 0.9) as i32 / 8) as usize;
+        let line: String = line.chars().take(room).collect();
+        let lw = Framebuffer::text_width(&line, 1);
+        fb.text((w - lw) / 2, h / 2 + 26, &line, self.theme.cyan, 1);
+        let hint = self.hint(&[("A", "next"), ("B", "back")]);
+        fb.text(
+            (w as f32 * 0.05) as i32,
+            h - 14,
+            &hint,
+            scale(self.theme.dim, 0.7),
+            1,
+        );
+    }
+}
+
+impl Scene {
+    /// Photo frame settings: what goes over the picture, how long each one
+    /// stays, and where they come from.
+    fn adjust_frame(&mut self, row: usize, dir: i32) {
+        fn step<'a>(cur: &str, opts: &[&'a str], dir: i32) -> &'a str {
+            let i = opts.iter().position(|o| *o == cur).unwrap_or(0) as i32;
+            opts[(i + dir).rem_euclid(opts.len() as i32) as usize]
+        }
+        let f = &mut self.settings.frame;
+        match row {
+            0 => f.style = step(&f.style, &["photos", "clock", "panel"], dir).to_string(),
+            1 => {
+                let opts = [10u32, 15, 25, 45, 90, 300];
+                let i = opts.iter().position(|o| *o == f.seconds).unwrap_or(2) as i32;
+                f.seconds = opts[(i + dir).rem_euclid(opts.len() as i32) as usize];
+            }
+            2 => {
+                f.source =
+                    step(&f.source, &["memories", "favorites", "album", "all"], dir).to_string();
+            }
+            3 => f.pan = !f.pan,
+            _ => {
+                // The album is a name typed into a file, not something to
+                // spell out with a pad; this row only says which one it is.
+            }
+        }
+        // Anything that changes what comes next means starting the supply
+        // again, and dropping what is already in hand.
+        if row != 3 {
+            self.photos = crate::photos::Feed::new();
+            self.frame_now = None;
+            self.frame_previous = None;
+        }
+    }
+
+    fn draw_frame_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let f = self.settings.frame.clone();
+        let style = match f.style.as_str() {
+            "photos" => "photographs only",
+            "panel" => "the whole ambient page",
+            _ => "the time and the caption",
+        };
+        let source = match f.source.as_str() {
+            "favorites" => "favourites",
+            "album" => "one album",
+            "all" => "anything at all",
+            _ => "this day, other years",
+        };
+        let rows: Vec<(String, String)> = vec![
+            ("over the picture".into(), style.into()),
+            ("each one stays".into(), format!("{} s", f.seconds)),
+            ("pictures from".into(), source.into()),
+            (
+                "let them drift".into(),
+                if f.pan { "on".into() } else { "off".into() },
+            ),
+            (
+                "album".into(),
+                if f.album.is_empty() {
+                    "not set".into()
+                } else {
+                    f.album.clone()
+                },
+            ),
+        ];
+        let notes = [
+            "what is written over the photograph",
+            "how long before the next one",
+            "which photographs the server sends",
+            "a picture that fills the screen moves a little",
+            "the album's name, from settings.toml",
+        ];
+        self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14);
     }
 }
