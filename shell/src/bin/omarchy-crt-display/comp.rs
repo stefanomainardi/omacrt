@@ -5,6 +5,10 @@
 //! decides what is seen; every mapped surface keeps receiving frame
 //! callbacks, so a program under the pause overlay keeps running and keeps
 //! answering. Clients reach us through `WAYLAND_DISPLAY=wayland-crt`.
+//!
+//! The `lock().unwrap()` on smithay's own surface data, which appears a few
+//! times below, panics only on a poisoned mutex: another thread panicked
+//! while holding it. There is no compositor left to run at that point.
 
 use crate::drm_mode;
 use crate::lease::Lease;
@@ -944,6 +948,8 @@ impl CompositorHandler for Crt {
         &mut self.compositor_state
     }
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        // Every client is inserted with a `ClientState`, by the only code
+        // that inserts one, a few hundred lines below.
         &client.get_data::<ClientState>().unwrap().compositor_state
     }
     fn commit(&mut self, surface: &WlSurface) {

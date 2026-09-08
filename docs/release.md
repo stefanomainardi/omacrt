@@ -6,13 +6,13 @@ than guessed:
 
 | | |
 | --- | --- |
-| Rust | 32,366 lines over 45 files, `scene.rs` 7,988 of them with 191 methods. Since split into ten files, the largest 2,776 |
-| Tests | 82, in five binaries: the parsers, the modelines, the video fit, the durable writes, the title matching |
-| Docs | 2,982 lines over 17 files, all English since the 15 kHz study was rewritten |
+| Rust | 32,432 lines over 66 files. `scene.rs` held 7,988 of them and 191 methods; it is ten files now, the largest 2,776 |
+| Tests | 84, in five binaries: the parsers, the modelines, the video fit, the durable writes, the title matching |
+| Docs | 3,248 lines over 17 files, all English since the 15 kHz study was rewritten |
 | Root | one systemd oneshot and one script it runs, already hardened in the unit |
-| Network | eight `curl` call sites, every one with `--proto`, a size cap and a timeout |
+| Network | eight `curl` call sites, all through one function that sets `--proto`, a size cap and a timeout |
 | Unsafe | 39 blocks: `libc` signals and ioctls, and the compositor's own bindings |
-| Panics | 51 `unwrap()`, 3 `expect`, 2 `panic!` |
+| Panics | 10 outside the tests, each with its reason beside it |
 | Secrets | none in the history, no hard coded home path, no personal path in the tree |
 
 ## A. What gates the decision, not the work
@@ -91,14 +91,32 @@ rather than promised.
       the photo supply's seven arguments became `Wanted`, which is comparable,
       so asking for the same thing twice now changes nothing by construction
       rather than by a pair of extra fields.
-- [ ] **Duplication in the drawing code.** The settings pages, the menu
-      screens and the list rows have each been copied once too often.
+- [x] **Duplication.** A window hash over `shell/src` found four places
+      where ten lines or more existed twice. The photo frame's caption was
+      derived twice from the same six fields and the two had already drifted;
+      `crt_mode` and `crt_mode_async` built the same command line; and
+      `draw_video_fit` was a second copy of `draw_settings_table`, header to
+      hints, for the sake of one extra line of text, which the table now
+      takes as an optional footer. The fourth was the flag block every
+      `curl` call site repeated, which became `net::curl`: eight lists that
+      happened to agree, three of which had stopped agreeing, are one
+      function that grants the leash. Exercised against the real servers.
 - [x] **Every `pub` in `lib.rs`.** Twenty six public functions were called
       from nowhere outside their own file, so the shared library's surface was
       describing itself rather than what is shared. Twenty five are private
       now and one, `crt::applied_standard`, was dead and is gone.
-- [ ] **Read the whole thing once, out loud.** Comments that restate their
-      line, names that lie, a function that grew a second job.
+- [x] **Read the whole thing once, out loud.** The comments came out clean,
+      by eye and by a scan for a comment whose words are its next line's. Five
+      other things did not: `SAVER_PAGES`, named in a doc comment and twice in
+      `AGENTS.md`, has not existed since the screensaver settings were
+      separated; `blit_trapezoid` was documented against a `blit_scaled` that
+      never existed; `sweep_orphans` returned how many messes it had found
+      while claiming to return how many went, so an emulator that refused to
+      die was logged as cleared; `gradient` in the etcher would have
+      underflowed on an empty step list; and the lease's file descriptor was
+      unwrapped in a program where every other failure prints a line and
+      exits. The ten remaining panics now each say why on the line above,
+      which is what `SECURITY.md` had already promised for them.
 
 ## D. Documentation
 

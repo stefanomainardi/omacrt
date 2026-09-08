@@ -62,10 +62,13 @@ Nothing is downloaded during installation. While running, the project fetches:
   both only when the ambient page is set up
 - your own photographs from your own Immich server, if you set one up
 
-Every one of those eight call sites goes through `curl` with the protocol list
-restricted to HTTP and HTTPS on the request and on any redirect, a size cap, a
-timeout, and arguments passed as arguments: a crafted URL cannot make it read a
-local file, and a redirect cannot leave those two protocols.
+All eight go out through `curl`, and all eight ask one function for it:
+`net::curl` restricts the protocol list to HTTP and HTTPS on the request and
+on any redirect, sets a timeout and a size cap, fails on an error status
+rather than saving the error page, and passes arguments as arguments. A
+crafted URL cannot make it read a local file, a redirect cannot leave those
+two protocols, and none of that is a decision at the call site: what a caller
+chooses is how long and how large its own fetch may be.
 
 A name that came from a server never becomes a path. The photograph server's
 asset identifiers are checked against letters, digits and dashes before they
@@ -155,6 +158,8 @@ that is a bug worth reporting.
   number is sorted rather than a panic.
 - A DRM lease that arrives without a file descriptor is an error the display
   process reports rather than a panic the watchdog would restart in a loop.
-- The eighteen places that could panic outside the tests are ten, and each of
-  those says on the line above why it cannot.
+- The eighteen places that could panic outside the tests are ten: seven mutex
+  locks, one value the compositor framework guarantees, one thread the
+  launcher cannot start without, and one array a line above pushed to. Each
+  says so where it is.
 - `scripts/audit.py`, and the two advisories it accepts, with reasons.

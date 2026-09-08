@@ -339,6 +339,8 @@ impl Music {
         let (tx, req_rx) = channel::<Request>();
         let (rep_tx, rx) = channel::<Reply>();
         let worker_sink = sink.clone();
+        // A machine that cannot start a thread cannot run the launcher
+        // either, and this is the launcher's own startup.
         std::thread::Builder::new()
             .name("music".into())
             .spawn(move || worker(req_rx, rep_tx, worker_sink))
