@@ -641,7 +641,9 @@ impl Scene {
                         if let Err(e) = self.profile.save(&self.library.config_dir) {
                             eprintln!("profile: {e}");
                         }
-                        self.screen = Screen::Settings { sel: 0 };
+                        self.screen = Screen::Settings {
+                            sel: settings_row(Page::Profile),
+                        };
                         self.pending.push(Sound::Lock);
                         return;
                     }
@@ -658,7 +660,9 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
-                    self.screen = Screen::Settings { sel: 1 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Pads),
+                    };
                     moved = true;
                 }
                 _ => {}
@@ -746,7 +750,7 @@ impl Scene {
                     *sel -= 1;
                     moved = true;
                 }
-                Nav::Down if *sel + 1 < SETTINGS_ITEMS.len() => {
+                Nav::Down if *sel + 1 < SETTINGS_ROWS => {
                     *sel += 1;
                     moved = true;
                 }
@@ -791,7 +795,9 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.save_settings();
-                    self.screen = Screen::Settings { sel: 3 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Saver),
+                    };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -807,7 +813,9 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
-                    self.screen = Screen::Settings { sel: 5 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Diag),
+                    };
                     moved = true;
                 }
                 _ => {}
@@ -826,7 +834,9 @@ impl Scene {
                     }
                     Nav::Back => {
                         self.save_settings();
-                        self.screen = Screen::Settings { sel: 4 };
+                        self.screen = Screen::Settings {
+                            sel: settings_row(Page::Style),
+                        };
                         self.pending.push(Sound::Lock);
                         return;
                     }
@@ -860,7 +870,9 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.save_settings();
-                    self.screen = Screen::Settings { sel: 1 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Fit),
+                    };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -932,7 +944,9 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.save_settings();
-                    self.screen = Screen::Settings { sel: 6 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Music),
+                    };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -955,7 +969,9 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.save_settings();
-                    self.screen = Screen::Settings { sel: 8 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Frame),
+                    };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -978,7 +994,9 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.save_settings();
-                    self.screen = Screen::Settings { sel: 9 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Ambient),
+                    };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -1001,7 +1019,9 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.save_settings();
-                    self.screen = Screen::Settings { sel: 10 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Sound),
+                    };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -1024,7 +1044,9 @@ impl Scene {
                 }
                 Nav::Back => {
                     self.save_settings();
-                    self.screen = Screen::Settings { sel: 7 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Videos),
+                    };
                     self.pending.push(Sound::Lock);
                     return;
                 }
@@ -1040,7 +1062,9 @@ impl Scene {
                     moved = true;
                 }
                 Nav::Back => {
-                    self.screen = Screen::Settings { sel: 9 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::About),
+                    };
                     moved = true;
                 }
                 _ => {}
@@ -1110,7 +1134,9 @@ impl Scene {
             Screen::PadWizard => {
                 if nav == Nav::Back {
                     self.wizard = None;
-                    self.screen = Screen::Settings { sel: 2 };
+                    self.screen = Screen::Settings {
+                        sel: settings_row(Page::Pads),
+                    };
                     self.message = Some(("pad mapping cancelled".into(), self.now + 3.0));
                     moved = true;
                 }
@@ -2400,7 +2426,7 @@ impl Scene {
                 fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
             }
             Screen::Settings { sel } => {
-                self.draw_menu_screen(fb, "Settings", &SETTINGS_ITEMS, sel);
+                self.draw_settings_menu(fb, sel);
                 return;
             }
             Screen::Power { sel } => {

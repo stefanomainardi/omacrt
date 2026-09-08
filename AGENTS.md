@@ -288,7 +288,18 @@ above every branch, because the effects page returns from the first one.
 
 **A setting.** `settings.rs`: a field with `#[serde(default = "...")]` so an
 older file still loads, a row in the matching settings page, an entry in
-`docs/cli.md`, a CHANGELOG bullet. Never make a field required.
+`docs/cli.md`, a CHANGELOG bullet. Never make a field required. A field that
+moves to another section stays behind as `#[serde(default, skip_serializing)]`
+and is copied over in `Settings::migrate`, so a file written by an older build
+keeps what it asked for.
+
+**A settings page.** `SETTINGS_LINES` in `scene/mod.rs` is the settings page
+itself: headings the cursor skips and rows that each name a `Page`. Add the
+variant, add the row under the heading it belongs to, and answer for it in
+`activate_settings`. Nothing counts rows: a screen coming back to Settings
+calls `settings_row(Page::Thing)`, because two of them counted to the wrong
+number the moment the list grew. Twelve rows and four headings is exactly what
+240 lines hold, which a test checks.
 
 **A console.** `library.rs`: an entry in `default_systems` with its core and
 extensions, a line in `default_lines` for the height it draws, and options
