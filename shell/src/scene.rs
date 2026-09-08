@@ -258,7 +258,7 @@ const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 10] = [
 ];
 
 /// Rows of the Music settings page before the one per visualizer.
-const MUSIC_ROWS: usize = 7;
+const MUSIC_ROWS: usize = 8;
 /// Rows of the Videos settings page.
 const VIDEOS_ROWS: usize = 3;
 /// Country codes the radio row cycles through; empty follows the locale.
@@ -1019,6 +1019,7 @@ impl Scene {
                     crate::art::Art::new(crate::covers::regions_for(&self.settings.music.country));
             }
             6 => m.rumble = !m.rumble,
+            7 => m.change_sound = !m.change_sound,
             r => {
                 let name = deck::MODE_NAMES[(r - MUSIC_ROWS).min(deck::MODES - 1)].to_string();
                 if let Some(i) = m.disabled_visualizers.iter().position(|d| *d == name) {
@@ -2921,11 +2922,10 @@ impl Scene {
                 self.tuning = Some((tracks, idx));
                 if t.stream {
                     self.deck.tune(idx, count, self.now);
-                    self.pending.push(Sound::Static);
                 } else {
                     self.deck.insert_at = self.now;
-                    self.pending.push(Sound::Insert);
                 }
+                self.deck_change_sound(t.stream);
                 self.music_root_sel = 0;
                 self.music_visual = false;
                 self.deck_look = match self.settings.music.look.as_str() {
@@ -2955,7 +2955,7 @@ impl Scene {
                 self.message = Some((format!("playing {name}"), self.now + 3.0));
                 self.tuning = None;
                 self.deck.insert_at = self.now;
-                self.pending.push(Sound::Insert);
+                self.deck_change_sound(false);
                 self.music_visual = false;
                 self.go(Screen::NowPlaying);
             }
@@ -3616,6 +3616,7 @@ impl Scene {
             Some("frame") => self.open_frame(),
             Some("framesettings") => self.screen = Screen::FrameSettings { sel: 0 },
             Some("videoshub") => self.screen = Screen::Videos { sel: 0 },
+            Some("musicsettings") => self.screen = Screen::MusicSettings { sel: 7 },
             Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },
             Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
             Some("ambient") => self.screen = Screen::Ambient,
@@ -5752,6 +5753,7 @@ impl Scene {
                 },
             ),
             ("pad rumble".into(), onoff(m.rumble)),
+            ("sound on a change".into(), onoff(m.change_sound)),
         ];
         for (i, name) in deck::MODE_NAMES.iter().enumerate() {
             rows.push((format!("  {name}"), onoff(self.visualizer_enabled(i))));
@@ -5764,13 +5766,16 @@ impl Scene {
             "auto: turntable for albums and Spotify, cassette otherwise",
             "whose stations come first, and which region's box art",
             "a short rumble on the beat, pads that support it",
+            "the needle, or radio static",
         ];
         let mut notes = notes;
         notes.extend(std::iter::repeat_n(
             "in the rotation, or skipped",
             deck::MODES,
         ));
-        self.draw_settings_table(fb, "Music", &rows, &notes, sel, 11);
+        // Fifteen rows: seven settings, the change sound, and one per
+        // visualizer. At eleven pixels each the last one lands on the note.
+        self.draw_settings_table(fb, "Music", &rows, &notes, sel, 10);
     }
 
     fn draw_video_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
@@ -6001,7 +6006,7 @@ impl Scene {
         self.pending.push(Sound::Select);
     }
 
-    /// Left or right on the deck while a station list is tuned in.
+    /// Left or right on the deck: the next station, or the next track.
     fn tune(&mut self, dir: i32) -> bool {
         let Some((list, idx)) = &self.tuning else {
             return false;
@@ -6014,9 +6019,21 @@ impl Scene {
         let t = list[next].clone();
         self.tuning = Some((list.clone(), next));
         self.deck.tune(next, n, self.now);
-        self.pending.push(Sound::Static);
+        self.deck_change_sound(t.stream);
         self.music.play(&t);
         true
+    }
+
+    /// The noise the deck makes when what is playing changes: static for a
+    /// radio, a needle for a record. Off unless it was asked for, because a
+    /// sound every time a track changes is a sound every three minutes, and
+    /// it lands on top of the music rather than beside it.
+    fn deck_change_sound(&mut self, stream: bool) {
+        if !self.settings.music.change_sound {
+            return;
+        }
+        self.pending
+            .push(if stream { Sound::Static } else { Sound::Needle });
     }
 
     /// Ten bars of the spectrum, bottom aligned in the given box.
