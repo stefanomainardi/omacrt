@@ -228,6 +228,13 @@ from the moment the launcher starts, so a dump that begins at twelve seconds
 has already burned `12 * N` seconds of it: set the start time back by that
 much. Nothing else moves; a log line and a scan stamp stay real times.
 
+**Sound on a video of the weather page.** `--dump` writes no audio and the
+ambient page's own sound is a looping voice rather than an event, so
+`--record` misses it too. `scripts/weather-track.py` builds the track from the
+loops `--dump-audio` writes: it phases the storm so the thunder lands a beat
+after the lightning in the picture, and crossfades the crickets into the birds
+where the sun comes up.
+
 **Try a different configuration without touching the user's.** `--config-dir`
 points settings, profile and recents somewhere else:
 
