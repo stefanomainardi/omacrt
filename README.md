@@ -419,17 +419,17 @@ collapse onto one title and systems show up when they have games. Details in
 | `bin/omarchy-crt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
-| `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting, state of the project |
+| `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
 | `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
 
 ## State and what is next
 
-[`docs/plan.md`](docs/plan.md) keeps the current state. In short: the tube is
+[`CHANGELOG.md`](CHANGELOG.md) keeps what has landed. In short: the tube is
 ours, games, music and video run on it, the collection is managed from the
-bar, and the interlaced modes are in. Next: aspect and shader choices in the
-pause menu, more screensaver effects.
+bar, and the interlaced modes are in. Next: more screensaver effects, and the
+painterly pass on the clock and weather pages.
 
 ## Contributing
 
