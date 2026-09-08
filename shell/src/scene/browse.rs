@@ -961,6 +961,52 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::AmbientSettings { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < AMBIENT_ROWS => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    let row = *sel;
+                    let dir = if nav == Nav::Right { 1 } else { -1 };
+                    self.adjust_ambient(row, dir);
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.save_settings();
+                    self.screen = Screen::Settings { sel: 9 };
+                    self.pending.push(Sound::Lock);
+                    return;
+                }
+                _ => {}
+            },
+            Screen::SoundSettings { sel } => match nav {
+                Nav::Up if *sel > 0 => {
+                    *sel -= 1;
+                    moved = true;
+                }
+                Nav::Down if *sel + 1 < SOUND_ROWS => {
+                    *sel += 1;
+                    moved = true;
+                }
+                Nav::Left | Nav::Right => {
+                    let row = *sel;
+                    let dir = if nav == Nav::Right { 1 } else { -1 };
+                    self.adjust_sound(row, dir);
+                    moved = true;
+                }
+                Nav::Back => {
+                    self.save_settings();
+                    self.screen = Screen::Settings { sel: 10 };
+                    self.pending.push(Sound::Lock);
+                    return;
+                }
+                _ => {}
+            },
             Screen::VideoSettings { sel } => match nav {
                 Nav::Up if *sel > 0 => {
                     *sel -= 1;
@@ -1369,6 +1415,17 @@ impl Scene {
             Screen::FrameSettings { .. } => {
                 self.save_settings();
                 self.open_frame();
+                Action::None
+            }
+            Screen::AmbientSettings { .. } => {
+                // The page itself, the way the frame's own settings show the
+                // frame: a settings page is not the thing it sets up.
+                self.save_settings();
+                self.go(Screen::Ambient);
+                Action::None
+            }
+            Screen::SoundSettings { .. } => {
+                self.save_settings();
                 Action::None
             }
             Screen::Music { sel, .. } => {
@@ -2380,6 +2437,14 @@ impl Scene {
             }
             Screen::FrameSettings { sel } => {
                 self.draw_frame_settings(fb, sel);
+                return;
+            }
+            Screen::AmbientSettings { sel } => {
+                self.draw_ambient_settings(fb, sel);
+                return;
+            }
+            Screen::SoundSettings { sel } => {
+                self.draw_sound_settings(fb, sel);
                 return;
             }
             Screen::Music { sel, top } => {

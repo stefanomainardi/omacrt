@@ -142,6 +142,14 @@ enum Screen {
     FrameSettings {
         sel: usize,
     },
+    /// Where the weather comes from, and what is next.
+    AmbientSettings {
+        sel: usize,
+    },
+    /// Which sounds the launcher makes.
+    SoundSettings {
+        sel: usize,
+    },
     /// The time, the day, the weather and what is next, on nothing.
     Ambient,
     /// The three pages for a television with nothing playing on it.
@@ -247,7 +255,7 @@ const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 3] = [
 ];
 
 /// Settings submenu entries.
-const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 10] = [
+const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 12] = [
     (icons::TV, "TV profile", true),
     (icons::FIT, "Video fit", true),
     (icons::PAD, "Pads", true),
@@ -257,11 +265,17 @@ const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 10] = [
     (icons::NOTE, "Music", true),
     (icons::FILM, "Videos", true),
     (icons::PHOTO, "Photo frame", true),
+    (icons::CLOCK, "Clock and weather", true),
+    (icons::SPEAKER, "Sound", true),
     (icons::INFO, "About", true),
 ];
 
+/// Rows of the clock and weather page, and of the sound page.
+const AMBIENT_ROWS: usize = 3;
+const SOUND_ROWS: usize = 3;
+
 /// Rows of the Music settings page before the one per visualizer.
-const MUSIC_ROWS: usize = 8;
+const MUSIC_ROWS: usize = 7;
 /// Rows of the Videos settings page.
 const VIDEOS_ROWS: usize = 3;
 /// Country codes the radio row cycles through; empty follows the locale.
@@ -333,7 +347,7 @@ const SYS_PAGE: usize = 11;
 /// Pages of the system monitor: the machine, then the processes.
 const MONITOR_PAGES: usize = 2;
 /// Rows of the photo frame settings page.
-const FRAME_ROWS: usize = 7;
+const FRAME_ROWS: usize = 5;
 
 /// What each page an idle television can show is called on screen, and the
 /// line that says what it is. The list itself is `settings::PAGES`, because
@@ -710,8 +724,25 @@ impl Scene {
     }
 
     /// Sounds queued during the last `draw`; the caller plays them.
+    ///
+    /// With the menu sounds switched off the ones that answer a button go no
+    /// further. What stays is the boot show, which is a show and has to make
+    /// its noise, and the deck's own sounds, which have a switch of their
+    /// own.
     pub fn take_sounds(&mut self) -> Vec<Sound> {
-        std::mem::take(&mut self.pending)
+        let queued = std::mem::take(&mut self.pending);
+        if self.settings.sound.menu {
+            return queued;
+        }
+        queued
+            .into_iter()
+            .filter(|s| {
+                !matches!(
+                    s,
+                    Sound::Move | Sound::Select | Sound::Lock | Sound::Click | Sound::Whoosh
+                )
+            })
+            .collect()
     }
 
     /// What the weather should sound like right now, or nothing.
@@ -721,7 +752,7 @@ impl Scene {
     /// idle television puts up by itself. A game or a film is playing over
     /// everything and gets the silence it is owed.
     pub fn ambience(&self) -> Option<crate::weather_sound::Ambience> {
-        if !self.settings.frame.weather_sound
+        if !self.settings.sound.weather
             || self.running.is_some()
             || self.launching.is_some()
             || self.saver.is_some()
@@ -1004,6 +1035,8 @@ impl Scene {
             Some("power") => self.screen = Screen::Power { sel: 0 },
             Some("frame") => self.open_frame(),
             Some("framesettings") => self.screen = Screen::FrameSettings { sel: 0 },
+            Some("ambientsettings") => self.screen = Screen::AmbientSettings { sel: 0 },
+            Some("soundsettings") => self.screen = Screen::SoundSettings { sel: 0 },
             Some("videoshub") => self.screen = Screen::Videos { sel: 0 },
             Some("musicsettings") => self.screen = Screen::MusicSettings { sel: 7 },
             Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },

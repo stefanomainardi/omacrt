@@ -8,12 +8,13 @@ impl Scene {
     /// shape of the screen it is drawn on.
     fn photo_supply(&self, width: usize, height: usize) -> crate::photos::Wanted {
         let f = &self.settings.frame;
+        let a = &self.settings.ambient;
         crate::photos::Wanted {
             config_dir: self.library.config_dir.clone(),
             source: omarchy_crt_shell::immich::Source::named(&f.source),
             album: f.album.clone(),
-            place: f.weather.clone(),
-            calendar: f.calendar.clone(),
+            place: a.place.clone(),
+            calendar: a.calendar.clone(),
             width,
             height,
         }
@@ -294,16 +295,15 @@ impl Scene {
                     step(&f.source, &["memories", "favorites", "album", "all"], dir).to_string();
             }
             3 => f.pan = !f.pan,
-            6 => f.weather_sound = !f.weather_sound,
             _ => {
                 // The album is a name typed into a file, not something to
                 // spell out with a pad; this row only says which one it is.
             }
         }
         // Anything that changes what comes next means starting the supply
-        // again, and dropping what is already in hand. Drifting and the
-        // sound change nothing about what is fetched.
-        if row != 3 && row != 6 {
+        // again, and dropping what is already in hand. Drifting changes
+        // nothing about what is fetched.
+        if row != 3 {
             self.photos = crate::photos::Feed::new();
             self.frame_now = None;
             self.frame_previous = None;
@@ -339,27 +339,6 @@ impl Scene {
                     f.album.clone()
                 },
             ),
-            (
-                "weather for".into(),
-                if f.weather.trim().is_empty() {
-                    let zone = omarchy_crt_shell::ambient::zone_place();
-                    if zone.is_empty() {
-                        "unknown".into()
-                    } else {
-                        zone
-                    }
-                } else {
-                    f.weather.clone()
-                },
-            ),
-            (
-                "weather sound".into(),
-                if f.weather_sound {
-                    "on".into()
-                } else {
-                    "off".into()
-                },
-            ),
         ];
         let notes = [
             "what is written over the photograph",
@@ -367,12 +346,6 @@ impl Scene {
             "which photographs the server sends",
             "a picture that fills the screen drifts",
             "the album's name, from settings.toml",
-            if f.weather.trim().is_empty() {
-                "the town, from this machine's timezone"
-            } else {
-                "the town, from settings.toml"
-            },
-            "rain, wind and birds, on the ambient page",
         ];
         self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14, None);
         // A settings page for the frame is not the frame, and nothing else on
@@ -384,6 +357,119 @@ impl Scene {
         fb.rect(0, h - 15, w, 11, self.theme.bg);
         let hint = self.hint(&[("<>", "change"), ("A", "show it"), ("B", "save")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// Left and right on the clock and weather page.
+    pub(super) fn adjust_ambient(&mut self, row: usize, _dir: i32) {
+        // The town and the calendar are typed into settings.toml rather than
+        // spelled out with a pad, so those two rows only say what they are.
+        // The third is the page's place in the idle rotation, which is the
+        // answer to "how do I get this on the television".
+        if row == 2 && !self.settings.screensaver.toggle("ambient") {
+            self.message = Some((
+                "an idle television has to show something".into(),
+                self.now + 4.0,
+            ));
+        }
+    }
+
+    /// Where the weather comes from, what is next, and how the page is
+    /// reached. The sound it can make is on the Sound page with the other
+    /// sounds, which the footer says.
+    pub(super) fn draw_ambient_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let a = self.settings.ambient.clone();
+        let zone = omarchy_crt_shell::ambient::zone_place();
+        let rows: Vec<(String, String)> = vec![
+            (
+                "weather for".into(),
+                if a.place.trim().is_empty() {
+                    if zone.is_empty() {
+                        "unknown".into()
+                    } else {
+                        zone
+                    }
+                } else {
+                    a.place.clone()
+                },
+            ),
+            (
+                "calendar".into(),
+                if a.calendar.trim().is_empty() {
+                    "not set".into()
+                } else {
+                    "set".into()
+                },
+            ),
+            (
+                "when left alone".into(),
+                if self.settings.screensaver.shows("ambient") {
+                    "on".into()
+                } else {
+                    "off".into()
+                },
+            ),
+        ];
+        let notes = [
+            if a.place.trim().is_empty() {
+                "the town, from this machine's zone"
+            } else {
+                "the town, from settings.toml"
+            },
+            "an .ics address, from settings.toml",
+            "in the idle rotation with the others",
+        ];
+        self.draw_settings_table(
+            fb,
+            "Clock and weather",
+            &rows,
+            &notes,
+            sel,
+            14,
+            Some("its sound is on the Sound page"),
+        );
+        // A settings page is not the page it sets up, and nothing else here
+        // says the real one is a button away.
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        fb.rect(0, h - 15, w, 11, self.theme.bg);
+        let hint = self.hint(&[("<>", "change"), ("A", "show it"), ("B", "save")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+
+    /// Left and right on the sound page: three switches, nothing else.
+    pub(super) fn adjust_sound(&mut self, row: usize, _dir: i32) {
+        let s = &mut self.settings.sound;
+        match row {
+            0 => s.menu = !s.menu,
+            1 => s.deck = !s.deck,
+            _ => s.weather = !s.weather,
+        }
+    }
+
+    /// Which sounds the launcher makes.
+    pub(super) fn draw_sound_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let s = self.settings.sound.clone();
+        let onoff = |b: bool| if b { "on" } else { "off" }.to_string();
+        let rows: Vec<(String, String)> = vec![
+            ("moving about".into(), onoff(s.menu)),
+            ("track change".into(), onoff(s.deck)),
+            ("the weather".into(), onoff(s.weather)),
+        ];
+        let notes = [
+            "the beep, the click, the page turn",
+            "the needle set down, or radio static",
+            "rain, wind, thunder, birds, crickets",
+        ];
+        self.draw_settings_table(
+            fb,
+            "Sound",
+            &rows,
+            &notes,
+            sel,
+            14,
+            Some("the boot show keeps its own sounds"),
+        );
     }
 
     /// The ambient page: a window with the weather in it, and the time.

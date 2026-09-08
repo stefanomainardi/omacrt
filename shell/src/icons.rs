@@ -51,6 +51,10 @@ pub const CONSOLE: Icon = [
 pub const PULSE: Icon = [
     "........", "....#...", "...##...", "...#.#..", "###..#.#", "......##", ".......#", "........",
 ];
+/// A speaker with two waves coming off it: the sounds the launcher makes.
+pub const SPEAKER: Icon = [
+    "..##....", ".###.#..", "####..#.", "####.#.#", "####.#.#", "####..#.", ".###.#..", "..##....",
+];
 pub const BRUSH: Icon = [
     ".......##",
     "......##.",

@@ -30,7 +30,6 @@ impl Scene {
                     crate::art::Art::new(crate::covers::regions_for(&self.settings.music.country));
             }
             6 => m.rumble = !m.rumble,
-            7 => m.change_sound = !m.change_sound,
             r => {
                 let name = deck::MODE_NAMES[(r - MUSIC_ROWS).min(deck::MODES - 1)].to_string();
                 if let Some(i) = m.disabled_visualizers.iter().position(|d| *d == name) {
@@ -422,7 +421,6 @@ impl Scene {
                 },
             ),
             ("pad rumble".into(), onoff(m.rumble)),
-            ("sound on a change".into(), onoff(m.change_sound)),
         ];
         for (i, name) in deck::MODE_NAMES.iter().enumerate() {
             rows.push((format!("  {name}"), onoff(self.visualizer_enabled(i))));
@@ -435,15 +433,14 @@ impl Scene {
             "auto: turntable for albums and Spotify, cassette otherwise",
             "whose stations come first, and which region's box art",
             "a short rumble on the beat, pads that support it",
-            "the needle, or radio static",
         ];
         let mut notes = notes;
         notes.extend(std::iter::repeat_n(
             "in the rotation, or skipped",
             deck::MODES,
         ));
-        // Fifteen rows: seven settings, the change sound, and one per
-        // visualizer. At eleven pixels each the last one lands on the note.
+        // Fourteen rows: seven settings and one per visualizer. At ten
+        // pixels each the last one still clears the note.
         self.draw_settings_table(fb, "Music", &rows, &notes, sel, 10, None);
     }
 
@@ -548,7 +545,7 @@ impl Scene {
     /// sound every time a track changes is a sound every three minutes, and
     /// it lands on top of the music rather than beside it.
     fn deck_change_sound(&mut self, stream: bool) {
-        if !self.settings.music.change_sound {
+        if !self.settings.sound.deck {
             return;
         }
         self.pending

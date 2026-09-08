@@ -333,10 +333,11 @@ switches with a blend.
   fog rolls in bands, lightning lights the frame, and a town sits along the
   horizon with its windows coming on after dark. Every gradient is an ordered
   dither, because a console with a fixed palette had no other way. It can
-  have the sound as well, off by default: rain with drops on it, gusting
-  wind, thunder behind a downpour, birds by day and crickets by night, all
-  synthesized and then held at 8 kHz and quantised the way a sample was in
-  1990.
+  have the sound as well, off by default under Settings, Sound: rain with
+  drops on it, gusting wind, thunder behind a downpour, birds by day and
+  crickets by night, all synthesized and then held at 8 kHz and quantised the
+  way a sample was in 1990. That page is where the launcher's other noises
+  are switched off too.
 - **System monitor.** What the machine is doing, drawn as a 16 bit status
   screen: a bank of little meters, one per processor, memory and graphics on
   bevelled plates, a minute and a half of history for load and network, the
