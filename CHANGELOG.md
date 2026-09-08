@@ -151,6 +151,10 @@ caveat for a 0.x project: anything may still move.
   what the thing is; a status file that had to be edited by hand said neither
   for long.
 
+- About, Diagnostics and Style read the room instead of counting to a number.
+  They showed fifteen, twelve and twelve rows whatever the set was; a PAL
+  television has 48 lines a 240 line one does not, and those lines sat empty.
+
 ### Removed
 
 - The Omarchy mark that walked up the CRT tag's Mode 7 floor. On the tube it
