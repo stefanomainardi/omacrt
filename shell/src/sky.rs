@@ -179,6 +179,21 @@ struct Cloud {
     width: f32,
 }
 
+/// Somebody walking home in the rain, which is most of what Brussels is.
+struct Walker {
+    x: f32,
+    /// Left to right or right to left, as -1 or 1.
+    dir: f32,
+    /// How far into the stride, so the legs and the bob agree.
+    step: f32,
+    /// While this is in the future the umbrella is inside out and he is
+    /// fighting it rather than walking.
+    fighting: f32,
+    /// When he next stops to look up at the sky. He stands there for
+    /// `DWELL` and then walks on.
+    pause_at: f32,
+}
+
 /// An aeroplane crossing, with the trail it leaves behind it.
 ///
 /// Over Brussels a clear sky always has one: the airport is ten kilometres
@@ -234,6 +249,9 @@ pub struct Sky {
     flash_at: f32,
     flash: f32,
     bolt: Vec<(i32, i32)>,
+    /// Somebody out in it, and when the next one gives it a try.
+    walker: Option<Walker>,
+    walker_at: f32,
     /// Rings on the puddles, as (x, y, how old), and when the next drop
     /// lands in one.
     ripples: Vec<(f32, f32, f32)>,
@@ -265,6 +283,8 @@ impl Sky {
             built_for: None,
             flash_at: 4.0,
             flash: 0.0,
+            walker: None,
+            walker_at: 7.0,
             ripples: Vec::new(),
             ripple_at: 0.0,
             plane: None,
@@ -450,6 +470,7 @@ impl Sky {
         }
         self.draw_town(fb, &air);
         self.ground(fb, &air);
+        self.walker(fb, &air);
         self.wind_streaks(fb, &air);
         self.falling(fb, &air);
         self.lightning(fb, &air, landmark);
@@ -1201,6 +1222,167 @@ impl Sky {
                         y,
                         lerp_color(near, air.theme.yellow, fade * 0.35),
                     );
+                }
+            }
+        }
+    }
+
+    /// Somebody out in the rain with an umbrella, walking the pavement at the
+    /// foot of the town.
+    ///
+    /// Thirteen pixels of him and he carries the whole picture, because
+    /// everything else in it is weather and he is somebody it is happening
+    /// to. He walks slowly, head down, umbrella into the wind; he stops now
+    /// and then to look up at the sky, which never helps; and on the hardest
+    /// squall the umbrella turns inside out and he stands there holding it
+    /// until it turns back. His reflection goes into the wet pavement under
+    /// him and his feet throw a splash at every step.
+    fn walker(&mut self, fb: &mut Framebuffer, air: &Air) {
+        let w = fb.w as f32;
+        if !matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder) {
+            self.walker = None;
+            return;
+        }
+        let t = air.now as f32;
+        if self.walker.is_none() {
+            if t < self.walker_at {
+                return;
+            }
+            let right = self.rng.upto(2) == 0;
+            self.walker = Some(Walker {
+                x: if right { -10.0 } else { w + 10.0 },
+                dir: if right { 1.0 } else { -1.0 },
+                step: 0.0,
+                fighting: 0.0,
+                pause_at: t + 5.0 + self.rng.unit() * 9.0,
+            });
+            self.walker_at = t + 50.0 + self.rng.unit() * 70.0;
+        }
+        // The gust he is walking into, the same one the rain leans on.
+        let gust = 1.0
+            + 0.30 * (t * std::f32::consts::TAU * 0.09).sin()
+            + 0.14 * (t * std::f32::consts::TAU * 0.23).sin();
+        let squall = matches!(air.kind, Kind::Heavy | Kind::Thunder);
+        let flip_now = gust > 1.36 && squall && self.rng.upto(90) == 0;
+        let mut splash: Option<(f32, f32)> = None;
+        let Some(one) = self.walker.as_mut() else {
+            return;
+        };
+        if flip_now && one.fighting < t {
+            one.fighting = t + 2.4;
+        }
+        // Standing still to look up, or fighting the umbrella, is not
+        // walking. The stop lasts a second and a half and then the next one
+        // is a good while off.
+        const DWELL: f32 = 1.6;
+        let stopped = (t >= one.pause_at && t < one.pause_at + DWELL) || t < one.fighting;
+        if t > one.pause_at + DWELL {
+            one.pause_at = t + 9.0 + (t * 3.0).fract() * 11.0;
+        }
+        if !stopped {
+            let pace = 7.0 * (1.0 + 0.12 * (t * 1.7).sin());
+            one.x += one.dir * pace / 60.0;
+            let before = one.step;
+            one.step += pace / 60.0 / 7.0;
+            // A splash where the foot lands, once a stride.
+            if before.fract() > 0.5 && one.step.fract() <= 0.5 {
+                splash = Some((one.x, air.horizon as f32));
+            }
+        }
+        let (x, dir, step, fighting) = (one.x, one.dir, one.step, one.fighting > t);
+        if (dir > 0.0 && x > w + 12.0) || (dir < 0.0 && x < -12.0) {
+            self.walker = None;
+            return;
+        }
+        if let Some((sx, sy)) = splash {
+            self.ripples.push((sx, sy + 1.0, 0.0));
+        }
+
+        // The pixels. He stands on the horizon, so everything is measured up
+        // from it, and the bob is a pixel every other stride.
+        let gx = x as i32;
+        // A pixel of bob on the second half of every stride, and none at all
+        // while he is standing still.
+        let bob = i32::from(!stopped && step.fract() >= 0.5);
+        let feet = air.horizon - bob;
+        let coat = lerp_color(
+            air.theme.bg,
+            air.theme.paper,
+            if air.day { 0.30 } else { 0.18 },
+        );
+        let dark = lerp_color(coat, air.theme.bg, 0.45);
+        let d = dir as i32;
+
+        // Legs: two of them, one forward and one back, or together when he
+        // has stopped.
+        let spread = if stopped {
+            0
+        } else if step.fract() < 0.5 {
+            1
+        } else {
+            -1
+        };
+        fb.rect(gx - 1, feet - 3, 1, 3, dark);
+        fb.rect(gx + spread, feet - 3, 1, 3, dark);
+        // Coat, and the head, which is down and a shade lighter so it reads
+        // as a head and not as a shoulder.
+        fb.rect(gx - 1, feet - 8, 3, 5, coat);
+        fb.rect(
+            gx - 1 + d,
+            feet - 10,
+            2,
+            2,
+            lerp_color(coat, air.theme.paper, 0.22),
+        );
+        // The arm up to the handle.
+        let hand = (gx + d, feet - 9);
+        fb.put(hand.0, hand.1, coat);
+
+        // The umbrella. It leans into the wind, and the lean is the gust.
+        let tilt = (-dir * (1.4 + (gust - 1.0) * 3.4)) as i32;
+        let cap_y = feet - 14;
+        let cap_x = gx + tilt;
+        let canopy = lerp_color(air.theme.yellow, air.theme.orange, 0.25);
+        fb.rect(hand.0, cap_y + 2, 1, feet - 9 - (cap_y + 2), dark);
+        if fighting {
+            // Inside out: the ribs point up and the rain goes straight in.
+            for k in -4i32..=4 {
+                let lift = 2 - (4 - k.abs()) / 2;
+                fb.put(cap_x + k, cap_y + lift, canopy);
+            }
+            fb.put(cap_x - 4, cap_y - 1, canopy);
+            fb.put(cap_x + 4, cap_y - 1, canopy);
+        } else {
+            // A dome rather than a tent: flat over the middle, falling away
+            // to the ribs, with the two tips turned down.
+            const DOME: [i32; 9] = [2, 1, 1, 0, 0, 0, 1, 1, 2];
+            for (n, drop) in DOME.iter().enumerate() {
+                let k = n as i32 - 4;
+                fb.put(cap_x + k, cap_y + drop, canopy);
+            }
+            fb.put(cap_x - 5, cap_y + 3, lerp_color(canopy, air.theme.bg, 0.25));
+            fb.put(cap_x + 5, cap_y + 3, lerp_color(canopy, air.theme.bg, 0.25));
+            // A pixel of rain bouncing off the edge, one side then the other.
+            if (t * 9.0).fract() < 0.5 {
+                fb.put(cap_x - 6, cap_y + 4, air.theme.paper);
+            } else {
+                fb.put(cap_x + 6, cap_y + 4, air.theme.paper);
+            }
+        }
+
+        // And what the wet pavement makes of him: four pixels of him upside
+        // down, wobbling, which is all a reflection at this size can be.
+        for dy in 1..5 {
+            let src = feet - dy * 3;
+            let wob = ((t * 2.3 + dy as f32).sin() * 1.3) as i32;
+            for dx in -2i32..=2 {
+                let c = fb.at(gx + dx + wob, src);
+                if c == air.theme.bg {
+                    continue;
+                }
+                let y = air.horizon + dy;
+                if BAYER[(y & 3) as usize][((gx + dx) & 3) as usize] as f32 / 16.0 < 0.55 {
+                    fb.put(gx + dx, y, lerp_color(fb.at(gx + dx, y), c, 0.5));
                 }
             }
         }
