@@ -139,6 +139,8 @@ enum Screen {
     FrameSettings {
         sel: usize,
     },
+    /// The time, the day, the weather and what is next, on nothing.
+    Ambient,
 }
 
 /// A row of the music screen.
@@ -316,6 +318,21 @@ const SYS_PAGE: usize = 11;
 const MONITOR_PAGES: usize = 2;
 /// Rows of the photo frame settings page.
 const FRAME_ROWS: usize = 5;
+
+/// What an idle television can show, and what each one is.
+///
+/// These take turns when the screensaver is set to `mix`, and any one of
+/// them can be named on its own instead. The music visualizer is not in the
+/// list: it stands in whenever music is playing, which is a stronger claim
+/// on the screen than a rotation.
+const SAVER_PAGES: [(&str, &str); 4] = [
+    ("effects", "the wordmark and a text effect"),
+    ("photos", "photographs from the house's server"),
+    ("ambient", "the time, the weather, what is next"),
+    ("system", "what the machine is doing"),
+];
+/// Rows of the screensaver settings page: five, then one per page.
+const SAVER_ROWS: usize = 5 + SAVER_PAGES.len();
 /// Videos hub entries.
 const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 4] = [
     (icons::FILM, "Local videos", true),
@@ -516,6 +533,10 @@ pub struct Scene {
     frame_previous: Option<crate::photos::Shown>,
     /// When the picture on the frame went up.
     frame_since: f64,
+    /// The screensaver page up now: which of `SAVER_PAGES` the idle timer
+    /// started, when it went up, and the screen it interrupted. The next
+    /// input puts that screen back, and the mix knows when to turn the page.
+    saver_run: Option<(usize, f64, Screen)>,
 }
 
 impl Scene {
@@ -618,6 +639,7 @@ impl Scene {
             frame_now: None,
             frame_previous: None,
             frame_since: 0.0,
+            saver_run: None,
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
             recent_at: load_times(&library.config_dir.join("recent.txt")),
@@ -716,6 +738,20 @@ impl Scene {
     /// Any user input: wakes the screensaver (returns true if it did).
     pub fn touch(&mut self, now: f64) -> bool {
         self.last_input = now;
+        // A page the idle timer put up is a screensaver, whatever else it
+        // can do: the first key press gives the menu back rather than
+        // driving the frame or turning the monitor's page.
+        if let Some((_, _, back)) = self.saver_run.take() {
+            // The effects page draws over whatever screen was up, so there
+            // is nothing to put back for it.
+            if self.saver.take().is_none() {
+                self.screen = back;
+                self.screen_since = now;
+                self.band_y = -1.0;
+            }
+            self.pending.push(Sound::Move);
+            return true;
+        }
         if self.saver.take().is_some() {
             self.pending.push(Sound::Move);
             return true;
@@ -1136,7 +1172,25 @@ impl Scene {
         }
     }
 
-    /// Screensaver settings rows: enabled, idle time, effect, preview.
+    /// The values the "when idle" row walks through: the mix first, then
+    /// any effect, then each page on its own.
+    fn saver_choices() -> Vec<&'static str> {
+        std::iter::once("mix")
+            .chain(std::iter::once("random"))
+            .chain(effects::ALL.iter().map(|k| k.name()))
+            // Not effects at all: whole screens that make more sense on an
+            // idle television than a text effect does.
+            .chain(
+                SAVER_PAGES
+                    .iter()
+                    .filter(|(n, _)| *n != "effects")
+                    .map(|(n, _)| *n),
+            )
+            .collect()
+    }
+
+    /// Screensaver settings rows: enabled, idle time, what it shows, how
+    /// long each page stays, preview, then one row per page.
     fn adjust_saver(&mut self, row: usize, dir: i32) {
         let sv = &mut self.settings.screensaver;
         match row {
@@ -1146,17 +1200,35 @@ impl Scene {
                 sv.idle_secs = v.clamp(30, 900) as u32;
             }
             2 => {
-                let names: Vec<&str> = std::iter::once("random")
-                    .chain(effects::ALL.iter().map(|k| k.name()))
-                    // Not effects at all: whole screens that make more sense
-                    // on an idle television than a text effect does.
-                    .chain(["photos", "system"])
-                    .collect();
+                let names = Self::saver_choices();
                 let i = names.iter().position(|n| *n == sv.effect).unwrap_or(0) as i32;
                 let next = (i + dir).rem_euclid(names.len() as i32) as usize;
                 sv.effect = names[next].to_string();
             }
-            _ => {}
+            3 => {
+                let opts = [0u32, 60, 120, 240, 600, 1800];
+                let i = opts.iter().position(|o| *o == sv.cycle_secs).unwrap_or(3) as i32;
+                sv.cycle_secs = opts[(i + dir).rem_euclid(opts.len() as i32) as usize];
+            }
+            4 => {}
+            row => {
+                // One page's own switch. The last one on cannot be switched
+                // off: an empty mix has nothing to show.
+                let Some((name, _)) = SAVER_PAGES.get(row - 5) else {
+                    return;
+                };
+                let name = name.to_string();
+                match sv.off.iter().position(|n| *n == name) {
+                    Some(i) => {
+                        sv.off.remove(i);
+                    }
+                    None if sv.off.len() + 1 < SAVER_PAGES.len() => sv.off.push(name),
+                    None => {
+                        self.message = Some(("one page has to stay on".into(), self.now + 3.0));
+                        self.pending.push(Sound::Crunch);
+                    }
+                }
+            }
         }
     }
 
@@ -2124,6 +2196,12 @@ impl Scene {
                 }
                 _ => {}
             },
+            Screen::Ambient => {
+                if nav == Nav::Back {
+                    self.screen = Screen::Menu;
+                    moved = true;
+                }
+            }
             Screen::Frame => match nav {
                 Nav::Right | Nav::Down => {
                     self.next_photo();
@@ -2189,7 +2267,7 @@ impl Scene {
                     *sel -= 1;
                     moved = true;
                 }
-                Nav::Down if *sel + 1 < 4 => {
+                Nav::Down if *sel + 1 < SAVER_ROWS => {
                     *sel += 1;
                     moved = true;
                 }
@@ -2996,11 +3074,11 @@ impl Scene {
             }
             Screen::Power { sel } => self.activate_power(sel),
             Screen::Saver { sel } => {
-                if sel == 3 {
+                if sel == 4 {
+                    // Preview: whatever the setting says, right now.
                     self.pending.push(Sound::Select);
-                    let kind = self.chosen_effect();
                     let now = self.now;
-                    self.start_screensaver(now, kind);
+                    self.idle_reached(now);
                 } else {
                     self.adjust_saver(sel, 1);
                     self.pending.push(Sound::Move);
@@ -3036,7 +3114,10 @@ impl Scene {
                 }
                 Action::None
             }
-            Screen::Diag { .. } | Screen::About { .. } | Screen::Monitor { .. } => Action::None,
+            Screen::Diag { .. }
+            | Screen::About { .. }
+            | Screen::Monitor { .. }
+            | Screen::Ambient => Action::None,
             Screen::Frame => {
                 self.next_photo();
                 Action::None
@@ -3447,6 +3528,7 @@ impl Scene {
             }
             Some("power") => self.screen = Screen::Power { sel: 0 },
             Some("frame") => self.open_frame(),
+            Some("ambient") => self.screen = Screen::Ambient,
             Some("monitor") => {
                 self.sysmon.sample();
                 self.screen = Screen::Monitor { page: 0 };
@@ -3494,6 +3576,7 @@ impl Scene {
                 self.open_virtual(&list);
             }
             "frame" | "photos" => self.open_frame(),
+            "ambient" | "clock" | "weather" => self.go(Screen::Ambient),
             "monitor" | "system" => {
                 self.sysmon.sample();
                 self.go(Screen::Monitor { page: 0 });
@@ -4443,6 +4526,10 @@ impl Scene {
                 self.draw_frame(fb);
                 return;
             }
+            Screen::Ambient => {
+                self.draw_ambient(fb);
+                return;
+            }
             Screen::Menu => {}
         }
         if let Some((msg, _)) = &self.message
@@ -4598,6 +4685,12 @@ impl Scene {
             self.pad_wizard_start(&name, &guid, which);
         }
         fb.clear(self.theme.bg);
+        // Turning the page of the mix happens here, above every branch: the
+        // effects page returns from the next one and never reaches the rest
+        // of this function.
+        if self.running.is_none() && self.launching.is_none() {
+            self.cycle_saver_page(now);
+        }
         if self.saver.is_some() {
             self.draw_saver(fb);
             return;
@@ -4671,36 +4764,102 @@ impl Scene {
         }
     }
 
-    /// What an idle television does. Usually a text effect over the
-    /// wordmark, but the screensaver setting can name a whole screen
-    /// instead: the photographs, or what the machine is doing.
+    /// What an idle television does.
+    ///
+    /// Music playing wins: the visualizer has something to show that the
+    /// other pages do not. Otherwise the screensaver setting decides, and it
+    /// can name one page or `mix` to take turns between the pages that are
+    /// on.
     fn idle_reached(&mut self, now: f64) {
-        match self.settings.screensaver.effect.as_str() {
-            "photos" => {
-                if !matches!(self.screen, Screen::Frame) {
-                    self.open_frame();
-                }
-                // The frame is what it does when idle, so the clock starts
-                // again rather than firing on every frame from here on.
-                self.last_input = now;
-                return;
-            }
-            "system" => {
-                if !matches!(self.screen, Screen::Monitor { .. }) {
-                    self.sysmon.sample();
-                    self.go(Screen::Monitor { page: 0 });
-                }
-                self.last_input = now;
-                return;
-            }
-            _ => {}
-        }
         if self.music.status.playing() && self.settings.music.saver {
             self.music_saver_start(now);
-        } else {
-            let kind = self.chosen_effect();
-            self.start_screensaver(now, kind);
+            return;
         }
+        if self.saver_run.is_some() {
+            return;
+        }
+        let asked = self.settings.screensaver.effect.clone();
+        let page = if asked == "mix" {
+            // Everything switched off: the wordmark is still better than a
+            // lit screen showing the menu all night, and page 0 is it.
+            self.next_saver_page(None).unwrap_or_default()
+        } else {
+            SAVER_PAGES
+                .iter()
+                .position(|(name, _)| *name == asked)
+                .unwrap_or(0)
+        };
+        self.start_saver_page(page, now);
+    }
+
+    /// The next page that is on, after `from`. `None` when none of them are.
+    fn next_saver_page(&mut self, from: Option<usize>) -> Option<usize> {
+        let off = &self.settings.screensaver.off;
+        let on: Vec<usize> = (0..SAVER_PAGES.len())
+            .filter(|i| !off.iter().any(|n| n == SAVER_PAGES[*i].0))
+            .collect();
+        if on.is_empty() {
+            return None;
+        }
+        match from {
+            // The first page of an evening is any of them, so a television
+            // left alone twice does not open the same way twice.
+            None => Some(on[(self.rand() as usize) % on.len()]),
+            Some(current) => {
+                let at = on.iter().position(|i| *i == current);
+                Some(match at {
+                    Some(i) => on[(i + 1) % on.len()],
+                    None => on[0],
+                })
+            }
+        }
+    }
+
+    /// Put one screensaver page up.
+    fn start_saver_page(&mut self, page: usize, now: f64) {
+        // Where to come back to, taken before the page changes the screen.
+        let back = match self.saver_run {
+            Some((_, _, was)) => was,
+            None => self.screen,
+        };
+        self.saver_run = Some((page, now, back));
+        // The idle clock starts again: the page is what idling looks like,
+        // and the check must not fire on every frame from here on.
+        self.last_input = now;
+        match SAVER_PAGES.get(page).map(|(name, _)| *name) {
+            Some("photos") => self.open_frame(),
+            Some("ambient") => self.go(Screen::Ambient),
+            Some("system") => {
+                self.sysmon.sample();
+                self.go(Screen::Monitor { page: 0 });
+            }
+            _ => {
+                let kind = self.chosen_effect();
+                self.start_screensaver(now, kind);
+            }
+        }
+    }
+
+    /// While mixing, turn the page when its time is up.
+    fn cycle_saver_page(&mut self, now: f64) {
+        let Some((page, since, back)) = self.saver_run else {
+            return;
+        };
+        let sv = &self.settings.screensaver;
+        if sv.effect != "mix" || sv.cycle_secs == 0 {
+            return;
+        }
+        if now - since < sv.cycle_secs as f64 {
+            return;
+        }
+        let next = self.next_saver_page(Some(page)).unwrap_or(page);
+        if next == page {
+            // The only page that is on: leave it up rather than restarting it.
+            self.saver_run = Some((page, now, back));
+            return;
+        }
+        self.saver = None;
+        self.start_saver_page(next, now);
     }
 
     fn draw_gate(&mut self, fb: &mut Framebuffer) {
@@ -5085,7 +5244,8 @@ impl Scene {
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
-    /// Screensaver settings: enabled, idle time, effect, preview.
+    /// Screensaver settings: what an idle television shows, and which pages
+    /// take turns at it.
     fn draw_saver_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
         let w = fb.w as i32;
         let h = fb.h as i32;
@@ -5093,50 +5253,74 @@ impl Scene {
         let width = w - 2 * (w as f32 * 0.05) as i32;
         let y0 = self.draw_header(fb, "Screensaver");
         let sv = self.settings.screensaver.clone();
-        let rows: [(&str, String); 4] = [
+        let onoff = |b: bool| if b { "on" } else { "off" }.to_string();
+        let mut rows: Vec<(String, String, bool)> = vec![
+            ("enabled".into(), onoff(sv.enabled), true),
+            ("after".into(), format!("{} s", sv.idle_secs), true),
+            ("when idle".into(), sv.effect.clone(), true),
             (
-                "enabled",
-                if sv.enabled {
-                    "on".into()
+                "change page every".into(),
+                if sv.cycle_secs == 0 {
+                    "keep one".into()
                 } else {
-                    "off".into()
+                    format!("{} s", sv.cycle_secs)
                 },
+                sv.effect == "mix",
             ),
-            ("after", format!("{} s", sv.idle_secs)),
-            ("effect", sv.effect.clone()),
-            ("preview", String::new()),
+            ("preview".into(), String::new(), false),
         ];
+        for (name, _) in SAVER_PAGES.iter() {
+            let on = !sv.off.iter().any(|n| n == name);
+            rows.push((format!("  {name}"), onoff(on), sv.effect == "mix"));
+        }
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
         fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
-        for (i, (label, value)) in rows.iter().enumerate() {
+        for (i, (label, value, arrows)) in rows.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             let on = i == sel;
-            let c = if on {
-                self.theme.accent
-            } else {
-                self.theme.paper
+            // A row that only matters while mixing is still there, dimmed,
+            // rather than appearing and disappearing under the cursor.
+            let live = i < 3 || *arrows || i == 4;
+            let c = match (on, live) {
+                (true, _) => self.theme.accent,
+                (false, true) => self.theme.paper,
+                (false, false) => scale(self.theme.dim, 0.8),
             };
             fb.text(left + 18, y + 2, label, c, 1);
-            let right = if i < 3 {
+            let right = if *arrows {
                 format!("< {value} >")
             } else {
                 value.clone()
+            };
+            let rc = if on {
+                self.theme.accent
+            } else if live {
+                self.theme.dim
+            } else {
+                scale(self.theme.dim, 0.7)
             };
             fb.text(
                 left + width - 8 - Framebuffer::text_width(&right, 1),
                 y + 2,
                 &right,
-                if on {
-                    self.theme.accent
-                } else {
-                    self.theme.dim
-                },
+                rc,
                 1,
             );
         }
-        let n = effects::ALL.len();
-        let note = format!("{n} effects ported so far, random picks one");
+        // The note is about the row under the cursor, which is the only
+        // place there is room to say what a page is.
+        let note: String = match sel {
+            0 => "off leaves the menu up all night".into(),
+            1 => "seconds of nothing before it starts".into(),
+            2 => format!("one page, or mix ({} effects)", effects::ALL.len()),
+            3 => "how long each page stays in the mix".into(),
+            4 => "start it now".into(),
+            row => SAVER_PAGES
+                .get(row - 5)
+                .map(|(_, what)| (*what).to_string())
+                .unwrap_or_default(),
+        };
         let max_cols = (width / 8) as usize;
         fb.text(
             left,
@@ -6650,7 +6834,10 @@ impl Scene {
             restart = t > saver.effect.length() + 3.0;
         }
         if restart {
-            self.start_screensaver(now, None);
+            // The effect that was asked for, not any effect: `random` is the
+            // value that means any.
+            let kind = self.chosen_effect();
+            self.start_screensaver(now, kind);
         }
     }
 }
@@ -7499,5 +7686,110 @@ impl Scene {
             "the album's name, from settings.toml",
         ];
         self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14);
+    }
+}
+
+impl Scene {
+    /// The ambient page: the time, the day, the weather and what is next, on
+    /// nothing at all.
+    ///
+    /// This is the page for a television that is on in a room where nobody is
+    /// playing anything. It has no photograph behind it on purpose: the frame
+    /// is the page with a photograph, and a clock over a picture is a
+    /// different thing from a clock.
+    fn draw_ambient(&mut self, fb: &mut Framebuffer) {
+        // The supply thread carries the weather and the calendar as well as
+        // the photographs, so this page starts it too. With no photograph
+        // server set up it goes on fetching the outside world alone.
+        let f = self.settings.frame.clone();
+        let dir = self.library.config_dir.clone();
+        self.photos.start(
+            &dir,
+            omarchy_crt_shell::immich::Source::named(&f.source),
+            f.album.clone(),
+            f.weather.clone(),
+            f.calendar.clone(),
+            fb.w,
+            fb.h,
+        );
+        self.photos.poll();
+
+        fb.clear(self.theme.bg);
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let now = chrono::Local::now();
+
+        // The clock, with the colon on the second, the way a clock radio did
+        // it. The digits stay put: a proportional blink is a wobble.
+        let size = if w >= 320 { 6 } else { 4 };
+        let clock = now.format("%H:%M").to_string();
+        let cw = Framebuffer::text_width(&clock, size);
+        let cx = (w - cw) / 2;
+        let cy = h / 3 - size * 4;
+        fb.text(cx, cy, &clock, self.theme.paper, size);
+        if now.format("%S").to_string().parse::<u32>().unwrap_or(0) % 2 == 1 {
+            fb.text(
+                cx + 2 * 8 * size,
+                cy,
+                ":",
+                lerp_color(self.theme.bg, self.theme.paper, 0.22),
+                size,
+            );
+        }
+
+        // The minute filling up, under the clock.
+        let bar_w = (w as f32 * 0.42) as i32;
+        let bar_x = (w - bar_w) / 2;
+        let bar_y = cy + size * 8 + 6;
+        let secs = now.format("%S").to_string().parse::<f32>().unwrap_or(0.0);
+        fb.rect(
+            bar_x,
+            bar_y,
+            bar_w,
+            1,
+            lerp_color(self.theme.bg, self.theme.paper, 0.18),
+        );
+        fb.rect(
+            bar_x,
+            bar_y,
+            (bar_w as f32 * (secs / 60.0)) as i32,
+            1,
+            self.theme.cyan,
+        );
+
+        let date = now.format("%A %d %B").to_string().to_uppercase();
+        let dw = Framebuffer::text_width(&date, 1);
+        fb.text((w - dw) / 2, bar_y + 10, &date, self.theme.dim, 1);
+
+        // What is going on outside and what is next, each on its own line,
+        // centred, cut to the screen.
+        let room = ((w - 2 * left) / 8).max(4) as usize;
+        let mut y = bar_y + 34;
+        let info = self.photos.info.clone();
+        let mut line = |fb: &mut Framebuffer, text: &str, colour: Color| {
+            let text: String = text.chars().take(room).collect();
+            let tw = Framebuffer::text_width(&text, 1);
+            fb.text((w - tw) / 2, y, &text, colour, 1);
+            y += 14;
+        };
+        if !info.weather.is_empty() {
+            line(fb, &info.weather, self.theme.cyan);
+        }
+        if !info.next.is_empty() {
+            line(fb, &format!("NEXT  {}", info.next), self.theme.yellow);
+        }
+        if self.music.status.active()
+            && let Some(track) = self.music.status.track.as_ref()
+        {
+            let label = track.label();
+            line(fb, &label, self.theme.green);
+        }
+        if info.weather.is_empty() && info.next.is_empty() {
+            line(fb, "no weather yet", scale(self.theme.dim, 0.8));
+        }
+
+        let hint = self.hint(&[("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 }
