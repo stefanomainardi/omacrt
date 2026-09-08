@@ -334,11 +334,12 @@ const SAVER_PAGES: [(&str, &str); 4] = [
 /// Rows of the screensaver settings page: five, then one per page.
 const SAVER_ROWS: usize = 5 + SAVER_PAGES.len();
 /// Videos hub entries.
-const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 4] = [
+const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 5] = [
     (icons::FILM, "Local videos", true),
     (icons::RESUME, "YouTube", true),
     (icons::FOLDER, "Play the link in the clipboard", false),
     (icons::PHOTO, "Photo frame", true),
+    (icons::CLOCK, "Clock and weather", true),
 ];
 
 /// YouTube hub entries.
@@ -2201,7 +2202,7 @@ impl Scene {
             },
             Screen::Ambient => {
                 if nav == Nav::Back {
-                    self.screen = Screen::Menu;
+                    self.screen = Screen::Videos { sel: 4 };
                     moved = true;
                 }
             }
@@ -3013,6 +3014,10 @@ impl Scene {
                     self.open_frame();
                     return Action::None;
                 }
+                if sel == 4 {
+                    self.go(Screen::Ambient);
+                    return Action::None;
+                }
                 let Some(i) = self.video_system() else {
                     return Action::None;
                 };
@@ -3531,6 +3536,9 @@ impl Scene {
             }
             Some("power") => self.screen = Screen::Power { sel: 0 },
             Some("frame") => self.open_frame(),
+            Some("framesettings") => self.screen = Screen::FrameSettings { sel: 0 },
+            Some("videoshub") => self.screen = Screen::Videos { sel: 0 },
+            Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
             Some("ambient") => self.screen = Screen::Ambient,
             Some("monitor") => {
                 self.sysmon.sample();
@@ -5332,7 +5340,7 @@ impl Scene {
             scale(self.theme.dim, 0.7),
             1,
         );
-        let hint = self.hint(&[("<>", "change"), ("A", "preview"), ("B", "back saves")]);
+        let hint = self.hint(&[("<>", "change"), ("A", "preview"), ("B", "save")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
@@ -5561,6 +5569,17 @@ impl Scene {
                 },
                 1,
             );
+            // The value is right aligned and the label is not going
+            // anywhere, so the value is what has to give: a page whose
+            // words happen to be long must not write them over each other.
+            let label_w = Framebuffer::text_width(label, 1);
+            let room = width - 18 - label_w - 8 - 8 - 4 * 8;
+            let fits = (room / 8).max(3) as usize;
+            let value: String = if value.chars().count() > fits {
+                value.chars().take(fits).collect()
+            } else {
+                value.clone()
+            };
             let right = format!("< {value} >");
             fb.text(
                 left + width - 8 - Framebuffer::text_width(&right, 1),
@@ -7654,15 +7673,15 @@ impl Scene {
     fn draw_frame_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
         let f = self.settings.frame.clone();
         let style = match f.style.as_str() {
-            "photos" => "photographs only",
-            "panel" => "the whole ambient page",
-            _ => "the time and the caption",
+            "photos" => "nothing",
+            "panel" => "ambient",
+            _ => "the time",
         };
         let source = match f.source.as_str() {
             "favorites" => "favourites",
-            "album" => "one album",
-            "all" => "anything at all",
-            _ => "this day, other years",
+            "album" => "an album",
+            "all" => "everything",
+            _ => "memories",
         };
         let rows: Vec<(String, String)> = vec![
             ("over the picture".into(), style.into()),
@@ -7685,9 +7704,9 @@ impl Scene {
                 if f.weather.trim().is_empty() {
                     let zone = omarchy_crt_shell::ambient::zone_place();
                     if zone.is_empty() {
-                        "wherever this is".into()
+                        "unknown".into()
                     } else {
-                        format!("{zone} (timezone)")
+                        zone
                     }
                 } else {
                     f.weather.clone()
@@ -7698,11 +7717,24 @@ impl Scene {
             "what is written over the photograph",
             "how long before the next one",
             "which photographs the server sends",
-            "a picture that fills the screen moves a little",
+            "a picture that fills the screen drifts",
             "the album's name, from settings.toml",
-            "the town on the ambient page, from settings.toml",
+            if f.weather.trim().is_empty() {
+                "the town, from this machine's timezone"
+            } else {
+                "the town, from settings.toml"
+            },
         ];
         self.draw_settings_table(fb, "Photo frame", &rows, &notes, sel, 14);
+        // A settings page for the frame is not the frame, and nothing else on
+        // it says that the frame is one button away. The table wrote its own
+        // hint on that line first, so the line is cleared before this one.
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        fb.rect(0, h - 15, w, 11, self.theme.bg);
+        let hint = self.hint(&[("<>", "change"), ("A", "show it"), ("B", "save")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 }
 
