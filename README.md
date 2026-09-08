@@ -209,6 +209,10 @@ can send to a television once the television is just another output it owns.
   (`~/.config/omarchy/extensions/omarchy-menu.jsonc`): power, channels,
   picture, sound, the library, capture, pads and diagnostics, each row calling
   the same CLI a terminal would. Nothing patched.
+- **Walker.** *Play a game...* in that menu hands the whole collection to
+  Omarchy's own runner and plays what comes back on the television, turning
+  the tube on if it is off. Twenty thousand games belong in a fuzzy finder,
+  not in a nested menu.
 - **Immich.** The photo frame reads the house's own photograph server: this
   day in the years before, an album, the favourites, with where and when and
   who from the server's own metadata. The pictures never leave the network.
@@ -430,6 +434,7 @@ collapse onto one title and systems show up when they have games. Details in
 | `plugin/` | The bar widget and panel; `plugin/library/` the library overlay |
 | `menu/` | The Television rows the installer writes into Omarchy's menu extension file |
 | `bin/omarchy-crt-install` | Build and install everything, `--system` for the boot time lease |
+| `bin/omarchy-crt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
 | `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting, state of the project |

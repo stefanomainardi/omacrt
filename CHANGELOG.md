@@ -62,6 +62,12 @@ caveat for a 0.x project: anything may still move.
   capture, pads and diagnostics. `--uninstall` takes it back out.
 - `omarchy-crt shell screen NAME` opens a launcher screen by name, which is
   how the menu reaches it without counting rows.
+- `omarchy-crt play "metal slug"` starts a game on the television by name or
+  by path, matched against the index, and `omarchy-crt library games` lists
+  every game the scan has seen. `omarchy-crt-pick` puts a fuzzy picker in
+  front of that on the desktop and plays what comes back, turning the tube on
+  if it is off; it is the **Play a game...** row in the Omarchy menu and it is
+  worth a keybinding.
 - `omarchy-crt audio volume` takes a step (`+10`, `-10`) as well as a percent.
 - `AGENTS.md`: the working guide for the repository, for a coding agent or a
   person, with the rules that have each already cost a session.
@@ -165,6 +171,17 @@ The first release meant for somebody else's machine.
   plugin and whether its own directories can be written.
 
 ### Fixed
+
+- The idle timer leaves alone a page that is already one of the screensaver's
+  own: sitting on the photo frame used to get the wordmark over it after a
+  minute. A page that draws itself is a screensaver already, and one opened on
+  purpose is the one that was wanted. Somewhere static, a list of games, is
+  what the timer is for.
+- A screen asked for from outside, by the desktop menu or `omarchy-crt shell
+  screen`, puts the screensaver away first. It used to change the screen
+  underneath an effect that went on drawing, so choosing a channel from the
+  Omarchy menu looked as if it had done nothing. `shell key home` had the same
+  fault.
 
 - I2C transfers time out instead of waiting for ever, and the bus lock is taken
   without blocking: a television that was off used to leave one stuck process

@@ -91,6 +91,12 @@ pub fn send_screen(name: &str) -> std::io::Result<()> {
     send(&[line.as_str()])
 }
 
+/// Ask the running launcher to start a game, by a path the scan has seen.
+pub fn send_play(path: &str) -> std::io::Result<()> {
+    let line = format!("play {}", path.trim().replace(['\n', '\r'], ""));
+    send(&[line.as_str()])
+}
+
 /// Send inputs to the running launcher. Fails when nothing listens.
 pub fn send(inputs: &[&str]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;

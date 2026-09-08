@@ -931,6 +931,10 @@ fn run(args: &Args) -> Result<(), String> {
                 scene.watch(target);
                 continue;
             }
+            if let Some(target) = &inp.play {
+                scene.play(target);
+                continue;
+            }
             if scene.osk_active() && (nav.is_some() || fire || fav || alt) {
                 scene.osk_input(nav, fire, fav, alt);
                 continue;
@@ -1111,6 +1115,8 @@ struct Input {
     watch: Option<String>,
     /// A screen to open by name, from `omarchy-crt shell screen NAME`.
     screen: Option<String>,
+    /// A game to start by path, from `omarchy-crt play`.
+    play: Option<String>,
 }
 
 impl Input {
@@ -1129,6 +1135,7 @@ impl Input {
             || self.edge.is_some()
             || self.watch.is_some()
             || self.screen.is_some()
+            || self.play.is_some()
     }
 }
 
@@ -1144,6 +1151,10 @@ fn control_input(line: &str) -> Option<Input> {
     }
     if let Some(name) = line.strip_prefix("screen ") {
         inp.screen = Some(name.trim().to_string());
+        return Some(inp);
+    }
+    if let Some(target) = line.strip_prefix("play ") {
+        inp.play = Some(target.trim().to_string());
         return Some(inp);
     }
     match omarchy_crt_shell::crt::control::normalize(line)? {

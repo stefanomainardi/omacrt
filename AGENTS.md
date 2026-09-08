@@ -279,6 +279,16 @@ records what was chosen and why.
 dispatch, and a section in `docs/cli.md`. If the launcher has to do something,
 it goes through the control pipe rather than a signal.
 
+**A row in the Omarchy menu.** `menu/omarchy-menu.jsonc`, which the
+installer writes into Omarchy's extension file. Two things are worth knowing
+before designing one. The icons must be code points Omarchy's own menu already
+uses, or the row comes out blank in whatever font the bar has. And a
+**provider is not available to a third party**: the menu plugin holds its
+providers in a fixed table in its own QML (`fonts`, `power-profiles`, and a
+native `apps`), so a row cannot enumerate anything of ours at runtime. A list
+that changes belongs behind a picker on the desktop, which is what
+`bin/omarchy-crt-pick` is.
+
 **Anything that talks to a network service.** Through `curl` as a
 subprocess, with `--proto =http,https`, a timeout, a size cap, and a cache on
 disk with an age. Nothing in the frame loop is allowed to block on a socket.
