@@ -539,7 +539,6 @@ const TAG_START: f32 = 6.9;
 
 struct Saver {
     effect: Effect,
-    kind: Kind,
     started: f64,
 }
 
