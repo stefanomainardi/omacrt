@@ -251,7 +251,6 @@ impl Scene {
             bg: self.theme.bg,
             floor_light: self.theme.dim,
             floor_dark: self.theme.fg_dark_floor(),
-            mark: self.theme.green,
             orange: self.theme.orange,
             yellow: self.theme.yellow,
         };
