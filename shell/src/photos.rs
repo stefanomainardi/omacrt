@@ -143,17 +143,33 @@ fn work(
     w: usize,
     h: usize,
 ) {
+    // The weather and the calendar first: they are one request each, they
+    // have nothing to do with the photographs, and the ambient page has
+    // somewhere to put them straight away.
+    let _ = tx.send(Msg::Ambient(ambient::info(&place, &calendar)));
+    let mut refreshed = std::time::Instant::now();
+
     let Some(cfg) = immich::Config::load(&config_dir) else {
         let _ = tx.send(Msg::Trouble(format!(
             "no immich.toml in {}",
             config_dir.display()
         )));
-        return;
+        // No photograph server, but the ambient page still wants the outside
+        // world, so this thread stays alive for that alone.
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            if refreshed.elapsed().as_secs() < 900 {
+                continue;
+            }
+            refreshed = std::time::Instant::now();
+            if tx
+                .send(Msg::Ambient(ambient::info(&place, &calendar)))
+                .is_err()
+            {
+                return;
+            }
+        }
     };
-    // The weather and the calendar first: they are one request each and the
-    // screen has somewhere to put them straight away.
-    let _ = tx.send(Msg::Ambient(ambient::info(&place, &calendar)));
-    let mut refreshed = std::time::Instant::now();
 
     // Whatever is already prepared goes up first: the screen fills at once,
     // and it fills even with the server switched off.

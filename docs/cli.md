@@ -226,8 +226,8 @@ omarchy-crt shell screen frame
 ```
 
 Names: `home`, `games`, `videos`, `youtube`, `music`, `favorites`, `recent`,
-`frame`, `monitor`, `processes`, `settings`, `picture`, `style`, `pads`,
-`diagnostics`, `about`, `power`. Nothing happens while a game or a film is on:
+`frame`, `ambient`, `monitor`, `processes`, `settings`, `picture`, `style`,
+`pads`, `diagnostics`, `about`, `power`. Nothing happens while a game or a film is on:
 a menu entry pressed by accident must not take the television away from what
 it is doing.
 
@@ -257,8 +257,45 @@ and on the television under Settings, Photo frame: `style` (`photos`, `clock`,
 `album`, `pan`, `weather` (a place name for wttr.in, empty asks by address)
 and `calendar` (an `.ics` address).
 
-Setting the screensaver's effect to `photos` makes an idle television the
-frame; `system` makes it the monitor.
+## What an idle television shows
+
+The screensaver is not only a text effect on the wordmark any more. Four pages
+can have the screen, and they can take turns:
+
+| Page | What |
+| --- | --- |
+| `effects` | The wordmark taken apart and put back, one of nine effects |
+| `photos` | The photo frame |
+| `ambient` | The time, the day, the weather and what is next, on nothing |
+| `system` | The system monitor |
+
+```toml
+[screensaver]
+enabled = true
+idle_secs = 60      # seconds of nothing before it starts
+effect = "mix"      # a page by name, an effect by name, random, or mix
+cycle_secs = 240    # while mixing, how long each page stays; 0 keeps one
+off = ["system"]    # pages left out of the mix
+```
+
+`effect` takes one page name (`effects`, `photos`, `ambient`, `system`), one
+effect name (`laseretch`, `rain`, `beams`, `burn`, `slide`, `decrypt`,
+`expand`, `unstable`, `vhstape`), `random` for any effect, or `mix` to take
+turns between the pages that are on. The same page is on the television under
+Settings, Screensaver, where every one of those is a row.
+
+Two rules decide who wins:
+
+- **Music playing takes the screen**, and the visualizer stands in, whatever
+  the mix says. A page that shows the time is a poor answer to a room with
+  music in it. Turn it off with `[music] saver = false`.
+- **The first page of an evening is picked at random** among the ones that are
+  on, so a television left alone twice does not open the same way twice.
+  After that they go round in order.
+
+The first key press puts back the screen that was up before, not the top of
+the menu: a page the idle timer started is a screensaver, whatever else it can
+do.
 
 ## The Omarchy menu
 

@@ -22,8 +22,16 @@ caveat for a 0.x project: anything may still move.
   logical processor, memory, graphics, load and network history, the rates and
   the busiest processes, with a second page of processes and their pids. Read
   from `/proc` and `/sys` only.
-- The screensaver can be a whole screen instead of a text effect: `photos`
-  leaves an idle television showing the photographs, `system` the monitor.
+- The screensaver is a rotation, not one choice. Four pages can have an idle
+  television: the text effects on the wordmark, the photo frame, an ambient
+  page with the time, the weather and the next appointment, and the system
+  monitor. `effect = "mix"` makes them take turns every `cycle_secs`, each
+  page can be switched off with `[screensaver] off`, and music playing still
+  takes the screen for the visualizer. The first page of an evening is picked
+  at random, and the first key press puts back the screen that was up.
+- An ambient page of its own: the time with the colon on the second, the
+  minute filling up under it, the day, the weather and what is next. It needs
+  no photograph server, only the weather setting.
 - A **Television** entry in Omarchy's own menu, written into the extension
   file Omarchy reads for it, with power, channels, picture, sound, library,
   capture, pads and diagnostics. `--uninstall` takes it back out.

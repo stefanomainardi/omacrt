@@ -56,10 +56,11 @@ television outright. Written in Rust, drawn at 320x240.
   page on the tube.
 - **Video.** Local films fitted to the tube, YouTube searched and played from
   the television, a link sent from the desktop.
-- **When nothing is playing.** A photo frame reading the house's own Immich
-  server, an ambient page with the clock, the weather and the next
-  appointment, and a system monitor drawn as a 16 bit status screen. Either
-  can stand in for the screensaver.
+- **When nothing is playing.** Four pages can have an idle television and
+  they take turns: the wordmark under a text effect, a photo frame reading the
+  house's own Immich server, an ambient page with the clock, the weather and
+  the next appointment, and a system monitor drawn as a 16 bit status screen.
+  Music playing still takes the screen for the visualizer.
 - **Omarchy all the way.** Theme colours, the bar widget and its panel, a full
   screen library overlay, the shell's plugin system, cliamp, mpv, yt-dlp: the
   desktop's own tools drive the CRT.
@@ -327,7 +328,8 @@ switches with a blend.
   screen: a bank of little meters, one per processor, memory and graphics on
   bevelled plates, a minute and a half of history for load and network, the
   rates and the busiest processes. Straight out of `/proc` and `/sys`. Set the
-  screensaver to `photos` or `system` and an idle television becomes either.
+  screensaver to `mix` and an idle television takes turns between this, the
+  photographs, the ambient clock and the text effects.
 - **Pads.** SDL's database plus a wizard on the tube for the pads it does not
   know: press each control once and it is mapped for good.
 - **Sound.** Every click, whoosh, crackle and scrape is synthesized at

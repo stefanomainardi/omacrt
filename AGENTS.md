@@ -136,7 +136,7 @@ alone.
 | `scene.rs` | Every screen: the `Screen` enum, navigation, drawing. The big one |
 | `fb.rs` | The framebuffer and the drawing primitives |
 | `art.rs` | Pictures on a worker thread: fetch, decode, scale |
-| `photos.rs` | The photo frame's supply thread |
+| `photos.rs` | The photo frame's supply thread, and the weather and calendar with it |
 | `sysmon.rs` | The system monitor's sampling, from `/proc` and `/sys` |
 | `deck.rs` | The hi-fi deck and the visualizers |
 | `effects.rs`, `etch.rs`, `crt_tag.rs` | The boot sequence and the screensaver effects |
@@ -171,7 +171,8 @@ magick /tmp/shot/frame_14.00.ppm -filter point -resize 300% /tmp/shot/a.png
 
 `--browse` takes a system name or one of the named screens: `settings`,
 `saver`, `diag`, `about`, `power`, `profile`, `pair`, `style`, `fit`,
-`monitor`, `processes`, `frame`. `--size WxH` renders at another shape, and
+`monitor`, `processes`, `frame`, `ambient`. `--size WxH` renders at another
+shape, and
 320x288 is worth checking because a PAL tube is 288 lines, not 240. The dump
 times are seconds after boot, so anything past the boot sequence needs about
 ten.
@@ -229,6 +230,13 @@ rendered headlessly, and a row in `HOME` or in the hub it belongs to. Watch
 the home menu's height: the wordmark and the CRT tag take the top half of a
 240 line screen, so eight rows fit and a ninth runs off the bottom. Render it
 and look before assuming otherwise; that is how About ended up in Settings.
+
+**A screensaver page.** `SAVER_PAGES` in `scene.rs` is the list, and
+`start_saver_page` puts one up. A page is a screen like any other, so it
+needs everything in the paragraph above as well; being in `SAVER_PAGES` is
+what makes it take its turn in the mix and what makes the first key press
+give the previous screen back. The mix is turned at the top of `draw`,
+above every branch, because the effects page returns from the first one.
 
 **A setting.** `settings.rs`: a field with `#[serde(default = "...")]` so an
 older file still loads, a row in the matching settings page, an entry in

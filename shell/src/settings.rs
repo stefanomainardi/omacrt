@@ -8,8 +8,21 @@ pub struct Screensaver {
     pub enabled: bool,
     /// Seconds of inactivity before the screensaver starts.
     pub idle_secs: u32,
-    /// Effect name from `effects::ALL`, or `random`.
+    /// What an idle television shows: an effect name from `effects::ALL`,
+    /// `random` for any of them, a page name (`photos`, `ambient`,
+    /// `system`), or `mix` to take turns between the pages that are on.
     pub effect: String,
+    /// Seconds a page stays before the next one, while mixing. 0 keeps the
+    /// first one up.
+    #[serde(default = "default_cycle_secs")]
+    pub cycle_secs: u32,
+    /// Pages left out of the mix, by name.
+    #[serde(default)]
+    pub off: Vec<String>,
+}
+
+fn default_cycle_secs() -> u32 {
+    240
 }
 
 /// How modern video is fitted to the tube.
@@ -212,6 +225,8 @@ impl Default for Settings {
                 enabled: true,
                 idle_secs: 60,
                 effect: "random".into(),
+                cycle_secs: default_cycle_secs(),
+                off: Vec::new(),
             },
             theme: "system".into(),
             video: VideoFit::default(),
