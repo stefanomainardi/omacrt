@@ -252,7 +252,7 @@ The HDMI path works with wide "super resolution" modelines (3520x240 at 72 MHz,
 back into 4:3, the emulator fills it, and every game line lands on one TV line.
 A DisplayPort DAC tier (Realtek RTD2166 adapters plus a VGA to SCART sync
 combiner) for native 320x240 timings is documented in
-[`docs/studio-15khz.md`](docs/studio-15khz.md) (Italian) and has not been
+[`docs/15khz.md`](docs/15khz.md) and has not been
 needed so far.
 
 ## Install

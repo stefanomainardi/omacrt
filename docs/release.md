@@ -8,7 +8,7 @@ than guessed:
 | --- | --- |
 | Rust | 32,366 lines over 45 files. `scene.rs` alone is 7,988 of them, with 191 methods on one struct |
 | Tests | 82, in five binaries: the parsers, the modelines, the video fit, the durable writes, the title matching |
-| Docs | 2,982 lines over 17 files. One is Italian: `studio-15khz.md`, 221 lines |
+| Docs | 2,982 lines over 17 files, all English since the 15 kHz study was rewritten |
 | Root | one systemd oneshot and one script it runs, already hardened in the unit |
 | Network | eight `curl` call sites, every one with `--proto`, a size cap and a timeout |
 | Unsafe | 39 blocks: `libc` signals and ioctls, and the compositor's own bindings |
@@ -17,11 +17,10 @@ than guessed:
 
 ## A. What gates the decision, not the work
 
-1. **The name.** The letter to DHH about using *Omarchy* in the name is
-   written and not sent. Publishing first and asking later is the one mistake
-   here that cannot be taken back, because a rename after a public release
-   breaks every link to it. Send it, and keep the repository private until
-   there is an answer.
+1. ~~**The name.**~~ The letter about using *Omarchy* in the name went out on
+   2026-09-08. The name stays, and the credits and the footer keep saying what
+   the letter promised: Omarchy and its marks belong to the Omacom Foundation,
+   this is a fan project, and it speaks for nobody but itself.
 2. **Third party review.** `LICENSE` is MIT and `THIRD-PARTY.md` is 55 lines.
    Every asset that ships in the binary has to be in it: `font8x8`, the
    TerminalTextEffects ports, the Omarchy icon and wordmark decoded from
@@ -78,12 +77,15 @@ what was found, so `SECURITY.md` is a statement rather than a promise.
 
 ## D. Documentation
 
-- [ ] **The 15 kHz study into English.** It is the record of the research the
-      whole project rests on, and the clearest evidence that somebody did the
-      work: a modeline that a desktop refuses, why leasing is the answer,
-      what the kernel will and will not scan out. Translated and tightened it
-      becomes the best page in the repository. Left in Italian it is a wall
-      that most readers will skip.
+- [x] **The 15 kHz study into English.** Done, as `docs/15khz.md`, and not a
+      translation: the study was written before anything worked and its two
+      main conclusions, that HDMI was impossible and that a compositor could
+      never change modes per game, are both disproved by what shipped. The
+      page keeps what is still true (what a SCART set wants on which pin, the
+      three walls a modern GPU hits, the kernel patch landscape, the two
+      Hyprland findings, the missing EDID) and replaces the rest with what
+      actually happened and why, with the real modelines and the numbers
+      checked against `crt.toml`.
 - [ ] **A drift pass.** Every claim in the README and in `docs/` checked
       against the code that is there today. Anything the project no longer
       does comes out.
