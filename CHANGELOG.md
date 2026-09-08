@@ -13,6 +13,17 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- Weather arrives instead of switching. The server answers every half hour
+  and the answer used to land in one frame: a sunny sky became a downpour
+  between two sixtieths of a second. A change now takes twenty five seconds,
+  and the sky's colours, the number of clouds, how much is falling and the
+  fog all cross over together, so a shower starts with a few drops and the
+  fog rolls in rather than appearing.
+- Rain runs down the window this page pretends to be: a dozen drops cling to
+  the glass, gather until they are heavy enough to slide, carry a lens with
+  them that shows the picture from a little further down, and leave a trail
+  the next one follows. They keep off the band where the clock is, because
+  the clock has to stay readable.
 - Somebody is on the Atomium's escalator. Every ten seconds or so a bead of
   light travels up one of the twelve tubes that have an escalator in them,
   which is what the real one does and what turns a monument into a place
