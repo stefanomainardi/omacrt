@@ -146,6 +146,11 @@ case ":$PATH:" in
   *) echo "note: $bin_dir is not in PATH" ;;
 esac
 
+# The menu entry is a line in a file Omarchy reads for user extensions, not a
+# plugin folder, so it goes in whether or not the session is locked: nothing
+# reloads plugin code because of it.
+menu_install
+
 # The shell watches its plugin folders and reloads plugin code on any file
 # change; under the lock screen that reload aborts Quickshell (its lock plugin
 # re-creates surfaces without an active lock). Plugin files wait for an
@@ -192,8 +197,6 @@ sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
   enabled "$library_id" || omarchy plugin enable "$library_id"
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
 fi
-
-menu_install
 
 "$bin_dir/omarchy-crt" status || true
 echo "done. Try: omarchy-crt on"
