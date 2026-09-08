@@ -862,9 +862,7 @@ impl Scene {
         if !reading.known {
             return None;
         }
-        let now = chrono::Local::now();
-        let minutes = now.format("%H").to_string().parse::<u32>().unwrap_or(0) * 60
-            + now.format("%M").to_string().parse::<u32>().unwrap_or(0);
+        let minutes = crate::clock::minutes(self.now);
         crate::weather_sound::Ambience::of(reading.kind, reading.daylight(minutes))
     }
 
@@ -1268,7 +1266,7 @@ impl Scene {
             2.6,
         );
         fb.text(left, 40, prompt, self.theme.dim, 1);
-        let clock = chrono::Local::now().format("%H:%M").to_string();
+        let clock = crate::clock::now(self.now).format("%H:%M").to_string();
         fb.text(
             fb.w as i32 - left - Framebuffer::text_width(&clock, 1),
             40,

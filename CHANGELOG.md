@@ -9,6 +9,10 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- `omarchy-crt-shell --clock HH:MM` draws a time of day that is not now, and
+  `--clock-speed N` runs the clock faster than it is, which is what a
+  time-lapse of the sky needs. Only what is drawn moves; a log line and a
+  scan stamp stay real times.
 - The weather over Brussels has the Atomium in it: nine spheres, twenty
   tubes, a cube standing on one corner behind the roofline. By day it is
   metal with the reflection where the real sun is, and the sun passes behind
@@ -34,6 +38,11 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- Twilight is a ramp rather than a switch. The stars used to vanish, the sky
+  change colour, the town's windows go out and the Atomium's lights die in
+  the single frame the sun crossed the horizon in. All four now fade across
+  forty minutes either side of sunrise and sunset, which is what dawn looks
+  like.
 - The settings page is two grouped columns rather than a list of twelve:
   **THE PICTURE** (TV profile, Video fit) and **CHANNELS** (Music, Videos,
   Photo frame, Clock & weather) on the left, **THE SET** (Sound, Screensaver,

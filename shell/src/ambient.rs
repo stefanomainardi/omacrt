@@ -172,6 +172,32 @@ impl Reading {
         }
     }
 
+    /// How dark the sky is: 1 in the night, 0 in daylight, and a ramp of
+    /// forty minutes on either side of sunrise and sunset.
+    ///
+    /// `daylight` answers yes or no because the picture has to choose between
+    /// a sun and a moon, but the stars do not vanish the instant the sun
+    /// clears the horizon. Anything that fades needs this instead.
+    pub fn darkness(&self, minutes: u32) -> f32 {
+        const RAMP: f32 = 40.0;
+        let (up, down) = (
+            self.sunrise.unwrap_or(7 * 60) as f32,
+            self.sunset.unwrap_or(19 * 60) as f32,
+        );
+        let now = minutes as f32;
+        if now < up {
+            // Before sunrise: full dark until forty minutes out.
+            ((up - now) / RAMP).clamp(0.0, 1.0)
+        } else if now > down {
+            ((now - down) / RAMP).clamp(0.0, 1.0)
+        } else {
+            // Daylight, with the same ramp on the way in and out of it.
+            let from_dawn = (now - up) / RAMP;
+            let to_dusk = (down - now) / RAMP;
+            (1.0 - from_dawn.min(to_dusk)).clamp(0.0, 1.0)
+        }
+    }
+
     /// How far through the day it is, 0 at sunrise and 1 at sunset, for the
     /// sun's place in its arc. Outside daylight this is the same fraction of
     /// the night, for the moon.

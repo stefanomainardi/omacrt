@@ -149,7 +149,7 @@ impl Scene {
         let right = format!(
             "UP {}  {}",
             crate::sysmon::uptime(s.uptime_secs),
-            chrono::Local::now().format("%H:%M")
+            crate::clock::now(self.now).format("%H:%M")
         );
         let right_w = Framebuffer::text_width(&right, 1);
         fb.text(w - left - 4 - right_w, 6, &right, self.theme.dim, 1);

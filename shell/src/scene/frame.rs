@@ -146,7 +146,7 @@ impl Scene {
             "panel" => self.draw_frame_panel(fb, &now_shown),
             // The time, and what the picture is.
             _ => {
-                let now = chrono::Local::now();
+                let now = crate::clock::now(self.now);
                 let clock = now.format("%H:%M").to_string();
                 let cw = Framebuffer::text_width(&clock, 4);
                 // The clock and the date stack in the corner; the caption
@@ -179,7 +179,7 @@ impl Scene {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32;
-        let now = chrono::Local::now();
+        let now = crate::clock::now(self.now);
 
         let clock = now.format("%H:%M").to_string();
         let size = if w >= 320 { 6 } else { 4 };
@@ -243,7 +243,7 @@ impl Scene {
     fn draw_frame_waiting(&mut self, fb: &mut Framebuffer) {
         let w = fb.w as i32;
         let h = fb.h as i32;
-        let now = chrono::Local::now();
+        let now = crate::clock::now(self.now);
         let clock = now.format("%H:%M").to_string();
         let size = if w >= 320 { 6 } else { 4 };
         let cw = Framebuffer::text_width(&clock, size);
@@ -487,7 +487,7 @@ impl Scene {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32;
-        let now = chrono::Local::now();
+        let now = crate::clock::now(self.now);
         let minutes = now.format("%H").to_string().parse::<u32>().unwrap_or(0) * 60
             + now.format("%M").to_string().parse::<u32>().unwrap_or(0);
         let info = self.photos.info.clone();

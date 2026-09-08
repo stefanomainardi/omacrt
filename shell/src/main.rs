@@ -8,6 +8,7 @@ mod art;
 mod assets;
 mod audio;
 mod bt;
+mod clock;
 mod crt_tag;
 mod deck;
 mod effects;
@@ -60,6 +61,9 @@ struct Args {
     idle: f32,
     screensaver: Option<Option<effects::Kind>>,
     dump_audio: Option<PathBuf>,
+    /// A time of day to draw instead of now, and how fast it runs.
+    clock: Option<String>,
+    clock_speed: f32,
     record: Option<PathBuf>,
     record_secs: f32,
     script: Option<PathBuf>,
@@ -87,6 +91,8 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --idle SECONDS    start the screensaver after this much idle time (default 60, 0 = never)
   --screensaver [NAME]  start directly in the screensaver; NAME picks an effect
   --dump-audio DIR  write every synthesized sound as WAV into DIR and exit
+  --clock HH:MM     draw this time of day instead of now (offline renders)
+  --clock-speed N   seconds of clock per second of picture (default 1)
   --record DIR      offline render: one PPM per frame at 60 fps plus audio.wav
   --record-secs N   length of the recording (default 30)
   --script FILE     scripted input for --record: lines of '<seconds> <action>'
@@ -128,6 +134,8 @@ fn parse_args() -> Result<Args, String> {
         idle: 60.0,
         screensaver: None,
         dump_audio: None,
+        clock: None,
+        clock_speed: 1.0,
         record: None,
         record_secs: 30.0,
         script: None,
@@ -163,6 +171,12 @@ fn parse_args() -> Result<Args, String> {
             "--dump-dir" => a.dump_dir = PathBuf::from(take(&mut it, &arg)?),
             "--idle" => a.idle = take(&mut it, &arg)?.parse().map_err(|_| "bad idle")?,
             "--dump-audio" => a.dump_audio = Some(PathBuf::from(take(&mut it, &arg)?)),
+            "--clock" => a.clock = Some(take(&mut it, &arg)?),
+            "--clock-speed" => {
+                a.clock_speed = take(&mut it, &arg)?
+                    .parse()
+                    .map_err(|_| "bad clock-speed")?
+            }
             "--record" => a.record = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--record-secs" => {
                 a.record_secs = take(&mut it, &arg)?
@@ -1308,6 +1322,12 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if let Some(start) = &args.clock
+        && let Err(e) = clock::wind(start, args.clock_speed)
+    {
+        eprintln!("{e}");
+        std::process::exit(2);
+    }
     if let Some(dir) = &args.dump_audio {
         if let Err(e) = std::fs::create_dir_all(dir) {
             eprintln!("{e}");
