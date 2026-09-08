@@ -9,6 +9,13 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- The weather over Brussels has the Atomium in it: nine spheres, twenty
+  tubes, a cube standing on one corner behind the roofline. By day it is
+  metal with the reflection where the real sun is, and the sun passes behind
+  it; at night a wave of colour walks through the spheres, a lamp chases
+  round each one, and the red light on top answers to aircraft. Snow caps
+  it, fog eats it from the bottom, rain leaves it wet and lightning turns it
+  into a silhouette. Only Brussels, however the city is spelled.
 - The home menu says a little more without saying it eight times over: the
   row under the cursor carries what it holds on its own right (the size of
   the collection, the last thing played, how many pages an idle television

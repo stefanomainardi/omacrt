@@ -60,6 +60,14 @@ impl Framebuffer {
     }
 
     #[inline]
+    /// The colour already there, for a layer that tints rather than paints.
+    pub fn at(&self, x: i32, y: i32) -> Color {
+        if x < 0 || y < 0 || x >= self.w as i32 || y >= self.h as i32 {
+            return 0;
+        }
+        self.px[y as usize * self.w + x as usize]
+    }
+
     pub fn put(&mut self, x: i32, y: i32, c: Color) {
         if x < 0 || y < 0 || x >= self.w as i32 || y >= self.h as i32 {
             return;

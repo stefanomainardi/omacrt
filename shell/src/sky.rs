@@ -33,6 +33,80 @@ fn dither(x: i32, y: i32, t: f32, a: Color, b: Color) -> Color {
     }
 }
 
+/// Brussels, and only Brussels: the one place this picture keeps a landmark
+/// for. The city has three spellings depending on who is answering, and the
+/// place has to be the city itself rather than merely contain its name, so
+/// "Brussels Airport" gets nothing.
+pub fn is_brussels(place: &str) -> bool {
+    let city = place
+        .split(',')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        city.as_str(),
+        "brussels" | "bruxelles" | "brussel" | "bruxelles-capitale" | "brussels-capital"
+    )
+}
+
+/// The nine spheres, as (x, y, radius, how far back it stands).
+///
+/// A cube standing on one corner: the foot, a ring of three, the middle, a
+/// ring of three turned sixty degrees from the first, and the top. The rings
+/// alternate so the frame reads as woven rather than as a ladder: the lower
+/// one has a sphere at the front and two behind, the upper one two at the
+/// front and one behind.
+fn atomium_nodes(w: i32, horizon: i32) -> [(i32, i32, i32, f32); 9] {
+    // Right of centre, so the afternoon sun reaches it, and a little way
+    // into the roofline so it stands in the town rather than on it.
+    let cx = w * 60 / 100;
+    // High enough that the roofline hides its foot and not its shoulders.
+    let base = horizon - 16;
+    let level = 16;
+    let spread = 18;
+    [
+        (cx, base, 6, 0.35),
+        (cx, base - level, 6, 0.0),
+        (cx - spread, base - level, 5, 0.9),
+        (cx + spread, base - level, 5, 0.9),
+        (cx, base - 2 * level, 7, 0.15),
+        (cx - spread, base - 3 * level, 6, 0.2),
+        (cx + spread, base - 3 * level, 6, 0.2),
+        (cx, base - 3 * level, 5, 0.9),
+        (cx, base - 4 * level, 6, 0.35),
+    ]
+}
+
+/// The twenty tubes: twelve edges of the cube and eight diagonals to the
+/// sphere in the middle, by index into `atomium_nodes`.
+const ATOMIUM_TUBES: [(usize, usize); 20] = [
+    // the foot to the lower ring
+    (0, 1),
+    (0, 2),
+    (0, 3),
+    // the lower ring to the upper one, two each
+    (1, 5),
+    (1, 6),
+    (2, 5),
+    (2, 7),
+    (3, 6),
+    (3, 7),
+    // the upper ring to the top
+    (5, 8),
+    (6, 8),
+    (7, 8),
+    // and every corner to the middle
+    (0, 4),
+    (1, 4),
+    (2, 4),
+    (3, 4),
+    (5, 4),
+    (6, 4),
+    (7, 4),
+    (8, 4),
+];
+
 /// The little generator everything in the picture is shaped by.
 struct Rng(u32);
 
@@ -302,6 +376,11 @@ impl Sky {
             // Over the clouds: fog is the thing between you and them.
             self.fog(fb, &air);
         }
+        // Brussels only, and behind the roofline: the town is drawn after it
+        // so its foot stands among the buildings.
+        if is_brussels(&reading.place) {
+            self.atomium(fb, &air, arc);
+        }
         self.draw_town(fb, &air);
         self.ground(fb, &air);
         self.wind_streaks(fb, &air);
@@ -546,6 +625,219 @@ impl Sky {
 
     /// The town along the horizon, in silhouette, with the windows coming on
     /// after dark and an aerial here and there.
+    /// The Atomium, and only over Brussels.
+    ///
+    /// It is a body centred cubic cell of iron standing on one corner, so
+    /// that is what this draws: eight spheres at the corners of a cube, one
+    /// in the middle, the twelve edges and the eight diagonals. Nine spheres
+    /// and twenty tubes, the way it was built for 1958.
+    ///
+    /// By day it is metal, with the reflection sitting where the real sun is
+    /// in the real sky, and the sun passes behind it because this is drawn
+    /// after it. At night it does what the real one does on a good evening: a
+    /// wave of colour travels through the spheres, a lamp chases round each
+    /// one, and the red light on the top sphere answers to aircraft.
+    fn atomium(&self, fb: &mut Framebuffer, air: &Air, arc: f32) {
+        let nodes = atomium_nodes(fb.w as i32, air.horizon);
+        // Where the light comes from, as a direction on the screen: the real
+        // sun's place in its arc by day, and the moon's the same way at
+        // night, which is what puts the highlight on the correct side.
+        let sun_x = (0.12 + arc * 0.76) * fb.w as f32;
+        let sun_y =
+            air.horizon as f32 - (air.horizon as f32 - 22.0) * (std::f32::consts::PI * arc).sin();
+        // Fog eats the bottom of it first, the way distance does.
+        let fog = if air.kind == Kind::Fog { 0.55 } else { 0.0 };
+        let wet = matches!(air.kind, Kind::Rain | Kind::Heavy | Kind::Thunder);
+        let flash = self.flash > 0.0;
+
+        // The metal, and the show. Both are a colour per sphere: by day the
+        // same steel for all nine, by night a wave that walks through them.
+        let steel = lerp_color(rgb(150, 162, 184), air.theme.paper, 0.14);
+        let steel = lerp_color(steel, air.theme.orange, air.dusk * 0.5);
+        let palette = [
+            air.theme.magenta,
+            air.theme.blue,
+            air.theme.cyan,
+            air.theme.green,
+            air.theme.yellow,
+            air.theme.orange,
+            air.theme.red,
+        ];
+        let show = |i: usize| -> Color {
+            // A quarter of a colour a second, and each sphere a step behind
+            // the one before it: a wave rather than nine lamps in unison.
+            let phase = air.now as f32 * 0.25 + i as f32 * 0.45;
+            let n = palette.len() as f32;
+            let k = phase.rem_euclid(n);
+            let a = palette[k as usize % palette.len()];
+            let b = palette[(k as usize + 1) % palette.len()];
+            lerp_color(a, b, k.fract())
+        };
+
+        // Tubes first, the ones at the back before the ones at the front, so
+        // the front of the frame reads as nearer.
+        let dim_first =
+            |edge: &(usize, usize)| -> bool { nodes[edge.0].3.max(nodes[edge.1].3) > 0.6 };
+        let mut edges: Vec<(usize, usize)> = ATOMIUM_TUBES.to_vec();
+        edges.sort_by_key(|e| !dim_first(e));
+        for (a, b) in edges {
+            let (ax, ay, _, ad) = nodes[a];
+            let (bx, by, _, bd) = nodes[b];
+            let depth = ad.max(bd);
+            let body = if flash {
+                lerp_color(air.theme.bg, air.theme.paper, 0.12)
+            } else if air.day {
+                scale(steel, 0.55 - depth * 0.2)
+            } else {
+                // At night the tubes carry a little of the colour of the two
+                // spheres they join, which is what makes the whole frame glow
+                // rather than nine separate balls.
+                let mix = lerp_color(show(a), show(b), 0.5);
+                lerp_color(air.theme.bg, mix, 0.35 - depth * 0.15)
+            };
+            let lit = lerp_color(body, air.theme.paper, if flash { 0.5 } else { 0.35 });
+            fb.line(ax, ay, bx, by, body);
+            fb.line(ax + 1, ay, bx + 1, by, body);
+            fb.line(ax, ay - 1, bx, by - 1, lit);
+        }
+
+        // Then the spheres, back to front.
+        let mut order: Vec<usize> = (0..nodes.len()).collect();
+        order.sort_by(|a, b| nodes[*b].3.total_cmp(&nodes[*a].3));
+        for i in order {
+            let (cx, cy, r, depth) = nodes[i];
+            let colour = if air.day { steel } else { show(i) };
+            let far = 1.0 - depth * 0.35;
+            let deep = fog * (1.0 - (air.horizon - cy) as f32 / 70.0).clamp(0.0, 1.0);
+            let base = if flash {
+                air.theme.bg
+            } else {
+                lerp_color(scale(colour, far), air.theme.bg, deep)
+            };
+            let dark = lerp_color(base, air.theme.bg, if air.day { 0.72 } else { 0.55 });
+            let lit = lerp_color(base, air.theme.paper, if wet { 0.62 } else { 0.5 });
+            // At night a lit sphere throws a little light into the air around
+            // it, the same dithered halo the sun gets, in its own colour.
+            // Without it the show reads as paint rather than as lamps.
+            if !air.day && !flash && depth < 0.6 {
+                let reach = 4.0;
+                for dy in -r - 5..=r + 5 {
+                    for dx in -r - 5..=r + 5 {
+                        let d = ((dx * dx + dy * dy) as f32).sqrt();
+                        if d <= r as f32 || d > r as f32 + reach {
+                            continue;
+                        }
+                        let t = 1.0 - (d - r as f32) / reach;
+                        let px = cx + dx;
+                        let py = cy + dy;
+                        if py >= air.horizon {
+                            continue;
+                        }
+                        if BAYER[(py & 3) as usize][(px & 3) as usize] as f32 / 16.0 < t * 0.2 {
+                            fb.put(px, py, lerp_color(fb.at(px, py), base, 0.3));
+                        }
+                    }
+                }
+            }
+            self.sphere(fb, cx, cy, r, (sun_x, sun_y), dark, base, lit, flash);
+
+            if !air.day && !flash {
+                // The lamps round the equator of each sphere, one of them
+                // running ahead of the others.
+                let lamps = 8;
+                let lead = (air.now as f32 * 1.6 + i as f32 * 0.7).rem_euclid(lamps as f32);
+                for l in 0..lamps {
+                    let a = std::f32::consts::TAU * l as f32 / lamps as f32;
+                    // On the sphere rather than outside it: lamps that stand
+                    // off the edge turn nine spheres into nine sea urchins.
+                    let lx = cx + (a.cos() * (r as f32 - 1.0)) as i32;
+                    let ly = cy + (a.sin() * (r as f32 - 1.0) * 0.65) as i32;
+                    let ahead =
+                        ((l as f32 - lead).abs()).min(lamps as f32 - (l as f32 - lead).abs());
+                    let bright = (1.0 - ahead / 2.0).clamp(0.15, 1.0);
+                    fb.put(lx, ly, lerp_color(base, air.theme.paper, bright * 0.65));
+                }
+            }
+            if air.kind == Kind::Snow {
+                // A cap, because snow sits on a sphere the same way it sits
+                // on a roof.
+                fb.rect(cx - r / 2, cy - r, r, 1, air.theme.paper);
+                fb.put(cx - r / 2 - 1, cy - r + 1, air.theme.paper);
+                fb.put(cx + r / 2, cy - r + 1, air.theme.paper);
+            }
+        }
+
+        // The red lamp on the top sphere, for aircraft. On for a moment every
+        // four seconds, which is what the real one does.
+        let (tx, ty, tr, _) = nodes[nodes.len() - 1];
+        if (air.now % 4.0) < 0.18 {
+            fb.put(tx, ty - tr - 2, air.theme.red);
+            fb.put(
+                tx,
+                ty - tr - 1,
+                lerp_color(air.theme.red, air.theme.paper, 0.4),
+            );
+        }
+    }
+
+    /// One sphere of the Atomium: a filled circle lit from where the sun is,
+    /// its terminator dithered because a fixed palette had no other way of
+    /// bending light.
+    #[allow(clippy::too_many_arguments)]
+    fn sphere(
+        &self,
+        fb: &mut Framebuffer,
+        cx: i32,
+        cy: i32,
+        r: i32,
+        light: (f32, f32),
+        dark: Color,
+        mid: Color,
+        lit: Color,
+        flash: bool,
+    ) {
+        // The direction the light comes from, as a unit vector on the screen.
+        let (lx, ly) = (light.0 - cx as f32, light.1 - cy as f32);
+        let len = (lx * lx + ly * ly).sqrt().max(1.0);
+        let (lx, ly) = (lx / len, ly / len);
+        for dy in -r..=r {
+            for dx in -r..=r {
+                if dx * dx + dy * dy > r * r {
+                    continue;
+                }
+                let (nx, ny) = (dx as f32 / r as f32, dy as f32 / r as f32);
+                // How much this part of the ball faces the light, softened so
+                // the ball reads round rather than as two halves.
+                let facing = ((nx * lx + ny * ly) * 0.5 + 0.5).clamp(0.0, 1.0);
+                let t = facing.powf(1.3);
+                let x = cx + dx;
+                let y = cy + dy;
+                let c = if t > 0.6 {
+                    dither(x, y, (t - 0.6) / 0.4, mid, lit)
+                } else {
+                    dither(x, y, t / 0.6, dark, mid)
+                };
+                fb.put(x, y, c);
+            }
+        }
+        if flash {
+            // A lightning frame: the ball is a silhouette with its edge lit.
+            for a in 0..48 {
+                let a = std::f32::consts::TAU * a as f32 / 48.0;
+                let px = cx + (a.cos() * r as f32) as i32;
+                let py = cy + (a.sin() * r as f32) as i32;
+                fb.put(px, py, lit);
+            }
+            return;
+        }
+        // The reflection: two pixels where the ball faces the light most,
+        // which is the only part of this that says "polished".
+        let sx = cx + (lx * r as f32 * 0.55) as i32;
+        let sy = cy + (ly * r as f32 * 0.55) as i32;
+        fb.put(sx, sy, lit);
+        fb.put(sx + 1, sy, lerp_color(lit, mid, 0.4));
+    }
+
     fn draw_town(&self, fb: &mut Framebuffer, air: &Air) {
         let body = if air.day {
             lerp_color(air.theme.bg, rgb(40, 44, 62), 0.55)
@@ -781,6 +1073,74 @@ impl Sky {
                 fb.line(px + 1, py, *x + 1, *y, scale(air.theme.paper, 0.5));
             }
             last = Some((*x, *y));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_brussels_gets_the_atomium() {
+        for name in [
+            "Brussels",
+            "bruxelles",
+            "Brussel",
+            "BRUSSELS",
+            "Brussels, Belgium",
+        ] {
+            assert!(is_brussels(name), "{name}");
+        }
+        for name in [
+            "",
+            "Milano",
+            "Brussels Airport Hotel",
+            "New Brussels",
+            "Bruges",
+        ] {
+            assert!(!is_brussels(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn the_atomium_stands_in_the_sky_at_both_heights() {
+        // 240 lines is a television and 288 is a PAL one; on both, the whole
+        // of it has to be above the horizon and below the top of the frame,
+        // and its foot has to be low enough for the roofline to hide it.
+        for h in [240usize, 288] {
+            let horizon = Sky::horizon(h);
+            let nodes = atomium_nodes(320, horizon);
+            let top = nodes.iter().map(|(_, y, r, _)| y - r).min().unwrap();
+            let foot = nodes.iter().map(|(_, y, r, _)| y + r).max().unwrap();
+            assert!(top > 24, "at {h} lines it reaches {top}");
+            assert!(foot < horizon, "at {h} lines its foot is at {foot}");
+            // And it stands in the right half, clear of the clock under the
+            // horizon on the left.
+            let x = nodes[0].0;
+            assert!(x > 160 && x < 300, "at {h} lines it stands at {x}");
+        }
+    }
+
+    #[test]
+    fn every_sphere_is_joined_to_the_others() {
+        // Twenty tubes, and not one of them joins a sphere to itself or
+        // names a sphere that is not there.
+        assert_eq!(ATOMIUM_TUBES.len(), 20);
+        let mut touched = [0usize; 9];
+        for (a, b) in ATOMIUM_TUBES {
+            assert_ne!(a, b);
+            assert!(a < 9 && b < 9);
+            touched[a] += 1;
+            touched[b] += 1;
+        }
+        // The middle sphere answers to all eight corners; every corner has
+        // three edges and the one diagonal.
+        assert_eq!(touched[4], 8);
+        for (i, n) in touched.iter().enumerate() {
+            if i != 4 {
+                assert_eq!(*n, 4, "sphere {i} has {n} tubes");
+            }
         }
     }
 }
