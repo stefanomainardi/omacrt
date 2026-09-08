@@ -58,9 +58,9 @@ television outright. Written in Rust, drawn at 320x240.
   the television, a link sent from the desktop.
 - **When nothing is playing.** Four pages can have an idle television and
   they take turns: the wordmark under a text effect, a photo frame reading the
-  house's own Immich server, an ambient page with the clock, the weather and
-  the next appointment, and a system monitor drawn as a 16 bit status screen.
-  Music playing still takes the screen for the visualizer.
+  house's own Immich server, a window with the weather drawn in it, and a
+  system monitor drawn as a 16 bit status screen. Music playing still takes
+  the screen for the visualizer.
 - **Omarchy all the way.** Theme colours, the bar widget and its panel, a full
   screen library overlay, the shell's plugin system, cliamp, mpv, yt-dlp: the
   desktop's own tools drive the CRT.
@@ -324,6 +324,13 @@ switches with a blend.
   upright is fitted whole against a blurred copy of itself rather than black
   bars. The prepared pictures are the frame's own collection, so it works with
   the server switched off.
+- **The weather, drawn.** The ambient page is a window, not a text field: the
+  sun crosses the arc between the real sunrise and sunset and the moon takes
+  the same path at night, clouds drift in three layers at the speed of the
+  real wind, rain slants with it and breaks on the ground, snow wanders down,
+  fog rolls in bands, lightning lights the frame, and a town sits along the
+  horizon with its windows coming on after dark. Every gradient is an ordered
+  dither, because a console with a fixed palette had no other way.
 - **System monitor.** What the machine is doing, drawn as a 16 bit status
   screen: a bank of little meters, one per processor, memory and graphics on
   bevelled plates, a minute and a half of history for load and network, the

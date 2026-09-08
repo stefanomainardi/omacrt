@@ -12,10 +12,187 @@ use std::path::{Path, PathBuf};
 /// What to show along the bottom of an ambient screen.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Info {
-    /// "Milan 14C partly cloudy", already put together.
+    /// "Milano: 22C Patchy rain nearby", already put together.
     pub weather: String,
     /// The next appointment, as "19:30 dinner", or empty.
     pub next: String,
+    /// The same reading in parts, for the page that draws it.
+    pub sky: Reading,
+}
+
+/// What the sky is doing, in the parts a drawing needs.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Reading {
+    pub kind: Kind,
+    /// Where, shortened to something that fits: "Milano".
+    pub place: String,
+    /// Degrees celsius.
+    pub temp: Option<f32>,
+    /// The server's own words: "Patchy rain nearby".
+    pub condition: String,
+    pub wind_kmh: Option<f32>,
+    /// Sunrise and sunset as minutes since midnight, for the sun's arc.
+    pub sunrise: Option<u32>,
+    pub sunset: Option<u32>,
+    /// Is there a reading at all, or is this the empty default?
+    pub known: bool,
+}
+
+/// The weather, in the few kinds a 240 line picture can tell apart.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Kind {
+    #[default]
+    Clear,
+    Partly,
+    Cloudy,
+    Overcast,
+    Fog,
+    Rain,
+    Heavy,
+    Snow,
+    Thunder,
+}
+
+/// The server's words for the sky, sorted into the kinds a picture can draw.
+///
+/// wttr.in speaks World Weather Online's vocabulary, which is a long list of
+/// phrases built out of a few words. Reading the words rather than matching
+/// the phrases is what keeps this from being a table of two hundred lines,
+/// and the order matters: "thundery outbreaks in nearby" is thunder before it
+/// is rain, and "heavy snow" is snow before it is heavy.
+pub fn classify(condition: &str) -> Kind {
+    let c = condition.to_ascii_lowercase();
+    let has = |w: &str| c.contains(w);
+    if has("thunder") || has("thundery") {
+        return Kind::Thunder;
+    }
+    if has("snow") || has("sleet") || has("blizzard") || has("ice pellets") {
+        return Kind::Snow;
+    }
+    if has("torrential") || has("heavy rain") || has("heavy freezing") {
+        return Kind::Heavy;
+    }
+    if has("rain") || has("drizzle") || has("shower") {
+        return Kind::Rain;
+    }
+    if has("fog") || has("mist") || has("freezing fog") {
+        return Kind::Fog;
+    }
+    if has("overcast") {
+        return Kind::Overcast;
+    }
+    if has("cloudy") && has("partly") {
+        return Kind::Partly;
+    }
+    if has("cloudy") || has("cloud") {
+        return Kind::Cloudy;
+    }
+    Kind::Clear
+}
+
+/// "Milano" out of "Milano", and "Brussels" out of
+/// ", Brussels Capital, BE": the server puts a town, a region and a country
+/// in one field and sometimes leaves the town out.
+pub fn tidy_place(raw: &str) -> String {
+    let parts: Vec<&str> = raw.split(',').map(|p| p.trim()).collect();
+    let first = parts.iter().find(|p| !p.is_empty()).copied().unwrap_or("");
+    // A country code on its own says nothing; a region does.
+    first.chars().take(20).collect()
+}
+
+/// "06:52:59" as minutes since midnight.
+fn minutes_of(time: &str) -> Option<u32> {
+    let mut parts = time.trim().split(':');
+    let h: u32 = parts.next()?.parse().ok()?;
+    let m: u32 = parts.next()?.parse().ok()?;
+    if h > 23 || m > 59 {
+        return None;
+    }
+    Some(h * 60 + m)
+}
+
+/// A number out of a field that carries decoration: "+22°C", "↘4km/h".
+fn number_in(field: &str) -> Option<f32> {
+    let mut seen = String::new();
+    for ch in field.chars() {
+        if ch.is_ascii_digit() || ch == '.' || (ch == '-' && seen.is_empty()) {
+            seen.push(ch);
+        } else if !seen.is_empty() {
+            break;
+        }
+    }
+    seen.parse().ok()
+}
+
+/// The reading out of the line wttr.in was asked for:
+/// `place|temp|condition|wind|precipitation|moon|sunrise|sunset`.
+pub fn parse_reading(line: &str) -> Reading {
+    let f: Vec<&str> = line.trim().split('|').collect();
+    if f.len() < 3 {
+        return Reading::default();
+    }
+    let condition = f[2].trim().to_string();
+    Reading {
+        kind: classify(&condition),
+        place: tidy_place(f[0]),
+        temp: number_in(f[1]),
+        condition,
+        wind_kmh: f.get(3).and_then(|w| number_in(w)),
+        sunrise: f.get(6).and_then(|t| minutes_of(t)),
+        sunset: f.get(7).and_then(|t| minutes_of(t)),
+        known: true,
+    }
+}
+
+impl Reading {
+    /// The one line version, for a caption or the frame's ambient panel.
+    pub fn line(&self) -> String {
+        if !self.known {
+            return String::new();
+        }
+        let mut out = String::new();
+        if !self.place.is_empty() {
+            out.push_str(&self.place);
+            out.push_str(": ");
+        }
+        if let Some(t) = self.temp {
+            out.push_str(&format!("{t:.0}C "));
+        }
+        out.push_str(&self.condition);
+        out.trim().to_string()
+    }
+
+    /// Is the sun up, at this many minutes past midnight? With no times from
+    /// the server, the answer is the usual daylight of a temperate place.
+    pub fn daylight(&self, minutes: u32) -> bool {
+        match (self.sunrise, self.sunset) {
+            (Some(up), Some(down)) => minutes >= up && minutes < down,
+            _ => (7 * 60..19 * 60).contains(&minutes),
+        }
+    }
+
+    /// How far through the day it is, 0 at sunrise and 1 at sunset, for the
+    /// sun's place in its arc. Outside daylight this is the same fraction of
+    /// the night, for the moon.
+    pub fn arc(&self, minutes: u32) -> f32 {
+        let (up, down) = (
+            self.sunrise.unwrap_or(7 * 60) as f32,
+            self.sunset.unwrap_or(19 * 60) as f32,
+        );
+        let now = minutes as f32;
+        if self.daylight(minutes) {
+            ((now - up) / (down - up).max(1.0)).clamp(0.0, 1.0)
+        } else {
+            // The night wraps midnight, so it is measured from sunset.
+            let night = (24.0 * 60.0 - down) + up;
+            let since = if now >= down {
+                now - down
+            } else {
+                now + (24.0 * 60.0 - down)
+            };
+            (since / night.max(1.0)).clamp(0.0, 1.0)
+        }
+    }
 }
 
 fn cache() -> PathBuf {
@@ -66,7 +243,7 @@ fn fetch(url: &str, dest: &Path) -> Option<String> {
 
 /// One line of weather for `place`, or for wherever the address says when it
 /// is empty. Cached for half an hour.
-pub fn weather(place: &str) -> String {
+pub fn weather(place: &str) -> Reading {
     // The place is part of the cache's name: asking for Milan must not be
     // answered with the line that was fetched for wherever the address said.
     let slug: String = place
@@ -86,19 +263,18 @@ pub fn weather(place: &str) -> String {
     if fresh(&file, 1800)
         && let Ok(text) = std::fs::read_to_string(&file)
     {
-        return tidy_weather(&text);
+        return parse_reading(&tidy_weather(&text));
     }
-    // wttr.in's own one line format: "Milan: 🌦 +14°C". Asking for the
-    // format rather than the whole forecast keeps this to a few bytes, and
-    // there is nothing here that wants an emoji at eight pixels.
+    // One line with the parts in it, rather than the whole forecast: the
+    // place, the temperature, the condition, the wind, the rain, the moon and
+    // the two times the sun crosses the horizon, in about sixty bytes.
     let query = place.trim().replace(' ', "+");
-    let url = format!("https://wttr.in/{query}?format=%l:+%t+%C&m");
-    match fetch(&url, &file) {
-        Some(text) => tidy_weather(&text),
-        None => std::fs::read_to_string(&file)
-            .map(|t| tidy_weather(&t))
-            .unwrap_or_default(),
-    }
+    let url = format!("https://wttr.in/{query}?format=%l|%t|%C|%w|%p|%m|%S|%s&m");
+    let text = match fetch(&url, &file) {
+        Some(text) => text,
+        None => std::fs::read_to_string(&file).unwrap_or_default(),
+    };
+    parse_reading(&tidy_weather(&text))
 }
 
 /// wttr.in's line, cleaned up for an 8x8 font: no degree sign, no plus in
@@ -208,9 +384,11 @@ fn unfold(text: &str) -> Vec<String> {
 
 /// Both, ready for the screen.
 pub fn info(place: &str, calendar: &str) -> Info {
+    let sky = weather(place);
     Info {
-        weather: weather(place),
+        weather: sky.line(),
         next: next_event(calendar),
+        sky,
     }
 }
 
@@ -226,6 +404,90 @@ mod tests {
         );
         assert_eq!(tidy_weather("Rome:  -2°C  Snow"), "Rome: -2C Snow");
         assert_eq!(tidy_weather(""), "");
+    }
+
+    #[test]
+    fn a_reading_comes_out_of_the_one_line_the_server_sends() {
+        let raw = tidy_weather("Milano|+22°C|Patchy rain nearby|↘4km/h|0.1mm|🌘|06:52:59|19:49:24");
+        let r = parse_reading(&raw);
+        assert!(r.known);
+        assert_eq!(r.place, "Milano");
+        assert_eq!(r.temp, Some(22.0));
+        assert_eq!(r.condition, "Patchy rain nearby");
+        assert_eq!(r.kind, Kind::Rain);
+        assert_eq!(r.wind_kmh, Some(4.0));
+        assert_eq!(r.sunrise, Some(6 * 60 + 52));
+        assert_eq!(r.sunset, Some(19 * 60 + 49));
+        assert_eq!(r.line(), "Milano: 22C Patchy rain nearby");
+    }
+
+    #[test]
+    fn a_reading_below_zero_keeps_its_sign() {
+        let r = parse_reading(&tidy_weather(
+            "Oslo|-8°C|Light snow|↗9km/h|0.0mm|🌘|07:10:00|17:02:00",
+        ));
+        assert_eq!(r.temp, Some(-8.0));
+        assert_eq!(r.kind, Kind::Snow);
+    }
+
+    #[test]
+    fn nothing_at_all_is_not_a_reading() {
+        let r = parse_reading("");
+        assert!(!r.known);
+        assert_eq!(r.line(), "");
+        assert_eq!(r.kind, Kind::Clear);
+    }
+
+    #[test]
+    fn the_words_for_the_sky_sort_into_pictures() {
+        use Kind::*;
+        for (words, want) in [
+            ("Sunny", Clear),
+            ("Clear", Clear),
+            ("Partly cloudy", Partly),
+            ("Cloudy", Cloudy),
+            ("Overcast", Overcast),
+            ("Mist", Fog),
+            ("Freezing fog", Fog),
+            ("Patchy rain nearby", Rain),
+            ("Light drizzle", Rain),
+            ("Moderate rain shower", Rain),
+            ("Heavy rain at times", Heavy),
+            ("Torrential rain shower", Heavy),
+            ("Light snow", Snow),
+            ("Heavy snow", Snow),
+            ("Light sleet showers", Snow),
+            ("Blizzard", Snow),
+            ("Thundery outbreaks in nearby", Thunder),
+            ("Moderate or heavy rain with thunder", Thunder),
+        ] {
+            assert_eq!(classify(words), want, "{words}");
+        }
+    }
+
+    #[test]
+    fn a_place_the_server_left_half_empty_still_has_a_name() {
+        assert_eq!(tidy_place("Milano"), "Milano");
+        assert_eq!(tidy_place(", Brussels Capital, BE"), "Brussels Capital");
+        assert_eq!(
+            tidy_place("Watermael-Boitsfort, Brussels, BE"),
+            "Watermael-Boitsfort"
+        );
+        assert_eq!(tidy_place(""), "");
+    }
+
+    #[test]
+    fn the_sun_is_up_between_the_two_times_the_server_gives() {
+        let r = parse_reading("Milano|+22°C|Clear|4km/h|0mm|m|06:00:00|20:00:00");
+        assert!(!r.daylight(5 * 60));
+        assert!(r.daylight(13 * 60));
+        assert!(!r.daylight(21 * 60));
+        // Halfway between sunrise and sunset is the top of the arc.
+        assert!((r.arc(13 * 60) - 0.5).abs() < 0.01);
+        assert_eq!(r.arc(6 * 60), 0.0);
+        // The night is measured from sunset, wrapping midnight: four hours
+        // after sunset out of ten hours of darkness.
+        assert!((r.arc(24 * 60) - 0.4).abs() < 0.01);
     }
 
     const ICS: &str = "BEGIN:VCALENDAR\r

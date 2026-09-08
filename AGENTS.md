@@ -138,6 +138,7 @@ alone.
 | `art.rs` | Pictures on a worker thread: fetch, decode, scale |
 | `photos.rs` | The photo frame's supply thread, and the weather and calendar with it |
 | `sysmon.rs` | The system monitor's sampling, from `/proc` and `/sys` |
+| `sky.rs` | The weather drawn: sun, moon, clouds, rain, snow, fog, lightning, a town |
 | `deck.rs` | The hi-fi deck and the visualizers |
 | `effects.rs`, `etch.rs`, `crt_tag.rs` | The boot sequence and the screensaver effects |
 | `theme.rs`, `icons.rs`, `assets.rs`, `font8x8.rs` | Omarchy themes, 8x8 icons, the wordmark, the font |
@@ -230,6 +231,14 @@ rendered headlessly, and a row in `HOME` or in the hub it belongs to. Watch
 the home menu's height: the wordmark and the CRT tag take the top half of a
 240 line screen, so eight rows fit and a ninth runs off the bottom. Render it
 and look before assuming otherwise; that is how About ended up in Settings.
+
+**Something drawn that has to look like 1994.** Two rules earn most of it.
+No gradient is smooth: `sky.rs` has a 4x4 ordered dither and everything
+graded goes through it, which is what a console with a fixed palette did.
+And nothing is symmetrical or hand placed: the clouds, the buildings and the
+stars come out of a small xorshift with a fixed seed, so the picture is the
+same every evening and was never drawn by hand. Then render it and look at
+it, at 320x240 and at 320x288.
 
 **A screensaver page.** `SAVER_PAGES` in `scene.rs` is the list, and
 `start_saver_page` puts one up. A page is a screen like any other, so it

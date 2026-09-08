@@ -19,6 +19,7 @@ mod menu;
 mod pad;
 mod photos;
 mod scene;
+mod sky;
 mod sysmon;
 mod theme;
 use omarchy_crt_shell::padmap::Raw;
