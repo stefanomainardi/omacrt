@@ -53,7 +53,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library covers [SYS...] [--limit N] [--force]   fetch box art for the collection, matching titles when names differ
   library scan [DIR...]    index every game under the roots (any layout)
   library games [--system S] [--limit N] [--json]   every game the scan has seen
-  play <title|path>        start a game on the tube, by name or by file
+  play <title|path> [--force]   start a game on the tube, by name or by file;
+                           --force stops whatever is playing first
   frame check              is the Immich server there and does it take the key
   frame fill [N]           fetch and prepare N photographs for the frame (default 40)
   frame clear              throw away the prepared photographs
@@ -1366,6 +1367,33 @@ fn cmd_play(args: &[String]) {
         println!("{}  ({})", item.title, item.system);
         item.path.clone()
     };
+    // Something already on the tube is the usual reason a launch from the
+    // desktop looks as if it did nothing: the launcher refuses, and its
+    // message goes to a screen with a game over it. Say so here, where the
+    // person is.
+    if let Some(what) = launcher::playing() {
+        use omarchy_crt_shell::game;
+        if !has(args, "--force") {
+            die(&format!(
+                "{what} is already running on the tube; add --force to stop it and play this"
+            ));
+        }
+        if let Err(e) = game::quit() {
+            die(&format!("could not stop {what}: {e}"));
+        }
+        // Wait for the tube to be free, and a moment more for the launcher
+        // to reap the child and take its own screen back.
+        for _ in 0..60 {
+            if launcher::playing().is_none() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if launcher::playing().is_some() {
+            die(&format!("{what} did not stop"));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(400));
+    }
     match crt::control::send_play(&path.to_string_lossy()) {
         Ok(()) => {}
         Err(e) => die(&format!(
