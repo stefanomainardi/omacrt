@@ -326,7 +326,7 @@ disk with an age. Nothing in the frame loop is allowed to block on a socket.
 
 | Question | File |
 | --- | --- |
-| Why any of this works at all | `docs/studio-15khz.md` (Italian), `docs/rgb-pi-2.md` |
+| Why any of this works at all | `docs/15khz.md`, `docs/rgb-pi-2.md` |
 | What every CLI command does | `docs/cli.md` |
 | What is set per console and why | `docs/systems.md` |
 | Pads, mapping, rumble | `docs/input.md` |

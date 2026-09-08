@@ -1,7 +1,7 @@
 # State of the project, September 2026
 
 What works, how it got there, and what comes next. The research that led here
-is in [`studio-15khz.md`](studio-15khz.md) (Italian) and
+is in [`15khz.md`](15khz.md) and
 [`rgb-pi-2.md`](rgb-pi-2.md).
 
 ## Done
