@@ -21,6 +21,14 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The settings page is grouped rather than a list of twelve: **THE PICTURE**
+  (TV profile, Video fit), **CHANNELS** (Music, Videos, Photo frame, Clock and
+  weather), **THE SET** (Sound, Screensaver, Style, Pads) and **THIS MACHINE**
+  (Diagnostics, About). Everything stays one button away; the headings are
+  skipped by the cursor.
+- Leaving the Pads page put the cursor on Video fit, and leaving About put it
+  on Clock and weather. Screens named the row they came from by number and two
+  of the numbers were wrong; they name the page now.
 - The town, the calendar and the sounds moved out of the sections they were
   camping in: `[frame] weather` and `[frame] calendar` are `[ambient] place`
   and `[ambient] calendar`, `[frame] weather_sound` is `[sound] weather`, and

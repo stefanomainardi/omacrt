@@ -255,20 +255,99 @@ const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 3] = [
 ];
 
 /// Settings submenu entries.
-const SETTINGS_ITEMS: [(icons::Icon, &str, bool); 12] = [
-    (icons::TV, "TV profile", true),
-    (icons::FIT, "Video fit", true),
-    (icons::PAD, "Pads", true),
-    (icons::SAVER, "Screensaver", true),
-    (icons::BRUSH, "Style", true),
-    (icons::PULSE, "Diagnostics", true),
-    (icons::NOTE, "Music", true),
-    (icons::FILM, "Videos", true),
-    (icons::PHOTO, "Photo frame", true),
-    (icons::CLOCK, "Clock and weather", true),
-    (icons::SPEAKER, "Sound", true),
-    (icons::INFO, "About", true),
+/// Where a row of the settings page goes. Anything that comes back to
+/// Settings names the row it came from rather than counting to it, which is
+/// how two rows ended up pointing at the wrong page when the list grew.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Page {
+    Profile,
+    Fit,
+    Music,
+    Videos,
+    Frame,
+    Ambient,
+    Sound,
+    Saver,
+    Style,
+    Pads,
+    Diag,
+    About,
+}
+
+/// One line of the settings page: a heading the cursor skips over, or a row
+/// that opens a page.
+enum SettingsLine {
+    Heading(&'static str),
+    Row(icons::Icon, &'static str, Page),
+}
+
+/// The settings page as it is drawn. Grouped, because twelve pages in one
+/// flat list is a list nobody reads: the picture first, then the four things
+/// a television can be doing, then the set itself, then the machine under it.
+const SETTINGS_LINES: [SettingsLine; 16] = [
+    SettingsLine::Heading("THE PICTURE"),
+    SettingsLine::Row(icons::TV, "TV profile", Page::Profile),
+    SettingsLine::Row(icons::FIT, "Video fit", Page::Fit),
+    SettingsLine::Heading("CHANNELS"),
+    SettingsLine::Row(icons::NOTE, "Music", Page::Music),
+    SettingsLine::Row(icons::FILM, "Videos", Page::Videos),
+    SettingsLine::Row(icons::PHOTO, "Photo frame", Page::Frame),
+    SettingsLine::Row(icons::CLOCK, "Clock and weather", Page::Ambient),
+    SettingsLine::Heading("THE SET"),
+    SettingsLine::Row(icons::SPEAKER, "Sound", Page::Sound),
+    SettingsLine::Row(icons::SAVER, "Screensaver", Page::Saver),
+    SettingsLine::Row(icons::BRUSH, "Style", Page::Style),
+    SettingsLine::Row(icons::PAD, "Pads", Page::Pads),
+    SettingsLine::Heading("THIS MACHINE"),
+    SettingsLine::Row(icons::PULSE, "Diagnostics", Page::Diag),
+    SettingsLine::Row(icons::INFO, "About", Page::About),
 ];
+
+/// How many rows the settings page has, counted from the list itself.
+const SETTINGS_ROWS: usize = {
+    let mut n = 0;
+    let mut i = 0;
+    while i < SETTINGS_LINES.len() {
+        if let SettingsLine::Row(..) = SETTINGS_LINES[i] {
+            n += 1;
+        }
+        i += 1;
+    }
+    n
+};
+
+/// The row a page sits on, for anything coming back to Settings.
+pub(super) fn settings_row(page: Page) -> usize {
+    let mut row = 0;
+    for line in SETTINGS_LINES.iter() {
+        if let SettingsLine::Row(_, _, p) = line {
+            if *p == page {
+                return row;
+            }
+            row += 1;
+        }
+    }
+    0
+}
+
+/// The page a row opens.
+fn settings_page(row: usize) -> Page {
+    SETTINGS_LINES
+        .iter()
+        .filter_map(|line| match line {
+            SettingsLine::Row(_, _, p) => Some(*p),
+            SettingsLine::Heading(_) => None,
+        })
+        .nth(row)
+        .unwrap_or(Page::About)
+}
+
+/// Ten pixels a row and ten a heading puts the last row's bottom exactly on
+/// the line a message would use, which is the most a 240 line screen has to
+/// give. A heading is a row's height and spends three of its pixels on the
+/// gap above its own letters.
+const SETTINGS_ROW_H: i32 = 10;
+const SETTINGS_HEAD_H: i32 = 10;
 
 /// Rows of the clock and weather page, and of the sound page.
 const AMBIENT_ROWS: usize = 3;

@@ -6,10 +6,10 @@ use super::*;
 impl Scene {
     pub(super) fn activate_settings(&mut self, sel: usize) -> Action {
         self.pending.push(Sound::Select);
-        match sel {
-            0 => self.go(Screen::Profile { sel: 0 }),
-            1 => self.go(Screen::VideoFit { sel: 0 }),
-            2 => {
+        match settings_page(sel) {
+            Page::Profile => self.go(Screen::Profile { sel: 0 }),
+            Page::Fit => self.go(Screen::VideoFit { sel: 0 }),
+            Page::Pads => {
                 if Bluetooth::available() {
                     self.go(Screen::Pair { sel: 0 });
                     if self.bt.devices.is_empty() {
@@ -19,8 +19,8 @@ impl Scene {
                     self.message = Some(("bluetoothctl not found".into(), self.now + 4.0));
                 }
             }
-            3 => self.go(Screen::Saver { sel: 0 }),
-            4 => {
+            Page::Saver => self.go(Screen::Saver { sel: 0 }),
+            Page::Style => {
                 let cur = self.settings.theme.clone();
                 let sel = if cur == "system" {
                     0
@@ -33,18 +33,82 @@ impl Scene {
                 };
                 self.go(Screen::Style { sel });
             }
-            5 => {
+            Page::Diag => {
                 self.diag = self.gather_diagnostics();
                 self.go(Screen::Diag { top: 0 });
             }
-            6 => self.go(Screen::MusicSettings { sel: 0 }),
-            7 => self.go(Screen::VideoSettings { sel: 0 }),
-            8 => self.go(Screen::FrameSettings { sel: 0 }),
-            9 => self.go(Screen::AmbientSettings { sel: 0 }),
-            10 => self.go(Screen::SoundSettings { sel: 0 }),
-            _ => self.go(Screen::About { top: 0 }),
+            Page::Music => self.go(Screen::MusicSettings { sel: 0 }),
+            Page::Videos => self.go(Screen::VideoSettings { sel: 0 }),
+            Page::Frame => self.go(Screen::FrameSettings { sel: 0 }),
+            Page::Ambient => self.go(Screen::AmbientSettings { sel: 0 }),
+            Page::Sound => self.go(Screen::SoundSettings { sel: 0 }),
+            Page::About => self.go(Screen::About { top: 0 }),
         }
         Action::None
+    }
+
+    /// The settings page: four headings the cursor skips, and the rows.
+    ///
+    /// Rows are eleven pixels and a heading nine, which puts the last row
+    /// clear of the line the message uses on a 240 line screen. `sel` counts
+    /// rows, so the drawing has to find where the selected one landed.
+    pub(super) fn draw_settings_menu(&mut self, fb: &mut Framebuffer, sel: usize) {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32 + self.slide();
+        let width = w - 2 * (w as f32 * 0.05) as i32;
+        let y0 = self.draw_header(fb, "Settings");
+
+        // Where the cursor is, in pixels, before anything is drawn: the band
+        // goes down first so the row's own colours sit on top of it.
+        let mut y = y0;
+        let mut row = 0;
+        let mut band = y0;
+        for line in SETTINGS_LINES.iter() {
+            match line {
+                SettingsLine::Heading(_) => y += SETTINGS_HEAD_H,
+                SettingsLine::Row(..) => {
+                    if row == sel {
+                        band = y;
+                    }
+                    row += 1;
+                    y += SETTINGS_ROW_H;
+                }
+            }
+        }
+        fb.rect(
+            left,
+            self.band(band),
+            width,
+            SETTINGS_ROW_H - 1,
+            self.theme.selection,
+        );
+
+        let mut y = y0;
+        let mut row = 0;
+        for line in SETTINGS_LINES.iter() {
+            match line {
+                SettingsLine::Heading(text) => {
+                    // Hanging left of the rows, so the grouping reads without
+                    // spending pixels on blank lines.
+                    fb.text(left, y + 3, text, scale(self.theme.dim, 0.62), 1);
+                    y += SETTINGS_HEAD_H;
+                }
+                SettingsLine::Row(icon, label, _) => {
+                    self.draw_menu_row(fb, left, y, width, icon, label, true, row == sel, 1.0);
+                    row += 1;
+                    y += SETTINGS_ROW_H;
+                }
+            }
+        }
+
+        let max_cols = (width / 8) as usize;
+        if let Some((msg, _)) = &self.message {
+            let m: String = msg.chars().take(max_cols).collect();
+            fb.text(left, h - 28, &m, self.theme.cyan, 1);
+        }
+        let hint = self.hint(&[("A", "select"), ("B", "back")]);
+        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
     /// The Power submenu: back to the desktop, power off with confirmation.
@@ -542,7 +606,9 @@ impl Scene {
 
     pub(super) fn pad_wizard_finish(&mut self) -> Option<String> {
         let w = self.wizard.take()?;
-        self.screen = Screen::Settings { sel: 2 };
+        self.screen = Screen::Settings {
+            sel: settings_row(Page::Pads),
+        };
         if !w.usable() {
             self.pending.push(Sound::Crunch);
             self.message = Some((
@@ -621,5 +687,53 @@ impl Scene {
         );
         let hint = self.hint(&[("Enter", "skip"), ("Esc", "cancel")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every row on the settings page, in the order they are drawn.
+    fn pages() -> Vec<Page> {
+        (0..SETTINGS_ROWS).map(settings_page).collect()
+    }
+
+    #[test]
+    fn a_row_and_the_page_it_opens_agree() {
+        // The bug this replaces: a screen came back to Settings by counting
+        // to a number, and two of them counted to the wrong row once the
+        // list grew. Nothing counts now, and this is why.
+        for (row, page) in pages().into_iter().enumerate() {
+            assert_eq!(settings_row(page), row);
+        }
+    }
+
+    #[test]
+    fn the_page_holds_twelve_rows_under_four_headings() {
+        assert_eq!(SETTINGS_ROWS, 12);
+        let headings = SETTINGS_LINES
+            .iter()
+            .filter(|l| matches!(l, SettingsLine::Heading(_)))
+            .count();
+        assert_eq!(headings, 4);
+        // No two rows open the same page, and none of them is missed.
+        let mut seen = pages();
+        let before = seen.len();
+        seen.dedup();
+        assert_eq!(seen.len(), before);
+    }
+
+    #[test]
+    fn the_last_row_clears_the_message_line() {
+        // 52 is what `draw_header` leaves, and a message is drawn at h - 28.
+        let rows = SETTINGS_ROWS as i32 * SETTINGS_ROW_H;
+        let heads = SETTINGS_LINES
+            .iter()
+            .filter(|l| matches!(l, SettingsLine::Heading(_)))
+            .count() as i32
+            * SETTINGS_HEAD_H;
+        let bottom = 52 + rows + heads;
+        assert!(bottom <= 240 - 28, "the list ends at {bottom} of 240");
     }
 }
