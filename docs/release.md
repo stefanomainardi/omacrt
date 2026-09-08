@@ -6,7 +6,7 @@ than guessed:
 
 | | |
 | --- | --- |
-| Rust | 32,366 lines over 45 files. `scene.rs` alone is 7,988 of them, with 191 methods on one struct |
+| Rust | 32,366 lines over 45 files, `scene.rs` 7,988 of them with 191 methods. Since split into ten files, the largest 2,776 |
 | Tests | 82, in five binaries: the parsers, the modelines, the video fit, the durable writes, the title matching |
 | Docs | 2,982 lines over 17 files, all English since the 15 kHz study was rewritten |
 | Root | one systemd oneshot and one script it runs, already hardened in the unit |
@@ -71,11 +71,17 @@ rather than promised.
 
 ## C. Code review
 
-- [ ] **Split `scene.rs`.** 7,988 lines and 191 methods in one file is the
-      loudest thing in the repository, and the first thing a reader will
-      judge. It divides along seams that already exist: boot, browse, music,
-      video, the pause menu, the settings pages, the idle pages, the
-      screensaver. Same crate, same struct, several files.
+- [x] **Split `scene.rs`.** Ten files where there was one: `mod.rs` keeps the
+      state, the dispatch, the frame loop and the shared helpers (1,447
+      lines), and the 151 methods that belong to a family moved to it, the
+      largest being `browse.rs` at 2,776 because the navigation and drawing
+      matches answer for every screen the browser has. Not a line was
+      rewritten: the mover proved it could put the file back together
+      first, 81 methods became `pub(super)` because a sibling calls them, and
+      every screen was rendered before and after. Eight frames byte
+      identical, and the seventeen that differ do so only where a clock or a
+      live counter is drawn, which two runs of the same binary a minute apart
+      also do.
 - [ ] **The nine `too_many_arguments` allowances.** Each is a drawing
       function that wants a struct. Take the ones where a struct is clearer
       and leave the ones where the geometry is the argument list.
