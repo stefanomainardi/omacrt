@@ -1,10 +1,27 @@
 # Third party pieces
 
-What this project uses that it did not write, and under what terms. Nothing
-here is bundled except the font, which is public domain.
+What this project uses that it did not write, and under what terms. Three
+things are compiled into the binary; everything else is spoken to, read or
+fetched at run time.
 
 ## In the binary
 
+- **Omarchy's wordmark.** `shell/assets/wordmark.txt` is a copy of Omarchy's
+  own `logo.txt`, the block character drawing of the word, compiled in with
+  `include_str!` and redrawn by the launcher as a two pixel grid.
+  Copyright (c) David Heinemeier Hansson, MIT, and the licence travels with
+  it as [`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy) because
+  that is what MIT asks. **Omarchy's icon**, in `shell/src/assets.rs`, is a
+  24 by 24 trace of the official favicon, same source and same terms.
+
+  This project is a fan project. It is not part of Omarchy, not endorsed by
+  the Omacom Foundation, and does not speak for either. Permission to use the
+  name was asked for in writing.
+- **TerminalTextEffects**, ported rather than linked: the boot sequence's
+  laser etch and the screensaver's nine effects are pixel reimplementations of
+  effects from
+  [TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects)
+  (MIT) by ChrisBuilds. No code is copied; the behaviour is followed.
 - **font8x8**, the 8x8 bitmap font the launcher draws every glyph with,
   including the diagrams in the documentation. Daniel Hepper's public domain
   reconstruction of the IBM PC BIOS face, from
@@ -43,6 +60,17 @@ to it over a documented interface.
   queried over its public API.
 - **Spotify's oEmbed endpoint**: the album art of a playing track, through the
   public endpoint, without a key or an account.
+- **RetroArch's `systematic` assets** (`/usr/share/retroarch/assets/xmb/systematic`):
+  the console illustrations on the systems screen, read from the installed
+  RetroArch. Part of RetroArch's asset set, CC BY, and nothing is
+  redistributed here.
+- **The libretro buildbot** (<https://buildbot.libretro.com>): the extra files
+  a core needs and does not ship, Dolphin's `Sys` folder among them, fetched
+  once on a first launch.
+- **wttr.in** (<https://wttr.in>): one line of weather for the ambient page,
+  no key and no account.
+- **An Immich server**, if you set one up: your own photographs, over your own
+  network, with a key you make yourself.
 - **SDL_GameControllerDB** format: the pad mapping the wizard writes follows
   the format of [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB)
   (MIT). No mappings from that project are bundled.
