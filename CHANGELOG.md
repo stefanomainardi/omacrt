@@ -13,6 +13,21 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- Four street lamps stand along the pavement and light it. They come on with
+  the town's windows and go off with them, they put a pool of warm light on
+  the ground that the puddles pick up, and they are why anybody can see the
+  man walking home at two in the morning: he brightens through each pool and
+  goes back to a shadow between them.
+- He is out in every sky but the overcast one, and each sky gives him one
+  thing to do. The lightning stops him where he stands, and if the bolt took
+  the Atomium's lights he waits in the dark until they come back. The fog
+  swallows him band by band and lets him out the other side. The snow keeps
+  his footprints until it fills them in, settles on his umbrella and slows
+  him down. On a clear day the umbrella is folded under his arm and he looks
+  up when the aeroplane goes over; on a clear night he stops under the
+  Atomium to watch the lights, which put their colour on his face. A dry
+  wind takes his hat and he goes after it. And one walk in four has the dog
+  out with him.
 - Somebody walks home in the rain. Thirteen pixels of him, head down,
   umbrella tilted into the wind, along the pavement at the foot of the town;
   he stops now and then to look up at the sky, which never helps, and on the
