@@ -553,7 +553,7 @@ pub struct Scene {
     frame_since: f64,
     /// The weather, drawn: clouds, rain and the sun's place in its arc.
     sky: crate::sky::Sky,
-    /// The screensaver page up now: which of `SAVER_PAGES` the idle timer
+    /// The screensaver page up now: which of `settings::PAGES` the idle timer
     /// started, when it went up, and the screen it interrupted. The next
     /// input puts that screen back, and the mix knows when to turn the page.
     saver_run: Option<(usize, f64, Screen)>,
