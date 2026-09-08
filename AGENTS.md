@@ -212,6 +212,15 @@ magick -delay 10 -loop 0 $(ls /tmp/seq/*.ppm | sort -V) \
   -filter point -resize 200% -colors 96 -layers optimize out.gif
 ```
 
+**Render weather that is not outside.** The sky is drawn from
+`~/.cache/omarchy-crt/weather-<place>.txt`, one line of
+`place|temp|condition|wind|rain|moon|sunrise|sunset`, so writing that file is
+how any weather gets rendered on demand. Two tricks go with it: sunrise and
+sunset are what decide day from night, so a sunrise an hour from now makes it
+night whatever the clock says, and `TZ=Pacific/Auckland` moves the clock
+itself to the small hours, which is what a night picture with an honest time
+on it needs. Put the real file back afterwards.
+
 **Try a different configuration without touching the user's.** `--config-dir`
 points settings, profile and recents somewhere else:
 
