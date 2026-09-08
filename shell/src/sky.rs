@@ -143,6 +143,9 @@ struct Air<'a> {
     horizon: i32,
     /// Seconds, for everything that moves.
     now: f64,
+    /// How dark the sky is, 1 in the night and 0 in daylight, with twilight
+    /// in between: what the stars fade on rather than blink out on.
+    darkness: f32,
 }
 
 /// A cloud: a handful of overlapping blobs, drifting.
@@ -364,10 +367,11 @@ impl Sky {
             wind,
             horizon,
             now,
+            darkness: reading.darkness(minutes),
         };
 
         self.sky(fb, &air);
-        if !day {
+        if air.darkness > 0.02 {
             self.draw_stars(fb, &air);
         }
         self.body(fb, &air, arc);
@@ -398,24 +402,32 @@ impl Sky {
         // still feels like the same machine, and no further: a sky that has
         // lost its own colour is a grey rectangle.
         let tint = |c: Color| lerp_color(c, air.theme.bg, 0.14);
-        let (top, bottom) = match (air.day, air.kind) {
-            (true, Kind::Clear | Kind::Partly) => (rgb(20, 62, 148), rgb(92, 162, 226)),
-            (true, Kind::Cloudy) => (rgb(58, 78, 112), rgb(150, 164, 180)),
-            (true, Kind::Overcast | Kind::Fog) => (rgb(70, 76, 88), rgb(148, 150, 156)),
-            (true, Kind::Rain) => (rgb(44, 56, 82), rgb(112, 124, 146)),
-            (true, Kind::Heavy | Kind::Thunder) => (rgb(30, 36, 56), rgb(84, 92, 116)),
-            // Snow needs a sky dark enough for white to show against it.
-            (true, Kind::Snow) => (rgb(58, 68, 92), rgb(136, 146, 166)),
-            (false, Kind::Clear | Kind::Partly) => (rgb(6, 8, 26), rgb(24, 30, 66)),
-            (false, Kind::Snow) => (rgb(14, 18, 38), rgb(52, 60, 88)),
-            (false, _) => (rgb(8, 10, 22), rgb(28, 32, 52)),
+        let pair = |day: bool| -> (Color, Color) {
+            match (day, air.kind) {
+                (true, Kind::Clear | Kind::Partly) => (rgb(20, 62, 148), rgb(92, 162, 226)),
+                (true, Kind::Cloudy) => (rgb(58, 78, 112), rgb(150, 164, 180)),
+                (true, Kind::Overcast | Kind::Fog) => (rgb(70, 76, 88), rgb(148, 150, 156)),
+                (true, Kind::Rain) => (rgb(44, 56, 82), rgb(112, 124, 146)),
+                (true, Kind::Heavy | Kind::Thunder) => (rgb(30, 36, 56), rgb(84, 92, 116)),
+                // Snow needs a sky dark enough for white to show against it.
+                (true, Kind::Snow) => (rgb(58, 68, 92), rgb(136, 146, 166)),
+                (false, Kind::Clear | Kind::Partly) => (rgb(6, 8, 26), rgb(24, 30, 66)),
+                (false, Kind::Snow) => (rgb(14, 18, 38), rgb(52, 60, 88)),
+                (false, _) => (rgb(8, 10, 22), rgb(28, 32, 52)),
+            }
         };
-        // A low sun pushes orange into the bottom of the sky.
-        let bottom = if air.dusk > 0.0 {
-            lerp_color(bottom, rgb(230, 128, 62), air.dusk * 0.75)
-        } else {
-            bottom
-        };
+        let (day_top, day_bottom) = pair(true);
+        let (night_top, night_bottom) = pair(false);
+        // A low sun pushes orange into the bottom of the sky, and a sun below
+        // the horizon is as low as one gets, which is what the twilight blend
+        // below fades in and out of.
+        let dusk = if air.day { air.dusk } else { 1.0 };
+        let day_bottom = lerp_color(day_bottom, rgb(230, 128, 62), dusk * 0.75);
+        // Twilight: the sky does not change colour the instant the sun clears
+        // the horizon, so the two skies are mixed by how dark it is. At noon
+        // and at midnight this is one sky or the other exactly.
+        let top = lerp_color(day_top, night_top, air.darkness);
+        let bottom = lerp_color(day_bottom, night_bottom, air.darkness);
         let (top, bottom) = (tint(top), tint(bottom));
         for y in 0..air.horizon.min(fb.h as i32) {
             let t = y as f32 / air.horizon as f32;
@@ -429,7 +441,11 @@ impl Sky {
         for (x, y, phase) in &self.stars {
             // Every star has its own rhythm, so the sky does not blink.
             let tw = 0.55 + 0.45 * ((air.now as f32 * 1.7 + phase).sin());
-            let c = lerp_color(air.theme.bg, air.theme.paper, tw.clamp(0.15, 1.0) * 0.9);
+            let c = lerp_color(
+                air.theme.bg,
+                air.theme.paper,
+                tw.clamp(0.15, 1.0) * 0.9 * air.darkness,
+            );
             fb.put(*x, *y, c);
             if tw > 0.93 {
                 // The brightest few get the four points of a drawn star.
@@ -686,7 +702,7 @@ impl Sky {
             let depth = ad.max(bd);
             let body = if flash {
                 lerp_color(air.theme.bg, air.theme.paper, 0.12)
-            } else if air.day {
+            } else if air.darkness < 0.5 {
                 scale(steel, 0.55 - depth * 0.2)
             } else {
                 // At night the tubes carry a little of the colour of the two
@@ -706,7 +722,10 @@ impl Sky {
         order.sort_by(|a, b| nodes[*b].3.total_cmp(&nodes[*a].3));
         for i in order {
             let (cx, cy, r, depth) = nodes[i];
-            let colour = if air.day { steel } else { show(i) };
+            // Metal by day, the show by night, and mixed through twilight:
+            // the lights come up as the sky goes down rather than at the
+            // stroke of sunset.
+            let colour = lerp_color(steel, show(i), air.darkness);
             let far = 1.0 - depth * 0.35;
             let deep = fog * (1.0 - (air.horizon - cy) as f32 / 70.0).clamp(0.0, 1.0);
             let base = if flash {
@@ -719,7 +738,7 @@ impl Sky {
             // At night a lit sphere throws a little light into the air around
             // it, the same dithered halo the sun gets, in its own colour.
             // Without it the show reads as paint rather than as lamps.
-            if !air.day && !flash && depth < 0.6 {
+            if air.darkness > 0.05 && !flash && depth < 0.6 {
                 let reach = 4.0;
                 for dy in -r - 5..=r + 5 {
                     for dx in -r - 5..=r + 5 {
@@ -733,7 +752,9 @@ impl Sky {
                         if py >= air.horizon {
                             continue;
                         }
-                        if BAYER[(py & 3) as usize][(px & 3) as usize] as f32 / 16.0 < t * 0.2 {
+                        if BAYER[(py & 3) as usize][(px & 3) as usize] as f32 / 16.0
+                            < t * 0.2 * air.darkness
+                        {
                             fb.put(px, py, lerp_color(fb.at(px, py), base, 0.3));
                         }
                     }
@@ -741,7 +762,7 @@ impl Sky {
             }
             self.sphere(fb, cx, cy, r, (sun_x, sun_y), dark, base, lit, flash);
 
-            if !air.day && !flash {
+            if air.darkness > 0.05 && !flash {
                 // The lamps round the equator of each sphere, one of them
                 // running ahead of the others.
                 let lamps = 8;
@@ -755,7 +776,11 @@ impl Sky {
                     let ahead =
                         ((l as f32 - lead).abs()).min(lamps as f32 - (l as f32 - lead).abs());
                     let bright = (1.0 - ahead / 2.0).clamp(0.15, 1.0);
-                    fb.put(lx, ly, lerp_color(base, air.theme.paper, bright * 0.65));
+                    fb.put(
+                        lx,
+                        ly,
+                        lerp_color(base, air.theme.paper, bright * 0.65 * air.darkness),
+                    );
                 }
             }
             if air.kind == Kind::Snow {
@@ -855,10 +880,11 @@ impl Sky {
                 fb.rect(ax - 3, top - 7, 7, 1, body);
                 fb.rect(ax - 2, top - 5, 5, 1, body);
             }
-            if air.day {
+            if air.darkness <= 0.02 {
                 continue;
             }
-            // Windows. The pattern was decided once, so they do not flicker.
+            // Windows. The pattern was decided once, so they do not flicker,
+            // and they go out over the same twilight the stars fade on.
             let cols = ((b.w - 6) / 6).max(1);
             for (i, on) in b.windows.iter().enumerate() {
                 if !on {
@@ -869,13 +895,8 @@ impl Sky {
                 if cy + 2 >= air.horizon {
                     continue;
                 }
-                fb.rect(
-                    cx,
-                    cy,
-                    2,
-                    3,
-                    lerp_color(air.theme.yellow, air.theme.orange, 0.35),
-                );
+                let lamp = lerp_color(air.theme.yellow, air.theme.orange, 0.35);
+                fb.rect(cx, cy, 2, 3, lerp_color(body, lamp, air.darkness));
             }
         }
     }

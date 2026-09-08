@@ -450,7 +450,7 @@ impl Scene {
                 scale(self.theme.dim, 0.55),
                 1,
             );
-            let clock = chrono::Local::now().format("%H:%M").to_string();
+            let clock = crate::clock::now(self.now).format("%H:%M").to_string();
             fb.text(
                 w - left - Framebuffer::text_width(&clock, 1),
                 8,

@@ -221,6 +221,13 @@ night whatever the clock says, and `TZ=Pacific/Auckland` moves the clock
 itself to the small hours, which is what a night picture with an honest time
 on it needs. Put the real file back afterwards.
 
+**Render an hour that is not now.** `--clock 05:40` draws that time of day
+instead of the wall clock, and `--clock-speed N` runs the clock N times faster,
+which is how an hour of sky becomes a few seconds of pictures. The clock runs
+from the moment the launcher starts, so a dump that begins at twelve seconds
+has already burned `12 * N` seconds of it: set the start time back by that
+much. Nothing else moves; a log line and a scan stamp stay real times.
+
 **Try a different configuration without touching the user's.** `--config-dir`
 points settings, profile and recents somewhere else:
 
