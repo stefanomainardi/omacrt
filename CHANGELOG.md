@@ -13,6 +13,10 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- Somebody is on the Atomium's escalator. Every ten seconds or so a bead of
+  light travels up one of the twelve tubes that have an escalator in them,
+  which is what the real one does and what turns a monument into a place
+  where somebody is.
 - A tram goes by every couple of minutes, because Brussels is a tram city: a
   silhouette with its windows lit, a pantograph folded up to the overhead
   wire, a spark at the wire now and then, and at night its windows lay their
