@@ -202,3 +202,42 @@ names none of them leaves those numbers out.
 The processor number is high the moment the monitor opens because the
 launcher is drawing it, which is honest: at 320 by 240 with a bank of meters
 moving, the launcher really is the busiest thing on the machine.
+
+## "Something is playing" with the launcher on its own home menu
+
+An emulator that outlived its launcher. The signal that stopped the launcher
+went to the launcher alone: the child was reparented to systemd and kept
+running, holding the audio sink and answering every "is anything playing"
+with yes. It also refuses every launch from the desktop, since `omarchy-crt
+play` asks that question first.
+
+```
+omarchy-crt doctor        # lists it, with its pid
+omarchy-crt doctor --fix  # stops it, with SIGKILL if a wedged core ignores the first signal
+```
+
+`shell stop`, `off`, `on` and `shell start` all do that sweep now, and the
+watchdog does it once a minute while the tube is on, so this should not
+happen again. An emulator is ours when its command line carries our own
+RetroArch configuration, and an orphan when no launcher is above it in the
+process tree, so nothing else on the machine is ever touched.
+
+## A command from the desktop does nothing at all
+
+Three things have caused this, in the order they are worth checking.
+
+**The launcher is an older build than the CLI.** A command that goes down the
+control pipe has to be understood at both ends: `omarchy-crt` sends it and
+`omarchy-crt-shell` reads it. Install both and restart the launcher
+(`omarchy-crt shell restart`); the launcher's log says `control: unknown
+input <name>` when this is what happened.
+
+**Something is already playing.** `omarchy-crt play` refuses, and says so in
+the terminal. From a menu row there is no terminal: the picker turns that into
+a notification and offers to stop what is playing.
+
+**walker was already open.** It is a single instance application, so a second
+invocation hands its arguments to the first and exits without printing, which
+is indistinguishable from a row that does nothing. `omarchy-crt-pick` closes
+whatever walker is open first. Its own log is
+`~/.local/state/omarchy-crt/pick.log`, and it names every step.

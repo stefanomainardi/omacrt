@@ -41,6 +41,14 @@ thing before writing anything under there by hand.
 unlocked desktop and let the file watcher do it, or tell the user to run the
 installer again.
 
+**An emulator does not die with the launcher.** The signal goes to the
+launcher alone and the child is reparented to systemd, where it holds the
+audio and answers "something is playing" for as long as the machine is up.
+`crt::tidy` finds those (ours by our configuration file on their command
+line, orphaned by having no launcher above them in the process tree) and
+`sweep_orphans` is called from `stop`, `start` and the watchdog. Anything new
+that spawns a program on the tube belongs in that survey.
+
 **Never put the launcher's binary name on the same command line as a command
 that restarts it.** `pkill -f` matches the shell running the command itself,
 so the tool's own shell is killed and the command exits 144 with the work half
@@ -274,6 +282,12 @@ older file still loads, a row in the matching settings page, an entry in
 extensions, a line in `default_lines` for the height it draws, and options
 only where the exact value strings are known to work. `docs/systems.md`
 records what was chosen and why.
+
+**A control pipe command.** Both ends have to be installed and the launcher
+restarted, or the CLI sends something the launcher does not know and logs
+`control: unknown input <name>`. Installing only `omarchy-crt` after adding
+one is a whole debugging session on its own; ask for the launcher's log
+before believing anything else.
 
 **A CLI verb.** `shell/src/bin/omarchy-crt.rs`: the `HELP` text, an arm in the
 dispatch, and a section in `docs/cli.md`. If the launcher has to do something,
