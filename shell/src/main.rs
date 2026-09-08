@@ -18,6 +18,7 @@ mod icons;
 mod menu;
 mod pad;
 mod scene;
+mod sysmon;
 mod theme;
 use omarchy_crt_shell::padmap::Raw;
 use omarchy_crt_shell::{
