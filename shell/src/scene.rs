@@ -533,6 +533,8 @@ pub struct Scene {
     frame_previous: Option<crate::photos::Shown>,
     /// When the picture on the frame went up.
     frame_since: f64,
+    /// The weather, drawn: clouds, rain and the sun's place in its arc.
+    sky: crate::sky::Sky,
     /// The screensaver page up now: which of `SAVER_PAGES` the idle timer
     /// started, when it went up, and the screen it interrupted. The next
     /// input puts that screen back, and the mix knows when to turn the page.
@@ -639,6 +641,7 @@ impl Scene {
             frame_now: None,
             frame_previous: None,
             frame_since: 0.0,
+            sky: crate::sky::Sky::new(),
             saver_run: None,
             profile: Profile::load(&library.config_dir),
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
@@ -7690,13 +7693,11 @@ impl Scene {
 }
 
 impl Scene {
-    /// The ambient page: the time, the day, the weather and what is next, on
-    /// nothing at all.
+    /// The ambient page: a window with the weather in it, and the time.
     ///
-    /// This is the page for a television that is on in a room where nobody is
-    /// playing anything. It has no photograph behind it on purpose: the frame
-    /// is the page with a photograph, and a clock over a picture is a
-    /// different thing from a clock.
+    /// The picture is the point. What is written over it sits in the dark
+    /// band under the horizon, where it can be read without a shadow behind
+    /// every letter, and the sky above it is left alone.
     fn draw_ambient(&mut self, fb: &mut Framebuffer) {
         // The supply thread carries the weather and the calendar as well as
         // the photographs, so this page starts it too. With no photograph
@@ -7714,82 +7715,121 @@ impl Scene {
         );
         self.photos.poll();
 
-        fb.clear(self.theme.bg);
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32;
         let now = chrono::Local::now();
+        let minutes = now.format("%H").to_string().parse::<u32>().unwrap_or(0) * 60
+            + now.format("%M").to_string().parse::<u32>().unwrap_or(0);
+        let info = self.photos.info.clone();
+        let reading = info.sky.clone();
 
-        // The clock, with the colon on the second, the way a clock radio did
-        // it. The digits stay put: a proportional blink is a wobble.
-        let size = if w >= 320 { 6 } else { 4 };
-        let clock = now.format("%H:%M").to_string();
-        let cw = Framebuffer::text_width(&clock, size);
-        let cx = (w - cw) / 2;
-        let cy = h / 3 - size * 4;
-        fb.text(cx, cy, &clock, self.theme.paper, size);
+        let theme = self.theme.clone();
+        let clock = self.now;
+        self.sky.draw(fb, &theme, &reading, minutes, clock);
+        let horizon = crate::sky::Sky::horizon(fb.h);
+
+        // ------------------------------------------------------- the time
+        let time = now.format("%H:%M").to_string();
+        let size = if w >= 320 { 4 } else { 3 };
+        let clock_y = horizon + 5;
+        fb.text(left, clock_y, &time, self.theme.paper, size);
+        // The colon on the second, the way a clock radio did it. The digits
+        // stay where they are: a proportional blink is a wobble.
         if now.format("%S").to_string().parse::<u32>().unwrap_or(0) % 2 == 1 {
             fb.text(
-                cx + 2 * 8 * size,
-                cy,
+                left + 2 * 8 * size,
+                clock_y,
                 ":",
-                lerp_color(self.theme.bg, self.theme.paper, 0.22),
+                lerp_color(self.theme.bg, self.theme.paper, 0.30),
                 size,
             );
         }
 
-        // The minute filling up, under the clock.
-        let bar_w = (w as f32 * 0.42) as i32;
-        let bar_x = (w - bar_w) / 2;
-        let bar_y = cy + size * 8 + 6;
-        let secs = now.format("%S").to_string().parse::<f32>().unwrap_or(0.0);
-        fb.rect(
-            bar_x,
-            bar_y,
-            bar_w,
-            1,
-            lerp_color(self.theme.bg, self.theme.paper, 0.18),
-        );
-        fb.rect(
-            bar_x,
-            bar_y,
-            (bar_w as f32 * (secs / 60.0)) as i32,
-            1,
-            self.theme.cyan,
-        );
+        // The temperature, as big as the space beside the clock allows.
+        if let Some(t) = reading.temp {
+            let temp = format!("{t:.0}C");
+            let tw = Framebuffer::text_width(&temp, 3);
+            let hot = ((t + 5.0) / 35.0).clamp(0.0, 1.0);
+            fb.text(
+                w - left - tw,
+                clock_y + 6,
+                &temp,
+                lerp_color(self.theme.cyan, self.theme.orange, hot),
+                3,
+            );
+        }
 
-        let date = now.format("%A %d %B").to_string().to_uppercase();
-        let dw = Framebuffer::text_width(&date, 1);
-        fb.text((w - dw) / 2, bar_y + 10, &date, self.theme.dim, 1);
-
-        // What is going on outside and what is next, each on its own line,
-        // centred, cut to the screen.
-        let room = ((w - 2 * left) / 8).max(4) as usize;
-        let mut y = bar_y + 34;
-        let info = self.photos.info.clone();
-        let mut line = |fb: &mut Framebuffer, text: &str, colour: Color| {
-            let text: String = text.chars().take(room).collect();
-            let tw = Framebuffer::text_width(&text, 1);
-            fb.text((w - tw) / 2, y, &text, colour, 1);
-            y += 14;
+        // ------------------------------------------------- the three lines
+        let row = |i: i32| h - 32 + i * 11;
+        // Cutting a line short is fine; cutting it in the middle of a word
+        // looks like a fault.
+        let cut = |text: &str, room: i32| -> String {
+            let fits = (room / 8).max(0) as usize;
+            if text.chars().count() <= fits {
+                return text.to_string();
+            }
+            let short: String = text.chars().take(fits).collect();
+            match short.rfind(' ') {
+                Some(at) if at > fits / 2 => short[..at].to_string(),
+                _ => short,
+            }
         };
-        if !info.weather.is_empty() {
-            line(fb, &info.weather, self.theme.cyan);
+        let date = now.format("%A %d %B").to_string().to_uppercase();
+        fb.text(
+            left,
+            row(0),
+            &cut(&date, w - 2 * left - 80),
+            self.theme.dim,
+            1,
+        );
+        if !reading.place.is_empty() {
+            let place = reading.place.to_uppercase();
+            let pw = Framebuffer::text_width(&place, 1);
+            fb.text(w - left - pw, row(0), &place, self.theme.dim, 1);
         }
+
+        if reading.known {
+            let words = reading.condition.to_uppercase();
+            fb.text(
+                left,
+                row(1),
+                &cut(&words, w - 2 * left - 104),
+                self.theme.paper,
+                1,
+            );
+            if let Some(wind) = reading.wind_kmh {
+                let text = format!("WIND {wind:.0} KM/H");
+                let tw = Framebuffer::text_width(&text, 1);
+                fb.text(w - left - tw, row(1), &text, self.theme.dim, 1);
+            }
+        } else {
+            fb.text(
+                left,
+                row(1),
+                "no weather yet",
+                scale(self.theme.dim, 0.8),
+                1,
+            );
+        }
+
+        // The last line is whichever of these there is something to say
+        // about: what is next, or what is playing.
+        let mut last = String::new();
+        let mut colour = self.theme.yellow;
         if !info.next.is_empty() {
-            line(fb, &format!("NEXT  {}", info.next), self.theme.yellow);
-        }
-        if self.music.status.active()
+            last = format!("NEXT  {}", info.next);
+        } else if self.music.status.active()
             && let Some(track) = self.music.status.track.as_ref()
         {
-            let label = track.label();
-            line(fb, &label, self.theme.green);
+            last = track.label();
+            colour = self.theme.green;
         }
-        if info.weather.is_empty() && info.next.is_empty() {
-            line(fb, "no weather yet", scale(self.theme.dim, 0.8));
-        }
-
         let hint = self.hint(&[("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        let hw = Framebuffer::text_width(&hint, 1);
+        if !last.is_empty() {
+            fb.text(left, row(2), &cut(&last, w - 2 * left - hw - 8), colour, 1);
+        }
+        fb.text(w - left - hw, row(2), &hint, scale(self.theme.dim, 0.5), 1);
     }
 }

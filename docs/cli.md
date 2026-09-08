@@ -266,7 +266,7 @@ can have the screen, and they can take turns:
 | --- | --- |
 | `effects` | The wordmark taken apart and put back, one of nine effects |
 | `photos` | The photo frame |
-| `ambient` | The time, the day, the weather and what is next, on nothing |
+| `ambient` | A window with the weather drawn in it, and the time under it |
 | `system` | The system monitor |
 
 ```toml
@@ -277,6 +277,14 @@ effect = "mix"      # a page by name, an effect by name, random, or mix
 cycle_secs = 240    # while mixing, how long each page stays; 0 keeps one
 off = ["system"]    # pages left out of the mix
 ```
+
+The ambient page draws what the weather is doing: the sun on its real arc
+between sunrise and sunset, the moon on the same path at night, clouds at the
+speed of the real wind, rain that slants with it and breaks on the ground,
+snow, fog, lightning, and a town along the horizon whose windows come on after
+dark. It needs no photograph server, only `[frame] weather` for the place.
+With that empty, wttr.in guesses the place from the address, which a VPN moves
+a country.
 
 `effect` takes one page name (`effects`, `photos`, `ambient`, `system`), one
 effect name (`laseretch`, `rain`, `beams`, `burn`, `slide`, `decrypt`,
