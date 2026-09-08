@@ -8,6 +8,7 @@
 use omarchy_crt_shell::crt::dac::{Csync, Dac, Lock};
 use omarchy_crt_shell::crt::output::{self, Connector, Modeline};
 use omarchy_crt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
+use omarchy_crt_shell::index::Index;
 use omarchy_crt_shell::library::{self, Library};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -51,6 +52,8 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   library set SYS core=X|dir=D   change a system's core or folder in systems.toml
   library covers [SYS...] [--limit N] [--force]   fetch box art for the collection, matching titles when names differ
   library scan [DIR...]    index every game under the roots (any layout)
+  library games [--system S] [--limit N] [--json]   every game the scan has seen
+  play <title|path>        start a game on the tube, by name or by file
   frame check              is the Immich server there and does it take the key
   frame fill [N]           fetch and prepare N photographs for the frame (default 40)
   frame clear              throw away the prepared photographs
@@ -1337,6 +1340,69 @@ fn cmd_bios(args: &[String]) {
     );
 }
 
+/// Start a game by name or by path: `omarchy-crt play "metal slug"`.
+///
+/// The matching happens here rather than in the launcher, because the CLI
+/// has the index in front of it and can say what it picked. What goes down
+/// the control pipe is a path the scan has seen.
+fn cmd_play(args: &[String]) {
+    let pos = positional(args);
+    let query: String = pos.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+    let query = query.trim();
+    if query.is_empty() {
+        die("play needs a game's name, or the path to one");
+    }
+    // A path that exists is taken as it is; anything else is a name.
+    let direct = std::path::Path::new(query);
+    let path = if direct.is_file() {
+        direct.to_path_buf()
+    } else {
+        let Some(index) = Index::load() else {
+            die("no library index yet: omarchy-crt library scan ~/Games");
+        };
+        let Some(item) = best_match(&index, query) else {
+            die(&format!("no game matching {query}"));
+        };
+        println!("{}  ({})", item.title, item.system);
+        item.path.clone()
+    };
+    match crt::control::send_play(&path.to_string_lossy()) {
+        Ok(()) => {}
+        Err(e) => die(&format!(
+            "{e}: the launcher has to be running (omarchy-crt on)"
+        )),
+    }
+}
+
+/// The game a name most likely means: the same name, then one that starts
+/// with it, then one that contains it, shortest title first so "mario" is
+/// not answered with the longest name that happens to hold it.
+fn best_match<'a>(index: &'a Index, query: &str) -> Option<&'a omarchy_crt_shell::index::Item> {
+    let want = query.to_lowercase();
+    let mut best: Option<(u8, usize, &omarchy_crt_shell::index::Item)> = None;
+    for item in &index.items {
+        let title = item.title.to_lowercase();
+        let rank = if title == want {
+            0
+        } else if title.starts_with(&want) {
+            1
+        } else if title.contains(&want) {
+            2
+        } else {
+            continue;
+        };
+        let score = (rank, item.title.len());
+        if best
+            .as_ref()
+            .map(|(r, l, _)| (score.0, score.1) < (*r, *l))
+            .unwrap_or(true)
+        {
+            best = Some((score.0, score.1, item));
+        }
+    }
+    best.map(|(_, _, item)| item)
+}
+
 /// The photo frame: check the server, fill the cache, empty it.
 fn cmd_frame(args: &[String]) {
     use omarchy_crt_shell::immich;
@@ -1429,6 +1495,44 @@ fn cmd_library(args: &[String]) {
     use omarchy_crt_shell::index::{self, Index, LibraryConfig};
     let pos = positional(args);
     match pos.first().map(|s| s.as_str()) {
+        // Every game the scan has seen, for a picker on the desktop or for
+        // anything else that wants the collection as lines.
+        Some("games") => {
+            let Some(index) = Index::load() else {
+                die("no library index yet: omarchy-crt library scan ~/Games");
+            };
+            let only = value(args, "--system");
+            let limit: usize = value(args, "--limit")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(usize::MAX);
+            let mut items: Vec<&index::Item> = index
+                .items
+                .iter()
+                .filter(|i| only.as_deref().map(|s| i.system == s).unwrap_or(true))
+                .collect();
+            items.sort_by(|a, b| a.title.cmp(&b.title).then(a.system.cmp(&b.system)));
+            items.truncate(limit);
+            if has(args, "--json") {
+                let rows: Vec<Value> = items
+                    .iter()
+                    .map(|i| {
+                        json!({
+                            "title": i.title,
+                            "system": i.system,
+                            "path": i.path.to_string_lossy(),
+                            "region": i.region,
+                        })
+                    })
+                    .collect();
+                println!("{}", json!(rows));
+            } else {
+                // Tab separated, so a picker can show the title and keep the
+                // path: title, system, path.
+                for i in items {
+                    println!("{}\t{}\t{}", i.title, i.system, i.path.display());
+                }
+            }
+        }
         Some("scan") => {
             let mut lc = LibraryConfig::load();
             let given: Vec<PathBuf> = pos[1..].iter().map(PathBuf::from).collect();
@@ -2332,6 +2436,7 @@ fn main() {
         }
         "bios" => cmd_bios(args),
         "library" => cmd_library(args),
+        "play" => cmd_play(args),
         "frame" => cmd_frame(args),
         "watch" => {
             let pos = positional(args);

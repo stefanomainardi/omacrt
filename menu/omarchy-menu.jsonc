@@ -18,6 +18,7 @@
 // Channels: what the television is showing.
 "tv.channel": {"icon":"󰀻","label":"Channel","title":"Channel"},
 "tv.channel.games": {"icon":"󰯉","label":"Games","action":"omarchy-crt shell screen games"},
+"tv.play": {"icon":"󰯉","label":"Play a game...","action":"omarchy-crt-pick","description":"pick from the whole collection and start it on the television"},
 "tv.channel.music": {"icon":"","label":"Music","action":"omarchy-crt shell screen music"},
 "tv.channel.videos": {"icon":"","label":"Video","action":"omarchy-crt shell screen videos"},
 "tv.channel.frame": {"icon":"󰋩","label":"Photo frame","action":"omarchy-crt shell screen frame"},

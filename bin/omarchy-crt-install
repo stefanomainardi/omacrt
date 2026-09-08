@@ -92,7 +92,7 @@ for arg in "$@"; do
       # games, configuration and cache are never touched.
       menu_remove
       echo "== removing the binaries from $bin_dir"
-      for b in omarchy-crt omarchy-crt-shell omarchy-crt-display; do
+      for b in omarchy-crt omarchy-crt-shell omarchy-crt-display omarchy-crt-pick; do
         rm -f "$bin_dir/$b"
       done
       echo "== removing the plugins"
@@ -141,6 +141,8 @@ mkdir -p "$bin_dir"
 install -m 755 "$repo/shell/target/release/omarchy-crt" "$bin_dir/omarchy-crt"
 install -m 755 "$repo/shell/target/release/omarchy-crt-shell" "$bin_dir/omarchy-crt-shell"
 install -m 755 "$repo/shell/target/release/omarchy-crt-display" "$bin_dir/omarchy-crt-display"
+# The desktop picker: a script, not a binary, but it belongs beside them.
+install -m 755 "$repo/bin/omarchy-crt-pick" "$bin_dir/omarchy-crt-pick"
 case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) echo "note: $bin_dir is not in PATH" ;;

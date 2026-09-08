@@ -231,6 +231,32 @@ Names: `home`, `games`, `videos`, `youtube`, `music`, `favorites`, `recent`,
 a menu entry pressed by accident must not take the television away from what
 it is doing.
 
+## Starting a game from anywhere
+
+```
+omarchy-crt play "metal slug"      # by name, out of the index
+omarchy-crt play /path/to/game.chd # by file
+omarchy-crt library games [--system S] [--limit N] [--json]
+omarchy-crt-pick [system]          # pick one on the desktop, play it on the tube
+```
+
+`play` matches the name against the index: the same title first, then one that
+starts with it, then one that contains it, shortest first, so `mario` is not
+answered with the longest name that happens to hold the word. It prints what
+it picked and sends the path to the launcher, which starts it exactly as
+choosing it on the tube would. It refuses while a game or a film is already
+running.
+
+`omarchy-crt-pick` is that with a picker in front of it: every game the scan
+has seen goes into walker (or fuzzel, or rofi), and what comes back is played
+on the television, turning the tube on first if it is off. It is the
+**Play a game...** row in the Omarchy menu, and it is worth a keybinding.
+
+A live list of games inside the Omarchy menu itself is not possible: its
+providers are a fixed table inside the menu plugin, so a third party cannot
+add one, and twenty thousand static rows would not be a menu. A fuzzy runner
+is where a collection this size belongs anyway.
+
 ## The photo frame
 
 ```
