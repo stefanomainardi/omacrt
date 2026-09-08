@@ -288,6 +288,13 @@ pub struct Sky {
     flash_at: f32,
     flash: f32,
     bolt: Vec<(i32, i32)>,
+    /// The tram, and when the next one is due along.
+    tram: Option<f32>,
+    tram_at: f32,
+    /// The birds on the wire: where each one sits, and when it took off. A
+    /// bird that is up comes back to the same place, because that is its
+    /// place.
+    birds: Vec<(f32, f32)>,
     /// Somebody out in it, and when the next one gives it a try.
     walker: Option<Walker>,
     walker_at: f32,
@@ -324,6 +331,9 @@ impl Sky {
             built_for: None,
             flash_at: 4.0,
             flash: 0.0,
+            tram: None,
+            tram_at: 12.0,
+            birds: Vec::new(),
             walker: None,
             walker_at: 7.0,
             prints: Vec::new(),
@@ -515,6 +525,8 @@ impl Sky {
             self.atomium(fb, &air, arc);
         }
         self.draw_town(fb, &air);
+        self.wire(fb, &air);
+        self.tram(fb, &air);
         self.ground(fb, &air);
         self.lamps(fb, &air);
         self.walker(fb, &air, landmark);
@@ -1320,6 +1332,163 @@ impl Sky {
                         y,
                         lerp_color(near, air.theme.yellow, fade * 0.35),
                     );
+                }
+            }
+        }
+    }
+
+    /// The tram's overhead wire, and whoever is sitting on it.
+    ///
+    /// One line across the sky at the height of the roofs, which is a real
+    /// thing in a tram city and the reason the birds have somewhere to be.
+    /// Five of them, always the same five places, and they scatter when the
+    /// lightning goes or when the tram passes under them and come back one
+    /// at a time.
+    fn wire(&mut self, fb: &mut Framebuffer, air: &Air) {
+        let w = fb.w as i32;
+        // High enough that the birds sit against the sky and not against a
+        // roof, which is the difference between a bird and a smudge.
+        let y = air.horizon - 32;
+        let t = air.now as f32;
+        if self.birds.is_empty() {
+            for i in 0..5 {
+                let at = 0.12 + i as f32 * 0.17;
+                self.birds.push((at * w as f32, -1000.0));
+            }
+        }
+        // The wire itself: it sags a little between the poles, because a wire
+        // that does not sag is a ruler.
+        let wire = lerp_color(air.theme.bg, air.theme.paper, 0.30);
+        for x in 0..w {
+            let span = (x % 106) as f32 / 106.0;
+            let sag = ((span - 0.5) * 2.0).powi(2);
+            fb.put(x, y + 2 - (sag * 2.0) as i32, wire);
+        }
+        // The poles, on the same spacing.
+        for k in 0..=(w / 106) {
+            let px = k * 106;
+            fb.rect(px, y, 1, air.horizon - y, wire);
+        }
+        // Something to scatter for: a bolt of lightning, or the tram going by.
+        let scare = self.flash > 0.0
+            || self
+                .tram
+                .map(|tx| self.birds.iter().any(|(bx, _)| (tx - bx).abs() < 40.0))
+                .unwrap_or(false);
+        let body = lerp_color(
+            air.theme.bg,
+            air.theme.paper,
+            if air.day { 0.34 } else { 0.20 },
+        );
+        for (i, (bx, up_at)) in self.birds.iter_mut().enumerate() {
+            if scare && *up_at < t - 12.0 {
+                // They do not all go at once, and they do not all come back
+                // at once either.
+                *up_at = t + i as f32 * 0.12;
+            }
+            let flown = t - *up_at;
+            if flown > 0.0 && flown < 6.0 {
+                // Up in an arc and back down onto the same spot.
+                let k = flown / 6.0;
+                let lift = ((k * std::f32::consts::PI).sin() * 26.0) as i32;
+                let drift = (k * 18.0) as i32;
+                let wing = if (t * 9.0 + i as f32).fract() < 0.5 {
+                    1
+                } else {
+                    -1
+                };
+                let (px, py) = (*bx as i32 + drift, y - lift);
+                fb.put(px, py, body);
+                fb.put(px - 1, py - wing, body);
+                fb.put(px + 1, py - wing, body);
+            } else {
+                // Sitting: a body, a head and a tail that flicks.
+                // Four pixels: the body on the wire, the head up, and a tail
+                // that flicks.
+                let flick = i32::from(((t * 0.7 + i as f32 * 1.9).fract()) < 0.06);
+                fb.put(*bx as i32, y, body);
+                fb.put(*bx as i32 + 1, y, body);
+                fb.put(*bx as i32 + 1, y - 1, body);
+                fb.put(*bx as i32 - 1, y - flick, body);
+            }
+        }
+    }
+
+    /// The tram, along the street at the foot of the town.
+    ///
+    /// Brussels is a tram city, so one goes by every couple of minutes: a
+    /// silhouette with its windows lit, a pantograph up on the wire, and at
+    /// night the windows throw their light along the pavement as it passes.
+    /// It takes ten seconds to cross, which is the pace of a thing that
+    /// stops at every corner.
+    fn tram(&mut self, fb: &mut Framebuffer, air: &Air) {
+        let w = fb.w as f32;
+        let t = air.now as f32;
+        if self.tram.is_none() {
+            if t < self.tram_at {
+                return;
+            }
+            self.tram = Some(-40.0);
+            self.tram_at = t + 70.0 + self.rng.unit() * 70.0;
+        }
+        let Some(x) = self.tram.as_mut() else {
+            return;
+        };
+        *x += 32.0 / 60.0;
+        let x = *x;
+        if x > w + 40.0 {
+            self.tram = None;
+            return;
+        }
+        let gx = x as i32;
+        let base = air.horizon - 1;
+        let top = base - 9;
+        let body = lerp_color(
+            air.theme.bg,
+            air.theme.paper,
+            if air.day { 0.26 } else { 0.14 },
+        );
+        let roof = lerp_color(body, air.theme.paper, 0.18);
+        // Thirty four pixels of tram: a body, a roof, the pantograph up to
+        // the wire, two wheels and six windows.
+        fb.rect(gx, top, 34, 9, body);
+        fb.rect(gx, top, 34, 1, roof);
+        fb.rect(gx + 2, base, 3, 1, roof);
+        fb.rect(gx + 28, base, 3, 1, roof);
+        // The pantograph, folded like a Z, up to the wire above.
+        let wire_y = air.horizon - 30;
+        fb.line(gx + 12, top, gx + 18, wire_y + 2, roof);
+        fb.line(gx + 18, wire_y + 2, gx + 24, top, roof);
+        let glow = lerp_color(air.theme.yellow, air.theme.orange, 0.25);
+        // A spark at the wire, now and then, which is the one thing everybody
+        // remembers about trams.
+        if (t * 0.9 + x * 0.02).fract() < 0.02 {
+            fb.put(gx + 18, wire_y + 1, air.theme.paper);
+            fb.put(gx + 17, wire_y, glow);
+            fb.put(gx + 19, wire_y, glow);
+        }
+        let lit = air.darkness > 0.2;
+        for k in 0..6 {
+            let wx = gx + 3 + k * 5;
+            let c = if lit {
+                lerp_color(glow, air.theme.paper, 0.25)
+            } else {
+                lerp_color(body, air.theme.paper, 0.22)
+            };
+            fb.rect(wx, top + 3, 3, 3, c);
+        }
+        // At night the windows lay their light on the pavement as it goes.
+        if lit {
+            let h = fb.h as i32;
+            for y in air.horizon..(air.horizon + 5).min(h) {
+                let down = (y - air.horizon) as f32;
+                for dx in -6i32..40 {
+                    let px = gx + dx;
+                    let across = 1.0 - ((dx as f32 - 17.0).abs() / 24.0).clamp(0.0, 1.0);
+                    let strength = across * (1.0 - down / 5.0) * air.darkness;
+                    if BAYER[(y & 3) as usize][(px & 3) as usize] as f32 / 16.0 < strength * 0.6 {
+                        fb.put(px, y, lerp_color(fb.at(px, y), glow, 0.3 * strength));
+                    }
                 }
             }
         }

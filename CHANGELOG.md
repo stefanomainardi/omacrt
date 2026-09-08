@@ -13,6 +13,13 @@ caveat for a 0.x project: anything may still move.
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
+- A tram goes by every couple of minutes, because Brussels is a tram city: a
+  silhouette with its windows lit, a pantograph folded up to the overhead
+  wire, a spark at the wire now and then, and at night its windows lay their
+  light along the pavement as it passes.
+- Five birds sit on that wire. They scatter when the lightning goes and when
+  the tram passes under them, and they come back to their own places one at a
+  time.
 - The moon is the moon outside. The server sends the phase and the picture
   drew a crescent whatever it said; it draws the real one now, terminator and
   earthshine and craters only on the lit side, and a full moon silvers the
