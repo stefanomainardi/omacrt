@@ -14,7 +14,6 @@ impl Scene {
         let effect = Effect::new(kind, seed, self.stops(), self.palette());
         self.saver = Some(Saver {
             effect,
-            kind,
             started: now,
         });
     }
@@ -157,7 +156,6 @@ impl Scene {
     pub(super) fn draw_saver(&mut self, fb: &mut Framebuffer) {
         let (w, h) = (fb.w as i32, fb.h as i32);
         let now = self.now;
-        let dim = self.theme.dim;
         let (mw, mh) = (self.mark_cols * MARK_SCALE, self.mark_rows * 2 * MARK_SCALE);
         let mut restart = false;
         if let Some(saver) = self.saver.as_mut() {
@@ -166,14 +164,6 @@ impl Scene {
             let x = (w - mw) / 2;
             let y = (h - mh) / 2 - 8;
             saver.effect.draw(fb, x, y, MARK_SCALE, t, 1.0);
-            let caption = format!("tte {}", saver.kind.name());
-            fb.text(
-                (w as f32 * 0.05) as i32,
-                h - 16,
-                &caption,
-                scale(dim, 0.6),
-                1,
-            );
             // Hold the finished picture for a while, then move on to another effect.
             restart = t > saver.effect.length() + 3.0;
         }

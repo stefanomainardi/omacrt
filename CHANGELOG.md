@@ -157,6 +157,9 @@ caveat for a 0.x project: anything may still move.
 
 ### Removed
 
+- The effect's name from the screensaver. `tte slide` in the corner was a
+  note to whoever was building the effects, and there are eighteen of them
+  now: the wordmark can have the screen to itself.
 - The Omarchy mark that walked up the CRT tag's Mode 7 floor. On the tube it
   read as a smear on the checkerboard rather than as a mark, and the floor is
   better as a floor.
