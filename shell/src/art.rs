@@ -226,6 +226,10 @@ fn fetch(req: &Request) -> Option<Image> {
 pub fn decode(path: &Path) -> Option<Image> {
     let file = std::fs::File::open(path).ok()?;
     let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
+    // A cover is a few hundred pixels on a side. Without a limit the decoder
+    // believes whatever the file's header claims and allocates it, so one
+    // downloaded picture declaring enormous dimensions is the launcher gone.
+    decoder.set_limits(png::Limits { bytes: 64 << 20 });
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().ok()?;
     let mut buf = vec![0u8; reader.output_buffer_size()];

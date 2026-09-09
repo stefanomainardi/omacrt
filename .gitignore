@@ -2,3 +2,6 @@
 traces/
 shell/target/
 demo.mp4
+
+# Python leaves these beside the scripts; they are build output, not source.
+__pycache__/

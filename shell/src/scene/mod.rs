@@ -1100,6 +1100,23 @@ impl Scene {
         self.refresh_counts();
         // Whatever list is open was built from the old library.
         if let Screen::Games { sys, .. } = self.screen {
+            // A rescan can find fewer systems than the open list was built
+            // from. Emptying the entries is not enough: the screen keeps the
+            // index it had, and the next frame reads `systems[i]` past the end
+            // and takes the launcher down while somebody is browsing. The
+            // screen goes back to the whole collection, which is what it shows
+            // when no system is chosen, so the reader lands somewhere real.
+            let sys = match sys {
+                Some(i) if i >= self.library.systems.len() => {
+                    self.screen = Screen::Games {
+                        sys: None,
+                        sel: 0,
+                        top: 0,
+                    };
+                    None
+                }
+                other => other,
+            };
             let all = match sys {
                 Some(i) if i < self.library.systems.len() => self.entries_for(i),
                 Some(_) => Vec::new(),

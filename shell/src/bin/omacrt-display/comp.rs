@@ -123,6 +123,16 @@ const REC_H: usize = 960;
 
 impl Recorder {
     fn start(path: &str, sink: Option<String>) -> Result<Recorder, String> {
+        // Same reasoning as the screenshot: the recording goes to a film, and
+        // a name that is not one is a way to truncate something else. The
+        // extension check also keeps a leading dash from ever being the
+        // output argument, which ffmpeg would read as an option.
+        let name = path.to_ascii_lowercase();
+        if !(name.ends_with(".mp4") || name.ends_with(".mkv") || name.ends_with(".webm")) {
+            return Err(format!(
+                "{path}: a recording is written to .mp4, .mkv or .webm"
+            ));
+        }
         let mut cmd = std::process::Command::new("ffmpeg");
         cmd.args(["-hide_banner", "-loglevel", "error", "-y"])
             .args(["-f", "rawvideo", "-pix_fmt", "bgra"])
@@ -151,7 +161,11 @@ impl Recorder {
         if sink.is_some() {
             cmd.args(["-c:a", "aac", "-b:a", "192k", "-shortest"]);
         }
-        cmd.arg(path)
+        // `--` first: the output is the last argument, and without it a path
+        // beginning with a dash is an ffmpeg option. `player.rs` does the same
+        // for mpv's target.
+        cmd.arg("--")
+            .arg(path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::inherit());
@@ -737,6 +751,14 @@ impl Crt {
     fn screenshot(&mut self, path: &str) -> Result<(), String> {
         if path.is_empty() {
             return Err("shot needs a file path".into());
+        }
+        // The pipe is 0600, so this is not somebody else's business - but any
+        // program running as you can write a line into it, and this one
+        // truncates whatever it is pointed at. Writing a PNG to a name that
+        // does not end in .png is never what was meant, and refusing it is
+        // what stops the command being a way to empty an arbitrary file.
+        if !path.to_ascii_lowercase().ends_with(".png") {
+            return Err(format!("{path}: a shot is written to a .png"));
         }
         let (bgra, w, h) = self.capture()?;
         let mut rgb = vec![0u8; w * h * 3];

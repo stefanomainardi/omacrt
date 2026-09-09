@@ -7,6 +7,71 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-09
+
+The release the repository opens with. 0.3.0 was tagged the day before, under
+the old name and before the pass below, so it is not the one to start from.
+
+### Security
+
+- Five things that crossed a boundary are closed. The library overlay took the
+  program it runs out of the message that summons it and started six of them
+  on open; it resolves the binary from its own directory now. The two places
+  on the desktop that build a shell command line quote what goes into them,
+  through the function that existed for it and was called nowhere. The core
+  data archive was downloaded to a predictable name in `/tmp`, where another
+  user can leave a symlink; it is staged in the project's own cache, checked
+  for the file it claims to carry, and moved into place only then.
+  `shot` and `record start` on the control pipes wrote wherever they were
+  pointed and now insist on a name that matches what they write.
+  `output.position` and a modeline's trailing flags reached Lua evaluated
+  inside the compositor and are checked before they get there.
+- `bin/omacrt-pick` reads `OMACRT_PICKER` as a command with arguments instead
+  of running it through `eval`.
+
+### Fixed
+
+- Eight panics reachable from data alone. A games list open on a system a
+  rescan removed, a cover name from the thumbnail server with a character
+  outside ASCII, a calendar's start time, a Bluetooth address that is not one,
+  a playlist that names itself, a cover PNG declaring enormous dimensions, a
+  preview window a few pixels wide, and an audio callback whose panic took the
+  picture with it. Release builds now carry `overflow-checks`.
+- The sweep no longer stops an editor that happens to have one of this
+  project's files open: a process has to be one of the programs the launcher
+  starts as well as carry one of its files. The launcher search is anchored to
+  the binary and scoped to the user, so it no longer matches the installer's
+  own copy command.
+- `state.json`, the record `off` reads to undo everything `on` changed, and
+  `watch-later.tsv` are written atomically like the rest.
+- The tidy sweep looks in the cache the code actually writes to, which on a
+  machine that sets `XDG_CACHE_HOME` was not the one it was checking, and it
+  removes the five megabyte leftovers a crashed scan used to keep forever.
+- `off` puts the CRT sink's volume back.
+- `bios import` keeps a file it replaces as `.replaced`, and a failed video
+  conversion deletes only a destination that run created.
+- The installer's menu block is removed only when both markers are present, so
+  a file with a dangling one is handed back untouched, and the old plugin
+  folders are retired only on an unlocked session - moving them under the lock
+  screen aborted Quickshell, which is what the lock check exists for.
+  `--system` validates the connector name before it reaches a root owned unit
+  file.
+- The lease unit waits for the connector instead of sleeping through ten
+  seconds of every boot, tells an interrupted run apart from a switched off
+  television, and stands down when there is no tube rather than holding up the
+  login screen.
+- The display process says which of the two lease failures it hit. "Is it
+  marked non-desktop?" was misleading when it is: the compositor picks what it
+  offers for leasing when it starts, so an override applied to a running
+  session takes effect at the next boot. `doctor` carries the same row.
+
+### Removed
+
+- The pause menu's UDP fallback. It spoke RetroArch's command interface, which
+  this project disables at every launch because a datagram crashes it, and a
+  UDP send to a closed port succeeds - so in a window the menu reported saves
+  that never happened. `game cmd` goes with it; `game key` remains.
+
 ### Changed
 
 - Every path, binary and identifier carries the new name. The commands are
@@ -522,6 +587,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.0
+[0.3.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.3.0
 [0.2.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.2.0
 [0.1.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.1.0

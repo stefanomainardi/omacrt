@@ -1,0 +1,19 @@
+# The lock file is committed, so an update has to be a commit rather than a
+# surprise at build time. `scripts/audit.py` catches an advisory that lands on
+# a version already locked; this catches the version that fixes it.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /shell
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

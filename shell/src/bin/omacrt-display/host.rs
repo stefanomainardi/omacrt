@@ -186,6 +186,12 @@ impl Host {
         } else {
             (cw, cw * 3 / 4)
         };
+        // A window a few pixels wide rounds one of these to zero, and the
+        // divisions below are then a panic that takes the compositor and
+        // every client on the tube with it.
+        if pw == 0 || ph == 0 {
+            return;
+        }
         let (ox, oy) = ((cw - pw) / 2, (ch - ph) / 2);
         for y in 0..ch {
             for x in 0..cw {

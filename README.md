@@ -235,11 +235,13 @@ doctor`. Ideas and questions are discussions.
 ## Credits and licenses
 
 Every piece of this that somebody else wrote, and under what terms, is in
-[`THIRD-PARTY.md`](THIRD-PARTY.md). The one that needs saying here: Omarchy's
-wordmark and icon are Copyright (c) David Heinemeier Hansson, MIT, with the
-licence shipped beside the copy at
-[`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy). They are used
-as the theme of a fan project; OmaCRT is not part of Omarchy, is not endorsed
-by the Omacom Foundation, and speaks for neither.
+[`THIRD-PARTY.md`](THIRD-PARTY.md). The one that needs saying here: the
+wordmark spells OMACRT with the letterforms of Omarchy's own drawing, which
+are Copyright (c) David Heinemeier Hansson, MIT, with the licence shipped
+beside it at
+[`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy). Omarchy's icon
+is not here at all: the mark in the boot and on every inner page is the
+project's own. OmaCRT is a fan project, not part of Omarchy, not endorsed by
+the Omacom Foundation, and speaks for neither.
 
 License: MIT.

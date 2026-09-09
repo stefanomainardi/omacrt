@@ -31,6 +31,36 @@ pub fn config_dir() -> PathBuf {
         .unwrap_or_else(|| home().join(".config/omacrt"))
 }
 
+/// Where anything the project can fetch again belongs.
+///
+/// Four other places work this out for themselves and two of them ignore
+/// `XDG_CACHE_HOME`, which is why the tidy sweep can look in the wrong
+/// directory; bringing them here is follow-up work. New code uses this one.
+/// Does this process id still belong to the program we think it does?
+///
+/// A pid read out of a file is a fact about the past. The process it names can
+/// be gone and its number handed to something else, and every `kill` here is
+/// one line after a read, so the check goes immediately before the signal.
+/// Reading `/proc/<pid>/cmdline` costs nothing next to being wrong.
+pub fn pid_runs(pid: i32, program: &str) -> bool {
+    let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+        return false;
+    };
+    let line = String::from_utf8_lossy(&raw).replace('\0', " ");
+    let argv0 = line.split_whitespace().next().unwrap_or("");
+    std::path::Path::new(argv0)
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .is_some_and(|name| name == program)
+}
+
+pub fn cache_dir() -> PathBuf {
+    std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".cache"))
+        .join("omacrt")
+}
+
 pub fn state_dir() -> PathBuf {
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
@@ -345,6 +375,14 @@ pub struct State {
     pub previous_profile: String,
     pub previous_sink: String,
     pub audio_card: String,
+    /// The CRT sink's volume before `on` raised it, as a percentage. `off`
+    /// puts it back: the DAC needs about 125 % to reach a normal television
+    /// volume, and leaving that on a sink the desktop also uses is a loud
+    /// surprise later.
+    pub previous_volume: String,
+    /// Which sink that volume belongs to, so `off` does not have to work out
+    /// the connector again to put it back.
+    pub crt_sink: String,
     /// What `misc:on_focus_under_fullscreen` was before the tube took it,
     /// so that turning the television off puts the desktop back as it was.
     pub previous_focus_under_fullscreen: Option<i64>,
@@ -362,10 +400,15 @@ impl State {
             .unwrap_or_default()
     }
 
+    /// Through `store::save`, like everything else the project keeps.
+    ///
+    /// This is the file `off` reads to put the audio profile, the default sink
+    /// and the compositor's setting back where it found them. Written straight
+    /// with `fs::write`, a crash in the middle left it empty and the undo was
+    /// gone; written through the store there is a copy beside it.
     pub fn save(&self) {
-        let _ = std::fs::create_dir_all(state_dir());
         if let Ok(text) = serde_json::to_string_pretty(self) {
-            let _ = std::fs::write(Self::path(), text);
+            let _ = crate::store::save(&Self::path(), text);
         }
     }
 }
