@@ -7,6 +7,19 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Fixed
+
+- The display process notices a compositor that has died. Only a polite
+  `Finished` from the lease protocol counted as revocation before, and a
+  compositor that crashes sends no event at all, so the process stayed alive
+  holding a dead lease with the television black and the watchdog, which
+  watches the pid, seeing nothing wrong. An error on the connection now counts
+  too.
+- A page flip the connector refuses no longer retries for ever. Nothing marked
+  the frame as queued when the flip failed, so every client commit drew the
+  whole scene again and logged another line, indefinitely. Ten refusals in a
+  row end the display process, and the watchdog puts the television back.
+
 ## [0.4.0] - 2026-09-09
 
 The release the repository opens with. 0.3.0 was tagged the day before, under

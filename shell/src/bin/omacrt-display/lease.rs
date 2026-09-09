@@ -208,13 +208,36 @@ impl Lease {
     }
 
     /// Service the compositor connection without blocking. Returns false once
-    /// the compositor has revoked the lease.
+    /// the lease is gone, which is either a polite `Finished` from the
+    /// compositor or the connection to it breaking: a compositor that dies
+    /// sends no event at all, so an error here has to count as revocation.
+    /// Reporting it is what lets the caller shut down and the watchdog put
+    /// the television back, instead of a live process holding a dead lease.
     pub fn pump(&mut self) -> bool {
-        let _ = self.conn.flush();
-        if let Some(guard) = self.conn.prepare_read() {
-            let _ = guard.read();
+        if let Err(e) = self.conn.flush()
+            && fatal(&e)
+        {
+            eprintln!("lease: flush: {e}");
+            self.state.lease_failed = true;
         }
-        let _ = self.queue.dispatch_pending(&mut self.state);
+        if let Some(guard) = self.conn.prepare_read()
+            && let Err(e) = guard.read()
+            && fatal(&e)
+        {
+            eprintln!("lease: read: {e}");
+            self.state.lease_failed = true;
+        }
+        if let Err(e) = self.queue.dispatch_pending(&mut self.state) {
+            eprintln!("lease: dispatch: {e}");
+            self.state.lease_failed = true;
+        }
         !self.state.lease_failed
     }
+}
+
+/// A read or a flush that would block is the normal state of a socket with
+/// nothing on it. Anything else has ended the connection.
+fn fatal(e: &wayland_client::backend::WaylandError) -> bool {
+    !matches!(e, wayland_client::backend::WaylandError::Io(io)
+        if io.kind() == std::io::ErrorKind::WouldBlock)
 }

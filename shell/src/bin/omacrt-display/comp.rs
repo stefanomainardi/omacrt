@@ -96,6 +96,9 @@ pub struct Crt {
     _drm: DrmOutputManager<Allocator, Exporter, (), DrmDeviceFd>,
     drm_output: Option<DrmOutput<Allocator, Exporter, (), DrmDeviceFd>>,
     frame_queued: bool,
+    /// Page flips refused in a row. A driver that will not take a frame
+    /// takes none of them, so the count only ever runs away.
+    flips_failed: u32,
     lease: Lease,
     running: bool,
     frames: u64,
@@ -117,6 +120,12 @@ struct Recorder {
     frames: u64,
     path: String,
 }
+
+/// Page flips the connector may refuse in a row before the display process
+/// gives up. Ten is about a sixth of a second of a picture that is not
+/// arriving, long enough to ride out a mode change and short enough that the
+/// watchdog puts the television back while somebody is still looking at it.
+const FLIP_FAILURES_ALLOWED: u32 = 10;
 
 const REC_W: usize = 1280;
 const REC_H: usize = 960;
@@ -503,6 +512,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         _drm: drm,
         drm_output: Some(drm_output),
         frame_queued: false,
+        flips_failed: 0,
         lease,
         running: true,
         frames: 0,
@@ -890,8 +900,21 @@ impl Crt {
                         },
                     );
                 } else if let Err(e) = out.queue_frame(()) {
-                    eprintln!("queue_frame: {e}");
+                    // The flip was refused, so no vblank is coming and
+                    // `frame_queued` stays false: every client commit tries
+                    // again. That is a picture that never arrives and a log
+                    // line per commit, so stop and let the watchdog restart
+                    // the display rather than spin here for ever.
+                    self.flips_failed += 1;
+                    eprintln!("queue_frame: {e} ({} in a row)", self.flips_failed);
+                    if self.flips_failed >= FLIP_FAILURES_ALLOWED {
+                        eprintln!(
+                            "the connector has refused {FLIP_FAILURES_ALLOWED} page flips in a row: giving up the lease"
+                        );
+                        self.running = false;
+                    }
                 } else {
+                    self.flips_failed = 0;
                     self.frame_queued = true;
                 }
             }
