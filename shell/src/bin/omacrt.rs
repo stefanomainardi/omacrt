@@ -1183,9 +1183,17 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             "connector handed over".into(),
             marked && !held,
             match (marked, held) {
-                (true, true) => {
-                    "marked non-desktop, but the compositor still holds it: reboot".into()
-                }
+                // The cause is almost always a monitor rule: a connector
+                // with one is a monitor to Hyprland, and a monitor is never
+                // offered for leasing however the kernel has flagged it. The
+                // rule usually matches by description, so it does not turn up
+                // when the config is searched for the connector's name.
+                (true, true) => concat!(
+                    "marked non-desktop and the compositor still holds it. ",
+                    "Remove any hl.monitor rule for it from ~/.config/hypr ",
+                    "(it may match on desc: rather than the name) and reboot"
+                )
+                .into(),
                 (true, false) => "offered for leasing".into(),
                 _ => "not marked non-desktop: sudo bin/omacrt-install --system".into(),
             },
