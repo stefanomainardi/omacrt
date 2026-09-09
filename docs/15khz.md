@@ -107,6 +107,91 @@ default, precisely because turning it on with a stock kernel gives a broken
 picture. 480 line consoles are shown at 240p instead, which is what the line
 count per console exists for.
 
+Measured here on 2026-09-09, on a Radeon RX 7700/7800 XT (Navi 32, DCN 3.2)
+running the stock Arch kernel 7.2.4, through the leased connector rather than
+through a compositor. `omacrt mode 480i` **succeeds**: the modeset returns
+without error, the DAC keeps its lock, and `status` reports 3520x480 at
+59.927 Hz. The tube shows a narrow image in the middle of the screen. So the
+kernel is not refusing the mode on this path; it is programming interlaced
+timings and scanning them out progressively, which at a 525 line vertical
+total and 15.731 kHz is 29.96 Hz, and no television locks to that.
+
+### Why, exactly
+
+Read out of the current upstream tree rather than inferred. Five things stand
+between a 480i modeline and a picture on DCN 3.2, and only the first of them
+is what the earlier note above described.
+
+1. `fill_stream_properties_from_drm_display_mode` in `amdgpu_dm.c` never
+   copies `DRM_MODE_FLAG_INTERLACE` into `timing_out->flags.INTERLACE`. This
+   is the one that produces the strip: everything downstream believes the
+   timing is progressive.
+2. `optc1_validate_timing` in `dcn10_optc.c` returns false for any interlaced
+   timing, under the comment *"Temporarily blocking interlacing mode until
+   it's supported"*. So forcing the flag alone turns a wrong picture into no
+   picture.
+3. The OTG register that enables interlacing is missing from the per-ASIC
+   tables for DCN 3.x. The code that writes it is already there and has been
+   all along:
+
+   ```c
+   /* Interlace */
+   if (REG(OTG_INTERLACE_CONTROL)) {
+           if (patched_crtc_timing.flags.INTERLACE == 1)
+                   REG_UPDATE(OTG_INTERLACE_CONTROL, OTG_INTERLACE_ENABLE, 1);
+   ```
+
+   guarded by "if this ASIC's table has an address for it". DCN 1 and 2 have
+   one and interlace works there. For DCN 3.2 the entry is simply absent, so
+   the offset is zero and the block is skipped.
+4. DML1, which is what DCN 3.2 validates through (`using_dml2 = false` in
+   `dcn32_resource.c`), doubles `VRatio` for an interlaced timing when the
+   ASIC does not claim `ptoi_supported`, and `dcn3_2_ip` sets that to false.
+   The doubling then fails the scaler taps validation. The patch's own comment
+   says so.
+5. `interleave_en` on the scaler's line buffer is never set from the timing,
+   in `dcn10_hwseq.c` and `dcn20_hwseq.c`.
+
+What is **not** missing is worth listing too, because it is most of the work:
+the OTG programming code, the front porch workaround, the field number
+handling, `dest.interlaced` reaching DML from `dcn20_fpu.c`, and the HDMI
+stream encoder, which the 15 kHz patches do not touch at all.
+
+The hardware is not the limit either. AMD's own public headers for this ASIC
+carry the register and its bit:
+
+```c
+#define regOTG0_OTG_INTERLACE_CONTROL                     0x1b44
+#define OTG0_OTG_INTERLACE_CONTROL__OTG_INTERLACE_ENABLE__SHIFT  0x0
+#define OTG0_OTG_INTERLACE_CONTROL__OTG_INTERLACE_ENABLE_MASK    0x00000001L
+```
+
+For a DCN 3.2 card the whole of patch 3 comes to about ten lines: one register
+table entry, one shift and mask entry, three in `amdgpu_dm.c`, one deletion in
+`dcn10_optc.c`, two in `dcn20_hwseq.c` and two in `display_mode_vba.c`.
+
+### Could it be done without rebuilding anything
+
+Asked and answered honestly, because the first three answers here were wrong.
+Every one of the five is reachable from an out-of-tree module on this machine:
+`fill_stream_properties_from_drm_display_mode`, `optc1_validate_timing`,
+`optc1_program_timing` and `dcn20_update_dchubp_dpp` are all in `/proc/kallsyms`
+as module-local symbols, so none of them is inlined; `optc1_validate_timing` is
+reached through `.validate_timing` in a function pointer table, so it can be
+swapped rather than probed; the register offsets live in
+`static struct dcn_optc_registers optc_regs[4]`, which is **not** const; the
+shift and mask tables are const but are reached through pointers in a writable
+instance, so a copy can be substituted; and `dcn3_2_ip` is a non-static,
+non-const global, symbol type `d`, which the driver itself already writes to at
+runtime.
+
+So it is possible, and this document previously implied it was not. It is also
+a bad idea for anything but an experiment: it means writing hardware register
+offsets into a live driver's internal structures, matched to struct layouts
+that move between kernel releases, where a wrong offset is a write to an
+arbitrary MMIO address. Rebuilding the module with ten lines of patch is
+smaller, and it fails at compile time rather than at run time.
+
 For anybody who wants the interlaced modes, the patches are maintained at
 `D0023R/linux_kernel_15khz`, which tracks Calamity's original work from
 GroovyMAME and Switchres. The eight of them, in the order they are applied:
