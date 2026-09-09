@@ -171,11 +171,16 @@ ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
 pal_i  = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
 ```
 
-`mode 480i` and `mode 576i` apply them. The refresh in `status` is the frame
-rate, half the field rate: 29.96 Hz means 59.93 fields. The launcher draws at
-the full line count in these modes. Both were programmed on the RGB-Pi 2;
-whether a source looks better as fields than as a deinterlaced 240p picture
-is a judgement for the eye, in front of the tube.
+`mode 480i` and `mode 576i` apply them, and the launcher draws at the full
+line count. The refresh in `status` is the frame rate, half the field rate:
+29.96 Hz means 59.93 fields.
+
+A stock `amdgpu` accepts both modelines and programs them, and then scans them
+out progressively, one field's worth of lines at the whole vertical total, so
+the tube is asked for 29.96 Hz and locks to nothing. The picture is a narrow
+strip. Interlace on this driver needs a patched kernel; what stands in the way
+is in [`15khz.md`](15khz.md). Until then these two modes are worth having only
+to try that patch against.
 
 ## Library and BIOS
 

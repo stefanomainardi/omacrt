@@ -29,7 +29,9 @@ written to a per launch file and passed with `--appendconfig`, so the base
 
 `crt_switch_resolution` is `1` only when `switching = true` is set at the top
 of `systems.toml`. Mode switching needs RetroArch on the KMS or X11 video
-driver and the 15 kHz kernel; on a Wayland desktop it does nothing, so it stays
+driver, and a kernel carrying the 15 kHz patches for the modes it picks. This
+project does not use it: `omacrt` sets the mode itself on the leased connector,
+on a stock kernel. On a Wayland desktop the setting does nothing, so it stays
 off while testing in a window. Pinned frames work everywhere.
 
 ## Lines, and the tube following the game

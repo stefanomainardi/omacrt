@@ -207,7 +207,7 @@ which is how every screenshot and video in this repository was made.
 
 [`CHANGELOG.md`](CHANGELOG.md) keeps what has landed. In short: the tube is
 ours, games, music and video run on it, the collection is managed from the
-bar, and the interlaced modes are in.
+bar, and the interlaced timings are there for a kernel that can scan them.
 
 ## Contributing
 

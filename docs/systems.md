@@ -9,7 +9,8 @@ missing the shell uses built-in defaults for the cores Arch ships.
 
 ```toml
 # Enable mode switching in RetroArch (CRT SwitchRes). Needs the KMS or X11
-# video driver and the 15 kHz kernel. Off by default: pinned frames still work.
+# video driver, and a kernel carrying the 15 kHz patches for the modes it
+# picks. Off by default: pinned frames still work.
 switching = false
 
 # Optional: RetroArch binary and core directory.
