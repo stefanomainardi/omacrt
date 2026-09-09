@@ -20,7 +20,7 @@ jobs:
     name: build, lint and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: System libraries the crate links against
         run: |
@@ -83,7 +83,7 @@ jobs:
     name: shell scripts parse
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: bash -n over every script
         run: |
           fail=0
@@ -110,7 +110,7 @@ jobs:
     name: no new advisory against a locked crate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The same database cargo-audit reads, asked over OSV's API, so this
       # needs nothing installed. The two advisories that stand are listed in
       # the script with the reason; anything new fails here.
@@ -120,7 +120,7 @@ jobs:
     name: plugin QML parses
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: qmllint
         run: |
           # The runner's apt index and the mirror it points at can be a
@@ -139,7 +139,7 @@ jobs:
     name: python scripts compile
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
