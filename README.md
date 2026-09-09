@@ -2,15 +2,17 @@
   <img src="docs/logo.png" alt="OmaCRT" width="504">
 </p>
 
-# OmaCRT
+<h1 align="center">OmaCRT</h1>
+
+<p align="center">
+  <a href="https://www.omacrt.com">omacrt.com</a>
+</p>
 
 An [Omarchy](https://omarchy.org) PC plugged into a 15 kHz CRT television over
 RGB SCART, playing retro games the way they were drawn: native lines, native
 refresh, real scanlines, no scaler in between. A launcher on the tube in the
 Omarchy look, a bar plugin on the desktop, and a display process that owns the
 television outright. Written in Rust, drawn at 320x240.
-
-## What it looks like
 
 <p align="center">
   <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
@@ -19,83 +21,24 @@ television outright. Written in Rust, drawn at 320x240.
 <p align="center">
   <img src="docs/screens/coverflow.png" width="270" alt="Cover flow on the tube">
   <img src="docs/screens/systems.png" width="270" alt="Systems with console pictures">
-  <img src="docs/screens/pause.png" width="270" alt="Pause menu over a game">
   <img src="docs/screens/deck-radio.png" width="270" alt="The music deck tuned to a radio">
-  <img src="docs/screens/equalizer.png" width="270" alt="The ten band equaliser">
-  <img src="docs/screens/visual-mode7.png" width="270" alt="Mode 7 equalizer visualizer">
 </p>
 
-An idle television is a window. The ambient page draws what the weather is
-actually doing: the sun crosses the arc between the real sunrise and sunset,
-clouds drift at the speed of the real wind, rain slants with it and breaks on
-the ground, lightning lights the frame, and after dark the town along the
-horizon turns its windows on.
-
-<p align="center">
-  <img src="docs/screens/weather.gif" width="560" alt="The ambient page cycling through sun, rain, a thunderstorm and a clear night">
-</p>
-
-The other side of an idle set is what the machine itself is doing, drawn as a
-16 bit status screen: a bank of little meters, one per logical processor, that
-eases up fast and falls back slowly the way the meters on an amplifier do,
-memory and graphics on bevelled plates, a minute and a half of history for
-load and for the network, and the busiest processes at the foot. All of it out
-of `/proc` and `/sys`.
-
-<p align="center">
-  <img src="docs/screens/system.gif" width="560" alt="The system monitor: a bank of meters, one per processor, moving with the machine">
-</p>
-
-The pictures were captured from the tube's own framebuffer by `omacrt
-shot`, and the boot by `omacrt record`; the television adds the
-scanlines. The last two are that same framebuffer rendered offline with
-`--headless --realtime`, because a screenshot of a thunderstorm has to wait
-for a thunderstorm, and a monitor reads zero unless the clock runs at the
-speed the kernel moves its counters.
-
-## At a glance
-
-- **The television is a client of its own compositor.** The desktop hands the
-  DAC's connector over at boot; `omacrt-display` sets the 15 kHz timing
-  and runs the tube. Nothing from the desktop can land on it.
-- **Games.** A collection indexed from any disk in any folder layout, box
-  art, console pictures, a cover flow, search across everything, letter
-  jumps, pads mapped on the tube, save states in sight, a pause menu over the
-  game, the line count of each system set live.
-- **Music.** cliamp as the engine: radio by country and genre, Spotify (and
-  any provider cliamp knows) with search, a hi-fi deck with cassette,
-  turntable and VU meters, album art and station logos, seven visualizers,
-  synced lyrics, a ten band equaliser, sleep timer, all tuned from a Settings
-  page on the tube.
-- **Video.** Local films fitted to the tube, YouTube searched and played from
-  the television, a link sent from the desktop.
-- **When nothing is playing.** Four pages can have an idle television and
-  they take turns: the wordmark under a text effect, a photo frame reading the
-  house's own Immich server, a window with the weather drawn in it, and a
-  system monitor drawn as a 16 bit status screen. Music playing still takes
-  the screen for the visualizer.
-- **Omarchy all the way.** Theme colours, the bar widget and its panel, a full
-  screen library overlay, the shell's plugin system, cliamp, mpv, yt-dlp: the
-  desktop's own tools drive the CRT.
-- **One CLI for everything**, a control pipe to drive the launcher from a
-  script, screenshots and recordings straight from the tube's framebuffer.
+Every picture here came off the tube's own framebuffer with `omacrt shot`, and
+the boot with `omacrt record`; the television adds the scanlines.
+[omacrt.com](https://www.omacrt.com) has the rest of it moving, including the
+film.
 
 ## Why
 
 A television that marked a couple of generations sits in a corner, still
-perfect at what it was built for, and a modern PC can feed it the exact
-signal its tube was made to show. This project is a way to learn, in the
-open, how that signal, the kernel, a compositor, an emulator and a music
-player fit together, and to give the old screen a second life that is both
-useful and fun: the games look the way they were drawn, the radio sounds like
-a radio, an evening's video plays without a scaler in between.
-
-It is also a playground. A system this malleable invites experiments the
-big frontends never bothered with: a cassette that turns with the song, a
-Mode 7 floor under the spectrum, covers on a shelf that reflect on the floor,
-a laser etching the wordmark at boot. Some of it is nostalgia, some of it is
-just the pleasure of drawing pixels at 320x240 and seeing them glow on
-glass. Both are the point.
+perfect at what it was built for, and a modern PC can feed it the exact signal
+its tube was made to show. This project is a way to learn in the open how that
+signal, the kernel, a compositor, an emulator and a music player fit together,
+and to give the old screen a second life: the games look the way they were
+drawn, the radio sounds like a radio, an evening's video plays without a
+scaler in between. It is also a playground, because a system this malleable
+invites the experiments the big frontends never bothered with.
 
 > **Three things worth knowing.**
 >
@@ -133,15 +76,12 @@ glass. Both are the point.
   <img src="docs/architecture.png" width="720" alt="OmaCRT architecture, drawn as a 16 bit illustration">
 </p>
 
-The same thing with every process and channel named is a flowchart in
-[`docs/architecture.md`](docs/architecture.md).
-
 The desktop never touches the television. At boot a systemd unit installs an
 EDID override that marks the DAC's connector *non-desktop*, so Hyprland leaves
-it alone and offers it through the DRM lease protocol. `omacrt-display`
-takes the lease, programs the 15 kHz timing straight into the kernel and runs a
-small Wayland compositor of its own on that output. The launcher, RetroArch and
-mpv are its clients, forced fullscreen at the output's size. No bar,
+it alone and offers it through the DRM lease protocol. `omacrt-display` takes
+the lease, programs the 15 kHz timing straight into the kernel and runs a
+small Wayland compositor of its own on that output. The launcher, RetroArch
+and mpv are its clients, forced fullscreen at the output's size. No bar,
 notification, pointer or stray window can reach the tube, and any timing the
 kernel accepts is one command away, live, including a different line count per
 system (224 lines for a Super Nintendo game, 240 for a NES one).
@@ -150,48 +90,28 @@ The bar plugin and the CLI stay on the desktop and talk to the tube over a
 control pipe: the panel is the remote control, the overlay manages the
 collection, the CLI does everything from a terminal.
 
-## Omarchy on the tube
+The same thing with every process and channel named is a flowchart in
+[`docs/architecture.md`](docs/architecture.md); the study behind the timings
+is [`docs/15khz.md`](docs/15khz.md).
 
-The interesting part is not the emulator, it is what an integrated desktop
-can send to a television once the television is just another output it owns.
+## What is on the television
 
-- **The shell.** The bar widget, the panel and the library overlay are
-  Omarchy shell plugins, in Quickshell like the rest of the bar, using the
-  same components, colours and popout behaviour. A keybinding can talk to them
-  through `omarchy-shell` IPC (`power`, `on`, `off`, `ntsc`, `pal`, `focus`,
-  `library`).
-- **Themes.** The launcher reads Omarchy's theme colours and offers every
-  installed theme; switching one blends the whole screen, icon and wordmark
-  included.
-- **cliamp.** Omarchy's music player runs as a daemon and the launcher is its
-  face on the CRT over a Unix socket: radio through the Radio Browser
-  directory it ships, Spotify, YouTube Music and the other providers set up
-  once with `cliamp setup`, its spectrum analyser feeding the visualizers, its
-  lyrics on the screen. What plays on the desktop can play on the tube and
-  the other way round.
-- **mpv and yt-dlp.** Local films, a YouTube search typed on the tube, a
-  link copied on the desktop and sent with one click from the panel or with
-  `omacrt watch`, all through the same player with the tube's own fit
-  pipeline (480p streams, 480i or 576i by frame rate when the modeline lands).
-- **RetroArch.** Driven without its menu: a configuration written per launch
-  from `systems.toml`, hotkeys pressed by the compositor, save states read
-  back for the launcher's rows.
-- **The menu.** A **Television** entry in Omarchy's own menu, through the
-  extension file Omarchy reads for exactly that
-  (`~/.config/omarchy/extensions/omarchy-menu.jsonc`): power, channels,
-  picture, sound, the library, capture, pads and diagnostics, each row calling
-  the same CLI a terminal would. Nothing patched.
-- **Walker.** *Play a game...* in that menu hands the whole collection to
-  Omarchy's own runner and plays what comes back on the television, turning
-  the tube on if it is off. Twenty thousand games belong in a fuzzy finder,
-  not in a nested menu.
-- **Immich.** The photo frame reads the house's own photograph server: this
-  day in the years before, an album, the favourites, with where and when and
-  who from the server's own metadata. The pictures never leave the network.
-- **The rest of the box.** PipeWire routes the launcher, RetroArch, mpv and
-  cliamp to the television's audio and back; the I2C bus of the HDMI port
-  configures the DAC's sync; systemd hands the tube over at boot; pads come
-  through SDL with a wizard for the unknown ones.
+- **Games.** A collection indexed from any disk in any folder layout, box art,
+  console pictures, a cover flow, search across tens of thousands of titles,
+  pads mapped on the tube, save states in sight, a pause menu over the game.
+- **Music.** cliamp as the engine: radio by country and genre, Spotify and the
+  other providers it knows, a hi-fi deck with cassette, turntable and VU
+  meters, seven visualizers, synced lyrics, a ten band equaliser.
+- **Video.** Local films fitted to the tube, YouTube searched and played from
+  the television, a link sent from the desktop.
+- **When nothing is playing.** Four pages take turns: the wordmark under a
+  text effect, a photo frame reading the house's own Immich server, the
+  weather drawn as a window, and a system monitor as a 16 bit status screen.
+
+Screen by screen, with what each one does and why:
+[`docs/launcher.md`](docs/launcher.md). What the desktop lends it, from the
+bar plugin to the menu entry: [`docs/omarchy.md`](docs/omarchy.md). Keyboard
+and pad bindings: [`docs/input.md`](docs/input.md).
 
 ## Hardware
 
@@ -216,15 +136,8 @@ elsewhere:
 Run `omacrt setup` first on a machine that is not this one: it lists the
 connectors with what their EDID says, picks the one the DAC is on, works out
 the standard from the locale, and writes those two lines to `crt.toml`.
-Everything else has a default that works. `omacrt doctor` says what is
-still missing.
-
-The HDMI path works with wide "super resolution" modelines (3520x240 at 72 MHz,
-15.73 kHz, 60.04 Hz for NTSC; 3840x288 for PAL). The tube turns the wide frame
-back into 4:3, the emulator fills it, and every game line lands on one TV line.
-A DisplayPort DAC tier (Realtek RTD2166 adapters plus a VGA to SCART sync
-combiner) for native 320x240 timings is documented in
-[`docs/15khz.md`](docs/15khz.md) and has not been
+`omacrt doctor` says what is still missing. The DisplayPort DAC tier for
+native 320x240 timings is in [`docs/15khz.md`](docs/15khz.md) and has not been
 needed so far.
 
 ## Install
@@ -255,168 +168,24 @@ place before it is. Set `shell.autostart = true` in
 `~/.config/omacrt/crt.toml` and the television boots straight into the
 launcher along with the desktop.
 
-The project was called `omarchy-crt` until it became OmaCRT. Upgrading from
-one of those builds needs nothing: the first start moves what is in
-`~/.config/omarchy-crt`, `~/.cache/omarchy-crt`, `~/.local/share/omarchy-crt`
-and `~/.local/state/omarchy-crt` into the `omacrt` folders and deletes
-nothing, and the installer moves the plugins and binaries it had put in place
-itself to `~/.local/share/omacrt/retired`.
-
-## The launcher
-
-A 320x240 framebuffer drawn sixty times a second, no shader faking a tube. The
-theme comes from Omarchy's own colors; every installed theme is available and
-switches with a blend.
-
-- **Boot.** Power surge and roll, a BIOS style POST with live data, the icon
-  revealed band by band, a chime, the wordmark etched by a laser
-  (TerminalTextEffects' `laseretch`, ported pixel by pixel), then the CRT tag
-  slams in SNES title screen style over a Mode 7 floor. Both logos glint
-  every few seconds afterwards.
-- **Games.** Systems with console pictures, games with box art from the
-  libretro thumbnails (matched by title when the file names carry no region
-  tags, so a RePlayOS style set gets its covers too; `omacrt library
-  covers` fetches them all at once), collections, favourites, recent. Arcade
-  files named after the emulated set, `mslug` for Metal Slug, are read
-  through the databases RetroArch ships, so those lists show titles and find
-  their covers as well. `X`
-  opens the **cover
-  flow**: the selected cover large on a shelf, the neighbours receding at an
-  angle, everything mirrored on the floor, sliding with inertia.
-- **Search.** `/` filters the open list as you type; from the home menu it
-  searches the whole collection, tens of thousands of titles answering within
-  a frame. Pads get
-  the same with the left trigger and an on screen keyboard, and jump letter
-  by letter with the shoulder buttons.
-- **Launch ritual.** A cartridge slides in (a disc spins up for CD systems),
-  scrape and click, the picture collapses to a line, the emulator takes over
-  with the line count the system wants. RetroArch runs with its own menu and
-  notifications off, save state on exit and resume on start.
-- **Resume or start again.** A game left in the middle asks which it is to be:
-  carry on from the state written on exit, or a new session that leaves that
-  state alone.
-- **Pause menu.** Select + Start, the home button, or F1: resume, save state,
-  load state, rewind, fast forward, slow motion, reset, back to the launcher. The compositor presses
-  RetroArch's real hotkeys, so nothing depends on a network command. Every
-  game with a save state carries a small arrow and says when it was left.
-- **Music.** On top of cliamp, started as a daemon when needed: the radio
-  stations of your country, every country and genre of the Radio Browser
-  directory, favourites, history, and any provider set up in cliamp (Spotify,
-  YouTube Music, Qobuz, Plex, Jellyfin). The now playing screen is a **hi-fi
-  deck**: a cassette whose reels turn with the music, or a radio dial whose
-  needle glides to the station through a burst of static, two VU meters with
-  inertia. Six idle seconds later the screen becomes a **visualizer** driven
-  by cliamp's spectrum and a kick detector: Mode 7 equalizer, silk ribbons,
-  oscilloscope, starfield, plasma, pixel fire, spectrum tower. Synced lyrics
-  when cliamp has them, a sleep timer, and the selection band of every list
-  breathing with the beat. The album art of a Spotify track and the logo of a
-  radio station arrive on the cassette label, the record label and the dial.
-  An **equaliser** page moves the engine's ten bands one decibel at a time,
-  or takes one of its presets.
-
-<p align="center">
-  <img src="docs/screens/music.png" width="270" alt="The music screen">
-  <img src="docs/screens/visual-ribbons.png" width="270" alt="Silk ribbons visualizer">
-  <img src="docs/screens/youtube.png" width="270" alt="YouTube search on the tube">
-</p>
-
-- **Videos.** Local films through mpv with a themed on screen display and a
-  fit pipeline for the tube (480i or 576i by frame rate, pulldown or PAL
-  speed-up for film, letterbox or crop, a safe area, a retro 240p mode).
-  **YouTube** on the television: search from the tube, watch later, recently
-  watched, the link in the clipboard, or `omacrt watch URL` from a
-  terminal; streams are fetched at 480p, all a 240 line tube can show.
-- **Photo frame.** The house's photographs on the television, from an Immich
-  server on the same network: this day in the years before, an album or the
-  favourites, with the place, the date and the faces the server already knows.
-  Nothing over the picture, or the time and the caption in the corners, or the
-  whole ambient page with a clock, the weather, the next appointment and what
-  is playing. A photograph that fills the screen drifts a pixel a frame while
-  it is up, so it never looks like a photograph of a television, and one held
-  upright is fitted whole against a blurred copy of itself rather than black
-  bars. The prepared pictures are the frame's own collection, so it works with
-  the server switched off.
-- **The weather, drawn.** The ambient page is a window, not a text field: the
-  sun crosses the arc between the real sunrise and sunset and the moon takes
-  the same path at night, clouds drift in three layers at the speed of the
-  real wind, rain slants with it and breaks on the ground, snow wanders down,
-  fog rolls in bands, lightning lights the frame, and a town sits along the
-  horizon with its windows coming on after dark. Every gradient is an ordered
-  dither, because a console with a fixed palette had no other way. It can
-  have the sound as well, off by default under Settings, Sound: rain with
-  drops on it, gusting wind, thunder behind a downpour, birds by day and
-  crickets by night, all synthesized and then held at 8 kHz and quantised the
-  way a sample was in 1990. That page is where the launcher's other noises
-  are switched off too.
-- **System monitor.** What the machine is doing, drawn as a 16 bit status
-  screen: a bank of little meters, one per processor, memory and graphics on
-  bevelled plates, a minute and a half of history for load and network, the
-  rates and the busiest processes. Straight out of `/proc` and `/sys`.
-- **When it is left alone.** Four pages can have an idle television: the
-  wordmark under a text effect, the photo frame, the weather, and the system
-  monitor. One of them keeps the screen, or several take turns every so many
-  seconds, switched on and off a page at a time under Settings, Screensaver.
-  Music playing takes the screen back for the visualizer, because a page
-  showing the time is a poor answer to a room with music in it.
-- **Pads.** SDL's database plus a wizard on the tube for the pads it does not
-  know: press each control once and it is mapped for good.
-- **Sound.** Every click, whoosh, crackle and scrape is synthesized at
-  startup. No background music of its own.
-
-Keyboard and pad bindings are in [`docs/input.md`](docs/input.md); the
-launcher's flags and offline rendering in [`shell/README.md`](shell/README.md).
-
-## The bar plugin
-
-<p align="center">
-  <img src="docs/screens/panel.png" width="300" alt="The bar panel">
-  <img src="docs/screens/library-overlay.png" width="540" alt="The library overlay">
-</p>
-
-A television glyph in the Omarchy bar shows whether the tube is on the air
-and at how many lines. The panel is the remote control: power, NTSC or PAL,
-the keyboard to the launcher, DAC sync mode, audio to the TV, TV volume, a
-field to send a link to the television. The **Library** overlay manages the
-collection full screen: the folders the scan reads, disks that look like
-collections with one click "adopt and scan", every system with its games and
-core (a missing core offers its package, from the repositories or the AUR),
-the BIOS files the cores expect with import from any folder that holds them,
-and the folders the scan could not place with a system picker.
-
-See [`plugin/README.md`](plugin/README.md).
+The project was called `omarchy-crt` until it became OmaCRT. Upgrading needs
+nothing: the first start moves the four old folders into their `omacrt` names
+and the installer retires the plugins and binaries it had put there itself,
+deleting nothing.
 
 ## The CLI
 
 Everything the plugin and the launcher do can be typed:
 
 ```text
-omacrt setup [--connector NAME] [--standard ntsc|pal] [--dry-run]
-omacrt on | off | toggle | status | boot | doctor [--fix]
-omacrt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
-omacrt shell start|stop|restart|focus | shell key <input>... | shell type <text>
-omacrt shell screen games|music|videos|frame|ambient|monitor|settings|...
-omacrt play <title|path> [--force] | watch <file|url> [--later [TITLE]]
-omacrt library scan|games|discover|covers|cores|set|assign|unknown|roots
-omacrt bios [import DIR|discover] | frame check|fill|clear
-omacrt shot out.png | record start out.mp4 | record stop | monitor on|off
-omacrt game menu|pause|save|load|reset|quit | game key <key> [ms]
-omacrt audio crt|desktop|all|apps | audio volume N|+N|-N
-omacrt dac status|csync and|xor|separate | config [set KEY VALUE]
+omacrt on | off | status | doctor | mode ntsc|pal|film|480i|576i
+omacrt library scan DIR | play <title> | watch <file|url>
+omacrt shell key <input>... | shot out.png | record start out.mp4
 ```
 
-Details in [`docs/cli.md`](docs/cli.md). `shell key`, `shell type` and `shell
-screen` drive the launcher over its control pipe, which is how every
-screenshot and video in this repository was made, and how the desktop menu
-reaches it. `omacrt-pick` puts a fuzzy picker in front of `play`.
-
-## The library scans anything
-
-Point `omacrt library scan` at a disk and it works out what every file
-is: extension, the words in the folder names, disc image signatures, the
-names inside zips. No renaming, no fixed folder scheme. Regional variants
-collapse onto one title and systems show up when they have games. Details in
-[`docs/systems.md`](docs/systems.md), the display mode per system in
-[`docs/video-policy.md`](docs/video-policy.md).
+Every verb, with its flags, is in [`docs/cli.md`](docs/cli.md). `shell key`,
+`shell type` and `shell screen` drive the launcher over its control pipe,
+which is how every screenshot and video in this repository was made.
 
 ## Repository layout
 
@@ -429,7 +198,7 @@ collapse onto one title and systems show up when they have games. Details in
 | `bin/omacrt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
-| `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting |
+| `docs/` | The 15 kHz study, what is on the tube screen by screen, what Omarchy lends it, hardware notes, systems and video policy, controllers, CLI, troubleshooting |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
 | `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
@@ -449,23 +218,16 @@ welcome, and there is one rule that is not negotiable, because half of this
 cannot be checked any other way: **it has to have run on a real television**,
 and the pull request has to say what it ran on.
 
-`cargo build --release` in `shell/` builds everything. `cargo fmt`, `cargo
-clippy --all-targets -- -D warnings`, `cargo test` and `python3
-scripts/audit.py` are what CI runs, along with a headless boot whose frames
-have to come out as pictures rather than a blank screen. Tests cover what can
-be decided on a machine with no tube: names into titles, titles into box art,
-modelines, the video fit, the durable writes.
-
-- [`CONTRIBUTING.md`](CONTRIBUTING.md): what gets merged, what does not, and
-  the standards.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): what gets merged, what does not, the
+  standards, and the commands CI runs.
 - [`AGENTS.md`](AGENTS.md): the working guide. The modules, how to render a
   screen without a television and look at it, how to add a screen, a console,
   a setting or a CLI verb, and the rules that have each cost a broken session.
   Written for a coding agent and fine for a person.
 - [`SECURITY.md`](SECURITY.md): what runs as root, what is downloaded and from
-  where, what is executed, what can be killed, and the one credential that can
-  exist.
-- [`CHANGELOG.md`](CHANGELOG.md): the releases.
+  where, what is executed, and the one credential that can exist.
+- [`docs/troubleshooting.md`](docs/troubleshooting.md): what has gone wrong so
+  far and what it turned out to be.
 
 Bugs are issues, with the template filled in and the output of `omacrt
 doctor`. Ideas and questions are discussions.
@@ -473,27 +235,11 @@ doctor`. Ideas and questions are discussions.
 ## Credits and licenses
 
 Every piece of this that somebody else wrote, and under what terms, is in
-[`THIRD-PARTY.md`](THIRD-PARTY.md). The short version:
-
-- Omarchy's wordmark and icon: Copyright (c) David Heinemeier Hansson, MIT,
-  with the licence shipped beside the copy at
-  [`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy). Used here as
-  the theme of a fan project; OmaCRT is not part of Omarchy, is not
-  endorsed by the Omacom Foundation, and speaks for neither.
-- `font8x8` bitmap font: Daniel Hepper, public domain, after the IBM VGA fonts.
-- `laseretch` and the effect catalog: inspired by
-  [TerminalTextEffects](https://github.com/ChrisBuilds/terminaltexteffects) by
-  ChrisBuilds.
-- Box art: the [libretro thumbnails](https://github.com/libretro-thumbnails)
-  repositories. Console pictures: RetroArch's `systematic` assets (CC BY).
-- Radio directory: [Radio Browser](https://www.radio-browser.info/). Music
-  engine: [cliamp](https://github.com/bjarneo/cliamp) by bjarneo.
-- 15 kHz kernel patches: Calamity and D0023R. Switchres and GroovyMAME:
-  Antonio Giner and the GroovyArcade community.
-- Hardware research: the Batocera CRT Script wiki by ZFEbHVUE and the
-  RetroRGB, shmups and arcadecontrols communities.
-- Launcher flow (systems, then games, RetroArch without its menu): inspired
-  by the GPL frontend of RGB-Pi OS by rtomasa; the display mode policy is our
-  own on top of upstream RetroArch CRT SwitchRes.
+[`THIRD-PARTY.md`](THIRD-PARTY.md). The one that needs saying here: Omarchy's
+wordmark and icon are Copyright (c) David Heinemeier Hansson, MIT, with the
+licence shipped beside the copy at
+[`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy). They are used
+as the theme of a fan project; OmaCRT is not part of Omarchy, is not endorsed
+by the Omacom Foundation, and speaks for neither.
 
 License: MIT.
