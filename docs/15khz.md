@@ -170,6 +170,39 @@ For a DCN 3.2 card the whole of patch 3 comes to about ten lines: one register
 table entry, one shift and mask entry, three in `amdgpu_dm.c`, one deletion in
 `dcn10_optc.c`, two in `dcn20_hwseq.c` and two in `display_mode_vba.c`.
 
+### It does work on this generation, and what to expect
+
+Third party evidence, from the patch set's own issue tracker, which settles
+the question the paragraphs above could only reason about.
+
+An owner of an **RX 7700S**, which is RDNA 3 and the same DCN 3.2 display
+engine as the card here, reported interlaced output as a black screen
+(`D0023R/linux_kernel_15khz#11`). Interlace for DCN 3 was added to patch 03
+only recently; with that version their answer was "Works great", and they left
+a note for anybody arriving with the same problem:
+
+> for those reading who have an issue with a horizontally squished interlaced
+> image or no image on any AMD GPU newer than the RX 5x00 series, try this
+> patch
+
+A horizontally squished image is exactly what this machine shows. So the
+silicon does interlace, the driver is the only thing in the way, and the
+symptom has a name.
+
+Two things worth carrying over before trying it.
+
+**The vertical timings want odd numbers.** On a 6700 XT the field order came
+out wrong until the sync values were made odd
+(`D0023R/linux_kernel_15khz#16`): `1280 1360 1536 1664 480 489 493 525`. The
+interlaced modelines in `crt.toml` are even (`480 484 490 525`), so they are
+likely to land on that pitfall on the first attempt. Patch 08 forces even
+fields for DCN 1, which is the opposite convention, so this is per generation.
+
+**`amdgpu.dc=0` is not a way out here.** It is reported to give working
+interlace on a stock kernel, but only on cards old enough to have the legacy
+DCE path. Every Navi part requires the Display Core, so the parameter has
+nothing to fall back to.
+
 ### Could it be done without rebuilding anything
 
 Asked and answered honestly, because the first three answers here were wrong.
