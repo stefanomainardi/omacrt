@@ -9,6 +9,15 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- The launcher is called **OmaCRT**, and the name lives in one constant. The
+  BIOS post signs itself `OmaCRT BIOS 4.01 / 15kHz` and credits Omarchy as
+  what it runs on and is built for, rather than as who wrote it.
+- A mark of the project's own: four horizontal bars crossed by the dark cut of
+  the beam's return, which travels across them and stops where it started. It
+  is described as a shape rather than stored as a bitmap, so every size is
+  exact, and it stands in the boot, the gate, the home screen and the header
+  of every inner page, returning once every nine seconds wherever it is.
+
 - The pause menu chooses the picture and the shader. **Picture** is `fill the
   screen`, `as the core asks` or `square pixels`, and on the tube the
   viewport is worked out by the launcher from the size the core last drew
@@ -119,6 +128,26 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The boot presents the project's own mark instead of Omarchy's. The mark is
+  written from the top down behind a beam, the beam runs back across it once,
+  and then the laser etches the wordmark: showing somebody else's mark in the
+  first two seconds of every boot was the opposite of the distance the rename
+  was for.
+- The boot is a second and a half shorter, and the two dead beats in it are
+  gone. The icon used to finish appearing and then wait almost a second before
+  the laser began, and after the phosphor turned there was another second of a
+  still picture before the menu arrived. The floor now leaves while the menu
+  rises, rather than after it.
+- The floor unrolls from the horizon with the light that opens it, instead of
+  fading up as a slab. A slab that appears out of nothing has no cause; and
+  what travels across it is light rather than an edge of geometry, because a
+  hard edge with black beyond it reads as a picture being cut off.
+- The act's soundtrack is read off the same sheet as the picture. It used to
+  start at the slam, so the floor arrived in silence and the whole rumble
+  landed two seconds late.
+- The home screen keeps the twenty two rows that were reserved under the
+  wordmark for the CRT tag, which is not drawn any more, so the last menu row
+  no longer sits in the overscan.
 - Twilight is a ramp rather than a switch. The stars used to vanish, the sky
   change colour, the town's windows go out and the Atomium's lights die in
   the single frame the sun crossed the horizon in. All four now fade across
@@ -170,6 +199,9 @@ caveat for a 0.x project: anything may still move.
 
 ### Removed
 
+- The CRT tag: three letters that rose from the horizon spinning, slammed into
+  the foreground and flew to a resting place under the wordmark. The wordmark
+  says CRT itself now, so the tag said it twice.
 - The effect's name from the screensaver. `tte slide` in the corner was a
   note to whoever was building the effects, and there are eighteen of them
   now: the wordmark can have the screen to itself.
@@ -179,6 +211,13 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- The laser comes from outside the picture. It stopped eight cell rows above
+  the word, which during the etch is the middle of the screen, so the beam
+  appeared to start in mid air. It is drawn until it has left the frame, which
+  the `laseretch` screensaver gets as well.
+- `PRESS START` is centred with its cursor. The words were centred and the
+  blinking block appended after them, which pushed the pair to the left by
+  half a cursor and its gap.
 - A saved album on Spotify would not play. Albums come back in the same list
   as the playlists and only their id says so; asking the provider to load one
   leaves the album's own address in the queue as though it were a stream,

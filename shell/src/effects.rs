@@ -191,7 +191,7 @@ pub struct Palette {
 }
 
 pub enum Effect {
-    Etch(LaserEtch),
+    Etch(Box<LaserEtch>),
     Vhs {
         grid: Grid,
         seed: u32,
@@ -209,7 +209,7 @@ pub enum Effect {
 impl Effect {
     pub fn new(kind: Kind, seed: u32, stops: [Color; 3], palette: Palette) -> Self {
         if kind == Kind::LaserEtch {
-            return Effect::Etch(LaserEtch::new(seed, stops));
+            return Effect::Etch(Box::new(LaserEtch::new(seed, stops)));
         }
         if kind == Kind::VhsTape {
             return Effect::Vhs {
