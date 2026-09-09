@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 calloop-wayland-source = "0.4.1"
 chrono = "0.4"
-drm = "0.14"
+drm = "0.15"
 drm-ffi = "0.9"
 libc = "0.2"
 png = "0.17"
