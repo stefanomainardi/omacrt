@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hand the tube's connector to omarchy-crt: mark it non-desktop through an
+# Hand the tube's connector to omacrt: mark it non-desktop through an
 # EDID override so the desktop compositor stops configuring it and offers it
 # for DRM leasing. Needs root (debugfs and the connector's sysfs files).
 #
@@ -29,7 +29,14 @@ case "${1:-}" in
   on)
     # Start from the sink's own EDID, whatever override is in place now.
     printf reset > "$dbg/edid_override"; echo detect > "$status"; sleep 1
-    out="/run/omarchy-crt-$conn.edid"
+    # A run that was interrupted between the unplug and the plug leaves the
+    # connector disconnected with nothing to read. Plug it back before
+    # reading, or the patch has no EDID to work from.
+    if [ "$(cat "$status")" = disconnected ]; then
+      echo "connector reads disconnected; plugging it back"
+      echo 1 > "$dbg/trigger_hotplug"; sleep 3; echo detect > "$status"; sleep 1
+    fi
+    out="/run/omacrt-$conn.edid"
     python3 "$here/edid-non-desktop.py" "$edid" "$out"
     cat "$out" > "$dbg/edid_override"
     echo detect > "$status"; sleep 1

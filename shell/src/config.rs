@@ -78,7 +78,7 @@ pub fn read(path: &Path) -> Option<String> {
     if found > VERSION {
         if let Some(aside) = keep_newer(path, found) {
             eprintln!(
-                "omarchy-crt: {} was written by a newer version ({found}); \
+                "omacrt: {} was written by a newer version ({found}); \
                  a copy is kept at {}",
                 path.display(),
                 aside.display()
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn a_file_from_the_future_is_copied_aside_and_left_alone() {
-        let dir = std::env::temp_dir().join(format!("omarchy-crt-cfg-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-cfg-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("settings.toml");
         std::fs::write(&path, format!("version = {}\n", VERSION + 5)).unwrap();

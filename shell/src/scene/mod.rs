@@ -483,7 +483,7 @@ fn saver_page_label(page: &str) -> (&'static str, &'static str) {
 }
 
 /// Rows of the screensaver settings page: five, then one per page.
-const SAVER_ROWS: usize = 5 + omarchy_crt_shell::settings::PAGES.len();
+const SAVER_ROWS: usize = 5 + omacrt_shell::settings::PAGES.len();
 /// Videos hub entries.
 const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::FILM, "Local videos", true),
@@ -1546,7 +1546,7 @@ impl Scene {
 fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
     // Through the store, so a list truncated by a crash falls back to the
     // copy taken before the last save instead of coming back empty.
-    let Some(text) = omarchy_crt_shell::store::load_string(path) else {
+    let Some(text) = omacrt_shell::store::load_string(path) else {
         return Vec::new();
     };
     text.lines()
@@ -1564,7 +1564,7 @@ fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
 
 /// Third column of recent.txt: when the game was last started.
 fn load_times(path: &std::path::Path) -> std::collections::HashMap<PathBuf, i64> {
-    let Some(text) = omarchy_crt_shell::store::load_string(path) else {
+    let Some(text) = omacrt_shell::store::load_string(path) else {
         return Default::default();
     };
     text.lines()
@@ -1598,7 +1598,7 @@ fn save_recent(
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Err(e) = omarchy_crt_shell::store::save(path, text) {
+    if let Err(e) = omacrt_shell::store::save(path, text) {
         eprintln!("cannot write {}: {e}", path.display());
     }
 }
@@ -1611,7 +1611,7 @@ fn save_list(path: &std::path::Path, list: &[(usize, PathBuf)], lib: &Library) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Err(e) = omarchy_crt_shell::store::save(path, text) {
+    if let Err(e) = omacrt_shell::store::save(path, text) {
         eprintln!("cannot write {}: {e}", path.display());
     }
 }

@@ -2,8 +2,8 @@
 
 Things that went wrong on the reference machine, what they turned out to be,
 and where to look. Every emulator run leaves its own output in
-`~/.local/state/omarchy-crt/game.log`; the launcher itself writes
-`~/.local/state/omarchy-crt/shell.log`, including each game's exit status.
+`~/.local/state/omacrt/game.log`; the launcher itself writes
+`~/.local/state/omacrt/shell.log`, including each game's exit status.
 
 ## Games die with SIGKILL, seconds or minutes in
 
@@ -37,10 +37,10 @@ already shutting down can still crash it; the launcher never does that.
 A fullscreen client whose workspace is not shown on its monitor blocks on
 its next frame, and Hyprland reports it unresponsive. This happened when
 something focused the launcher (its `crt` workspace) while the game ran on
-`crtgame`. `omarchy-crt focus` now focuses the running game, not the
+`crtgame`. `omacrt focus` now focuses the running game, not the
 launcher, and the launcher does not re-assert its fullscreen while a game
 runs. Two launcher processes fighting over the tube produce the same
-symptom; `omarchy-crt shell stop` waits for the launcher to exit and kills a
+symptom; `omacrt shell stop` waits for the launcher to exit and kills a
 stuck one.
 
 ## The CRT workspace is protected
@@ -65,22 +65,22 @@ RetroArch 1.22.2 dies with SIGSEGV inside its input poll the moment it
 processes a network command (`network_cmd_enable`); an unknown command is
 logged and survives, a known one kills the process. The launcher does not
 use that interface any more: on the leased tube it presses the emulator's
-own hotkeys through the compositor (`omarchy-crt-display` control pipe,
+own hotkeys through the compositor (`omacrt-display` control pipe,
 `key pause|save|load|reset|quit`), and RetroArch runs with
-`network_cmd_enable = false`. If you see `omarchy-crt game ...` misbehave
+`network_cmd_enable = false`. If you see `omacrt game ...` misbehave
 outside the lease path, that is why.
 
 ## Is the tube ours?
 
 ```
-omarchy-crt-display props HDMI      # non-desktop = 1 means Hyprland leaves it alone
-omarchy-crt status --json | jq .connector
-systemctl status omarchy-crt-lease.service
-tail ~/.local/state/omarchy-crt/display.log
+omacrt-display props HDMI      # non-desktop = 1 means Hyprland leaves it alone
+omacrt status --json | jq .connector
+systemctl status omacrt-lease.service
+tail ~/.local/state/omacrt/display.log
 ```
 
 `hyprctl monitors` must not list the connector. If it does, the EDID
-override is not in place: `sudo bin/omarchy-crt-install --system` installs
+override is not in place: `sudo bin/omacrt-install --system` installs
 it for every boot, `sudo scripts/crt-lease-setup.sh on` for now. `off`
 gives the connector back to the desktop.
 
@@ -89,7 +89,7 @@ gives the connector back to the desktop.
 RetroArch's own menu opens and pauses the game (the picture freezes) but
 draws nothing over it on this gl/Wayland super-resolution path. So the
 launcher does not rely on RGUI: it drives the emulator over the network
-command interface instead (`omarchy-crt game pause|save|load|reset|quit`),
+command interface instead (`omacrt game pause|save|load|reset|quit`),
 and its own pause overlay is still to be built. Commands only reach
 RetroArch when its input driver is `wayland`; a saved config carrying the
 `x` (X11) driver silently disables both keyboard input and the command
@@ -101,7 +101,7 @@ Every core dump makes Omarchy pop a "Process crashed: retroarch" toast.
 The launcher's own crashes are fixed (the realtime limit and the run-ahead
 secondary instance above); what remains is an intermittent SIGSEGV inside
 RetroArch or a libretro core on this fresh install, unrelated to
-omarchy-crt (it happens from a plain terminal too). A core dump cannot be
+omacrt (it happens from a plain terminal too). A core dump cannot be
 suppressed per process here: `RLIMIT_CORE = 0` is ignored when
 `kernel.core_pattern` pipes to systemd-coredump, and `PR_SET_DUMPABLE(0)`
 is reset by `execve`. Clear the toasts with `omarchy-shell -q notifications
@@ -109,7 +109,7 @@ dismissAll`.
 
 ## Wrong game starts from a script
 
-The control pipe (`omarchy-crt shell key`) is stateless: inputs land on
+The control pipe (`omacrt shell key`) is stateless: inputs land on
 whatever screen the launcher shows, and the main menu remembers its cursor.
 Send `home` first to return to the top of the main menu, then navigate.
 
@@ -128,14 +128,14 @@ blue picture once.
 
 The display process owns the leased connector, so everything on the tube is
 one of its Wayland clients: when it goes, the launcher, the emulator and the
-picture go with it. `omarchy-crt on` leaves a watchdog behind for exactly
+picture go with it. `omacrt on` leaves a watchdog behind for exactly
 this, and it puts the display, the timing, the DAC and the launcher back
 within a second. If the tube stayed black, the watchdog gave up:
 
 ```sh
-tail ~/.local/state/omarchy-crt/watchdog.log   # why it stood down
-tail ~/.local/state/omarchy-crt/display.log    # what the display said as it died
-omarchy-crt on                                 # start again by hand
+tail ~/.local/state/omacrt/watchdog.log   # why it stood down
+tail ~/.local/state/omacrt/display.log    # what the display said as it died
+omacrt on                                 # start again by hand
 ```
 
 Three restarts inside two minutes is the limit. A display that cannot stay up
@@ -158,9 +158,9 @@ current file restores what it held.
 That line is the frame with nothing to show yet, and it names its own reason
 underneath. In order:
 
-- **`no immich.toml in ~/.config/omarchy-crt`.** The frame is not set up. Write
+- **`no immich.toml in ~/.config/omacrt`.** The frame is not set up. Write
   the file with `url` and `key`; `docs/cli.md` says where the key comes from.
-- **`... did not answer, or refused the key`** from `omarchy-crt frame check`.
+- **`... did not answer, or refused the key`** from `omacrt frame check`.
   Either the address is wrong or the key has been revoked. The address must
   carry no trailing slash and no path: `https://immich.example.lan`.
 - **`the memories source has no photographs`.** The server has no memory for
@@ -168,18 +168,18 @@ underneath. In order:
   `all` in `[frame]`, or name an album.
 
 With the server reachable, the first picture takes as long as one fetch and
-one ffmpeg pass. `omarchy-crt frame fill 60` does that work ahead of an
+one ffmpeg pass. `omacrt frame fill 60` does that work ahead of an
 evening, and after it the frame fills in the first second even with the server
 switched off, because the prepared pictures are its own collection.
 
 A photograph with nothing written under it was prepared before the caption
-files existed. `omarchy-crt frame clear` and one `frame fill` puts them back.
+files existed. `omacrt frame clear` and one `frame fill` puts them back.
 
 ## The frame's pictures are all fetched again
 
 The cache is keyed by the size of the screen: pictures prepared for 240 lines
 are not the pictures for 288. Changing standard, or the line count of the
-launcher, is a new set. `omarchy-crt frame fill` prepares for whatever the
+launcher, is a new set. `omacrt frame fill` prepares for whatever the
 tube is set to now, so run it after changing standard, not before.
 
 ## The weather line is the wrong town
@@ -208,12 +208,12 @@ moving, the launcher really is the busiest thing on the machine.
 An emulator that outlived its launcher. The signal that stopped the launcher
 went to the launcher alone: the child was reparented to systemd and kept
 running, holding the audio sink and answering every "is anything playing"
-with yes. It also refuses every launch from the desktop, since `omarchy-crt
+with yes. It also refuses every launch from the desktop, since `omacrt
 play` asks that question first.
 
 ```
-omarchy-crt doctor        # lists it, with its pid
-omarchy-crt doctor --fix  # stops it, with SIGKILL if a wedged core ignores the first signal
+omacrt doctor        # lists it, with its pid
+omacrt doctor --fix  # stops it, with SIGKILL if a wedged core ignores the first signal
 ```
 
 `shell stop`, `off`, `on` and `shell start` all do that sweep now, and the
@@ -227,17 +227,17 @@ process tree, so nothing else on the machine is ever touched.
 Three things have caused this, in the order they are worth checking.
 
 **The launcher is an older build than the CLI.** A command that goes down the
-control pipe has to be understood at both ends: `omarchy-crt` sends it and
-`omarchy-crt-shell` reads it. Install both and restart the launcher
-(`omarchy-crt shell restart`); the launcher's log says `control: unknown
+control pipe has to be understood at both ends: `omacrt` sends it and
+`omacrt-shell` reads it. Install both and restart the launcher
+(`omacrt shell restart`); the launcher's log says `control: unknown
 input <name>` when this is what happened.
 
-**Something is already playing.** `omarchy-crt play` refuses, and says so in
+**Something is already playing.** `omacrt play` refuses, and says so in
 the terminal. From a menu row there is no terminal: the picker turns that into
 a notification and offers to stop what is playing.
 
 **walker was already open.** It is a single instance application, so a second
 invocation hands its arguments to the first and exits without printing, which
-is indistinguishable from a row that does nothing. `omarchy-crt-pick` closes
+is indistinguishable from a row that does nothing. `omacrt-pick` closes
 whatever walker is open first. Its own log is
-`~/.local/state/omarchy-crt/pick.log`, and it names every step.
+`~/.local/state/omacrt/pick.log`, and it names every step.

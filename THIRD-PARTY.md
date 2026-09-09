@@ -49,7 +49,7 @@ to it over a documented interface.
 ## Data it reads and downloads
 
 - **libretro thumbnails** (<https://thumbnails.libretro.com>): box art fetched
-  on demand into `~/.cache/omarchy-crt`. The images belong to their respective
+  on demand into `~/.cache/omacrt`. The images belong to their respective
   publishers; the collection's own terms are in the
   [libretro-thumbnails](https://github.com/libretro-thumbnails) repositories.
   Nothing is redistributed by this project.

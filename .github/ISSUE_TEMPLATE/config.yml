@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: An idea, or a question
-    url: https://github.com/stefanomainardi/omarchy-crt/discussions
+    url: https://github.com/stefanomainardi/omacrt/discussions
     about: Features, hardware that might work, help with a setup. Anything that is not a bug with a reproduction.
   - name: How this works, and how to change it
-    url: https://github.com/stefanomainardi/omarchy-crt/blob/main/AGENTS.md
+    url: https://github.com/stefanomainardi/omacrt/blob/main/AGENTS.md
     about: "The working guide: the modules, how to check a change without a television, the conventions."

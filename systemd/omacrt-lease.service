@@ -1,6 +1,6 @@
 [Unit]
-Description=Omarchy CRT: hand the CRT DAC connector to omarchy-crt (non-desktop EDID override)
-Documentation=https://github.com/stefanomainardi/omarchy-crt
+Description=OmaCRT: hand the CRT DAC connector to omacrt (non-desktop EDID override)
+Documentation=https://github.com/stefanomainardi/omacrt
 After=systemd-udev-settle.service
 Wants=systemd-udev-settle.service
 Before=display-manager.service
@@ -9,6 +9,13 @@ ConditionPathExists=/sys/kernel/debug
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Both directions simulate an unplug and a plug with five and three seconds
+# between them, and this machine's DefaultTimeoutStopSec is five: without a
+# timeout of its own, stopping the unit is killed between the two and leaves
+# the connector unplugged with no EDID to read, which the next start cannot
+# recover from on its own.
+TimeoutStartSec=infinity
+TimeoutStopSec=60
 # It needs debugfs, the connector's sysfs files and /run; nothing else.
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -26,9 +33,9 @@ SystemCallArchitectures=native
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_SYS_ADMIN
 ProtectSystem=strict
 ReadWritePaths=/sys/kernel/debug /sys/class/drm /run
-Environment=OMARCHY_CRT_CONNECTOR=HDMI-A-1
-ExecStart=/usr/local/lib/omarchy-crt/crt-lease-setup.sh on ${OMARCHY_CRT_CONNECTOR}
-ExecStop=/usr/local/lib/omarchy-crt/crt-lease-setup.sh off ${OMARCHY_CRT_CONNECTOR}
+Environment=OMACRT_CONNECTOR=HDMI-A-1
+ExecStart=/usr/local/lib/omacrt/crt-lease-setup.sh on ${OMACRT_CONNECTOR}
+ExecStop=/usr/local/lib/omacrt/crt-lease-setup.sh off ${OMACRT_CONNECTOR}
 
 [Install]
 WantedBy=multi-user.target

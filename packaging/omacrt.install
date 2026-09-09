@@ -1,0 +1,31 @@
+post_install() {
+  cat <<'MSG'
+
+omacrt is installed. Two steps are left, and both are yours to take:
+
+  1. hand the DAC's connector to omacrt at every boot:
+       sudo systemctl enable --now omacrt-lease.service
+     The connector defaults to HDMI-A-1. For another one:
+       sudo systemctl edit omacrt-lease.service
+     and set Environment=OMACRT_CONNECTOR=HDMI-A-2
+
+  2. install the bar plugin into your own session (not as root):
+       /usr/share/omacrt/omacrt-install --no-build
+
+Then check the setup with:  omacrt doctor
+
+MSG
+}
+
+post_upgrade() {
+  cat <<'MSG'
+
+omacrt upgraded. If the bar plugin looks stale, refresh it with:
+  /usr/share/omacrt/omacrt-install --no-build
+
+MSG
+}
+
+pre_remove() {
+  systemctl disable --now omacrt-lease.service >/dev/null 2>&1 || true
+}

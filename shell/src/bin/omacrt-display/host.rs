@@ -2,7 +2,7 @@
 //! compositor that shows a live preview of what the tube displays and, while
 //! it has keyboard focus, forwards every key to the program on the tube.
 //!
-//! Opened with `omarchy-crt monitor on`. The connection is a second Wayland
+//! Opened with `omacrt monitor on`. The connection is a second Wayland
 //! client connection to the desktop (the first one holds the lease); its
 //! events are dispatched on the compositor's own event loop.
 
@@ -20,7 +20,7 @@ use wayland_client::protocol::{
 use wayland_client::{Connection, Dispatch, QueueHandle, WEnum};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
-pub const APP_ID: &str = "omarchy-crt-monitor";
+pub const APP_ID: &str = "omacrt-monitor";
 
 pub struct Host {
     pub conn: Connection,
@@ -103,7 +103,7 @@ impl Host {
         let xdg = wm.get_xdg_surface(&surface, &self.qh, ());
         let top = xdg.get_toplevel(&self.qh, ());
         top.set_app_id(APP_ID.into());
-        top.set_title("Omarchy CRT".into());
+        top.set_title("OmaCRT".into());
         top.set_min_size(320, 240);
         surface.commit();
         self.surface = Some(surface);
@@ -144,7 +144,7 @@ impl Host {
             }
             self.pool = None;
             let fd =
-                unsafe { libc::memfd_create(c"omarchy-crt-monitor".as_ptr(), libc::MFD_CLOEXEC) };
+                unsafe { libc::memfd_create(c"omacrt-monitor".as_ptr(), libc::MFD_CLOEXEC) };
             if fd < 0 {
                 return;
             }
@@ -466,9 +466,9 @@ impl Crt {
         };
         if let Some(t) = &host.toplevel {
             t.set_title(if host.focused {
-                "Omarchy CRT · keyboard on the tube".into()
+                "OmaCRT · keyboard on the tube".into()
             } else {
-                "Omarchy CRT".into()
+                "OmaCRT".into()
             });
             let _ = host.conn.flush();
         }
@@ -487,7 +487,7 @@ impl Crt {
         // input, which is what the pad's Select + Start sends.
         if code.raw() == F1 {
             if matches!(state, KeyState::Pressed) {
-                let _ = omarchy_crt_shell::crt::control::send(&["menu"]);
+                let _ = omacrt_shell::crt::control::send(&["menu"]);
             }
             return;
         }

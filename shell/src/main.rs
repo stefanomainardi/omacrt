@@ -1,4 +1,4 @@
-//! omarchy-crt-shell: native boot screen and launcher for a 15 kHz CRT.
+//! omacrt-shell: native boot screen and launcher for a 15 kHz CRT.
 //!
 //! Renders a low-resolution framebuffer (320x240 by default) and shows it
 //! through SDL2, either in a scaled window for development or fullscreen on
@@ -24,8 +24,8 @@ mod sky;
 mod sysmon;
 mod theme;
 mod weather_sound;
-use omarchy_crt_shell::padmap::Raw;
-use omarchy_crt_shell::{
+use omacrt_shell::padmap::Raw;
+use omacrt_shell::{
     covers, index, library, music, padmap, player, profile, settings, states, videofit, yt,
 };
 
@@ -69,7 +69,7 @@ struct Args {
     script: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: omarchy-crt-shell [options]
+const USAGE: &str = "usage: omacrt-shell [options]
   --size WxH        framebuffer size (default 320x240)
   --hz N            refresh label shown in POST (default 60)
   --scale N         window scale for desktop testing (default 3)
@@ -78,7 +78,7 @@ const USAGE: &str = "usage: omarchy-crt-shell [options]
   --no-audio        skip audio
   --auto-boot       skip the PRESS START gate
   --theme PATH      Omarchy colors.toml (default ~/.config/omarchy/current/colors.toml)
-  --systems PATH    systems.toml (default ~/.config/omarchy-crt/systems.toml)
+  --systems PATH    systems.toml (default ~/.config/omacrt/systems.toml)
   --config-dir DIR  where settings, profile, recent and RetroArch configs live
   --browse [SYSTEM] boot straight into the game browser (or settings, saver, diag, about, power, profile, pair)
   --pads            what SDL sees on every connected pad, then exit
@@ -411,12 +411,12 @@ fn run(args: &Args) -> Result<(), String> {
     if let Ok(sink) = std::env::var("PULSE_SINK") {
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(1500));
-            omarchy_crt_shell::crt::audio::move_streams(&sink);
+            omacrt_shell::crt::audio::move_streams(&sink);
         });
     }
 
     let mut builder = video.window(
-        "omarchy-crt",
+        "omacrt",
         args.w as u32 * args.scale,
         args.h as u32 * args.scale,
     );
@@ -506,7 +506,7 @@ fn run(args: &Args) -> Result<(), String> {
     // The "/" that opens the search also arrives as text: swallowed once.
     let mut swallow_slash = false;
     let mut trigger_held = false;
-    let control = match omarchy_crt_shell::crt::control::listen() {
+    let control = match omacrt_shell::crt::control::listen() {
         Ok(rx) => Some(rx),
         Err(e) => {
             eprintln!("control pipe: {e}");
@@ -515,7 +515,7 @@ fn run(args: &Args) -> Result<(), String> {
     };
     // A video that survived the previous launcher would keep the tube and
     // answer to nobody: the new launcher owns the screen, so it stops it.
-    if omarchy_crt_shell::player::stop_all() > 0 {
+    if omacrt_shell::player::stop_all() > 0 {
         eprintln!("stopped a video left over from an earlier launcher");
     }
     let mut child: Option<std::process::Child> = None;
@@ -528,7 +528,7 @@ fn run(args: &Args) -> Result<(), String> {
     // When a scan runs from the desktop overlay the index file changes under
     // us; the launcher reads it again rather than showing the collection as it
     // was when it started.
-    let index_path = omarchy_crt_shell::index::Index::path();
+    let index_path = omacrt_shell::index::Index::path();
     let index_stamp = |p: &std::path::Path| {
         std::fs::metadata(p)
             .and_then(|m| m.modified())
@@ -557,12 +557,12 @@ fn run(args: &Args) -> Result<(), String> {
                     // A crash inside RetroArch's own shutdown is a normal
                     // end of play as far as the launcher is concerned.
                     scene.game_finished(status.success() || library::exited_after_unload());
-                    omarchy_crt_shell::crt::output::expect_game_clear();
+                    omacrt_shell::crt::output::expect_game_clear();
                     following = None;
                     stick.release();
                     if preview_was_up {
                         preview_was_up = false;
-                        let _ = omarchy_crt_shell::crt::display::send("monitor on");
+                        let _ = omacrt_shell::crt::display::send("monitor on");
                     }
                     if lines_changed {
                         crt_mode(None);
@@ -575,7 +575,7 @@ fn run(args: &Args) -> Result<(), String> {
                     }
                     if args.fullscreen {
                         fit_output(canvas.window_mut());
-                        omarchy_crt_shell::crt::output::raise(omarchy_crt_shell::crt::SHELL_CLASS);
+                        omacrt_shell::crt::output::raise(omacrt_shell::crt::SHELL_CLASS);
                     }
                 }
                 Ok(None) => {
@@ -651,7 +651,7 @@ fn run(args: &Args) -> Result<(), String> {
                     // Select + Start and the home button; on a keyboard this
                     // is the only way in, and it works while a game runs as
                     // long as the launcher holds the keyboard (the panel's
-                    // "Keys to the launcher" button, or `omarchy-crt focus`).
+                    // "Keys to the launcher" button, or `omacrt focus`).
                     Keycode::F1 => inp.menu = true,
                     Keycode::Escape => inp.nav = Some(Nav::Back),
                     Keycode::Backspace => inp.backspace = true,
@@ -981,7 +981,7 @@ fn run(args: &Args) -> Result<(), String> {
                     Action::Restart => {
                         use std::os::unix::process::CommandExt;
                         let exe = std::env::current_exe()
-                            .unwrap_or_else(|_| PathBuf::from("omarchy-crt-shell"));
+                            .unwrap_or_else(|_| PathBuf::from("omacrt-shell"));
                         let err = std::process::Command::new(exe)
                             .args(std::env::args().skip(1))
                             .exec();
@@ -1004,9 +1004,9 @@ fn run(args: &Args) -> Result<(), String> {
             // screen, so it goes away and comes back when the game ends,
             // unless the settings say to keep it.
             preview_was_up = !scene.keep_preview_in_games()
-                && omarchy_crt_shell::crt::output::window_exists("omarchy-crt-monitor");
+                && omacrt_shell::crt::output::window_exists("omacrt-monitor");
             if preview_was_up {
-                let _ = omarchy_crt_shell::crt::display::send("monitor off");
+                let _ = omacrt_shell::crt::display::send("monitor off");
             }
             // A pinned frame is not followed: it was chosen for the session.
             follow_at = if lines.map(|g| g.follow).unwrap_or(true) {
@@ -1037,7 +1037,7 @@ fn run(args: &Args) -> Result<(), String> {
             }
             // The game must land on the tube whatever has focus: flag the
             // compositor handler, and take focus ourselves as well.
-            omarchy_crt_shell::crt::output::expect_game();
+            omacrt_shell::crt::output::expect_game();
             if args.fullscreen {
                 crt_focus();
             }
@@ -1133,9 +1133,9 @@ struct Input {
     edge: Option<bool>,
     /// A video file or URL to play now.
     watch: Option<String>,
-    /// A screen to open by name, from `omarchy-crt shell screen NAME`.
+    /// A screen to open by name, from `omacrt shell screen NAME`.
     screen: Option<String>,
-    /// A game to start by path, from `omarchy-crt play`.
+    /// A game to start by path, from `omacrt play`.
     play: Option<String>,
 }
 
@@ -1177,7 +1177,7 @@ fn control_input(line: &str) -> Option<Input> {
         inp.play = Some(target.trim().to_string());
         return Some(inp);
     }
-    match omarchy_crt_shell::crt::control::normalize(line)? {
+    match omacrt_shell::crt::control::normalize(line)? {
         "search" => inp.search = true,
         "osk" => inp.osk = true,
         "del" => inp.backspace = true,
@@ -1315,6 +1315,9 @@ fn teach_retroarch(
 }
 
 fn main() {
+    // Anything the user had under the project's old name comes across first,
+    // before a single configuration file is read.
+    omacrt_shell::crt::migrate_legacy_dirs();
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {
@@ -1366,16 +1369,16 @@ fn main() {
         run(&args)
     };
     if let Err(e) = result {
-        eprintln!("omarchy-crt-shell: {e}");
+        eprintln!("omacrt-shell: {e}");
         std::process::exit(1);
     }
 }
 
-/// The `omarchy-crt mode` command for a geometry: the CLI beside this binary
+/// The `omacrt mode` command for a geometry: the CLI beside this binary
 /// if it is there and the one on PATH otherwise, with the arguments that say
 /// what the tube should be doing. `None` is the launcher's own full frame.
 fn crt_mode_command(geometry: Option<Geometry>) -> std::process::Command {
-    let name = "omarchy-crt";
+    let name = "omacrt";
     let bin = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join(name)))
@@ -1445,8 +1448,8 @@ fn settle_mode(
 /// television a moment to lock again, which is what a real console did between
 /// its menu and its game.
 fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
-    use omarchy_crt_shell::crt::display;
-    use omarchy_crt_shell::crt::output::raise;
+    use omacrt_shell::crt::display;
+    use omacrt_shell::crt::output::raise;
     let differs = game_lines.is_some_and(|l| l != own_lines);
     if display::on_tube() {
         match outcome {
@@ -1454,7 +1457,7 @@ fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
                 if differs {
                     crt_mode_async(None);
                 }
-                display::raise(omarchy_crt_shell::crt::SHELL_CLASS);
+                display::raise(omacrt_shell::crt::SHELL_CLASS);
             }
             PauseOutcome::Resumed => {
                 if differs {
@@ -1473,7 +1476,7 @@ fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
     }
     match outcome {
         PauseOutcome::Shown => {
-            raise(omarchy_crt_shell::crt::SHELL_CLASS);
+            raise(omacrt_shell::crt::SHELL_CLASS);
         }
         PauseOutcome::Resumed => {
             raise("com.libretro.RetroArch");
@@ -1486,10 +1489,10 @@ fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
 /// keeps its size when the modeline changes under it.
 fn fit_output(window: &mut sdl2::video::Window) {
     // On the tube our own compositor sizes every client to the mode.
-    if omarchy_crt_shell::crt::display::on_tube() {
+    if omacrt_shell::crt::display::on_tube() {
         return;
     }
-    let name = "omarchy-crt";
+    let name = "omacrt";
     let bin = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join(name)))
@@ -1515,14 +1518,14 @@ fn fit_output(window: &mut sdl2::video::Window) {
 
 fn crt_focus() {
     // On the tube, taking focus means telling our own compositor which of its
-    // clients is in front. `omarchy-crt focus` is the desk's version of the
+    // clients is in front. `omacrt focus` is the desk's version of the
     // same idea and opens the preview window on the way, which is right when a
     // person asks for the keyboard and wrong every time a game starts.
-    if omarchy_crt_shell::crt::display::on_tube() {
-        omarchy_crt_shell::crt::display::raise(omarchy_crt_shell::crt::SHELL_CLASS);
+    if omacrt_shell::crt::display::on_tube() {
+        omacrt_shell::crt::display::raise(omacrt_shell::crt::SHELL_CLASS);
         return;
     }
-    let name = "omarchy-crt";
+    let name = "omacrt";
     let bin = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join(name)))

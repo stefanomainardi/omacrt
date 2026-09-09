@@ -50,7 +50,7 @@ pub fn ensure(core: &str, system_dir: &Path) -> Option<String> {
     }
     std::fs::create_dir_all(system_dir).ok()?;
     let tmp = std::env::temp_dir().join(format!(
-        "omarchy-crt-{}-{}.zip",
+        "omacrt-{}-{}.zip",
         extra.core,
         std::process::id()
     ));
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn a_core_with_its_files_in_place_is_not_missing_them() {
-        let dir = std::env::temp_dir().join(format!("omarchy-crt-extra-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-extra-{}", std::process::id()));
         let marker = dir.join("dolphin-emu/Sys/codehandler.bin");
         std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
         assert!(missing("dolphin", &dir), "nothing there yet");

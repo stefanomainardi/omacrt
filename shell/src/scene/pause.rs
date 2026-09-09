@@ -18,7 +18,7 @@ impl Scene {
         if self.paused.is_some() {
             return self.resume_game();
         }
-        match omarchy_crt_shell::game::pause_toggle() {
+        match omacrt_shell::game::pause_toggle() {
             Ok(()) => {
                 self.paused = Some(0);
                 // What the core is drawing right now, which is the only
@@ -47,7 +47,7 @@ impl Scene {
     }
 
     fn resume_game(&mut self) -> PauseOutcome {
-        let _ = omarchy_crt_shell::game::pause_toggle();
+        let _ = omacrt_shell::game::pause_toggle();
         self.paused = None;
         self.pending.push(Sound::Select);
         PauseOutcome::Resumed
@@ -92,7 +92,7 @@ impl Scene {
         match row {
             PauseRow::Resume => self.resume_game(),
             PauseRow::Save => {
-                self.game_cmd(omarchy_crt_shell::game::save_state(), "state saved");
+                self.game_cmd(omacrt_shell::game::save_state(), "state saved");
                 if let Some((_, path)) = &self.running_path {
                     let path = path.clone();
                     self.states.forget(&path);
@@ -100,7 +100,7 @@ impl Scene {
                 PauseOutcome::None
             }
             PauseRow::Load => {
-                self.game_cmd(omarchy_crt_shell::game::load_state(), "state loaded");
+                self.game_cmd(omacrt_shell::game::load_state(), "state loaded");
                 PauseOutcome::None
             }
             PauseRow::Rewind => {
@@ -111,19 +111,19 @@ impl Scene {
                     self.message = Some(("rewind is off for this system".into(), self.now + 3.0));
                     return PauseOutcome::None;
                 }
-                let _ = omarchy_crt_shell::game::rewind();
+                let _ = omacrt_shell::game::rewind();
                 self.message = Some(("rewinding".into(), self.now + 2.5));
                 self.resume_game()
             }
             PauseRow::FastForward => {
                 // Toggle fast forward and let the game run: RetroArch keeps
                 // the speed until the next toggle from the same menu.
-                let _ = omarchy_crt_shell::game::fast_forward();
+                let _ = omacrt_shell::game::fast_forward();
                 self.message = Some(("fast forward toggled".into(), self.now + 2.5));
                 self.resume_game()
             }
             PauseRow::SlowMotion => {
-                let _ = omarchy_crt_shell::game::slow_motion();
+                let _ = omacrt_shell::game::slow_motion();
                 self.message = Some(("slow motion toggled".into(), self.now + 2.5));
                 self.resume_game()
             }
@@ -133,12 +133,12 @@ impl Scene {
                 PauseOutcome::None
             }
             PauseRow::Reset => {
-                let _ = omarchy_crt_shell::game::reset();
+                let _ = omacrt_shell::game::reset();
                 self.resume_game()
             }
             PauseRow::Quit => {
                 // Escape quits RetroArch (quit_press_twice is off).
-                let _ = omarchy_crt_shell::game::quit();
+                let _ = omacrt_shell::game::quit();
                 self.paused = None;
                 self.pending.push(Sound::Select);
                 PauseOutcome::Quit

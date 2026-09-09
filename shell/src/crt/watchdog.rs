@@ -4,10 +4,10 @@
 //! mpv and everything else on the television are its Wayland clients. When it
 //! dies they all die with it, the screen goes black in the middle of a game,
 //! and nothing brings it back: the only way out is the desktop, a keyboard and
-//! `omarchy-crt on` again, which is not a thing to ask of somebody holding a
+//! `omacrt on` again, which is not a thing to ask of somebody holding a
 //! pad on the sofa.
 //!
-//! So `omarchy-crt on` leaves a small process behind. It watches the display
+//! So `omacrt on` leaves a small process behind. It watches the display
 //! pid a few times a second, and when it goes away with the state still saying
 //! the tube is on, it puts the display, the timing and, if the launcher had
 //! been up, the launcher back. It gives up after a few restarts in a row: a
@@ -45,7 +45,7 @@ pub fn running() -> bool {
 }
 
 /// True while this process is still the watchdog the pid file names. A newer
-/// `omarchy-crt on` starts its own, and the older one steps aside.
+/// `omacrt on` starts its own, and the older one steps aside.
 pub fn still_ours() -> bool {
     live_pid() == Some(std::process::id() as i32)
 }

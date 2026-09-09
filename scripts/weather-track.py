@@ -6,7 +6,7 @@ looping voice rather than an event, so `--record` does not catch it either.
 This makes the track out of the launcher's own loops instead, which is why
 the sound on a video of the page is the sound on the television.
 
-    omarchy-crt-shell --dump-audio sfx
+    omacrt-shell --dump-audio sfx
     scripts/weather-track.py loop rain 8.0 out.wav
     scripts/weather-track.py night 6.0 out.wav
     scripts/weather-track.py storm 6.0 out.wav --thunder-at 4.0

@@ -1,5 +1,5 @@
 //! TV profile: monitor preset and picture geometry, saved in
-//! `~/.config/omarchy-crt/profile.toml`, written out as a `switchres.ini`
+//! `~/.config/omacrt/profile.toml`, written out as a `switchres.ini`
 //! for the timing calculator and as RetroArch keys for centering.
 
 use serde::{Deserialize, Serialize};
@@ -73,7 +73,7 @@ impl Profile {
     /// `switchres.ini` consumed by RetroArch CRT SwitchRes and GroovyMAME.
     pub fn switchres_ini(&self) -> String {
         format!(
-            "# Written by omarchy-crt-shell from profile.toml\n\
+            "# Written by omacrt-shell from profile.toml\n\
              monitor            {}\n\
              modeline_generation 1\n\
              dotclock_min       0\n\

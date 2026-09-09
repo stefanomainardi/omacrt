@@ -12,7 +12,7 @@ pub const EXTENSIONS: [&str; 10] = [
 
 /// Key bindings mpv applies itself while it has keyboard focus: the same
 /// actions the shell sends over IPC for the pad.
-pub const INPUT_CONF: &str = "# Written by omarchy-crt-shell
+pub const INPUT_CONF: &str = "# Written by omacrt-shell
 ENTER cycle pause
 SPACE cycle pause
 RIGHT seek 10
@@ -28,11 +28,11 @@ q quit
 /// bar at the bottom with the progress, times, state and the command hints,
 /// shown for a few seconds at start and after every command, always while
 /// paused. Colors arrive through script-opts.
-pub const OSD_LUA: &str = r#"-- Written by omarchy-crt-shell
+pub const OSD_LUA: &str = r#"-- Written by omacrt-shell
 local mp = require "mp"
 local options = require "mp.options"
 local o = { accent = "7aa2f7", dim = "565f89", paper = "c0caf5", selection = "292e42", hints = "Enter pause   < > seek 10s   ^ v volume   Esc stop" }
-options.read_options(o, "omarchycrt")
+options.read_options(o, "omacrt")
 
 local overlay = mp.create_osd_overlay("ass-events")
 local hide_timer = nil
@@ -153,11 +153,11 @@ pub fn command(
     // and leave a desktop mpv alone.
     // No --fs: the compositor floats and pins this window over the tube at
     // the output's size (crt::output::window_rules).
-    cmd.arg("--wayland-app-id=omarchy-crt-player")
+    cmd.arg("--wayland-app-id=omacrt-player")
         // The audio client name as well as the window id: PipeWire remembers
         // the sink per application, and with the default name every mpv on the
         // desktop would inherit the television as its output.
-        .arg("--audio-client-name=omarchy-crt-player")
+        .arg("--audio-client-name=omacrt-player")
         .arg("--no-border")
         .arg("--no-terminal")
         .arg("--really-quiet")
@@ -167,7 +167,7 @@ pub fn command(
         .arg(format!("--input-conf={}", input_conf.display()))
         .arg(format!("--script={}", osd.display()))
         .arg(format!(
-            "--script-opts=omarchycrt-accent={},omarchycrt-dim={},omarchycrt-paper={},omarchycrt-selection={}",
+            "--script-opts=omacrt-accent={},omacrt-dim={},omacrt-paper={},omacrt-selection={}",
             colors[0], colors[1], colors[2], colors[3]
         ))
         .arg("--keep-open=no")
@@ -184,7 +184,7 @@ pub fn command(
 /// The app id every player of ours carries, and the way to stop one whose
 /// socket does not answer: a shell restart leaves the video playing, and
 /// nothing else could reach it.
-pub const APP_ID: &str = "omarchy-crt-player";
+pub const APP_ID: &str = "omacrt-player";
 
 /// Ask every mpv started by us to quit. Returns how many were signalled.
 pub fn stop_all() -> usize {

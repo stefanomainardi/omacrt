@@ -6,10 +6,10 @@ import qs.Ui
 
 // The OmaCRT panel: a little tube inside the bar. The hero is drawn as a
 // television on-screen display, scanlines and all, and reports what the
-// `omarchy-crt` binary knows. Buttons below are the remote control.
+// `omacrt` binary knows. Buttons below are the remote control.
 Panel {
   id: root
-  moduleName: "io.github.stefanomainardi.omarchy-crt"
+  moduleName: "io.github.stefanomainardi.omacrt"
   manageIpc: false
 
   property var anchorItem: null
@@ -92,7 +92,7 @@ Panel {
 
   function toggleWatch() {
     if (root.watching) {
-      Quickshell.execDetached(["pkill", "-f", "omarchy-crt dac watch"])
+      Quickshell.execDetached(["pkill", "-f", "omacrt dac watch"])
     } else {
       Quickshell.execDetached(["setsid", root.helper, "dac", "watch"])
     }
@@ -150,7 +150,7 @@ Panel {
 
   Process {
     id: watchProc
-    command: ["pgrep", "-f", "omarchy-crt dac watch"]
+    command: ["pgrep", "-f", "omacrt dac watch"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.watching = String(text || "").trim() !== ""
@@ -545,7 +545,7 @@ Panel {
           Text {
             visible: root.busy !== ""
             width: parent.width
-            text: "omarchy-crt " + root.busy + " …"
+            text: "omacrt " + root.busy + " …"
             color: root.muted
             font.family: root.mono
             font.pixelSize: Style.font.caption

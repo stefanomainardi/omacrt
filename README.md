@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Omarchy CRT" width="504">
+  <img src="docs/logo.png" alt="OmaCRT" width="504">
 </p>
 
-# Omarchy CRT
+# OmaCRT
 
 An [Omarchy](https://omarchy.org) PC plugged into a 15 kHz CRT television over
 RGB SCART, playing retro games the way they were drawn: native lines, native
@@ -46,8 +46,8 @@ of `/proc` and `/sys`.
   <img src="docs/screens/system.gif" width="560" alt="The system monitor: a bank of meters, one per processor, moving with the machine">
 </p>
 
-The pictures were captured from the tube's own framebuffer by `omarchy-crt
-shot`, and the boot by `omarchy-crt record`; the television adds the
+The pictures were captured from the tube's own framebuffer by `omacrt
+shot`, and the boot by `omacrt record`; the television adds the
 scanlines. The last two are that same framebuffer rendered offline with
 `--headless --realtime`, because a screenshot of a thunderstorm has to wait
 for a thunderstorm, and a monitor reads zero unless the clock runs at the
@@ -56,7 +56,7 @@ speed the kernel moves its counters.
 ## At a glance
 
 - **The television is a client of its own compositor.** The desktop hands the
-  DAC's connector over at boot; `omarchy-crt-display` sets the 15 kHz timing
+  DAC's connector over at boot; `omacrt-display` sets the 15 kHz timing
   and runs the tube. Nothing from the desktop can land on it.
 - **Games.** A collection indexed from any disk in any folder layout, box
   art, console pictures, a cover flow, search across everything, letter
@@ -118,7 +118,7 @@ glass. Both are the point.
 > Where you get your files, and whether you have the right to them, is
 > between you and the law of your country.
 >
-> Omarchy CRT is a fun project by one user. It is not affiliated with, endorsed
+> OmaCRT is a fun project by one user. It is not affiliated with, endorsed
 > by or part of the official Omarchy project. Omarchy, RetroArch, RGB-Pi and
 > every other name here belong to their owners.
 >
@@ -130,7 +130,7 @@ glass. Both are the point.
 ## How it works
 
 <p align="center">
-  <img src="docs/architecture.png" width="720" alt="Omarchy CRT architecture, drawn as a 16 bit illustration">
+  <img src="docs/architecture.png" width="720" alt="OmaCRT architecture, drawn as a 16 bit illustration">
 </p>
 
 The same thing with every process and channel named is a flowchart in
@@ -138,7 +138,7 @@ The same thing with every process and channel named is a flowchart in
 
 The desktop never touches the television. At boot a systemd unit installs an
 EDID override that marks the DAC's connector *non-desktop*, so Hyprland leaves
-it alone and offers it through the DRM lease protocol. `omarchy-crt-display`
+it alone and offers it through the DRM lease protocol. `omacrt-display`
 takes the lease, programs the 15 kHz timing straight into the kernel and runs a
 small Wayland compositor of its own on that output. The launcher, RetroArch and
 mpv are its clients, forced fullscreen at the output's size. No bar,
@@ -171,7 +171,7 @@ can send to a television once the television is just another output it owns.
   the other way round.
 - **mpv and yt-dlp.** Local films, a YouTube search typed on the tube, a
   link copied on the desktop and sent with one click from the panel or with
-  `omarchy-crt watch`, all through the same player with the tube's own fit
+  `omacrt watch`, all through the same player with the tube's own fit
   pipeline (480p streams, 480i or 576i by frame rate when the modeline lands).
 - **RetroArch.** Driven without its menu: a configuration written per launch
   from `systems.toml`, hotkeys pressed by the compositor, save states read
@@ -209,14 +209,14 @@ elsewhere:
 | Part | Where it should work | Where it will not |
 | --- | --- | --- |
 | GPU | Any AMD card on `amdgpu`: the lease and the 15 kHz timings are kernel side, not vendor side | Nvidia's proprietary driver does not offer non-desktop connectors for leasing. Intel is untested |
-| DAC | Anything that takes HDMI and puts RGB on a SCART or VGA pin. `omarchy-crt setup` recognises the RGB-Pi 2 from its EDID | Sync mode is set over I2C only on the RGB-Pi 2; on anything else set it on the device itself |
+| DAC | Anything that takes HDMI and puts RGB on a SCART or VGA pin. `omacrt setup` recognises the RGB-Pi 2 from its EDID | Sync mode is set over I2C only on the RGB-Pi 2; on anything else set it on the device itself |
 | Television | Any 15 kHz set with RGB in, PAL or NTSC. The standard follows your locale, `--standard` overrides it | A VGA monitor: 15 kHz is below what it will lock onto |
 | Compositor | Hyprland 0.56 or later, which is what Omarchy ships | Anything without DRM leasing |
 
-Run `omarchy-crt setup` first on a machine that is not this one: it lists the
+Run `omacrt setup` first on a machine that is not this one: it lists the
 connectors with what their EDID says, picks the one the DAC is on, works out
 the standard from the locale, and writes those two lines to `crt.toml`.
-Everything else has a default that works. `omarchy-crt doctor` says what is
+Everything else has a default that works. `omacrt doctor` says what is
 still missing.
 
 The HDMI path works with wide "super resolution" modelines (3520x240 at 72 MHz,
@@ -230,26 +230,26 @@ needed so far.
 ## Install
 
 ```sh
-git clone https://github.com/stefanomainardi/omarchy-crt.git
-cd omarchy-crt
-bin/omarchy-crt-install                # builds, installs to ~/.local/bin, installs both plugins
-omarchy-crt setup                      # find the DAC's connector, write crt.toml
-sudo bin/omarchy-crt-install --system  # once: the boot time EDID override that hands the tube over
-omarchy-crt library scan ~/Games       # index your collection, any folder layout
-omarchy-crt on                         # tube on: 15 kHz timing, DAC sync, audio, launcher
+git clone https://github.com/stefanomainardi/omacrt.git
+cd omacrt
+bin/omacrt-install                # builds, installs to ~/.local/bin, installs both plugins
+omacrt setup                      # find the DAC's connector, write crt.toml
+sudo bin/omacrt-install --system  # once: the boot time EDID override that hands the tube over
+omacrt library scan ~/Games       # index your collection, any folder layout
+omacrt on                         # tube on: 15 kHz timing, DAC sync, audio, launcher
 ```
 
 There is an Arch package in [`packaging/`](packaging/README.md) for people who
-would rather not build by hand, and `bin/omarchy-crt-install --uninstall`
+would rather not build by hand, and `bin/omacrt-install --uninstall`
 (plus `--uninstall-system` as root) puts everything back.
 
 Requirements: Omarchy with Hyprland 0.56 or later (the Lua configuration),
 RetroArch with libretro cores, mpv, cliamp (Omarchy's music player), yt-dlp
-for YouTube, ffmpeg, curl, a stable Rust toolchain. `omarchy-crt doctor`
+for YouTube, ffmpeg, curl, a stable Rust toolchain. `omacrt doctor`
 tells what is missing.
 
 After `--system` the tube is handed over at every boot. Set
-`shell.autostart = true` in `~/.config/omarchy-crt/crt.toml` and the
+`shell.autostart = true` in `~/.config/omacrt/crt.toml` and the
 television boots straight into the launcher along with the desktop.
 
 ## The launcher
@@ -265,7 +265,7 @@ switches with a blend.
   every few seconds afterwards.
 - **Games.** Systems with console pictures, games with box art from the
   libretro thumbnails (matched by title when the file names carry no region
-  tags, so a RePlayOS style set gets its covers too; `omarchy-crt library
+  tags, so a RePlayOS style set gets its covers too; `omacrt library
   covers` fetches them all at once), collections, favourites, recent. Arcade
   files named after the emulated set, `mslug` for Metal Slug, are read
   through the databases RetroArch ships, so those lists show titles and find
@@ -314,7 +314,7 @@ switches with a blend.
   fit pipeline for the tube (480i or 576i by frame rate, pulldown or PAL
   speed-up for film, letterbox or crop, a safe area, a retro 240p mode).
   **YouTube** on the television: search from the tube, watch later, recently
-  watched, the link in the clipboard, or `omarchy-crt watch URL` from a
+  watched, the link in the clipboard, or `omacrt watch URL` from a
   terminal; streams are fetched at 480p, all a 240 line tube can show.
 - **Photo frame.** The house's photographs on the television, from an Immich
   server on the same network: this day in the years before, an album or the
@@ -380,28 +380,28 @@ See [`plugin/README.md`](plugin/README.md).
 Everything the plugin and the launcher do can be typed:
 
 ```text
-omarchy-crt setup [--connector NAME] [--standard ntsc|pal] [--dry-run]
-omarchy-crt on | off | toggle | status | boot | doctor [--fix]
-omarchy-crt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
-omarchy-crt shell start|stop|restart|focus | shell key <input>... | shell type <text>
-omarchy-crt shell screen games|music|videos|frame|ambient|monitor|settings|...
-omarchy-crt play <title|path> [--force] | watch <file|url> [--later [TITLE]]
-omarchy-crt library scan|games|discover|covers|cores|set|assign|unknown|roots
-omarchy-crt bios [import DIR|discover] | frame check|fill|clear
-omarchy-crt shot out.png | record start out.mp4 | record stop | monitor on|off
-omarchy-crt game menu|pause|save|load|reset|quit | game key <key> [ms]
-omarchy-crt audio crt|desktop|all|apps | audio volume N|+N|-N
-omarchy-crt dac status|csync and|xor|separate | config [set KEY VALUE]
+omacrt setup [--connector NAME] [--standard ntsc|pal] [--dry-run]
+omacrt on | off | toggle | status | boot | doctor [--fix]
+omacrt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
+omacrt shell start|stop|restart|focus | shell key <input>... | shell type <text>
+omacrt shell screen games|music|videos|frame|ambient|monitor|settings|...
+omacrt play <title|path> [--force] | watch <file|url> [--later [TITLE]]
+omacrt library scan|games|discover|covers|cores|set|assign|unknown|roots
+omacrt bios [import DIR|discover] | frame check|fill|clear
+omacrt shot out.png | record start out.mp4 | record stop | monitor on|off
+omacrt game menu|pause|save|load|reset|quit | game key <key> [ms]
+omacrt audio crt|desktop|all|apps | audio volume N|+N|-N
+omacrt dac status|csync and|xor|separate | config [set KEY VALUE]
 ```
 
 Details in [`docs/cli.md`](docs/cli.md). `shell key`, `shell type` and `shell
 screen` drive the launcher over its control pipe, which is how every
 screenshot and video in this repository was made, and how the desktop menu
-reaches it. `omarchy-crt-pick` puts a fuzzy picker in front of `play`.
+reaches it. `omacrt-pick` puts a fuzzy picker in front of `play`.
 
 ## The library scans anything
 
-Point `omarchy-crt library scan` at a disk and it works out what every file
+Point `omacrt library scan` at a disk and it works out what every file
 is: extension, the words in the folder names, disc image signatures, the
 names inside zips. No renaming, no fixed folder scheme. Regional variants
 collapse onto one title and systems show up when they have games. Details in
@@ -412,11 +412,11 @@ collapse onto one title and systems show up when they have games. Details in
 
 | Path | What |
 | --- | --- |
-| `shell/` | The Rust workspace: `omarchy-crt-shell` (launcher), `omarchy-crt` (CLI), `omarchy-crt-display` (lease and compositor), shared library |
+| `shell/` | The Rust workspace: `omacrt-shell` (launcher), `omacrt` (CLI), `omacrt-display` (lease and compositor), shared library |
 | `plugin/` | The bar widget and panel; `plugin/library/` the library overlay |
 | `menu/` | The Television rows the installer writes into Omarchy's menu extension file |
-| `bin/omarchy-crt-install` | Build and install everything, `--system` for the boot time lease |
-| `bin/omarchy-crt-pick` | Pick a game with the desktop's runner, play it on the tube |
+| `bin/omacrt-install` | Build and install everything, `--system` for the boot time lease |
+| `bin/omacrt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
 | `docs/` | The 15 kHz study, hardware notes, systems and video policy, controllers, CLI, troubleshooting |
@@ -457,7 +457,7 @@ modelines, the video fit, the durable writes.
   exist.
 - [`CHANGELOG.md`](CHANGELOG.md): the releases.
 
-Bugs are issues, with the template filled in and the output of `omarchy-crt
+Bugs are issues, with the template filled in and the output of `omacrt
 doctor`. Ideas and questions are discussions.
 
 ## Credits and licenses
@@ -468,7 +468,7 @@ Every piece of this that somebody else wrote, and under what terms, is in
 - Omarchy's wordmark and icon: Copyright (c) David Heinemeier Hansson, MIT,
   with the licence shipped beside the copy at
   [`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy). Used here as
-  the theme of a fan project; Omarchy CRT is not part of Omarchy, is not
+  the theme of a fan project; OmaCRT is not part of Omarchy, is not
   endorsed by the Omacom Foundation, and speaks for neither.
 - `font8x8` bitmap font: Daniel Hepper, public domain, after the IBM VGA fonts.
 - `laseretch` and the effect catalog: inspired by

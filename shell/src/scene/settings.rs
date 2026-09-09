@@ -157,7 +157,7 @@ impl Scene {
             row => {
                 // One page in or out of the rotation. The last one cannot go:
                 // an idle television has to show something.
-                let Some(page) = omarchy_crt_shell::settings::PAGES.get(row - 5) else {
+                let Some(page) = omacrt_shell::settings::PAGES.get(row - 5) else {
                     return;
                 };
                 if !sv.toggle(page) {
@@ -280,7 +280,7 @@ impl Scene {
     /// Screensaver settings: which pages an idle television shows, and how
     /// long each of them keeps the screen.
     pub(super) fn draw_saver_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
-        use omarchy_crt_shell::settings::PAGES;
+        use omacrt_shell::settings::PAGES;
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32 + self.slide();

@@ -23,7 +23,7 @@ body:
   - type: textarea
     id: doctor
     attributes:
-      label: Output of `omarchy-crt doctor`
+      label: Output of `omacrt doctor`
       description: The whole thing, please. It says more about the state of a setup than any description can.
       render: text
     validations:
@@ -45,7 +45,7 @@ body:
     attributes:
       label: Anything in the logs
       description: >
-        `~/.local/state/omarchy-crt/` holds `display.log`, `shell.log` and
+        `~/.local/state/omacrt/` holds `display.log`, `shell.log` and
         `game.log`. The last twenty lines of the relevant one are usually enough.
       render: text
     validations:
