@@ -421,7 +421,11 @@ impl LaserEtch {
                 if let Some((ly, strength)) = g.lit {
                     let d = (yy - ly).abs();
                     if d < 7 {
-                        c = lerp_color(c, 0xffffff, ((1.0 - d as f32 / 7.0) * strength).clamp(0.0, 1.0));
+                        c = lerp_color(
+                            c,
+                            0xffffff,
+                            ((1.0 - d as f32 / 7.0) * strength).clamp(0.0, 1.0),
+                        );
                     }
                 }
                 fb.rect(cx, yy, s, 1, c);

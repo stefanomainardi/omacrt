@@ -561,9 +561,7 @@ impl Crt {
                             println!("record: {}", r.stop());
                         }
                         let sink = sink_arg.or_else(|| {
-                            std::env::var("OMACRT_SINK")
-                                .ok()
-                                .filter(|s| !s.is_empty())
+                            std::env::var("OMACRT_SINK").ok().filter(|s| !s.is_empty())
                         });
                         match Recorder::start(path.trim(), sink) {
                             Ok(r) => {

@@ -143,8 +143,7 @@ impl Host {
                 b.destroy();
             }
             self.pool = None;
-            let fd =
-                unsafe { libc::memfd_create(c"omacrt-monitor".as_ptr(), libc::MFD_CLOEXEC) };
+            let fd = unsafe { libc::memfd_create(c"omacrt-monitor".as_ptr(), libc::MFD_CLOEXEC) };
             if fd < 0 {
                 return;
             }

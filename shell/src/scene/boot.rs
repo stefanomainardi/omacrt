@@ -326,7 +326,13 @@ impl Scene {
                 self.pending_samples.push(etch.synth(crate::audio::RATE));
             }
             etch.advance_to(t - ETCH_START);
-            etch.draw(fb, x + jolt_for_etch.0, y + jolt_for_etch.1, MARK_SCALE, fade);
+            etch.draw(
+                fb,
+                x + jolt_for_etch.0,
+                y + jolt_for_etch.1,
+                MARK_SCALE,
+                fade,
+            );
         }
     }
 
@@ -499,11 +505,7 @@ impl Scene {
             crate::crt_tag::draw_copper_bar(fb, by, &look, 1.0 - p * 0.5);
         }
 
-        let phosphor = [
-            self.theme.green,
-            self.theme.bright_green,
-            self.theme.paper,
-        ];
+        let phosphor = [self.theme.green, self.theme.bright_green, self.theme.paper];
         // The letters change only while the beam is inside them, which is
         // the last stretch of the sweep.
         let crossed = if local < glass_out {

@@ -86,8 +86,7 @@ mod tests {
     /// shared one makes it fail whenever another test is mid-save.
     fn scratch(name: &str) -> PathBuf {
         let stem = name.split('.').next().unwrap_or(name);
-        let dir =
-            std::env::temp_dir().join(format!("omacrt-store-{}-{stem}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-store-{}-{stem}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir.join(name)
     }

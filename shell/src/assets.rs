@@ -109,14 +109,32 @@ impl Retrace {
                 b = width - 1;
             }
             if b < 0 || a > width - 1 {
-                out.push(Seg { x: 0, y, w: width, h: thick, hot: false });
+                out.push(Seg {
+                    x: 0,
+                    y,
+                    w: width,
+                    h: thick,
+                    hot: false,
+                });
                 continue;
             }
             if a > 0 {
-                out.push(Seg { x: 0, y, w: a, h: thick, hot: false });
+                out.push(Seg {
+                    x: 0,
+                    y,
+                    w: a,
+                    h: thick,
+                    hot: false,
+                });
             }
             if b < width - 1 {
-                out.push(Seg { x: b + 1, y, w: width - 1 - b, h: thick, hot: true });
+                out.push(Seg {
+                    x: b + 1,
+                    y,
+                    w: width - 1 - b,
+                    h: thick,
+                    hot: true,
+                });
             }
         }
         out

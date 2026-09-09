@@ -1053,10 +1053,8 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         },
     ));
     for extra in omacrt_shell::coredata::TABLE {
-        let there = !omacrt_shell::coredata::missing(
-            extra.core,
-            &omacrt_shell::coredata::system_dir(),
-        );
+        let there =
+            !omacrt_shell::coredata::missing(extra.core, &omacrt_shell::coredata::system_dir());
         rows.push((
             format!("{} core files", extra.core),
             there,
@@ -1439,9 +1437,7 @@ fn cmd_play(args: &[String]) {
     }
     match crt::control::send_play(&path.to_string_lossy()) {
         Ok(()) => {}
-        Err(e) => die(&format!(
-            "{e}: the launcher has to be running (omacrt on)"
-        )),
+        Err(e) => die(&format!("{e}: the launcher has to be running (omacrt on)")),
     }
 }
 

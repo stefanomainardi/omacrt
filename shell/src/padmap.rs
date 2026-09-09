@@ -165,9 +165,7 @@ pub fn save(mapping: &str) -> std::io::Result<()> {
         .map(|l| l.to_string())
         .collect();
     if lines.is_empty() {
-        lines.push(
-            "# Pads mapped with the omacrt launcher (SDL_GameControllerDB format).".into(),
-        );
+        lines.push("# Pads mapped with the omacrt launcher (SDL_GameControllerDB format).".into());
     }
     lines.push(mapping.to_string());
     if let Some(dir) = path.parent() {

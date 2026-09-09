@@ -49,11 +49,8 @@ pub fn ensure(core: &str, system_dir: &Path) -> Option<String> {
         return None;
     }
     std::fs::create_dir_all(system_dir).ok()?;
-    let tmp = std::env::temp_dir().join(format!(
-        "omacrt-{}-{}.zip",
-        extra.core,
-        std::process::id()
-    ));
+    let tmp =
+        std::env::temp_dir().join(format!("omacrt-{}-{}.zip", extra.core, std::process::id()));
     let ok = crate::net::curl(300, 134_217_728)
         .arg("-o")
         .arg(&tmp)
