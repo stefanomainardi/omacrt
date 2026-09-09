@@ -18,6 +18,15 @@ toml = "0.8"
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 
+[profile.release]
+# The builds people run are release builds, and without this an arithmetic
+# overflow wraps in silence: `len() - 1` on an empty list becomes a very large
+# number and the panic lands one line later at the index, or does not land at
+# all and something is drawn wrong. A television that stops has to stop where
+# the mistake is. The cost is a few instructions on paths that are already
+# doing far more than arithmetic.
+overflow-checks = true
+
 [lints.clippy]
 # The lint is on. Four drawing routines take a rectangle, a level and a phase
 # and say so with an allowance of their own, where the argument list *is* the
