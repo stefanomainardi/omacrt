@@ -1,6 +1,6 @@
 //! Game library: systems, ROM folders and per system launch policy.
 //!
-//! `~/.config/omarchy-crt/systems.toml` maps a directory of ROMs to a libretro
+//! `~/.config/omacrt/systems.toml` maps a directory of ROMs to a libretro
 //! core plus everything that makes a game "right" on first launch: the video
 //! policy, libretro core options, RetroArch input device types, run-ahead and
 //! rewind. RetroArch runs with a dedicated base config and a per launch
@@ -184,7 +184,7 @@ pub struct Library {
     pub core_dir: PathBuf,
     pub config_dir: PathBuf,
     pub switching: bool,
-    /// The scanned game index, when `omarchy-crt library scan` has run.
+    /// The scanned game index, when `omacrt library scan` has run.
     /// Systems found there list from it; systems without index entries
     /// fall back to their folder.
     pub index: Option<crate::index::Index>,
@@ -215,7 +215,7 @@ pub fn expand(p: &str) -> PathBuf {
 }
 
 pub fn default_path() -> PathBuf {
-    home().join(".config/omarchy-crt/systems.toml")
+    home().join(".config/omacrt/systems.toml")
 }
 
 fn opts(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
@@ -540,13 +540,13 @@ impl Library {
         let config_dir = path
             .parent()
             .map(Path::to_path_buf)
-            .unwrap_or_else(|| home().join(".config/omarchy-crt"));
+            .unwrap_or_else(|| home().join(".config/omacrt"));
         let file = crate::config::read(path).and_then(|t| toml::from_str::<File>(&t).ok());
         if let Some(f) = &file
             && f.version > crate::config::VERSION
         {
             eprintln!(
-                "omarchy-crt: {} comes from a newer version and may hold \
+                "omacrt: {} comes from a newer version and may hold \
                  settings this build does not know about",
                 path.display()
             );
@@ -724,7 +724,7 @@ impl Library {
         self.games_in(system, &expand(&system.dir))
     }
 
-    /// Curated lists: `~/.config/omarchy-crt/collections/<Name>.txt`, one
+    /// Curated lists: `~/.config/omacrt/collections/<Name>.txt`, one
     /// absolute game path per line. Returns (name, [(system index, path)]).
     fn load_collections(&self) -> Vec<(String, Vec<(usize, PathBuf)>)> {
         let dir = self.config_dir.join("collections");
@@ -1126,7 +1126,7 @@ pub fn exited_after_unload() -> bool {
 }
 
 /// Where the emulator's own output goes, one file per run, so a crash on the
-/// tube leaves something to read: `~/.local/state/omarchy-crt/game.log`.
+/// tube leaves something to read: `~/.local/state/omacrt/game.log`.
 pub fn game_log_path() -> PathBuf {
     crate::crt::state_dir().join("game.log")
 }
@@ -1205,7 +1205,7 @@ pub fn clean_title(path: &Path) -> String {
 /// RetroArch settings for a console-like experience: no menu, no on-screen
 /// text, fullscreen, hotkeys to leave, save state on exit and resume on start,
 /// automatic frame delay for latency.
-pub const DEFAULT_RETROARCH_CFG: &str = r#"# Written by omarchy-crt-shell. Edit freely; it is only created when missing.
+pub const DEFAULT_RETROARCH_CFG: &str = r#"# Written by omacrt-shell. Edit freely; it is only created when missing.
 video_fullscreen = "true"
 video_windowed_fullscreen = "true"
 video_font_enable = "false"
@@ -1485,7 +1485,7 @@ pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), Stri
     }
     let body = toml::to_string_pretty(&root).map_err(|e| e.to_string())?;
     let out = format!(
-        "# Written by omarchy-crt. Each [[system]] maps a ROM folder to a core.\n\
+        "# Written by omacrt. Each [[system]] maps a ROM folder to a core.\n\
          version = {}\n{body}",
         crate::config::VERSION
     );
@@ -1542,8 +1542,7 @@ mod tests {
         // each one deletes what it wrote.
         static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir =
-            std::env::temp_dir().join(format!("omarchy-crt-launch-{}-{n}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-launch-{}-{n}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let mut system = System {
             name: "snes".into(),

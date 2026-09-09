@@ -7,7 +7,45 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Changed
+
+- Every path, binary and identifier carries the new name. The commands are
+  `omacrt`, `omacrt-shell`, `omacrt-display` and `omacrt-pick`, the unit is
+  `omacrt-lease.service`, the plugins are
+  `io.github.stefanomainardi.omacrt[.library]`, and the environment reads
+  `OMACRT_CONFIG`, `OMACRT_LOG`, `OMACRT_SINK`, `OMACRT_VM_DIR` and
+  `OMACRT_CONNECTOR`.
+- A machine that ran the project under its old name keeps everything it had.
+  On the first start of a renamed build, whatever sits in
+  `~/.config/omarchy-crt`, `~/.cache/omarchy-crt`,
+  `~/.local/share/omarchy-crt` and `~/.local/state/omarchy-crt` is moved into
+  the `omacrt` folders, file by file. A name already taken on the new side is
+  left alone on both sides, and nothing is deleted. The installer does the
+  same for what it had put in place itself: the old plugins are disabled and
+  the old plugin folders and binaries are moved to
+  `~/.local/share/omacrt/retired`, and the old lease unit is disabled without
+  being stopped, because stopping it takes the EDID override off a connector
+  a running launcher is leasing.
+
+### Fixed
+
+- The lease unit is given a stop timeout of its own. Both directions of
+  `crt-lease-setup.sh` simulate an unplug and a plug eight seconds apart, and
+  a five second `DefaultTimeoutStopSec` killed the stop between the two,
+  leaving the connector unplugged with no EDID for the next start to read.
+  The script now plugs a connector that reads `disconnected` back in before
+  it reads the EDID it is meant to patch.
+
 ### Added
+
+- The launcher is called **OmaCRT**, and the name lives in one constant. The
+  BIOS post signs itself `OmaCRT BIOS 4.01 / 15kHz` and credits Omarchy as
+  what it runs on and is built for, rather than as who wrote it.
+- A mark of the project's own: four horizontal bars crossed by the dark cut of
+  the beam's return, which travels across them and stops where it started. It
+  is described as a shape rather than stored as a bitmap, so every size is
+  exact, and it stands in the boot, the gate, the home screen and the header
+  of every inner page, returning once every nine seconds wherever it is.
 
 - The pause menu chooses the picture and the shader. **Picture** is `fill the
   screen`, `as the core asks` or `square pixels`, and on the tube the
@@ -17,9 +55,9 @@ caveat for a 0.x project: anything may still move.
   **Shader** offers the installed presets among a curated few and brings the
   `glcore` driver with them, for the days a game runs in a window. Both are
   kept per system in `systems.toml` and take effect at the next start.
-- `omarchy-crt library set SYSTEM aspect=...` and `shader=...`.
+- `omacrt library set SYSTEM aspect=...` and `shader=...`.
 
-- `omarchy-crt-shell --clock HH:MM` draws a time of day that is not now, and
+- `omacrt-shell --clock HH:MM` draws a time of day that is not now, and
   `--clock-speed N` runs the clock faster than it is, which is what a
   time-lapse of the sky needs. Only what is drawn moves; a log line and a
   scan stamp stay real times.
@@ -119,6 +157,26 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The boot presents the project's own mark instead of Omarchy's. The mark is
+  written from the top down behind a beam, the beam runs back across it once,
+  and then the laser etches the wordmark: showing somebody else's mark in the
+  first two seconds of every boot was the opposite of the distance the rename
+  was for.
+- The boot is a second and a half shorter, and the two dead beats in it are
+  gone. The icon used to finish appearing and then wait almost a second before
+  the laser began, and after the phosphor turned there was another second of a
+  still picture before the menu arrived. The floor now leaves while the menu
+  rises, rather than after it.
+- The floor unrolls from the horizon with the light that opens it, instead of
+  fading up as a slab. A slab that appears out of nothing has no cause; and
+  what travels across it is light rather than an edge of geometry, because a
+  hard edge with black beyond it reads as a picture being cut off.
+- The act's soundtrack is read off the same sheet as the picture. It used to
+  start at the slam, so the floor arrived in silence and the whole rumble
+  landed two seconds late.
+- The home screen keeps the twenty two rows that were reserved under the
+  wordmark for the CRT tag, which is not drawn any more, so the last menu row
+  no longer sits in the overscan.
 - Twilight is a ramp rather than a switch. The stars used to vanish, the sky
   change colour, the town's windows go out and the Atomium's lights die in
   the single frame the sun crossed the horizon in. All four now fade across
@@ -170,6 +228,9 @@ caveat for a 0.x project: anything may still move.
 
 ### Removed
 
+- The CRT tag: three letters that rose from the horizon spinning, slammed into
+  the foreground and flew to a resting place under the wordmark. The wordmark
+  says CRT itself now, so the tag said it twice.
 - The effect's name from the screensaver. `tte slide` in the corner was a
   note to whoever was building the effects, and there are eighteen of them
   now: the wordmark can have the screen to itself.
@@ -179,6 +240,13 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- The laser comes from outside the picture. It stopped eight cell rows above
+  the word, which during the etch is the middle of the screen, so the beam
+  appeared to start in mid air. It is drawn until it has left the frame, which
+  the `laseretch` screensaver gets as well.
+- `PRESS START` is centred with its cursor. The words were centred and the
+  blinking block appended after them, which pushed the pair to the left by
+  half a cursor and its gap.
 - A saved album on Spotify would not play. Albums come back in the same list
   as the playlists and only their id says so; asking the provider to load one
   leaves the album's own address in the queue as though it were a stream,
@@ -202,7 +270,7 @@ The release the repository opens with.
   a downpour, birds on a clear day, crickets at night, a horn in fog: eight
   loops, each synthesized and then held at 8 kHz and quantised to five bits,
   the way a sample was in 1990. It plays only while the ambient page is up
-  and fades in and out. `omarchy-crt-shell --dump-audio DIR` writes them all
+  and fades in and out. `omacrt-shell --dump-audio DIR` writes them all
   as WAVs.
 - A photo frame: photographs from an Immich server on the same network, from
   what the server calls memories, an album, the favourites or anything at all,
@@ -212,7 +280,7 @@ The release the repository opens with.
   calendar and what is playing. Pictures close to 4:3 fill the screen and
   drift a pixel a frame; the rest are fitted whole against a blurred copy of
   themselves. The prepared pictures are the frame's own collection, so it
-  works with the server off. `omarchy-crt frame check|fill|clear`.
+  works with the server off. `omacrt frame check|fill|clear`.
 - A system monitor drawn as a 16 bit status screen: a bank of meters, one per
   logical processor, memory, graphics, load and network history, the rates and
   the busiest processes, with a second page of processes and their pids. Read
@@ -241,7 +309,7 @@ The release the repository opens with.
   timezone (`Europe/Brussels` is Brussels) rather than about wherever the
   address seems to be, which a VPN moves a country. The Photo frame settings
   page says which town the page is showing, and where the name came from.
-- `omarchy-crt-shell --headless --realtime` renders offline at the real frame
+- `omacrt-shell --headless --realtime` renders offline at the real frame
   rate. Without it the loop runs about sixty times faster than the clock,
   which is what made the system monitor read zero: it asked the kernel for its
   counters more often than the kernel moves them.
@@ -255,22 +323,22 @@ The release the repository opens with.
 - A **Television** entry in Omarchy's own menu, written into the extension
   file Omarchy reads for it, with power, channels, picture, sound, library,
   capture, pads and diagnostics. `--uninstall` takes it back out.
-- `omarchy-crt shell screen NAME` opens a launcher screen by name, which is
+- `omacrt shell screen NAME` opens a launcher screen by name, which is
   how the menu reaches it without counting rows.
-- `omarchy-crt play "metal slug"` starts a game on the television by name or
-  by path, matched against the index, and `omarchy-crt library games` lists
-  every game the scan has seen. `omarchy-crt-pick` puts a fuzzy picker in
+- `omacrt play "metal slug"` starts a game on the television by name or
+  by path, matched against the index, and `omacrt library games` lists
+  every game the scan has seen. `omacrt-pick` puts a fuzzy picker in
   front of that on the desktop and plays what comes back, turning the tube on
   if it is off; it is the **Play a game...** row in the Omarchy menu and it is
   worth a keybinding. Anything that stops a launch arrives as a notification,
   and with a game already playing the picker asks whether to stop it, with
   the answers as its own rows. `play --force` stops it and waits for the tube.
-  Every step goes to `~/.local/state/omarchy-crt/pick.log`, and a walker
+  Every step goes to `~/.local/state/omacrt/pick.log`, and a walker
   already open is closed first: started alongside another instance it hands
   its arguments over and exits without printing, which looks exactly like a
   menu row that does nothing.
-- `omarchy-crt audio volume` takes a step (`+10`, `-10`) as well as a percent.
-- `omarchy-crt doctor` surveys what has been left behind as well as what is
+- `omacrt audio volume` takes a step (`+10`, `-10`) as well as a percent.
+- `omacrt doctor` surveys what has been left behind as well as what is
   missing: an emulator no launcher owns, a watchdog pidfile whose process is
   gone, half fetched files in the caches. `doctor --fix` clears them.
 - `AGENTS.md`: the working guide for the repository, for a coding agent or a
@@ -279,7 +347,7 @@ The release the repository opens with.
 - GameCube, through the Dolphin core: native internal resolution, 480 lines,
   the widescreen hacks off and the boot animation skipped. The files the core
   needs but nobody ships with it are fetched once, on the first launch.
-- `omarchy-crt library unpack` reads a ScummVM game out of its disc images
+- `omacrt library unpack` reads a ScummVM game out of its disc images
   into the folder beside them, which is what ScummVM needs and what the manual
   told you to do in 1997.
 - ScummVM games are prepared on the way in: the scan works out what each
@@ -295,12 +363,12 @@ The release the repository opens with.
   It does not, by default.
 - Pads are taught to RetroArch as well as to the launcher: the profile
   directory RetroArch reads is kept filled from the profiles it ships or,
-  failing that, from a translation of SDL's own mapping. `omarchy-crt-shell
+  failing that, from a translation of SDL's own mapping. `omacrt-shell
   --pads` reports what SDL makes of every connected pad.
-- `omarchy-crt setup`: lists the DRM connectors with what their EDID says,
+- `omacrt setup`: lists the DRM connectors with what their EDID says,
   picks the one the DAC is on, works out the television standard from the
   locale and writes both to `crt.toml`.
-- A watchdog started by `omarchy-crt on` that puts the display process, the
+- A watchdog started by `omacrt on` that puts the display process, the
   timing, the DAC and the launcher back when the display dies, and stands
   down after three restarts in two minutes.
 - A `version` key in `settings.toml` and `systems.toml`, with a file written
@@ -328,7 +396,7 @@ The release the repository opens with.
 - `misc:exit_window_retains_fullscreen` is never left set on the desktop, and
   `misc:on_focus_under_fullscreen` is put back to whatever it was.
 - Log files rotate past 8 MB, keeping one older generation; the per-second
-  display bookkeeping is behind `OMARCHY_CRT_LOG=debug`.
+  display bookkeeping is behind `OMACRT_LOG=debug`.
 - `crt.toml` and `systems.toml` are written atomically and read through the
   durable store, falling back to their backup.
 - The library overlay writes a source folder as `~/...`, or from the name of
@@ -342,7 +410,7 @@ The release the repository opens with.
   proved it could put the file back together first, and every screen was
   rendered before and after.
 - Contribution rules (`CONTRIBUTING.md`), a bug template that asks for the
-  machine, the tube and the output of `omarchy-crt doctor`, a pull request
+  machine, the tube and the output of `omacrt doctor`, a pull request
   template that asks what a change ran on, and Discussions in place of blank
   issues.
 - The 15 kHz research is in English, as `docs/15khz.md`, and corrected where
@@ -374,13 +442,13 @@ The first release meant for somebody else's machine.
 
 ### Added
 
-- Interlaced timings: `omarchy-crt mode 480i` and `mode 576i`, at the line
+- Interlaced timings: `omacrt mode 480i` and `mode 576i`, at the line
   rates of the progressive standards.
 - A resume prompt: a game left in the middle asks whether to carry on from the
   state RetroArch wrote on exit, or start a session that leaves it alone.
 - Rewind, fast forward and slow motion in the pause menu, and `F1` to raise
   that menu from the keyboard.
-- `omarchy-crt game key <key> [ms]`: the compositor presses a key inside the
+- `omacrt game key <key> [ms]`: the compositor presses a key inside the
   running game and holds it as long as asked.
 - A ten band equaliser page over the music engine's own bands and presets.
 - Album art for Spotify tracks and logos for radio stations, on the cassette
@@ -390,7 +458,7 @@ The first release meant for somebody else's machine.
   databases RetroArch ships, so those systems sort, search and find box art.
 - The library overlay runs the scan itself, reporting the folder it reads, and
   lets a system's folder be edited in place.
-- `bin/omarchy-crt-install --uninstall` and `--uninstall-system`.
+- `bin/omacrt-install --uninstall` and `--uninstall-system`.
 - `SECURITY.md`, a test suite that runs without a television, and a CI
   workflow that builds, lints, tests and renders frames headless.
 
@@ -429,7 +497,7 @@ The first release meant for somebody else's machine.
   minute. A page that draws itself is a screensaver already, and one opened on
   purpose is the one that was wanted. Somewhere static, a list of games, is
   what the timer is for.
-- A screen asked for from outside, by the desktop menu or `omarchy-crt shell
+- A screen asked for from outside, by the desktop menu or `omacrt shell
   screen`, puts the screensaver away first. It used to change the screen
   underneath an effect that went on drawing, so choosing a channel from the
   Omarchy menu looked as if it had done nothing. `shell key home` had the same
@@ -454,6 +522,6 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omarchy-crt/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/stefanomainardi/omarchy-crt/releases/tag/v0.2.0
-[0.1.0]: https://github.com/stefanomainardi/omarchy-crt/releases/tag/v0.1.0
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.2.0
+[0.1.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.1.0

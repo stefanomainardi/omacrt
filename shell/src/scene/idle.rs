@@ -74,7 +74,7 @@ impl Scene {
     /// Which pages are in the rotation, as indices into `settings::PAGES`.
     fn saver_rotation(&self) -> Vec<usize> {
         let sv = &self.settings.screensaver;
-        omarchy_crt_shell::settings::PAGES
+        omacrt_shell::settings::PAGES
             .iter()
             .enumerate()
             .filter(|(_, p)| sv.shows(p))
@@ -115,7 +115,7 @@ impl Scene {
         // The idle clock starts again: the page is what idling looks like,
         // and the check must not fire on every frame from here on.
         self.last_input = now;
-        match omarchy_crt_shell::settings::PAGES.get(page).copied() {
+        match omacrt_shell::settings::PAGES.get(page).copied() {
             Some("photos") => self.open_frame(),
             Some("ambient") => self.go(Screen::Ambient),
             Some("system") => {

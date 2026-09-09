@@ -1,4 +1,4 @@
-# Working on omarchy-crt
+# Working on omacrt
 
 This is the guide for anyone, agent or person, changing this repository. It
 says what the pieces are, how to check a change without a television in the
@@ -12,7 +12,7 @@ landed. This file is about the work.
 ## What this is
 
 An Omarchy edition for retro gaming on 15 kHz CRT televisions. The desktop
-hands one connector over with DRM leasing; `omarchy-crt-display` takes it,
+hands one connector over with DRM leasing; `omacrt-display` takes it,
 programs a modeline no desktop would accept (15.731 kHz, 240 active lines) and
 becomes the compositor for that output alone. The launcher, RetroArch, mpv and
 cliamp are its clients. Everything else in the repository serves that.
@@ -33,7 +33,7 @@ never ask the shell to rescan plugins while it is locked.** The Omarchy shell
 watches those folders and reloads plugin code on any file change; under the
 lock screen that reload makes its lock plugin re-create surfaces with no
 active lock, which Quickshell treats as fatal. The shell crashes and restarts
-on top of the lock screen. `bin/omarchy-crt-install` checks
+on top of the lock screen. `bin/omacrt-install` checks
 `omarchy-shell lock isLocked` and installs the binaries only. Check the same
 thing before writing anything under there by hand.
 
@@ -52,8 +52,8 @@ that spawns a program on the tube belongs in that survey.
 **Never put the launcher's binary name on the same command line as a command
 that restarts it.** `pkill -f` matches the shell running the command itself,
 so the tool's own shell is killed and the command exits 144 with the work half
-done. Write the name into a variable, or use the CLI (`omarchy-crt shell
-restart`) on a line that does not also mention `omarchy-crt-shell`.
+done. Write the name into a variable, or use the CLI (`omacrt shell
+restart`) on a line that does not also mention `omacrt-shell`.
 
 **`hyprctl keyword` does not work on Hyprland 0.56.** It answers "keyword
 can't work with non-legacy parsers. Use eval". Dispatchers and settings go
@@ -81,7 +81,7 @@ patches will accept a 480i modeline and show a narrow strip. `output.interlace`
 exists for that and defaults to false. Do not "fix" a squashed picture by
 turning it on.
 
-**Secrets never go on a command line.** `~/.config/omarchy-crt/immich.toml`
+**Secrets never go on a command line.** `~/.config/omacrt/immich.toml`
 holds an API key, mode 600, untracked. It is handed to curl on its standard
 input (`-K -`) so it does not appear in the process list. Anything else with a
 key follows that pattern. Never commit one, never print one, never pass one as
@@ -100,7 +100,7 @@ from a CRT", and no personal library figures in README prose.
 | `shell/` | The whole Rust crate: launcher, CLI, display process, shared library |
 | `plugin/` | The Quickshell bar widget and panel; `plugin/library/` the overlay |
 | `menu/` | The Television rows the installer writes into Omarchy's menu extension file |
-| `bin/omarchy-crt-install` | Build and install; `--system` for the boot time lease; `--uninstall` |
+| `bin/omacrt-install` | Build and install; `--system` for the boot time lease; `--uninstall` |
 | `scripts/` | EDID override and lease setup, DRM probing, the offline demo renderer |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
 | `docs/` | The 15 kHz study, hardware, systems, video policy, controllers, CLI, troubleshooting, plan |
@@ -134,7 +134,7 @@ alone.
 | `videofit.rs`, `player.rs`, `yt.rs` | Fitting modern video to a 4:3 tube, mpv, yt-dlp |
 | `music.rs` | The cliamp client (Unix socket, v1 protocol) |
 | `padmap.rs`, `rumble.rs`, `states.rs`, `scumm.rs`, `coredata.rs` | Pads, force feedback, save states, ScummVM, core data files |
-| `logfile.rs` | Rotation at 8 MiB, `OMARCHY_CRT_LOG=debug` |
+| `logfile.rs` | Rotation at 8 MiB, `OMACRT_LOG=debug` |
 
 **The launcher (`main.rs` and friends)**
 
@@ -182,7 +182,7 @@ pictures rather than a blank screen.
 drawn, and it is how the layouts in this repository were fixed:
 
 ```
-cargo run --bin omarchy-crt-shell -- --headless \
+cargo run --bin omacrt-shell -- --headless \
   --browse monitor --dump 14.0 --dump-dir /tmp/shot
 magick /tmp/shot/frame_14.00.ppm -filter point -resize 300% /tmp/shot/a.png
 ```
@@ -206,14 +206,14 @@ runs:
 
 ```
 stamps=$(python3 -c "print(','.join(f'{12.0+i*0.4:.2f}' for i in range(26)))")
-omarchy-crt-shell --headless --realtime --browse monitor \
+omacrt-shell --headless --realtime --browse monitor \
   --dump "$stamps" --dump-dir /tmp/seq
 magick -delay 10 -loop 0 $(ls /tmp/seq/*.ppm | sort -V) \
   -filter point -resize 200% -colors 96 -layers optimize out.gif
 ```
 
 **Render weather that is not outside.** The sky is drawn from
-`~/.cache/omarchy-crt/weather-<place>.txt`, one line of
+`~/.cache/omacrt/weather-<place>.txt`, one line of
 `place|temp|condition|wind|rain|moon|sunrise|sunset`, so writing that file is
 how any weather gets rendered on demand. Two tricks go with it: sunrise and
 sunset are what decide day from night, so a sunrise an hour from now makes it
@@ -239,7 +239,7 @@ where the sun comes up.
 points settings, profile and recents somewhere else:
 
 ```
-cargo run --bin omarchy-crt-shell -- --headless --config-dir /tmp/cfg \
+cargo run --bin omacrt-shell -- --headless --config-dir /tmp/cfg \
   --browse frame --dump 14.0 --dump-dir /tmp/shot
 ```
 
@@ -334,11 +334,11 @@ records what was chosen and why.
 
 **A control pipe command.** Both ends have to be installed and the launcher
 restarted, or the CLI sends something the launcher does not know and logs
-`control: unknown input <name>`. Installing only `omarchy-crt` after adding
+`control: unknown input <name>`. Installing only `omacrt` after adding
 one is a whole debugging session on its own; ask for the launcher's log
 before believing anything else.
 
-**A CLI verb.** `shell/src/bin/omarchy-crt.rs`: the `HELP` text, an arm in the
+**A CLI verb.** `shell/src/bin/omacrt.rs`: the `HELP` text, an arm in the
 dispatch, and a section in `docs/cli.md`. If the launcher has to do something,
 it goes through the control pipe rather than a signal.
 
@@ -350,7 +350,7 @@ uses, or the row comes out blank in whatever font the bar has. And a
 providers in a fixed table in its own QML (`fonts`, `power-profiles`, and a
 native `apps`), so a row cannot enumerate anything of ours at runtime. A list
 that changes belongs behind a picker on the desktop, which is what
-`bin/omarchy-crt-pick` is.
+`bin/omacrt-pick` is.
 
 **Anything that talks to a network service.** Through `curl` as a
 subprocess, with `--proto =http,https`, a timeout, a size cap, and a cache on
@@ -368,8 +368,8 @@ disk with an age. Nothing in the frame loop is allowed to block on a socket.
   saved; a mode change made for a game passes the saved shift, never zero.
 - Interlace needs a patched kernel. See the rule above.
 - The tube has no keyboard of its own once the connector is leased. The
-  desktop preview window carries it, and `omarchy-crt shell key` and
-  `omarchy-crt game key` are how anything else presses a button.
+  desktop preview window carries it, and `omacrt shell key` and
+  `omacrt game key` are how anything else presses a button.
 
 ## Where to read more
 

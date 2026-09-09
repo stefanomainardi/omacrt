@@ -224,7 +224,7 @@ impl Scene {
     }
 
     /// Play a video file or URL through the Videos system, from the control
-    /// pipe (`omarchy-crt watch`). A URL goes to mpv as it is; yt-dlp
+    /// pipe (`omacrt watch`). A URL goes to mpv as it is; yt-dlp
     /// resolves it.
     pub fn watch(&mut self, target: &str) {
         if !self.menu_live || self.running.is_some() || self.launching.is_some() {
@@ -247,7 +247,7 @@ impl Scene {
         let _ = self.run_entry(&entry);
     }
 
-    /// Entries kept with `omarchy-crt watch --later`, for the top of Videos.
+    /// Entries kept with `omacrt watch --later`, for the top of Videos.
     pub(super) fn watch_later(&self, sys: usize) -> Vec<Entry> {
         let path = self.library.config_dir.join("watch-later.tsv");
         std::fs::read_to_string(path)

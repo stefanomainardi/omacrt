@@ -288,8 +288,7 @@ mod tests {
             .chars()
             .filter(char::is_ascii_alphanumeric)
             .collect();
-        let dir =
-            std::env::temp_dir().join(format!("omarchy-crt-scumm-{}-{tag}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-scumm-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         for f in files {

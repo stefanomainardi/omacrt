@@ -4,11 +4,11 @@
 //! fetched at preview size and reduced to the exact shape of the tube by
 //! ffmpeg, which is already needed for video. The result is a PNG the
 //! launcher can decode with the decoder it already has, cached under
-//! `~/.cache/omarchy-crt/frame`, so the frame keeps working with the server
+//! `~/.cache/omacrt/frame`, so the frame keeps working with the server
 //! switched off and never waits on the network in the middle of a fade.
 //!
 //! Nothing leaves the house: the address is the one in
-//! `~/.config/omarchy-crt/immich.toml`, and the key is handed to curl on its
+//! `~/.config/omacrt/immich.toml`, and the key is handed to curl on its
 //! standard input rather than on a command line, where every other process
 //! on the machine could read it.
 
@@ -355,7 +355,7 @@ pub fn details(cfg: &Config, id: &str) -> Details {
 
 pub fn cache_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".cache/omarchy-crt/frame")
+    PathBuf::from(home).join(".cache/omacrt/frame")
 }
 
 /// How a picture should meet a 4:3 tube.
@@ -478,7 +478,7 @@ pub struct Note {
 impl Note {
     /// The note for a picture: what the server says about it, and how long
     /// ago it was. Derived here because both the launcher's own thread and
-    /// `omarchy-crt frame fill` need exactly the same answer.
+    /// `omacrt frame fill` need exactly the same answer.
     pub fn of(shot: &Shot, details: &Details) -> Self {
         let when = if details.taken.is_empty() {
             spoken_date(&shot.taken)
@@ -637,7 +637,7 @@ mod tests {
             ago: String::new(),
             people: vec!["a\r\nb".into()],
         };
-        let dir = std::env::temp_dir().join(format!("omarchy-crt-note-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-note-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let picture = dir.join("x.png");
         note.write(&picture);

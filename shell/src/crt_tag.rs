@@ -1,88 +1,37 @@
-//! The "CRT" tag under the wordmark, introduced SNES title screen style.
+//! The floor the boot act stands on, and the act's soundtrack.
 //!
-//! A Mode 7 checkerboard floor scrolls toward the viewer, the three letters
-//! rise from the horizon spinning around their vertical axis, slam into the
-//! foreground with a shake, a copper bar and a burst of dust, hold for a beat
-//! under a passing light, then shrink and fly to their resting place under
-//! the wordmark, landing with a sparkle. Afterwards the tag idles with a faint
-//! glint every few seconds. Picture and sound come from the same timeline.
+//! A Mode 7 checkerboard unrolls from the horizon toward the viewer while a
+//! light comes up it, and the same timeline drives the sound: a thump as the
+//! seam lights, a riser and a rumble under the approach, a slam, three bells
+//! as the phosphor lights, and a whoosh as the floor goes.
+//!
+//! What used to be here as well was a "CRT" tag: three letters that rose
+//! from the horizon spinning, slammed into the foreground and flew to a
+//! resting place under the wordmark. The wordmark says CRT itself now, so the
+//! tag would have said it twice, and the letters, their spin, their flight
+//! and their idle glint went with it.
 
-use crate::fb::{Color, Framebuffer, add, lerp_color, scale};
+use crate::fb::{Color, Framebuffer, lerp_color, scale};
 
 /// Letter glyphs, 5x7.
-const C: [(i32, i32); 13] = [
-    (4, 1),
-    (3, 0),
-    (2, 0),
-    (1, 0),
-    (0, 1),
-    (0, 2),
-    (0, 3),
-    (0, 4),
-    (0, 5),
-    (1, 6),
-    (2, 6),
-    (3, 6),
-    (4, 5),
-];
-const R: [(i32, i32); 18] = [
-    (0, 6),
-    (0, 5),
-    (0, 4),
-    (0, 3),
-    (0, 2),
-    (0, 1),
-    (0, 0),
-    (1, 0),
-    (2, 0),
-    (3, 0),
-    (4, 1),
-    (4, 2),
-    (3, 3),
-    (2, 3),
-    (1, 3),
-    (2, 4),
-    (3, 5),
-    (4, 6),
-];
-const T: [(i32, i32); 11] = [
-    (0, 0),
-    (1, 0),
-    (2, 0),
-    (3, 0),
-    (4, 0),
-    (2, 1),
-    (2, 2),
-    (2, 3),
-    (2, 4),
-    (2, 5),
-    (2, 6),
-];
+// The act's beats, in seconds from TAG_START, so the sound and the picture
+// are read off the same sheet.
+const A_RUN: f32 = 0.7; // the light starts coming up the floor
+const A_SLAM: f32 = 2.0; // it reaches the letters
+const A_BELLS: f32 = 2.1; // the phosphor lights
+const A_LEAVE: f32 = 2.2; // the floor goes
+const A_END: f32 = 3.05;
 
-/// Canvas size in glyph pixels: three letters one column apart, each one row
-/// lower than the previous (stair-step slant).
-pub const COLS: i32 = 17;
-pub const ROWS: i32 = 9;
+pub const HORIZON: i32 = 118;
 
-// Timeline, seconds since the reveal starts.
-const FLOOR_IN: f32 = 0.3;
-const APPROACH_START: f32 = 0.2;
-const SLAM: f32 = 1.4;
-const FLY_START: f32 = 2.0;
-const LAND: f32 = 2.6;
-pub const TOTAL_SECS: f32 = 2.8;
-const GLINT_EVERY: f32 = 9.0;
-const GLINT_SECS: f32 = 0.35;
-
-const HORIZON: i32 = 118;
-const BIG_SCALE: f32 = 7.0;
-const BIG_CY: f32 = 175.0;
-const SPINS: f32 = 2.5;
-
-/// Colors the show borrows from the theme.
+/// The horizon at this framebuffer's height. The constant is the value
+/// for the 320x240 tube; on a taller framebuffer the ground has to move with
+/// everything else that is placed as a fraction of the height, or the floor
+/// ends up drawn over the wordmark.
+pub fn horizon(h: i32) -> i32 {
+    HORIZON * h / 240
+}
 pub struct Look {
-    /// Wordmark gradient, bottom stop first.
-    pub stops: [Color; 3],
     pub bg: Color,
     pub floor_light: Color,
     pub floor_dark: Color,
@@ -91,35 +40,15 @@ pub struct Look {
 }
 
 /// Every lit glyph pixel in canvas coordinates.
-pub fn path() -> Vec<(i32, i32)> {
-    let mut out = Vec::with_capacity(42);
-    for (i, glyph) in [&C[..], &R[..], &T[..]].iter().enumerate() {
-        for (x, y) in glyph.iter() {
-            out.push((x + i as i32 * 6, y + i as i32));
-        }
-    }
-    out
-}
-
-fn final_color(row: i32, stops: [Color; 3]) -> Color {
-    let f = 1.0 - row as f32 / (ROWS - 1) as f32;
-    if f < 0.5 {
-        lerp_color(stops[0], stops[1], f * 2.0)
-    } else {
-        lerp_color(stops[1], stops[2], (f - 0.5) * 2.0)
-    }
-}
-
 fn clamp01(v: f32) -> f32 {
     v.clamp(0.0, 1.0)
-}
-fn ease_in(t: f32) -> f32 {
-    t * t
 }
 fn ease_in_out(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
-fn hash(i: u32) -> f32 {
+
+/// A cheap deterministic hash, for the shake and for the dust.
+pub fn hash(i: u32) -> f32 {
     let mut x = i.wrapping_mul(0x9E37_79B9) ^ 0x85EB_CA6B;
     x ^= x >> 15;
     x = x.wrapping_mul(0x2C1B_3C6D);
@@ -127,30 +56,35 @@ fn hash(i: u32) -> f32 {
     (x >> 8) as f32 / (1u32 << 24) as f32
 }
 
-/// Rotation angle of the letters around their vertical axis at time `t`.
-fn spin_angle(t: f32) -> f32 {
-    let p = clamp01((t - APPROACH_START) / (SLAM - APPROACH_START));
-    SPINS * (1.0 - p) * (1.0 - p) * std::f32::consts::TAU
-}
-
-/// Distance the floor has scrolled toward the viewer at time `t`.
-fn floor_scroll(t: f32) -> f32 {
-    if t <= SLAM {
+/// How far the floor has scrolled at time `t`. It accelerates while the
+/// light is coming up it and then eases off, which is what makes the
+/// approach read as an approach rather than as a conveyor belt.
+pub fn floor_scroll(t: f32) -> f32 {
+    // Where the acceleration stops. Tuned by eye against the light's own
+    // travel, and left where it was when the letters went.
+    const KNEE: f32 = 1.4;
+    if t <= KNEE {
         25.0 * t * t
     } else {
-        let d = t - SLAM;
-        25.0 * SLAM * SLAM + 70.0 * d * (1.0 - 0.3 * d).max(0.2)
+        let d = t - KNEE;
+        25.0 * KNEE * KNEE + 70.0 * d * (1.0 - 0.3 * d).max(0.2)
     }
 }
 
 /// Mode 7 checkerboard from the horizon down, fogged toward the horizon.
-fn draw_floor(
+#[allow(clippy::too_many_arguments)]
+pub fn draw_floor(
     fb: &mut Framebuffer,
+    horizon: i32,
     t: f32,
     alpha: f32,
     jolt: (i32, i32),
     look: &Look,
     flash: bool,
+    // 0 while the floor is still rolled up at the horizon, 1 when it
+    // has reached the viewer. A slab that fades up out of nothing has no
+    // cause; a floor that unrolls from the light on the horizon does.
+    open: f32,
 ) {
     if alpha <= 0.0 {
         return;
@@ -158,10 +92,31 @@ fn draw_floor(
     let w = fb.w as i32;
     let h = fb.h as i32;
     let scroll = floor_scroll(t);
-    for y in HORIZON..h {
-        let dy = (y - HORIZON) as f32 + 1.0;
+    // After F-Zero and Super Mario Kart: a haze band sitting ON the
+    // horizon, brightest at the seam and gone four rows up, so the floor
+    // arrives out of light instead of out of a hard line.
+    let haze = lerp_color(look.bg, look.floor_light, 0.5);
+    // The seam lights before anything unrolls out of it, and hardest then.
+    let seam = clamp01(open * 5.0) * (1.0 + 1.6 * (1.0 - clamp01(open * 2.2)));
+    for i in 0..5 {
+        let k = ((1.0 - i as f32 / 5.0) * 0.55 * alpha * seam).min(1.0);
+        fb.rect(
+            jolt.0,
+            horizon - 1 - i + jolt.1,
+            w,
+            1,
+            lerp_color(look.bg, haze, k),
+        );
+    }
+    // The floor is never cut off: what travels across it is light, not an
+    // edge of geometry. Ahead of the front the checker is only just there.
+    let front = horizon as f32 + ease_in_out(clamp01(open)) * (h - horizon) as f32;
+    let edge = front.round() as i32;
+    for y in horizon..h {
+        let dy = (y - horizon) as f32 + 1.0;
         let depth = 12000.0 / dy + scroll * 6.0; // world z of this scanline
-        let fog = clamp01((dy - 2.0) / 34.0) * alpha;
+        let lit = clamp01((front - y as f32) / 6.0);
+        let fog = clamp01((dy - 2.0) / 34.0) * alpha * (0.12 * clamp01(open * 3.0) + 0.88 * lit);
         let row = (depth / 10.0).floor() as i32;
         let row_parity = row;
         for x in 0..w {
@@ -174,55 +129,47 @@ fn draw_floor(
                 look.floor_dark
             };
             let mut c = lerp_color(look.bg, base, fog);
+            // Pattern thinning: the far rows cannot hold a checker without
+            // shimmering, so the light squares lose every other pixel there
+            // and the two colours dither into one another instead.
+            if dy < 9.0 && parity == 0 && ((x + y) & 1) == 0 {
+                c = lerp_color(look.bg, look.floor_dark, fog);
+            }
             if flash {
                 c = lerp_color(c, 0xffffff, 0.6 * fog);
+            }
+            // The front carries the light it is opening the floor with.
+            let from_edge = (edge - y).abs();
+            if from_edge <= 2 && open > 0.0 && open < 1.0 {
+                let k = (1.0 - from_edge as f32 / 3.0) * 0.8;
+                c = lerp_color(c, look.yellow, k);
             }
             fb.put(x + jolt.0, y + jolt.1, c);
         }
     }
 }
 
-/// The letters as one sprite: `s` pixels per glyph pixel, rotated around the
-/// vertical axis by `angle`, lit by how much it faces the viewer.
-#[allow(clippy::too_many_arguments)]
-fn draw_letters(
-    fb: &mut Framebuffer,
-    cx: f32,
-    cy: f32,
-    s: f32,
-    angle: f32,
-    jolt: (i32, i32),
-    stops: [Color; 3],
-    flash: Option<Color>,
-) {
-    let cos = angle.cos();
-    let width = (s * cos.abs()).max(1.0);
-    let light = 0.45 + 0.55 * cos.abs();
-    let back = cos < 0.0;
-    for (col, row) in path() {
-        let x = cx + (col as f32 - COLS as f32 / 2.0) * s * cos;
-        let y = cy + (row as f32 - ROWS as f32 / 2.0) * s;
-        let mut c = final_color(row, stops);
-        c = scale(c, if back { light * 0.45 } else { light });
-        if let Some(f) = flash {
-            c = f;
-        }
-        let x0 = if back {
-            (x - width).round() as i32
-        } else {
-            x.round() as i32
-        };
-        fb.rect(
-            x0 + jolt.0,
-            y.round() as i32 + jolt.1,
-            width.round().max(1.0) as i32,
-            s.round().max(1.0) as i32,
-            c,
-        );
+/// The floor's own projection inverted, so a light can be an object in
+/// that world rather than a rectangle over it.
+pub struct OnFloor {
+    pub y: i32,
+    pub half: i32,
+    pub rows: i32,
+    pub fog: f32,
+}
+
+pub fn on_floor(horizon: i32, dy: f32, world_half: f32, world_deep: f32) -> OnFloor {
+    let dy = dy.max(0.6);
+    let far = 12000.0 / (12000.0 / dy + world_deep);
+    OnFloor {
+        y: horizon + dy.round() as i32 - 1,
+        half: (world_half * dy / 50.0).round() as i32,
+        rows: (dy - far).round().max(1.0) as i32,
+        fog: clamp01((dy - 2.0) / 34.0),
     }
 }
 
-fn draw_copper_bar(fb: &mut Framebuffer, y: i32, look: &Look, alpha: f32) {
+pub fn draw_copper_bar(fb: &mut Framebuffer, y: i32, look: &Look, alpha: f32) {
     let rows = [
         look.orange,
         look.yellow,
@@ -237,167 +184,12 @@ fn draw_copper_bar(fb: &mut Framebuffer, y: i32, look: &Look, alpha: f32) {
 }
 
 /// Draw the tag at local time `t`; (`x`, `y`, `s`) is the resting place.
-pub fn draw(fb: &mut Framebuffer, x: i32, y: i32, s: i32, t: f32, look: &Look) {
-    let w = fb.w as f32;
-    let tag_cx = x as f32 + COLS as f32 * s as f32 / 2.0;
-    let tag_cy = y as f32 + ROWS as f32 * s as f32 / 2.0;
-
-    if t >= TOTAL_SECS {
-        draw_settled(fb, x, y, s, t, look);
-        return;
-    }
-
-    // Shake right after the slam.
-    let jolt = if (SLAM..SLAM + 0.2).contains(&t) {
-        let k = (1.0 - (t - SLAM) / 0.2) * 3.0;
-        let n = (t * 240.0) as u32;
-        (
-            ((hash(n) - 0.5) * 2.0 * k).round() as i32,
-            ((hash(n + 7) - 0.5) * 2.0 * k).round() as i32,
-        )
-    } else {
-        (0, 0)
-    };
-
-    // Floor: fades in, fades out during the flight.
-    let floor_alpha = if t < FLY_START {
-        clamp01(t / FLOOR_IN)
-    } else {
-        1.0 - clamp01((t - FLY_START) / (LAND - FLY_START))
-    };
-    let flash = (SLAM..SLAM + 0.035).contains(&t);
-    draw_floor(fb, t, floor_alpha, jolt, look, flash);
-
-    // Copper bar racing from the bottom to the horizon after the slam.
-    if (SLAM..SLAM + 0.3).contains(&t) {
-        let p = (t - SLAM) / 0.3;
-        let by = fb.h as i32 - (p * (fb.h as i32 - HORIZON) as f32) as i32;
-        draw_copper_bar(fb, by, look, 1.0 - p * 0.5);
-    }
-
-    // Letters.
-    if t >= APPROACH_START {
-        let (cx, cy, sc, angle, flash_color) = if t < SLAM {
-            let p = ease_in(clamp01((t - APPROACH_START) / (SLAM - APPROACH_START)));
-            (
-                w / 2.0,
-                HORIZON as f32 + 4.0 + (BIG_CY - HORIZON as f32 - 4.0) * p,
-                1.0 + (BIG_SCALE - 1.0) * p,
-                spin_angle(t),
-                None,
-            )
-        } else if t < FLY_START {
-            let d = t - SLAM;
-            let over = if d < 0.15 {
-                1.3 * (d / 0.15 * std::f32::consts::PI).sin()
-            } else {
-                0.0
-            };
-            (w / 2.0, BIG_CY, BIG_SCALE + over, 0.0, None)
-        } else if t < LAND {
-            let p = ease_in_out((t - FLY_START) / (LAND - FLY_START));
-            let arc = -34.0 * (p * std::f32::consts::PI).sin();
-            (
-                w / 2.0 + (tag_cx - w / 2.0) * p,
-                BIG_CY + (tag_cy - BIG_CY) * p + arc,
-                BIG_SCALE + (s as f32 - BIG_SCALE) * p,
-                0.0,
-                None,
-            )
-        } else {
-            let flash = if t < LAND + 0.05 {
-                Some(0xffffff)
-            } else {
-                None
-            };
-            (tag_cx, tag_cy, s as f32, 0.0, flash)
-        };
-        draw_letters(fb, cx, cy, sc, angle, jolt, look.stops, flash_color);
-
-        // Light sweep across the big letters while they hold.
-        if (SLAM + 0.2..SLAM + 0.55).contains(&t) {
-            let p = (t - SLAM - 0.2) / 0.35;
-            let gx = w / 2.0 - COLS as f32 * BIG_SCALE / 2.0 - 10.0
-                + p * (COLS as f32 * BIG_SCALE + 20.0);
-            for (col, row) in path() {
-                let px = w / 2.0 + (col as f32 - COLS as f32 / 2.0) * BIG_SCALE;
-                let d = (px - gx).abs();
-                if d < 12.0 {
-                    let a = 1.0 - d / 12.0;
-                    let py = BIG_CY + (row as f32 - ROWS as f32 / 2.0) * BIG_SCALE;
-                    fb.rect(
-                        px.round() as i32 + jolt.0,
-                        py.round() as i32 + jolt.1,
-                        BIG_SCALE as i32,
-                        BIG_SCALE as i32,
-                        add(final_color(row, look.stops), scale(0xffffff, a * 0.8)),
-                    );
-                }
-            }
-        }
-
-        // Dust bursting outward along the floor from the letters' base.
-        if (SLAM..SLAM + 0.6).contains(&t) {
-            let d = t - SLAM;
-            let base_y = BIG_CY + ROWS as f32 / 2.0 * BIG_SCALE + 2.0;
-            for i in 0..24u32 {
-                let a = (i as f32 / 24.0) * std::f32::consts::TAU + hash(i) * 0.3;
-                let speed = 90.0 + 80.0 * hash(i + 100);
-                let px = w / 2.0 + a.cos() * speed * d;
-                let py = base_y + a.sin().abs() * speed * d * 0.35;
-                let life = 1.0 - d / 0.6;
-                let c = lerp_color(look.yellow, look.orange, hash(i + 200));
-                fb.put(px as i32 + jolt.0, py as i32 + jolt.1, scale(c, life));
-            }
-        }
-
-        // Landing sparkle.
-        if (LAND..LAND + 0.15).contains(&t) {
-            let d = (t - LAND) / 0.15;
-            for i in 0..8u32 {
-                let a = i as f32 / 8.0 * std::f32::consts::TAU + 0.4;
-                let r = 4.0 + 16.0 * d;
-                let px = tag_cx + a.cos() * r;
-                let py = tag_cy + a.sin() * r * 0.6;
-                fb.put(px as i32, py as i32, scale(0xffffff, 1.0 - d));
-            }
-        }
-    }
-}
-
-/// Resting tag with a quiet glint every few seconds.
-fn draw_settled(fb: &mut Framebuffer, x: i32, y: i32, s: i32, t: f32, look: &Look) {
-    let p = path();
-    for &(cx, cy) in &p {
-        fb.rect(x + cx * s, y + cy * s, s, s, final_color(cy, look.stops));
-    }
-    let since = (t - TOTAL_SECS) % GLINT_EVERY;
-    if since < GLINT_SECS {
-        let u = since / GLINT_SECS;
-        let gx = x - 3 * s + (u * (COLS + 6) as f32 * s as f32) as i32;
-        for &(cx, cy) in &p {
-            let px = x + cx * s;
-            let d = (px - gx).abs();
-            if d < 3 * s {
-                let a = (1.0 - d as f32 / (3 * s) as f32) * 0.55;
-                fb.rect(
-                    px,
-                    y + cy * s,
-                    s,
-                    s,
-                    add(final_color(cy, look.stops), scale(0xffffff, a * 0.9)),
-                );
-            }
-        }
-    }
-}
-
 /// The soundtrack of the show, on the same timeline as the picture: a riser
 /// with a rumble while the floor rushes in, a whoosh pulsing with the spin,
 /// a slam (kick, crash, metallic ring) and a chord stab, a downward whoosh
 /// for the flight and a three note sparkle on landing.
 pub fn synth(rate: u32) -> Vec<f32> {
-    let n = (TOTAL_SECS * rate as f32) as usize;
+    let n = (A_END * rate as f32) as usize;
     let mut out = vec![0.0f32; n];
     let tau = std::f32::consts::TAU;
     let sr = rate as f32;
@@ -409,8 +201,9 @@ pub fn synth(rate: u32) -> Vec<f32> {
         (noise >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
     };
     let (mut ph1, mut ph2) = (0.0f32, 0.0f32);
-    let (mut lp_riser, mut lp_rumble, mut lp_whoosh, mut lp_fly_a, mut lp_fly_b, mut lp_crash) =
+    let (mut lp_riser, mut lp_rumble, mut lp_open, mut lp_run_a, mut lp_run_b, mut lp_crash) =
         (0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32);
+    let (mut lp_go_a, mut lp_go_b) = (0.0f32, 0.0f32);
     let onepole = |cut: f32| -> f32 {
         let rc = 1.0 / (tau * cut.max(20.0));
         let dt = 1.0 / sr;
@@ -418,9 +211,9 @@ pub fn synth(rate: u32) -> Vec<f32> {
     };
     let chord = [329.63f32, 415.30, 493.88, 659.26];
     let bells = [
-        (LAND, 1318.5f32),
-        (LAND + 0.06, 1661.2),
-        (LAND + 0.12, 1975.5),
+        (A_BELLS, 1318.5f32),
+        (A_BELLS + 0.06, 1661.2),
+        (A_BELLS + 0.12, 1975.5),
     ];
 
     for (i, s) in out.iter_mut().enumerate() {
@@ -428,9 +221,19 @@ pub fn synth(rate: u32) -> Vec<f32> {
         let mut v = 0.0;
         let white = rnd();
 
-        // Riser and rumble while the letters approach.
-        if t < SLAM {
-            let p = t / SLAM;
+        // The seam lighting, on the frame it lights: a low thump with a
+        // bright edge on it. The floor has to be heard arriving.
+        if t < 0.4 {
+            let f = 70.0 * (-t * 6.0).exp() + 34.0;
+            v += (tau * f * t).sin() * (-t * 9.0).exp() * 0.34;
+            let ao = onepole(2600.0);
+            lp_open += ao * (white - lp_open);
+            v += lp_open * (-t * 10.0).exp() * 0.22;
+        }
+
+        // Riser and rumble under the whole approach, tightening into the slam.
+        if t < A_SLAM {
+            let p = t / A_SLAM;
             let f = 80.0 * (600.0f32 / 80.0).powf(p);
             ph1 = (ph1 + f * 1.006 / sr).fract();
             ph2 = (ph2 + f * 0.994 / sr).fract();
@@ -441,17 +244,22 @@ pub fn synth(rate: u32) -> Vec<f32> {
             let ar = onepole(120.0);
             lp_rumble += ar * (white - lp_rumble);
             v += lp_rumble * 0.6 * (0.4 + 0.6 * p);
-            // Whoosh pulsing with the spin.
-            if t >= APPROACH_START {
-                let aw = onepole(1800.0);
-                lp_whoosh += aw * (white - lp_whoosh);
-                let pulse = 0.5 + 0.5 * spin_angle(t).cos();
-                v += lp_whoosh * 0.14 * pulse * clamp01((t - APPROACH_START) / 0.2);
-            }
+        }
+
+        // The light coming up the floor: a noise band whose cutoff and level
+        // climb as it nears, which is what an approach sounds like.
+        if (A_RUN..A_SLAM).contains(&t) {
+            let p = (t - A_RUN) / (A_SLAM - A_RUN);
+            let cut = 320.0 + 5200.0 * p * p;
+            let a_hi = onepole(cut);
+            let a_lo = onepole(cut * 0.45);
+            lp_run_a += a_hi * (white - lp_run_a);
+            lp_run_b += a_lo * (white - lp_run_b);
+            v += (lp_run_a - lp_run_b) * 0.5 * (0.12 + 0.88 * p);
         }
 
         // Slam: kick, crash, metallic ring.
-        let d = t - SLAM;
+        let d = t - A_SLAM;
         if d >= 0.0 {
             let f = 160.0 * (-d * 8.0).exp() + 40.0;
             v += (tau * f * d).sin() * (-d * 7.0).exp() * 0.5;
@@ -463,7 +271,7 @@ pub fn synth(rate: u32) -> Vec<f32> {
         }
 
         // Chord stab just after the impact.
-        let dc = t - (SLAM + 0.05);
+        let dc = t - (A_SLAM + 0.05);
         if (0.0..0.35).contains(&dc) {
             let env = (-dc * 9.0).exp();
             for f in chord {
@@ -472,23 +280,23 @@ pub fn synth(rate: u32) -> Vec<f32> {
             }
         }
 
-        // Flight: band-passed whoosh sweeping down.
-        if (FLY_START..LAND).contains(&t) {
-            let p = (t - FLY_START) / (LAND - FLY_START);
-            let cut = 3000.0 * (1.0 - p) + 300.0;
-            let a_hi = onepole(cut);
-            let a_lo = onepole(cut * 0.5);
-            lp_fly_a += a_hi * (white - lp_fly_a);
-            lp_fly_b += a_lo * (white - lp_fly_b);
-            v += (lp_fly_a - lp_fly_b) * 0.5 * (p * std::f32::consts::PI).sin();
-        }
-
-        // Landing sparkle: three quick bells.
+        // Three bells as the phosphor lights.
         for (at, f) in bells {
             let db = t - at;
             if (0.0..0.25).contains(&db) {
                 v += (tau * f * db).sin() * (-db * 22.0).exp() * 0.12;
             }
+        }
+
+        // The floor going: the same whoosh, downward, under the fade.
+        if (A_LEAVE..A_END).contains(&t) {
+            let p = (t - A_LEAVE) / (A_END - A_LEAVE);
+            let cut = 2600.0 * (1.0 - p) + 260.0;
+            let a_hi = onepole(cut);
+            let a_lo = onepole(cut * 0.5);
+            lp_go_a += a_hi * (white - lp_go_a);
+            lp_go_b += a_lo * (white - lp_go_b);
+            v += (lp_go_a - lp_go_b) * 0.42 * (p * std::f32::consts::PI).sin();
         }
 
         *s = v;

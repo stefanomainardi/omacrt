@@ -132,9 +132,9 @@ pub fn orphans() -> Vec<Mess> {
 fn leftovers() -> Vec<Mess> {
     let home = super::home();
     let dirs = [
-        home.join(".cache/omarchy-crt/art"),
-        home.join(".cache/omarchy-crt/frame"),
-        home.join(".cache/omarchy-crt/music-art"),
+        home.join(".cache/omacrt/art"),
+        home.join(".cache/omacrt/frame"),
+        home.join(".cache/omacrt/music-art"),
     ];
     let mut out = Vec::new();
     for dir in dirs {

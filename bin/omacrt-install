@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# Build omarchy-crt from this checkout and install it for the current user:
+# Build omacrt from this checkout and install it for the current user:
 # the launcher and the CLI into ~/.local/bin, the Omarchy bar plugin into
 # ~/.config/omarchy/plugins. Re-run after pulling to update everything.
 #
-#   bin/omarchy-crt-install            build and install
-#   bin/omarchy-crt-install --no-build install the binaries already built
-#   bin/omarchy-crt-install --uninstall
+#   bin/omacrt-install            build and install
+#   bin/omacrt-install --no-build install the binaries already built
+#   bin/omacrt-install --uninstall
 #                                      remove the binaries and the plugins
-#   sudo bin/omarchy-crt-install --uninstall-system
+#   sudo bin/omacrt-install --uninstall-system
 #                                      remove the boot time lease setup
-#   sudo bin/omarchy-crt-install --system
+#   sudo bin/omacrt-install --system
 #                                      one-time root part: mark the DAC's
 #                                      connector non-desktop at every boot so
-#                                      omarchy-crt can lease it (see
+#                                      omacrt can lease it (see
 #                                      docs/15khz.md); the connector name comes from
-#                                      OMARCHY_CRT_CONNECTOR (default HDMI-A-1)
+#                                      OMACRT_CONNECTOR (default HDMI-A-1)
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-plugin_id="io.github.stefanomainardi.omarchy-crt"
+plugin_id="io.github.stefanomainardi.omacrt"
 library_id="${plugin_id}.library"
 bin_dir="${HOME}/.local/bin"
 plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
@@ -33,10 +33,12 @@ menu_block="${repo}/menu/omarchy-menu.jsonc"
 
 menu_strip() {  # print $menu_ext without our block
   [ -f "$menu_ext" ] || return 0
+  # The old name wrote its own pair of markers; both are recognised so a
+  # machine that had the block under `omarchy-crt` does not end up with two.
   awk '
-    /^\/\/ omarchy-crt: begin/ { skip = 1 }
+    /^\/\/ (omacrt|omarchy-crt): begin/ { skip = 1 }
     !skip { print }
-    /^\/\/ omarchy-crt: end/ { skip = 0 }
+    /^\/\/ (omacrt|omarchy-crt): end/ { skip = 0 }
   ' "$menu_ext"
 }
 
@@ -46,7 +48,7 @@ menu_install() {
   local kept
   kept="$(menu_strip)"
   if [ -f "$menu_ext" ]; then
-    cp -f "$menu_ext" "${menu_ext}.omarchy-crt.bak"
+    cp -f "$menu_ext" "${menu_ext}.omacrt.bak"
   else
     kept='{'$'\n''}'
   fi
@@ -64,6 +66,35 @@ sys.stdout.write(text[:at] + block + text[at:])
   echo "== Television added to the Omarchy menu ($menu_ext)"
 }
 
+# What the project left behind under its old name.
+#
+# The launcher was `omarchy-crt` until it became OmaCRT, and a machine that
+# installed it then still has its binaries in ~/.local/bin and its two plugins
+# enabled in the bar: left alone, the bar would show the widget twice and the
+# old commands would keep running an older build. Everything is moved into one
+# folder rather than deleted, so it can be looked at or put back by hand.
+legacy_plugin_id="io.github.stefanomainardi.omarchy-crt"
+legacy_retired="${HOME}/.local/share/omacrt/retired"
+
+retire() {  # $1 = what to move, $2 = subfolder of $legacy_retired
+  [ -e "$1" ] || return 0
+  mkdir -p "$legacy_retired/$2"
+  mv -f "$1" "$legacy_retired/$2/" && echo "== retired $1 to $legacy_retired/$2/"
+}
+
+legacy_retire() {
+  local dir
+  for id in "${legacy_plugin_id}.library" "$legacy_plugin_id"; do
+    dir="${HOME}/.config/omarchy/plugins/${id}"
+    [ -d "$dir" ] || continue
+    command -v omarchy >/dev/null 2>&1 && omarchy plugin disable "$id" >/dev/null 2>&1 || true
+    retire "$dir" plugins
+  done
+  for b in omarchy-crt omarchy-crt-shell omarchy-crt-display omarchy-crt-pick; do
+    retire "${bin_dir}/${b}" bin
+  done
+}
+
 menu_remove() {
   [ -f "$menu_ext" ] || return 0
   menu_strip > "${menu_ext}.new"
@@ -75,15 +106,22 @@ for arg in "$@"; do
   case "$arg" in
     --system)
       [ "$(id -u)" = 0 ] || { echo "--system needs root: sudo $0 --system" >&2; exit 1; }
-      conn="${OMARCHY_CRT_CONNECTOR:-HDMI-A-1}"
+      conn="${OMACRT_CONNECTOR:-HDMI-A-1}"
       echo "== installing the lease setup for $conn (root)"
-      install -d -m 755 /usr/local/lib/omarchy-crt
-      install -m 755 "$repo/scripts/crt-lease-setup.sh" "$repo/scripts/edid-non-desktop.py" /usr/local/lib/omarchy-crt/
-      sed "s/^Environment=OMARCHY_CRT_CONNECTOR=.*/Environment=OMARCHY_CRT_CONNECTOR=$conn/" "$repo/systemd/omarchy-crt-lease.service" > /etc/systemd/system/omarchy-crt-lease.service
+      install -d -m 755 /usr/local/lib/omacrt
+      install -m 755 "$repo/scripts/crt-lease-setup.sh" "$repo/scripts/edid-non-desktop.py" /usr/local/lib/omacrt/
+      sed "s/^Environment=OMACRT_CONNECTOR=.*/Environment=OMACRT_CONNECTOR=$conn/" "$repo/systemd/omacrt-lease.service" > /etc/systemd/system/omacrt-lease.service
+      # The unit the old name installed would run the same setup at the next
+      # boot. It is disabled but not stopped: its ExecStop takes the EDID
+      # override back off the connector, which a running launcher is leasing.
+      if [ -f /etc/systemd/system/omarchy-crt-lease.service ]; then
+        systemctl disable omarchy-crt-lease.service >/dev/null 2>&1 || true
+        echo "== the old omarchy-crt-lease.service is disabled; it stays loaded until the next boot"
+      fi
       systemctl daemon-reload
-      systemctl enable --now omarchy-crt-lease.service
-      systemctl --no-pager --lines=3 status omarchy-crt-lease.service || true
-      echo "done: $conn is handed to omarchy-crt at boot (reverse: systemctl disable --now omarchy-crt-lease.service)"
+      systemctl enable --now omacrt-lease.service
+      systemctl --no-pager --lines=3 status omacrt-lease.service || true
+      echo "done: $conn is handed to omacrt at boot (reverse: systemctl disable --now omacrt-lease.service)"
       exit 0
       ;;
     --no-build) build=0 ;;
@@ -92,7 +130,7 @@ for arg in "$@"; do
       # games, configuration and cache are never touched.
       menu_remove
       echo "== removing the binaries from $bin_dir"
-      for b in omarchy-crt omarchy-crt-shell omarchy-crt-display omarchy-crt-pick; do
+      for b in omacrt omacrt-shell omacrt-display omacrt-pick; do
         rm -f "$bin_dir/$b"
       done
       echo "== removing the plugins"
@@ -106,7 +144,7 @@ for arg in "$@"; do
         rm -rf "$plugin_dir" "$library_dir"
         command -v omarchy-shell >/dev/null 2>&1 && omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
       fi
-      if [ -f /etc/systemd/system/omarchy-crt-lease.service ]; then
+      if [ -f /etc/systemd/system/omacrt-lease.service ]; then
         echo "the boot time lease setup is still installed; remove it with:"
         echo "  sudo $0 --uninstall-system"
       fi
@@ -115,9 +153,9 @@ for arg in "$@"; do
       ;;
     --uninstall-system)
       [ "$(id -u)" = 0 ] || { echo "--uninstall-system needs root: sudo $0 --uninstall-system" >&2; exit 1; }
-      systemctl disable --now omarchy-crt-lease.service >/dev/null 2>&1 || true
-      rm -f /etc/systemd/system/omarchy-crt-lease.service
-      rm -rf /usr/local/lib/omarchy-crt
+      systemctl disable --now omacrt-lease.service >/dev/null 2>&1 || true
+      rm -f /etc/systemd/system/omacrt-lease.service
+      rm -rf /usr/local/lib/omacrt
       systemctl daemon-reload
       echo "done: the connector goes back to the desktop at the next boot"
       exit 0
@@ -132,17 +170,20 @@ if [ "$build" = 1 ]; then
   (cd "$repo/shell" && cargo build --release)
 fi
 
-for b in omarchy-crt omarchy-crt-shell omarchy-crt-display; do
+for b in omacrt omacrt-shell omacrt-display; do
   [ -x "$repo/shell/target/release/$b" ] || { echo "missing $repo/shell/target/release/$b" >&2; exit 1; }
 done
 
+# Before anything new goes in, what the old name left behind is moved aside.
+legacy_retire
+
 echo "== installing binaries into $bin_dir"
 mkdir -p "$bin_dir"
-install -m 755 "$repo/shell/target/release/omarchy-crt" "$bin_dir/omarchy-crt"
-install -m 755 "$repo/shell/target/release/omarchy-crt-shell" "$bin_dir/omarchy-crt-shell"
-install -m 755 "$repo/shell/target/release/omarchy-crt-display" "$bin_dir/omarchy-crt-display"
+install -m 755 "$repo/shell/target/release/omacrt" "$bin_dir/omacrt"
+install -m 755 "$repo/shell/target/release/omacrt-shell" "$bin_dir/omacrt-shell"
+install -m 755 "$repo/shell/target/release/omacrt-display" "$bin_dir/omacrt-display"
 # The desktop picker: a script, not a binary, but it belongs beside them.
-install -m 755 "$repo/bin/omarchy-crt-pick" "$bin_dir/omarchy-crt-pick"
+install -m 755 "$repo/bin/omacrt-pick" "$bin_dir/omacrt-pick"
 case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) echo "note: $bin_dir is not in PATH" ;;
@@ -159,7 +200,7 @@ menu_install
 # unlocked desktop; the binaries in ~/.local/bin are in place already.
 if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
   echo "note: the session is locked; run this again unlocked to update the bar plugin"
-  "$bin_dir/omarchy-crt" status || true
+  "$bin_dir/omacrt" status || true
   exit 0
 fi
 
@@ -170,7 +211,7 @@ mkdir -p "$plugin_dir/bin"
 for f in "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$repo/plugin/README.md"; do
   [ -f "$f" ] && install -m 644 "$f" "$plugin_dir/$(basename "$f")"
 done
-install -m 755 "$repo/shell/target/release/omarchy-crt" "$plugin_dir/bin/omarchy-crt"
+install -m 755 "$repo/shell/target/release/omacrt" "$plugin_dir/bin/omacrt"
 
 # The library overlay is a second plugin (kind overlay) the panel summons.
 echo "== installing the library overlay into $library_dir"
@@ -200,5 +241,5 @@ sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
 fi
 
-"$bin_dir/omarchy-crt" status || true
-echo "done. Try: omarchy-crt on"
+"$bin_dir/omacrt" status || true
+echo "done. Try: omacrt on"

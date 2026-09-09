@@ -16,7 +16,7 @@
 
 use crate::fb::{Color, Framebuffer, lerp_color, rgb, scale};
 use crate::theme::Theme;
-use omarchy_crt_shell::ambient::{Kind, Reading};
+use omacrt_shell::ambient::{Kind, Reading};
 
 /// The ordered dither of every home computer that had to fake a gradient.
 const BAYER: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];

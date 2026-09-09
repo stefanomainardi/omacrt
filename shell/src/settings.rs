@@ -1,4 +1,4 @@
-//! User settings saved in `~/.config/omarchy-crt/settings.toml`.
+//! User settings saved in `~/.config/omacrt/settings.toml`.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

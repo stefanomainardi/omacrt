@@ -6,12 +6,12 @@
 # plugin symlinks into ~/.config/omarchy/plugins, stay with the installer
 # script, since they belong to a session and not to the system.
 
-pkgname=omarchy-crt
-pkgver=0.2.0
+pkgname=omacrt
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="An Omarchy edition for retro gaming on 15 kHz CRT televisions"
 arch=('x86_64')
-url="https://github.com/stefanomainardi/omarchy-crt"
+url="https://github.com/stefanomainardi/omacrt"
 license=('MIT')
 depends=('sdl2' 'systemd-libs' 'libinput' 'libxkbcommon' 'mesa' 'seatd'
          'ffmpeg' 'curl')
@@ -22,8 +22,8 @@ optdepends=('retroarch: playing games'
             'python: the boot time EDID override'
             'i2c-tools: talking to the DAC by hand')
 makedepends=('cargo' 'git')
-provides=('omarchy-crt')
-conflicts=('omarchy-crt-git')
+provides=('omacrt')
+conflicts=('omacrt-git')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 install="$pkgname.install"
@@ -49,26 +49,26 @@ check() {
 
 package() {
   cd "$pkgname-$pkgver"
-  for b in omarchy-crt omarchy-crt-shell omarchy-crt-display; do
+  for b in omacrt omacrt-shell omacrt-display; do
     install -Dm755 "shell/target/release/$b" "$pkgdir/usr/bin/$b"
   done
 
   # The root part of the lease setup.
   install -Dm755 scripts/crt-lease-setup.sh \
-    "$pkgdir/usr/lib/omarchy-crt/crt-lease-setup.sh"
+    "$pkgdir/usr/lib/omacrt/crt-lease-setup.sh"
   install -Dm755 scripts/edid-non-desktop.py \
-    "$pkgdir/usr/lib/omarchy-crt/edid-non-desktop.py"
-  sed 's#/usr/local/lib/omarchy-crt#/usr/lib/omarchy-crt#g' \
-    systemd/omarchy-crt-lease.service \
-    > "$srcdir/omarchy-crt-lease.service"
-  install -Dm644 "$srcdir/omarchy-crt-lease.service" \
-    "$pkgdir/usr/lib/systemd/system/omarchy-crt-lease.service"
+    "$pkgdir/usr/lib/omacrt/edid-non-desktop.py"
+  sed 's#/usr/local/lib/omacrt#/usr/lib/omacrt#g' \
+    systemd/omacrt-lease.service \
+    > "$srcdir/omacrt-lease.service"
+  install -Dm644 "$srcdir/omacrt-lease.service" \
+    "$pkgdir/usr/lib/systemd/system/omacrt-lease.service"
 
   # The Omarchy plugins, from where the installer script links them.
-  install -d "$pkgdir/usr/share/omarchy-crt/plugin"
-  cp -r plugin/. "$pkgdir/usr/share/omarchy-crt/plugin/"
-  install -Dm755 bin/omarchy-crt-install \
-    "$pkgdir/usr/share/omarchy-crt/omarchy-crt-install"
+  install -d "$pkgdir/usr/share/omacrt/plugin"
+  cp -r plugin/. "$pkgdir/usr/share/omacrt/plugin/"
+  install -Dm755 bin/omacrt-install \
+    "$pkgdir/usr/share/omacrt/omacrt-install"
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"

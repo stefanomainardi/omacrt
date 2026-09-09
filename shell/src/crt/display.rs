@@ -1,4 +1,4 @@
-//! The display process that owns the tube (`omarchy-crt-display`).
+//! The display process that owns the tube (`omacrt-display`).
 //!
 //! When the DAC's connector is marked non-desktop, the desktop compositor
 //! leaves it alone and our process leases it: modeline, page flips and a
@@ -95,7 +95,7 @@ pub fn running() -> bool {
 }
 
 fn binary() -> PathBuf {
-    let name = "omarchy-crt-display";
+    let name = "omacrt-display";
     std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join(name)))
@@ -119,7 +119,7 @@ pub fn start_with_sink(connector: &str, sink: Option<&str>) -> Result<String, St
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(binary());
     if let Some(s) = sink {
-        cmd.env("OMARCHY_CRT_SINK", s);
+        cmd.env("OMACRT_SINK", s);
     }
     cmd.arg("run")
         .arg(connector)
@@ -224,12 +224,11 @@ pub fn monitor_focus() -> String {
     for _ in 0..30 {
         std::thread::sleep(Duration::from_millis(100));
         let listed = super::run("hyprctl", &["clients", "-j"])
-            .map(|t| t.contains("\"omarchy-crt-monitor\""))
+            .map(|t| t.contains("\"omacrt-monitor\""))
             .unwrap_or(false);
         if listed {
-            super::output::focus_class("omarchy-crt-monitor");
-            return "keyboard on the tube: the Omarchy CRT window has focus (close it to stop)"
-                .into();
+            super::output::focus_class("omacrt-monitor");
+            return "keyboard on the tube: the OmaCRT window has focus (close it to stop)".into();
         }
     }
     "monitor window did not appear".into()

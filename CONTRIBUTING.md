@@ -76,7 +76,7 @@ most of the ways to get this wrong.
 ## Bugs, ideas and questions
 
 - **A bug** is an issue, with the template filled in: the hardware, the
-  television, and the output of `omarchy-crt doctor`. That command exists to
+  television, and the output of `omacrt doctor`. That command exists to
   make a bug report answerable, so please run it.
 - **An idea** is a discussion, not an issue. It costs nothing to float and it
   will not sit in a list making the project look neglected.

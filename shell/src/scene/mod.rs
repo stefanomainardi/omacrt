@@ -6,7 +6,6 @@
 //! On top of that: a "CRT" cartridge badge slams in like an arcade title
 //! card, and an idle screensaver cycles text effects on the wordmark.
 
-use crate::assets::ICON_24;
 use crate::audio::Sound;
 use crate::bt::Bluetooth;
 use crate::deck::{self, Deck};
@@ -228,7 +227,7 @@ impl SysInfo {
 
 /// Wordmark pixel size and geometry shared by boot and screensaver.
 const MARK_SCALE: i32 = 3;
-const ETCH_START: f32 = 4.15;
+const ETCH_START: f32 = 3.55;
 /// Home menu entries: icon, label, opens a submenu.
 ///
 /// Eight rows, and eight is the limit: the wordmark and the CRT tag take the
@@ -484,7 +483,7 @@ fn saver_page_label(page: &str) -> (&'static str, &'static str) {
 }
 
 /// Rows of the screensaver settings page: five, then one per page.
-const SAVER_ROWS: usize = 5 + omarchy_crt_shell::settings::PAGES.len();
+const SAVER_ROWS: usize = 5 + omacrt_shell::settings::PAGES.len();
 /// Videos hub entries.
 const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::FILM, "Local videos", true),
@@ -533,9 +532,12 @@ const ABOUT: &[&str] = &[
     "",
     "MIT license.",
 ];
+const TAG_START: f32 = 5.75;
 
-const TAG_SCALE: i32 = 2;
-const TAG_START: f32 = 6.9;
+/// The project's own name, in one place, so a rename is one edit.
+pub const NAME: &str = "OmaCRT";
+/// The same name where a filename or a package name is being shown.
+pub const NAME_LOWER: &str = "omacrt";
 
 struct Saver {
     effect: Effect,
@@ -1281,13 +1283,15 @@ impl Scene {
     /// the wordmark at 1 px per cell, a prompt line underneath.
     fn draw_header(&self, fb: &mut Framebuffer, prompt: &str) -> i32 {
         let left = (fb.w as f32 * 0.05) as i32 + self.slide();
-        fb.bitmap(left, 8, &ICON_24, self.theme.green, 1, 24);
+        // The same mark as everywhere else, at the smallest size its shape
+        // holds, and on the same return.
+        let (base, hot) = self.retrace_now();
+        self.draw_retrace(fb, left, 8, 24.0, base, 1.0, hot);
         let mx = fb.w as i32 - left - self.mark_small.cols;
         for cell in &self.mark_small.cells {
             effects::draw_cell(fb, mx, 10, 1, cell, cell.final_color);
         }
-        // The same glint as the home logo, on its own rhythm.
-        self.glint(fb, left, 8, 24, 24, 8.0, 3.0);
+        // Niente glint sul marchio: il suo movimento e' il ritorno.
         self.glint(
             fb,
             mx,
@@ -1413,8 +1417,9 @@ impl Scene {
         }
         self.draw_post(fb, t);
         self.draw_logo(fb, t);
+        self.draw_crt_tag(fb, t, false);
         self.draw_etch(fb, t);
-        self.draw_crt_tag(fb, t);
+        self.draw_crt_tag(fb, t, true);
         if self.menu_live {
             // Icon and wordmark together, one sweep every nine seconds.
             let (lx, ly, lsize) = self.logo_final(fb);
@@ -1426,11 +1431,11 @@ impl Scene {
             self.glint(fb, x0, ly, x1 - x0, bottom - ly, 6.0, 0.0);
         }
         self.draw_home(fb, t);
-        if t >= 4.0 && !self.chime_played {
+        if t >= 2.2 && !self.chime_played {
             self.chime_played = true;
             self.pending.push(Sound::Chime);
         }
-        if t > 9.6 && !self.menu_live {
+        if t > 8.2 && !self.menu_live {
             self.menu_live = true;
             self.last_input = now;
         }
@@ -1541,7 +1546,7 @@ impl Scene {
 fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
     // Through the store, so a list truncated by a crash falls back to the
     // copy taken before the last save instead of coming back empty.
-    let Some(text) = omarchy_crt_shell::store::load_string(path) else {
+    let Some(text) = omacrt_shell::store::load_string(path) else {
         return Vec::new();
     };
     text.lines()
@@ -1559,7 +1564,7 @@ fn load_list(path: &std::path::Path, lib: &Library) -> Vec<(usize, PathBuf)> {
 
 /// Third column of recent.txt: when the game was last started.
 fn load_times(path: &std::path::Path) -> std::collections::HashMap<PathBuf, i64> {
-    let Some(text) = omarchy_crt_shell::store::load_string(path) else {
+    let Some(text) = omacrt_shell::store::load_string(path) else {
         return Default::default();
     };
     text.lines()
@@ -1593,7 +1598,7 @@ fn save_recent(
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Err(e) = omarchy_crt_shell::store::save(path, text) {
+    if let Err(e) = omacrt_shell::store::save(path, text) {
         eprintln!("cannot write {}: {e}", path.display());
     }
 }
@@ -1606,7 +1611,7 @@ fn save_list(path: &std::path::Path, list: &[(usize, PathBuf)], lib: &Library) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Err(e) = omarchy_crt_shell::store::save(path, text) {
+    if let Err(e) = omacrt_shell::store::save(path, text) {
         eprintln!("cannot write {}: {e}", path.display());
     }
 }

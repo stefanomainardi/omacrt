@@ -1,4 +1,4 @@
-//! CRT output control shared by the `omarchy-crt` CLI and the launcher:
+//! CRT output control shared by the `omacrt` CLI and the launcher:
 //! configuration, persistent state, the RGB-Pi 2 DAC, the Hyprland output,
 //! audio routing, the launcher process, BIOS files and ROM folders.
 
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 
-pub const SHELL_CLASS: &str = "omarchy-crt-shell";
+pub const SHELL_CLASS: &str = "omacrt-shell";
 
 pub fn home() -> PathBuf {
     std::env::var_os("HOME")
@@ -26,19 +26,111 @@ pub fn home() -> PathBuf {
 }
 
 pub fn config_dir() -> PathBuf {
-    std::env::var_os("OMARCHY_CRT_CONFIG")
+    std::env::var_os("OMACRT_CONFIG")
         .map(PathBuf::from)
-        .unwrap_or_else(|| home().join(".config/omarchy-crt"))
+        .unwrap_or_else(|| home().join(".config/omacrt"))
 }
 
 pub fn state_dir() -> PathBuf {
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".local/state"))
-        .join("omarchy-crt")
+        .join("omacrt")
 }
 
-/// `~/.config/omarchy-crt/crt.toml`.
+/// The four folders a user's own things live in, each with the name the
+/// project used to carry beside it.
+///
+/// The project was called `omacrt` before it became OmaCRT, and
+/// everything a user had - the configuration, the library index, the cached
+/// art and covers, the logs - sat under that name. On the first run of a
+/// renamed build what the old folder holds is moved into the new one, and
+/// nothing is deleted: a name already taken on the new side is left alone on
+/// both sides, and the old folder itself stays where it is.
+fn legacy_moves() -> Vec<(PathBuf, PathBuf)> {
+    /// The name the project carried before it became OmaCRT.
+    const LEGACY: &str = "omarchy-crt";
+
+    let base = |var: &str, fallback: &str| {
+        std::env::var_os(var)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home().join(fallback))
+    };
+    let config = std::env::var_os("OMACRT_CONFIG")
+        .map(PathBuf::from)
+        .map(|new| (new.with_file_name(LEGACY), new))
+        .unwrap_or_else(|| {
+            let dir = base("XDG_CONFIG_HOME", ".config");
+            (dir.join(LEGACY), dir.join("omacrt"))
+        });
+    let mut moves = vec![config];
+    for (var, fallback) in [
+        ("XDG_CACHE_HOME", ".cache"),
+        ("XDG_DATA_HOME", ".local/share"),
+        ("XDG_STATE_HOME", ".local/state"),
+    ] {
+        let dir = base(var, fallback);
+        moves.push((dir.join(LEGACY), dir.join("omacrt")));
+    }
+    moves
+}
+
+/// Move whatever the old name still holds under the new one, once.
+///
+/// Called at the start of both the launcher and the `omacrt` tool, before
+/// anything reads a configuration file, so a machine that installed the
+/// project under its old name keeps its settings, its library and its cache.
+///
+/// The move is per file rather than per folder: the new folder often exists
+/// already, because a default configuration or a log was written into it
+/// before the old one was noticed. A name that exists on both sides is left
+/// alone on both sides, and the old folder itself is never removed.
+pub fn migrate_legacy_dirs() {
+    for (old, new) in legacy_moves() {
+        if !old.is_dir() {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&old) else {
+            continue;
+        };
+        if std::fs::create_dir_all(&new).is_err() {
+            continue;
+        }
+        let mut moved = 0usize;
+        let mut kept = 0usize;
+        for entry in entries.flatten() {
+            let to = new.join(entry.file_name());
+            if to.exists() {
+                kept += 1;
+                continue;
+            }
+            match std::fs::rename(entry.path(), &to) {
+                Ok(()) => moved += 1,
+                Err(e) => {
+                    kept += 1;
+                    eprintln!("omacrt: {} stays where it is ({e})", entry.path().display());
+                }
+            }
+        }
+        // Only a move is worth a line; a folder that has nothing left to
+        // give is passed over in silence at every later start.
+        if moved > 0 {
+            eprintln!(
+                "omacrt: {} moved from {} to {}{}",
+                moved,
+                old.display(),
+                new.display(),
+                if kept > 0 {
+                    format!(", {kept} left behind (a file of that name was there already)")
+                } else {
+                    String::new()
+                }
+            );
+        }
+    }
+}
+
+/// `~/.config/omacrt/crt.toml`.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 #[derive(Default)]
@@ -103,7 +195,7 @@ pub struct Shell {
     /// program, then in the source tree.
     pub bin: String,
     pub args: Vec<String>,
-    /// Switch the tube on at login when the DAC is connected (`omarchy-crt
+    /// Switch the tube on at login when the DAC is connected (`omacrt
     /// boot` does it), so the television is a console from the start.
     pub autostart: bool,
 }
@@ -170,7 +262,7 @@ impl Default for Audio {
     }
 }
 
-pub const DEFAULT_CONFIG: &str = r#"# omarchy-crt configuration. Every key is optional.
+pub const DEFAULT_CONFIG: &str = r#"# omacrt configuration. Every key is optional.
 
 [output]
 # DRM connector of the CRT DAC (HDMI-A-1 or card1-HDMI-A-1). Empty = the first
@@ -180,7 +272,7 @@ connector = ""
 position = "auto"
 # Composite sync of the RGB-Pi 2: "and", "xor" or "separate". TVs differ.
 csync = "xor"
-# Standard used by `omarchy-crt on` without an argument: "ntsc" or "pal".
+# Standard used by `omacrt on` without an argument: "ntsc" or "pal".
 standard = "ntsc"
 
 [modelines]
@@ -189,14 +281,14 @@ ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"
 pal = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"
 # 240p at exactly 60.00 Hz, for filming the tube with a 60 fps camera.
 film = "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync"
-# Interlaced frames for video (omarchy-crt mode 480i | 576i).
+# Interlaced frames for video (omacrt mode 480i | 576i).
 ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
 pal_i = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
 
 [shell]
-bin = "omarchy-crt-shell"
+bin = "omacrt-shell"
 args = ["--fullscreen", "--stretch", "--auto-boot"]
-# Light the tube at login when the DAC is connected (`omarchy-crt boot`).
+# Light the tube at login when the DAC is connected (`omacrt boot`).
 autostart = false
 
 [audio]
@@ -240,7 +332,7 @@ impl Config {
     }
 }
 
-/// `~/.local/state/omarchy-crt/state.json`: what `on` changed, so `off`
+/// `~/.local/state/omacrt/state.json`: what `on` changed, so `off`
 /// can undo it.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]

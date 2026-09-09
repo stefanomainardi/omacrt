@@ -12,8 +12,8 @@
 
 use crate::drm_mode;
 use crate::lease::Lease;
-use omarchy_crt_shell::crt::output::Modeline;
-use omarchy_crt_shell::crt::{Config, dac, display, output};
+use omacrt_shell::crt::output::Modeline;
+use omacrt_shell::crt::{Config, dac, display, output};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
@@ -561,9 +561,7 @@ impl Crt {
                             println!("record: {}", r.stop());
                         }
                         let sink = sink_arg.or_else(|| {
-                            std::env::var("OMARCHY_CRT_SINK")
-                                .ok()
-                                .filter(|s| !s.is_empty())
+                            std::env::var("OMACRT_SINK").ok().filter(|s| !s.is_empty())
                         });
                         match Recorder::start(path.trim(), sink) {
                             Ok(r) => {
@@ -585,7 +583,7 @@ impl Crt {
                 "on" => {
                     if self.host.is_none() {
                         output::hypr_eval(&format!(
-                            "hl.window_rule({{ name = \"omarchy-crt-monitor\", match = {{ class = \"{}\" }}, float = true, size = \"880 660\", center = true }})",
+                            "hl.window_rule({{ name = \"omacrt-monitor\", match = {{ class = \"{}\" }}, float = true, size = \"880 660\", center = true }})",
                             crate::host::APP_ID
                         ));
                         match crate::host::Host::open(&self.handle) {
@@ -618,7 +616,7 @@ impl Crt {
     /// background and its control pipe, it never needs the keyboard while a
     /// program runs; the program needs it to count as focused.
     pub fn focus_top(&mut self) {
-        let program = ["com.libretro.RetroArch", "omarchy-crt-player"]
+        let program = ["com.libretro.RetroArch", "omacrt-player"]
             .iter()
             .find_map(|id| self.window_with_app_id(id));
         let target = program.or_else(|| self.space.elements().last().cloned());
@@ -903,7 +901,7 @@ impl Crt {
                 .map(|(k, v)| format!("{k}:{v}"))
                 .collect();
             self.commits.clear();
-            if omarchy_crt_shell::logfile::debug_enabled() {
+            if omacrt_shell::logfile::debug_enabled() {
                 println!(
                     "{} frames so far, {} client window(s) mapped, commits in 5 s: {}",
                     self.frames,
@@ -912,9 +910,9 @@ impl Crt {
                 );
             }
             // While it runs, keep the file from growing without end.
-            omarchy_crt_shell::logfile::rotate_if_big(
+            omacrt_shell::logfile::rotate_if_big(
                 &display::log_path(),
-                omarchy_crt_shell::logfile::CAP_BYTES,
+                omacrt_shell::logfile::CAP_BYTES,
             );
         }
         let t = self.start.elapsed();

@@ -274,7 +274,7 @@ impl Reading {
 
 fn cache() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".cache/omarchy-crt")
+    PathBuf::from(home).join(".cache/omacrt")
 }
 
 /// Is a cached file young enough to use?

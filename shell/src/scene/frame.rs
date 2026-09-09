@@ -11,7 +11,7 @@ impl Scene {
         let a = &self.settings.ambient;
         crate::photos::Wanted {
             config_dir: self.library.config_dir.clone(),
-            source: omarchy_crt_shell::immich::Source::named(&f.source),
+            source: omacrt_shell::immich::Source::named(&f.source),
             album: f.album.clone(),
             place: a.place.clone(),
             calendar: a.calendar.clone(),
@@ -378,7 +378,7 @@ impl Scene {
     /// sounds, which the footer says.
     pub(super) fn draw_ambient_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
         let a = self.settings.ambient.clone();
-        let zone = omarchy_crt_shell::ambient::zone_place();
+        let zone = omacrt_shell::ambient::zone_place();
         let rows: Vec<(String, String)> = vec![
             (
                 "weather for".into(),

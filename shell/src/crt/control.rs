@@ -2,7 +2,7 @@
 //!
 //! A named pipe in the state directory takes one input name per line and the
 //! launcher feeds each line through the same path as a key press or a pad
-//! button. `omarchy-crt shell key right fire` writes to it, so a script, the
+//! button. `omacrt shell key right fire` writes to it, so a script, the
 //! bar plugin or a test can drive the menu without a virtual keyboard, whose
 //! events reach SDL only some of the time under Wayland.
 

@@ -40,7 +40,7 @@ pub struct Index {
 /// User answers: a folder (or file) to a system name.
 pub type Hints = BTreeMap<PathBuf, String>;
 
-/// `~/.config/omarchy-crt/library.toml`, written by the tool: where to scan
+/// `~/.config/omacrt/library.toml`, written by the tool: where to scan
 /// and what the user told it about folders it could not read.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
@@ -66,7 +66,7 @@ impl LibraryConfig {
         crate::store::save(
             &Self::path(),
             format!(
-                "# Written by omarchy-crt. Folders to scan for games and the systems\n# you assigned to folders the scan could not read.\n{body}"
+                "# Written by omacrt. Folders to scan for games and the systems\n# you assigned to folders the scan could not read.\n{body}"
             ),
         )
     }
@@ -83,7 +83,7 @@ fn data_dir() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| crate::library::home().join(".local/share"))
-        .join("omarchy-crt")
+        .join("omacrt")
 }
 
 impl Index {

@@ -17,9 +17,9 @@ use std::process::Command;
 /// What this project calls itself to a server it does not own. The version
 /// comes from `Cargo.toml`, so it cannot drift from the one that is running.
 pub const USER_AGENT: &str = concat!(
-    "omarchy-crt/",
+    "omacrt/",
     env!("CARGO_PKG_VERSION"),
-    " (https://github.com/stefanomainardi/omarchy-crt)"
+    " (https://github.com/stefanomainardi/omacrt)"
 );
 
 /// A curl that will not run longer than `seconds`, will not write more than

@@ -7,7 +7,7 @@
 //! and cached for two weeks, and matches a ROM's title to it the way a person
 //! would: same words after the tags, punctuation and case are dropped, the
 //! preferred region when several editions exist, a close enough set of words
-//! otherwise. `omarchy-crt library covers` runs it over the whole collection;
+//! otherwise. `omacrt library covers` runs it over the whole collection;
 //! the launcher uses the same match when a cover is missing.
 
 use std::collections::HashMap;
@@ -111,7 +111,7 @@ pub fn cache_dir() -> PathBuf {
     std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| crate::library::home().join(".cache"))
-        .join("omarchy-crt/art")
+        .join("omacrt/art")
 }
 
 /// Where a game's cover lives in the cache, whatever name it was found under.
