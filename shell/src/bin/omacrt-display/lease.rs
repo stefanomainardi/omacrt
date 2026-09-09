@@ -169,7 +169,9 @@ impl Lease {
             return Err(if omacrt_shell::crt::display::leaseable(want) {
                 format!(
                     "connector {want} is marked non-desktop but the compositor is not offering it (offered: {offered}). \
-                     It decides that when it starts, so the override has to be in place before it: this takes effect at the next boot."
+                     Almost always a monitor rule claiming it: a connector Hyprland has an hl.monitor for is a monitor to it, \
+                     and a monitor is never offered for leasing. Look in ~/.config/hypr for a rule matching this output - it \
+                     may match on desc: rather than on the name - remove it and reboot."
                 )
             } else {
                 format!(

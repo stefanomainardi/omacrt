@@ -111,13 +111,32 @@ output disabled.
 ## Boot and workspaces
 
 Hyprland lights every connected output with its preferred mode at login, which
-for the DAC means 1024x768 (a flickering television) and a numbered desktop
-workspace stolen by the CRT. Two lines in the user config keep the tube quiet
-until asked and put audio back on the desktop after a reboot:
+for the DAC would mean 1024x768 (a flickering television) and a numbered
+desktop workspace stolen by the CRT. What stops that is `--system`: the EDID
+override marks the connector non-desktop before the compositor starts, so
+Hyprland never treats it as a monitor at all.
+
+**Do not disable the connector with a monitor rule.** It reads like the
+obvious way to keep the tube quiet, and it is the one thing that stops any of
+this working:
 
 ```lua
--- ~/.config/hypr/monitors.lua, before the fallback rule
+-- NOT this. A connector with a monitor rule is a monitor to Hyprland, and a
+-- monitor is never offered for DRM leasing, whatever the kernel says about
+-- non-desktop. `omacrt on` then fails with "not offered for lease
+-- (offered: none)" on a connector whose flag is set, which reads like a
+-- broken install and is not one.
 hl.monitor({ output = "desc:ATG MORTACA DEV00", disabled = true })
+```
+
+Note that the rule matches by description rather than by name, so grepping the
+config for `HDMI` does not find it. `omacrt doctor` says so in as many words
+when it sees a connector that is marked and still held.
+
+One line does belong in the user config, so the tube comes back after a
+reboot:
+
+```lua
 -- ~/.config/hypr/autostart.lua
 o.launch_on_start("omacrt boot")
 ```
