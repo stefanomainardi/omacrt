@@ -155,14 +155,28 @@ impl Lease {
         }
         let offered: Vec<String> = st.connectors.iter().map(|(_, _, n, _)| n.clone()).collect();
         let Some(target) = st.connectors.iter().find(|(_, _, n, _)| n == want).cloned() else {
-            return Err(format!(
-                "connector {want} is not offered for lease (offered: {}); is it marked non-desktop? (scripts/crt-lease-setup.sh)",
-                if offered.is_empty() {
-                    "none".to_string()
-                } else {
-                    offered.join(" ")
-                }
-            ));
+            let offered = if offered.is_empty() {
+                "none".to_string()
+            } else {
+                offered.join(" ")
+            };
+            // Two different failures used to read the same. Asking "is it
+            // marked non-desktop?" is misleading when it is: the kernel has
+            // the flag, and the compositor simply started before it did.
+            // Hyprland decides which connectors it offers when it starts and
+            // does not read the property again, not even after a real unplug
+            // and plug, so there is nothing to do here but say so.
+            return Err(if omacrt_shell::crt::display::leaseable(want) {
+                format!(
+                    "connector {want} is marked non-desktop but the compositor is not offering it (offered: {offered}). \
+                     It decides that when it starts, so the override has to be in place before it: this takes effect at the next boot."
+                )
+            } else {
+                format!(
+                    "connector {want} is not offered for lease (offered: {offered}) and the kernel does not mark it non-desktop. \
+                     Install the boot time override with `sudo bin/omacrt-install --system` and reboot."
+                )
+            });
         };
         let dev = st.devices[target.1].clone();
         let request = dev.create_lease_request(&qh, ());

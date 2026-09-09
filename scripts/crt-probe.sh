@@ -41,7 +41,11 @@ echo "== EDID: $edid_bytes bytes"
 edid_name=""
 edid_audio="no"
 if [ "$edid_bytes" -gt 0 ]; then
-  out="${CRT_PROBE_OUT:-/tmp}/edid-${conn}.bin"
+  # Not /tmp: a predictable name in a directory everyone can write is one
+  # another user pre-creates as a symlink. The cache belongs to us.
+  out_dir="${CRT_PROBE_OUT:-${XDG_CACHE_HOME:-$HOME/.cache}/omacrt}"
+  mkdir -p "$out_dir"
+  out="$out_dir/edid-${conn}.bin"
   cp "$sys/edid" "$out" && echo "  saved to $out"
   if command -v edid-decode >/dev/null; then
     decoded=$(edid-decode "$sys/edid")
