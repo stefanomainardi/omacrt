@@ -43,9 +43,16 @@ pick() {
   local prompt="$1"
   # A picker of your own, and how this is tested without a window in the way:
   #   OMACRT_PICKER='head -1' omacrt-pick snes
+  # Split on whitespace and run as a command with arguments, not through
+  # `eval`: the caller already has this shell, but a shell in a script the
+  # installer puts on PATH is the line a reader greps for, and the project
+  # says elsewhere that it has none.
   if [ -n "${OMACRT_PICKER-}" ]; then
     log "picker: $OMACRT_PICKER"
-    eval "$OMACRT_PICKER"
+    # shellcheck disable=SC2086 # deliberate: the value is a command line
+    set -- $OMACRT_PICKER
+    command -v "$1" >/dev/null 2>&1 || { say "OMACRT_PICKER is not a command" "$1"; exit 1; }
+    "$@"
   elif command -v walker >/dev/null 2>&1; then
     # walker is a single instance application: started while another one is
     # up, the second process hands its arguments over and exits at once,

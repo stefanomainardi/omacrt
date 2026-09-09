@@ -31,6 +31,18 @@ pub fn config_dir() -> PathBuf {
         .unwrap_or_else(|| home().join(".config/omacrt"))
 }
 
+/// Where anything the project can fetch again belongs.
+///
+/// Four other places work this out for themselves and two of them ignore
+/// `XDG_CACHE_HOME`, which is why the tidy sweep can look in the wrong
+/// directory; bringing them here is follow-up work. New code uses this one.
+pub fn cache_dir() -> PathBuf {
+    std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".cache"))
+        .join("omacrt")
+}
+
 pub fn state_dir() -> PathBuf {
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)

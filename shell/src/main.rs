@@ -1166,7 +1166,25 @@ fn control_input(line: &str) -> Option<Input> {
         return Some(inp);
     }
     if let Some(target) = line.strip_prefix("watch ") {
-        inp.watch = Some(target.trim().to_string());
+        // `play` on this pipe is checked against the index a line below, and
+        // `watch` used to be checked against nothing at all: any program
+        // running as the user could hand the launcher an arbitrary path or
+        // URL to open. The CLI already does this properly, so the pipe does
+        // the same - a link has to be http or https, and a file has to exist
+        // and is resolved before it is used.
+        let target = target.trim();
+        let target = if target.starts_with("http://") || target.starts_with("https://") {
+            target.to_string()
+        } else {
+            match std::fs::canonicalize(target) {
+                Ok(p) => p.display().to_string(),
+                Err(_) => {
+                    eprintln!("control: watch {target:?} is neither a link nor a file that exists");
+                    return None;
+                }
+            }
+        };
+        inp.watch = Some(target);
         return Some(inp);
     }
     if let Some(name) = line.strip_prefix("screen ") {
