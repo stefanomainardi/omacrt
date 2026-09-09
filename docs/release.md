@@ -173,11 +173,13 @@ rather than promised.
 ## E. Publishing
 
 - [x] `develop` into `main`, and `main` is what the world sees.
-- [x] Tag `v0.3.0` and give the CHANGELOG a release section with a date. Not
-      `v0.1.0`: the CHANGELOG already carried 0.1.0 and 0.2.0 from the two
-      earlier passes, so the release the repository opens with is 0.3.0.
-      `omacrt version` says which one is installed, and the user agent
-      the fetches send is built from the same number.
+- [x] Tag `v0.4.0` and give the CHANGELOG a release section with a date.
+      `v0.3.0` exists and is left where it is: it was cut on 2026-09-08, under
+      the old name and before the read through of the next day, so its tree
+      says `omarchy-crt` throughout and carries none of those fixes. A tag
+      that has been published is not moved; the release the repository opens
+      with is 0.4.0. `omacrt version` says which one is installed, and the
+      user agent the fetches send is built from the same number.
 - [x] Repository settings: the description now says what the project is
       rather than what it boots, twelve topics, Discussions on. **`main`
       cannot be protected while the repository is private**: GitHub answers
@@ -185,5 +187,8 @@ rather than promised.
       immediately after the flip, requiring the CI check and refusing force
       pushes and deletion.
 - [ ] Private to public. Everything else is done and CI is green on `main`
-      at `v0.3.0`; what is left is the decision and the two screenshots
+      at `v0.4.0`; what is left is the decision and the two screenshots
       below.
+- [ ] Protect `main` the moment it is public: require the CI check, refuse
+      force pushes and deletion. GitHub answers 403 to that on a private
+      repository, which is why it could not be set before.

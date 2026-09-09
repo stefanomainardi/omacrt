@@ -7,7 +7,7 @@
 # script, since they belong to a session and not to the system.
 
 pkgname=omacrt
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc="An Omarchy edition for retro gaming on 15 kHz CRT televisions"
 arch=('x86_64')

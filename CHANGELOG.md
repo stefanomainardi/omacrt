@@ -7,6 +7,11 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-09
+
+The release the repository opens with. 0.3.0 was tagged the day before, under
+the old name and before the pass below, so it is not the one to start from.
+
 ### Security
 
 - Five things that crossed a boundary are closed. The library overlay took the
@@ -582,6 +587,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.0
+[0.3.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.3.0
 [0.2.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.2.0
 [0.1.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.1.0
