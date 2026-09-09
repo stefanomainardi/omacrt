@@ -16,12 +16,10 @@ fetched at run time.
   it as [`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy) because
   that is what MIT asks of a derivative as much as of a copy.
 
-  **Omarchy's icon is no longer here.** The boot used to open on a 24 by 24
-  trace of the official favicon; showing somebody else's mark in the first two
-  seconds of every boot was the opposite of the distance the rename was for,
-  so it was removed and the project draws a mark of its own - four bars
-  crossed by the dark cut of the beam's return, described in
-  `shell/src/assets.rs` as geometry rather than stored as a picture.
+  **Omarchy's icon is not here.** The mark the boot opens on, and the one on
+  every inner page, is the project's own: four bars crossed by the dark cut of
+  the beam's return, described in `shell/src/assets.rs` as geometry rather
+  than stored as a picture.
 
   This project is a fan project. It is not part of Omarchy, not endorsed by
   the Omacom Foundation, and does not speak for either.
@@ -35,9 +33,9 @@ fetched at run time.
   reconstruction of the IBM PC BIOS face, from
   [font8x8](https://github.com/dhepper/font8x8) (public domain / CC0). The
   table lives in `shell/src/font8x8.rs`.
-- The Rust crates listed in `shell/Cargo.toml`, each under its own licence
-  (MIT or Apache 2.0 in every case at the time of writing). `cargo tree` and
-  `cargo license` will print the current set.
+- The Rust crates listed in `shell/Cargo.toml`, each under its own licence,
+  MIT or Apache 2.0 in every case. `cargo tree` and `cargo license` print the
+  current set.
 
 ## Programs it drives
 

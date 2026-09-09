@@ -46,9 +46,9 @@ Arch repositories, `libretro-mame2003-plus-git` from the AUR) so the overlay
 can offer the install through `omarchy pkg add` or `omarchy pkg aur add`.
 `config set` edits one key of `crt.toml` in place and keeps the comments.
 
-`setup` is the first run on a machine that is not the author's. It lists the
-DRM connectors with their EDID name, whether the kernel already marks them
-non-desktop, and whether the desktop is drawing on them; picks the one with a
+`setup` is the first run on a new machine. It lists the DRM connectors with
+their EDID name, whether the kernel already marks them non-desktop, and whether
+the desktop is drawing on them; picks the one with a
 DAC it recognises, or a connected HDMI output the desktop is not using; takes
 the standard from `--standard`, else from what is already configured, else
 from the country in the locale; and writes `output.connector` and
@@ -150,7 +150,8 @@ the compositor lit it, and clears the state.
 
 `mode ntsc --lines 224` keeps the line rate and refresh of the NTSC modeline
 but shows 224 active lines centred in the frame, so a Super Nintendo game
-lands on the tube one line per line. The launcher will use this per system.
+lands on the tube one line per line. The launcher does the same for the system
+it is starting, from the line count that console drew.
 
 Modeline clocks must be whole MHz because Hyprland 0.56 truncates them, and a
 stored modeline can only be replaced by another modeline (`mode = "WxH"` is
@@ -271,8 +272,7 @@ rarely needed by hand:
   emulator does not die with the launcher that started it: the signal goes to
   the launcher, the child is reparented to systemd and keeps running, holding
   the audio and answering "something is playing" for as long as the machine is
-  up. One from a morning's testing blocked every launch for eleven hours
-  before anybody asked why.
+  up, which blocks every launch until somebody notices.
 - **`on` and `shell start`** clear whatever a previous life left, since with
   no launcher running nothing can own it.
 - **the watchdog** sweeps once a minute while the tube is on, which is the one

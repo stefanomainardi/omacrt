@@ -69,9 +69,9 @@ Nothing exotic, but they are held to:
 
 [`AGENTS.md`](AGENTS.md) is the working guide: what the modules are, how to
 render a screen without a television and look at it, how to add a screen, a
-console, a setting or a CLI verb, and the handful of rules that have each cost
-a broken session to learn. Read it before the first change; it will save you
-most of the ways to get this wrong.
+console, a setting or a CLI verb, and the handful of rules that do damage when
+they are broken. Read it before the first change; it covers most of the ways
+to get this wrong.
 
 ## Bugs, ideas and questions
 

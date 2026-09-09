@@ -7,8 +7,10 @@ POST, logo reveal, chime, laser-etched wordmark, `ls` menu) as a real
 scanlines.
 
 Written in Rust on SDL2. Colors come from the current Omarchy theme
-(`~/.config/omarchy/current/colors.toml`). The icon is traced from the Omarchy
-favicon and the wordmark is decoded from Omarchy's own `logo.txt`.
+(`~/.config/omarchy/current/colors.toml`). The mark is the project's own, four
+bars crossed by the dark cut of the beam's return, drawn as geometry; the
+wordmark is decoded from a block drawing that takes its letterforms from
+Omarchy's own `logo.txt`.
 
 ## Build and run
 
@@ -104,4 +106,5 @@ Seconds after START:
 ## Credits
 
 Font: `font8x8` by Daniel Hepper, public domain, based on the IBM VGA fonts.
-Wordmark and icon: Omarchy (MIT, Omacom Foundation).
+Wordmark letterforms: Omarchy (MIT, Omacom Foundation). See
+[`../THIRD-PARTY.md`](../THIRD-PARTY.md).

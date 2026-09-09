@@ -3,8 +3,7 @@
 This is the guide for anyone, agent or person, changing this repository. It
 says what the pieces are, how to check a change without a television in the
 room, the conventions the code and the commits follow, and the handful of
-rules that each cost a broken session to learn. Read the rules first: they are
-the part that does damage.
+rules that do damage when they are broken. Read the rules first.
 
 `README.md` is the project's own description, `CHANGELOG.md` is what has
 landed. This file is about the work.
@@ -24,9 +23,9 @@ configuration for window rules. **A change that requires patching Omarchy is
 the wrong change.** That constraint is the project's argument, not a
 limitation to work around.
 
-## Rules that have already gone wrong
+## Rules that do damage when they are broken
 
-Each of these cost a session. None of them is theoretical.
+None of these is theoretical.
 
 **Never touch `~/.config/omarchy/plugins` while the session is locked, and
 never ask the shell to rescan plugins while it is locked.** The Omarchy shell
@@ -103,7 +102,7 @@ from a CRT", and no personal library figures in README prose.
 | `bin/omacrt-install` | Build and install; `--system` for the boot time lease; `--uninstall` |
 | `scripts/` | EDID override and lease setup, DRM probing, the offline demo renderer |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
-| `docs/` | The 15 kHz study, hardware, systems, video policy, controllers, CLI, troubleshooting, plan |
+| `docs/` | The 15 kHz study, hardware, systems, video policy, controllers, CLI, troubleshooting |
 | `packaging/` | The Arch `PKGBUILD` |
 
 ### The crate
@@ -271,8 +270,8 @@ how.
 
 **Branches.** Work lands on `develop` and is merged to `main` when it has run
 on the television. The remote has seen both a local merge and a pull request;
-either is fine, but check `git log origin/main` before pushing, because the
-two have diverged once already.
+either is fine, but check `git log origin/main` before pushing: the two can
+diverge.
 
 ## Adding the usual things
 
@@ -285,7 +284,7 @@ hub it belongs to. The drawing itself goes in the `scene/` file for its
 family, and a method another family calls is `pub(super)`. Watch
 the home menu's height: the wordmark and the CRT tag take the top half of a
 240 line screen, so eight rows fit and a ninth runs off the bottom. Render it
-and look before assuming otherwise; that is how About ended up in Settings.
+and look before assuming otherwise.
 
 **Something drawn that has to look like 1994.** Two rules earn most of it.
 No gradient is smooth: `sky.rs` has a 4x4 ordered dither and everything
@@ -299,8 +298,7 @@ it, at 320x240 and at 320x288.
 (`AMBIENT_ITEMS`) as well as in `settings::PAGES`: the hub is how somebody
 finds it on purpose, the list is how it takes its turn when the set is left
 alone.
-Putting one anywhere else because the home menu is full is how the photo
-frame briefly ended up under Videos.
+Do not put one anywhere else because the home menu is full.
 
 **A screensaver page.** `PAGES` in `settings.rs` is the list, and
 `start_saver_page` puts one up. A page is a screen like any other, so it
