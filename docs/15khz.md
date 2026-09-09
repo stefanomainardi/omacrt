@@ -1,12 +1,9 @@
 # Driving a 15 kHz television from a modern PC
 
-This is the research the project rests on, and the correction it needed. The
-first version of this page was a feasibility study written before anything
-worked, and its two main conclusions were both wrong: it said HDMI was out of
-the question, and that a Wayland compositor could never change modes for each
-game. What ships does both. The parts of the study that were right are still
-right, and worth reading before buying anything, so they are here too, with
-the reasoning that replaced the rest.
+This is the research the project rests on: what a television with a SCART
+socket wants on its pins, why a modern graphics card cannot give it that on its
+own, and how a DAC, a leased connector and a wide modeline answer each of those
+in turn. It is worth reading before buying anything.
 
 ## What a 15 kHz television actually wants
 
@@ -48,14 +45,11 @@ deinterlacer and no crystal of their own. That is why the arcade community
 names those two chips and no others.
 
 **HDMI has a floor.** HDMI's TMDS encoding starts at 25 MHz, and `amdgpu`
-will not program a mode below it on an HDMI connector.
+will not program a mode below it on an HDMI connector. Taken at face value that
+leaves one road, DisplayPort into an RTD2166 with a kernel carrying the 15 kHz
+patches, and an emulator on KMS rather than on a desktop.
 
-The study concluded from the third wall that HDMI was out, and that the only
-road was DisplayPort into an RTD2166, with a kernel carrying the 15 kHz
-patches, and the emulator taking KMS on a second virtual terminal because a
-compositor cannot change modes per game.
-
-## What this project does instead
+## What this project does
 
 The third wall has a door in it. **The DAC is the sink, not the television.**
 An HDMI to SCART DAC that accepts arbitrary timings presents itself as a
@@ -76,11 +70,11 @@ or 320 pixels land on a whole number of them and the television, which only
 ever draws 4:3, does the rest. One game line on one television line, no
 scaling anywhere.
 
-The second wall the study raised, per game mode changes under a compositor, is
-answered by **DRM leasing**. It is a Wayland protocol built for virtual
-reality headsets, where a compositor hands one connector over to an
-application that then owns it. The desktop keeps every other output; the
-leased one belongs to whatever took it. So:
+A mode change for each game, which no desktop protocol can express, is answered
+by **DRM leasing**. It is a Wayland protocol built for virtual reality headsets,
+where a compositor hands one connector over to an application that then owns
+it. The desktop keeps every other output; the leased one belongs to whatever
+took it. So:
 
 1. A systemd oneshot marks the DAC's connector *non-desktop* by overriding its
    EDID at boot. Hyprland sees that flag and stops configuring the output,
@@ -93,23 +87,23 @@ leased one belongs to whatever took it. So:
    be changed live, per console, while the desktop carries on untouched.
 
 No patched kernel, no second virtual terminal, no `chvt`, no root for the mode
-change. The study's "not possible under a compositor" was true of the
-protocols it looked at, `wlr-output-management`, which carries a width, a
-height and a refresh rate and nothing else. Leasing sidesteps the question by
-handing over the connector rather than describing a mode to somebody else.
+change. What is genuinely impossible under a compositor is asking it for a
+timing: `wlr-output-management`, the protocol for that, carries a width, a
+height and a refresh rate and nothing else, so a modeline cannot be expressed
+through it at all. Leasing sidesteps the question by handing over the connector
+rather than describing a mode to somebody else.
 
 ## What a stock kernel still cannot do
 
 **Interlace.** `amdgpu` without the 15 kHz patches accepts a 480i modeline,
-programs something, and scans out a narrow strip. Measured here on 2026-09-09,
-on a Radeon RX 7700/7800 XT (Navi 32, DCN 3.2) running the stock Arch kernel
-7.2.4, through the leased connector rather than through a compositor:
-`omacrt mode 480i` **succeeds**, the modeset returns without error, the DAC
-keeps its lock, `status` reports 3520x480 at 59.927 Hz, and the television
-shows a narrow image in the middle of the screen. Nothing rejects the mode on
-the leased path. It is programmed with interlaced timings and scanned out
-progressively, which at a 525 line vertical total and 15.731 kHz is 29.96 Hz,
-and no television locks to that.
+programs something, and scans out a narrow strip. On a Radeon RX 7700/7800 XT
+(Navi 32, DCN 3.2) running the stock Arch kernel 7.2.4, through the leased
+connector rather than through a compositor, `omacrt mode 480i` **succeeds**:
+the modeset returns without error, the DAC keeps its lock, `status` reports
+3520x480 at 59.927 Hz, and the television shows a narrow image in the middle of
+the screen. Nothing rejects the mode on the leased path. It is programmed with
+interlaced timings and scanned out progressively, which at a 525 line vertical
+total and 15.731 kHz is 29.96 Hz, and no television locks to that.
 
 Five things in the current upstream tree stand between that modeline and a
 picture on DCN 3.2.
@@ -208,9 +202,10 @@ follows stable within days. Building one is a package that coexists with the
 stock kernel, its own UKI and its own boot entry, and the default entry stays
 the stock one.
 
-## Two findings about Hyprland
+## Modelines and interlace in Hyprland
 
-Both verified by reading the source on 2026-09-05, and both still true.
+Two things are true of Hyprland 0.56 and its aquamarine backend, and both are
+in the source.
 
 **Modelines work, the interlace flag does not.** The monitor rule takes a full
 modeline: `monitor = DP-2, modeline 6.400 320 336 368 400 240 244 247 262
@@ -272,10 +267,10 @@ document at length: anything with a slow PIC that loses sync when the timing
 changes, and any cable built for a MiSTer, which expects 3.3 to 5 V on pin 9
 and TTL composite sync on pin 13.
 
-## What was checked, and in what order
+## Bringing one up, in order
 
-The order mattered: everything that could be proved without spending money was
-proved first.
+The order matters: everything that can be proved without spending money comes
+first.
 
 1. Switchres dry, for the modelines: `switchres 320 240 60 -c -m ntsc`. No
    hardware needed.
@@ -289,7 +284,7 @@ proved first.
    programmed by our own process.
 5. RetroArch as a client of that compositor, with the line count following the
    console.
-6. Interlace, which is where the stock kernel stopped.
+6. Interlace, which is where a stock kernel stops.
 
 ## Sources
 

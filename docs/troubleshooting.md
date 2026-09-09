@@ -16,8 +16,8 @@ which sets a 200 ms `RLIMIT_RTTIME` on the process so rtkit will grant its
 audio thread realtime priority. Children inherit that limit and cannot raise
 it back. With the limit in place rtkit also grants realtime to RetroArch's
 PulseAudio thread, and the first time that thread runs 200 ms without
-sleeping the kernel kills the whole process with SIGKILL. The launcher now
-runs SDL on `SDL_AUDIODRIVER=pulseaudio`, which leaves the limits alone.
+sleeping the kernel kills the whole process with SIGKILL. The launcher runs
+SDL on `SDL_AUDIODRIVER=pulseaudio`, which leaves the limits alone.
 Check with:
 
 ```
@@ -27,17 +27,17 @@ grep "realtime timeout" /proc/$(pgrep -x retroarch)/limits   # must read unlimit
 ## RetroArch crashes when a game ends
 
 A SIGSEGV core dump right after `[Core] Unloading core...` in `game.log`,
-seen with snes9x and Genesis Plus GX alike. The launcher ran run-ahead with
-a secondary core instance, whose teardown at exit crashes several cores.
-Run-ahead now uses a single instance. Sending SIGTERM to a RetroArch that is
-already shutting down can still crash it; the launcher never does that.
+seen with snes9x and Genesis Plus GX alike. Run-ahead with a secondary core
+instance is the cause: that instance's teardown at exit crashes several cores,
+so run-ahead uses a single instance. Sending SIGTERM to a RetroArch that is
+already shutting down crashes it as well; the launcher never does that.
 
 ## "Application Not Responding" for a game that was fine
 
 A fullscreen client whose workspace is not shown on its monitor blocks on
-its next frame, and Hyprland reports it unresponsive. This happened when
-something focused the launcher (its `crt` workspace) while the game ran on
-`crtgame`. `omacrt focus` now focuses the running game, not the
+its next frame, and Hyprland reports it unresponsive. It happens when
+something focuses the launcher (its `crt` workspace) while the game runs on
+`crtgame`. `omacrt focus` focuses the running game rather than the
 launcher, and the launcher does not re-assert its fullscreen while a game
 runs. Two launcher processes fighting over the tube produce the same
 symptom; `omacrt shell stop` waits for the launcher to exit and kills a
@@ -69,11 +69,11 @@ own hotkeys through the compositor (`omacrt-display` control pipe,
 `key pause|save|load|reset|quit`), and RetroArch runs with
 `network_cmd_enable = false`.
 
-The code that spoke that interface is gone rather than kept as a fallback.
-It could not have worked - the interface it needed is the one disabled above
-- and a UDP send to a port nobody listens on succeeds, so `omacrt game save`
-in a window reported a save that never happened. Off the leased tube those
-commands now say there is no emulator on this display.
+Nothing here speaks that interface, and there is no fallback over it. It could
+not work: the interface it needs is the one disabled above, and a UDP send to a
+port nobody listens on succeeds, so `omacrt game save` in a window would report
+a save that never happened. Off the leased tube those commands say there is no
+emulator on this display.
 
 ## Is the tube ours?
 
@@ -125,12 +125,11 @@ driver silently disables keyboard input under Wayland, so the launcher forces
 ## RetroArch crashes are logged to the desktop
 
 Every core dump makes Omarchy pop a "Process crashed: retroarch" toast.
-The launcher's own crashes are fixed (the realtime limit and the run-ahead
-secondary instance above); what remains is an intermittent SIGSEGV inside
-RetroArch or a libretro core on this fresh install, unrelated to
-omacrt (it happens from a plain terminal too). A core dump cannot be
-suppressed per process here: `RLIMIT_CORE = 0` is ignored when
-`kernel.core_pattern` pipes to systemd-coredump, and `PR_SET_DUMPABLE(0)`
+The two causes above, the realtime limit and the run-ahead secondary instance,
+are handled; what remains is an intermittent SIGSEGV inside RetroArch or a
+libretro core, unrelated to omacrt (it happens from a plain terminal too). A
+core dump cannot be suppressed per process here: `RLIMIT_CORE = 0` is ignored
+when `kernel.core_pattern` pipes to systemd-coredump, and `PR_SET_DUMPABLE(0)`
 is reset by `execve`. Clear the toasts with `omarchy-shell -q notifications
 dismissAll`.
 
@@ -148,8 +147,8 @@ including this one, so bus traffic to 0x37 interleaves with the launcher's
 own register access. The launcher reads registers in a single I2C
 transaction (page select and read together) and serializes its own users
 with a lock on the bus device. A DAC reset is the last resort: it clears the
-sync selection, and writing a garbage value back to it is what produced the
-blue picture once.
+sync selection, and writing a garbage value back into that selection is what
+turns the picture blue.
 
 ## The picture died in the middle of a game
 
@@ -243,11 +242,11 @@ omacrt doctor        # lists it, with its pid
 omacrt doctor --fix  # stops it, with SIGKILL if a wedged core ignores the first signal
 ```
 
-`shell stop`, `off`, `on` and `shell start` all do that sweep now, and the
-watchdog does it once a minute while the tube is on, so this should not
-happen again. An emulator is ours when its command line carries our own
-RetroArch configuration, and an orphan when no launcher is above it in the
-process tree, so nothing else on the machine is ever touched.
+`shell stop`, `off`, `on` and `shell start` all do that sweep, and the
+watchdog does it once a minute while the tube is on. An emulator is ours when
+its command line carries our own RetroArch configuration, and an orphan when no
+launcher is above it in the process tree, so nothing else on the machine is
+ever touched.
 
 ## A command from the desktop does nothing at all
 

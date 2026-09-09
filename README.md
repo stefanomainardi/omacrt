@@ -67,8 +67,8 @@ invites the experiments the big frontends never bothered with.
 >
 > **Tested on one setup so far:** Omarchy 4 with Hyprland 0.56, an AMD Radeon
 > RX 7700/7800 XT, an RGB-Pi 2 DAC and a Bang & Olufsen BeoCenter 1. Other
-> GPUs, DACs and televisions are uncharted; the code is written to cope, the
-> author has not seen them work.
+> GPUs, DACs and televisions are uncharted: the code is written to cope with
+> them, and none of them has been tried.
 
 ## How it works
 
@@ -136,9 +136,9 @@ elsewhere:
 Run `omacrt setup` first on a machine that is not this one: it lists the
 connectors with what their EDID says, picks the one the DAC is on, works out
 the standard from the locale, and writes those two lines to `crt.toml`.
-`omacrt doctor` says what is still missing. The DisplayPort DAC tier for
-native 320x240 timings is in [`docs/15khz.md`](docs/15khz.md) and has not been
-needed so far.
+`omacrt doctor` says what is still missing. The DisplayPort DAC tier, for
+native 320x240 timings rather than the wide ones, is in
+[`docs/15khz.md`](docs/15khz.md).
 
 ## Install
 
@@ -203,12 +203,11 @@ which is how every screenshot and video in this repository was made.
 | `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
 
-## State and what is next
+## State
 
 [`CHANGELOG.md`](CHANGELOG.md) keeps what has landed. In short: the tube is
 ours, games, music and video run on it, the collection is managed from the
-bar, and the interlaced modes are in. Next: more screensaver effects, and the
-painterly pass on the clock and weather pages.
+bar, and the interlaced modes are in.
 
 ## Contributing
 
@@ -222,7 +221,7 @@ and the pull request has to say what it ran on.
   standards, and the commands CI runs.
 - [`AGENTS.md`](AGENTS.md): the working guide. The modules, how to render a
   screen without a television and look at it, how to add a screen, a console,
-  a setting or a CLI verb, and the rules that have each cost a broken session.
+  a setting or a CLI verb, and the rules that do damage when they are broken.
   Written for a coding agent and fine for a person.
 - [`SECURITY.md`](SECURITY.md): what runs as root, what is downloaded and from
   where, what is executed, and the one credential that can exist.
