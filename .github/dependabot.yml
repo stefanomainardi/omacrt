@@ -11,6 +11,13 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      # smithay re-exports drm's types and pins its own version of it. Raising
+      # this one on its own puts two incompatible `drm::control::Mode` in the
+      # same program and the compositor stops compiling, so drm follows
+      # smithay rather than a schedule.
+      - dependency-name: drm
+      - dependency-name: drm-ffi
   - package-ecosystem: github-actions
     directory: /
     schedule:
