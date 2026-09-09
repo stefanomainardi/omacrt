@@ -7,6 +7,27 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Changed
+
+- The documents describe what the project does rather than how it came to do
+  it. The record of the review passes, the dates, the accounts of sessions
+  that went wrong and the reasoning behind decisions already taken are gone;
+  every fact they carried is restated as a property of the code.
+- `docs/cli.md` no longer presents `mode 480i` and `mode 576i` as working. A
+  stock `amdgpu` scans those timings out progressively and the television
+  shows a narrow strip, which is what the other pages have always said.
+- `docs/systems.md` and `docs/video-policy.md` no longer read as though this
+  setup runs a patched kernel. RetroArch's own mode switching needs one; the
+  launcher does not use it and sets the mode itself on the leased connector.
+- `CODE_OF_CONDUCT.md` points at the contact page rather than an address.
+- `shell/README.md` said the icon is traced from the Omarchy favicon and
+  credited the mark to Omarchy. The code draws the project's own mark as
+  geometry; only the wordmark's letterforms come from Omarchy's `logo.txt`.
+
+### Removed
+
+- `docs/release.md`, a launch checklist rather than documentation.
+
 ### Fixed
 
 - The display process notices a graphics device that has stopped answering.
