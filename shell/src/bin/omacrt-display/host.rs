@@ -12,7 +12,7 @@ use smithay::input::keyboard::Keycode;
 
 /// F1 in the Wayland numbering: evdev 59 plus the eight of the X11 offset.
 const F1: u32 = 67;
-use smithay::reexports::calloop::LoopHandle;
+use smithay::reexports::calloop::{LoopHandle, RegistrationToken};
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool,
     wl_surface,
@@ -42,6 +42,11 @@ pub struct Host {
     buffer_busy: bool,
     frame_pending: bool,
     pub closed: bool,
+    /// The event loop's handle on the desktop connection, and the loop it
+    /// belongs to. Without both, closing the window leaves the source and
+    /// its socket in the loop for the life of the display process, one of
+    /// each per `monitor on`.
+    source: Option<(LoopHandle<'static, Crt>, RegistrationToken)>,
 }
 
 struct Pool {
@@ -67,7 +72,7 @@ impl Host {
         let qh = queue.handle();
         let display = conn.display();
         let _registry = display.get_registry(&qh, ());
-        calloop_wayland_source::WaylandSource::new(conn.clone(), queue)
+        let token = calloop_wayland_source::WaylandSource::new(conn.clone(), queue)
             .insert(handle.clone())
             .map_err(|e| format!("desktop source: {e}"))?;
         Ok(Host {
@@ -89,6 +94,7 @@ impl Host {
             buffer_busy: false,
             frame_pending: false,
             closed: false,
+            source: Some((handle.clone(), token)),
         })
     }
 
@@ -236,6 +242,11 @@ impl Host {
         self.pool = None;
         self.closed = true;
         let _ = self.conn.flush();
+        // The source owns the connection's file descriptor. Dropping the
+        // Host is not enough: the loop keeps the source until it is told.
+        if let Some((handle, token)) = self.source.take() {
+            handle.remove(token);
+        }
     }
 }
 

@@ -117,7 +117,12 @@ impl Feed {
                 Ok(Msg::Trouble(why)) => self.trouble = Some(why),
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
+                    // The worker has gone. Without this the frame waits for a
+                    // picture that is not coming and says nothing about it.
                     self.rx = None;
+                    if self.trouble.is_none() && self.queue.is_empty() {
+                        self.trouble = Some("the photograph worker stopped".into());
+                    }
                     break;
                 }
             }

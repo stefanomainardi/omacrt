@@ -25,6 +25,18 @@ pub fn pid_path() -> PathBuf {
     super::state_dir().join("display.pid")
 }
 
+/// Written by the display process while the desktop preview window is open.
+/// The window belongs to that process, so it is the one that knows; asking
+/// the compositor instead means a subprocess at the moment a game starts.
+pub fn monitor_path() -> PathBuf {
+    super::state_dir().join("monitor.open")
+}
+
+/// True while the desktop preview window is open.
+pub fn monitor_open() -> bool {
+    monitor_path().exists()
+}
+
 pub fn log_path() -> PathBuf {
     super::state_dir().join("display.log")
 }
@@ -225,10 +237,7 @@ pub fn monitor_focus() -> String {
     }
     for _ in 0..30 {
         std::thread::sleep(Duration::from_millis(100));
-        let listed = super::run("hyprctl", &["clients", "-j"])
-            .map(|t| t.contains("\"omacrt-monitor\""))
-            .unwrap_or(false);
-        if listed {
+        if monitor_open() {
             super::output::focus_class("omacrt-monitor");
             return "keyboard on the tube: the OmaCRT window has focus (close it to stop)".into();
         }

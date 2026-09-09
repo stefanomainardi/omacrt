@@ -535,7 +535,20 @@ impl Music {
                     self.played = true;
                     self.last_status = 0.0;
                 }
-                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    // The worker thread has gone: nothing will answer a
+                    // request again. Without this the list that was being
+                    // fetched stays "loading" and the transport stays on
+                    // whatever it last said, for the rest of the session.
+                    if let Some(src) = self.loading.take() {
+                        self.lists
+                            .insert(src, Err("the music worker stopped".into()));
+                    }
+                    self.status = Status::default();
+                    self.error = Some("the music worker stopped".into());
+                    break;
+                }
             }
         }
     }

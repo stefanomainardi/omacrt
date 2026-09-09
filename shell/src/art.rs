@@ -79,6 +79,10 @@ pub struct Art {
     rx: Receiver<Done>,
     ready: HashMap<String, Option<Image>>,
     pending: HashSet<String>,
+    /// Set when the worker thread has gone. A picture that will never arrive
+    /// has to stop looking like one that is on its way, or the loading mark
+    /// stays on the screen for the rest of the session.
+    stopped: bool,
 }
 
 impl Art {
@@ -110,19 +114,35 @@ impl Art {
             rx,
             ready: HashMap::new(),
             pending: HashSet::new(),
+            stopped: false,
         }
     }
 
     /// Drain finished work. Call once per frame.
     pub fn poll(&mut self) {
-        while let Ok(done) = self.rx.try_recv() {
-            self.pending.remove(&done.key);
-            self.ready.insert(done.key, done.image);
+        loop {
+            match self.rx.try_recv() {
+                Ok(done) => {
+                    self.pending.remove(&done.key);
+                    self.ready.insert(done.key, done.image);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    // Nothing is coming. Everything outstanding is answered
+                    // with no picture, which the screens already draw for a
+                    // cover that does not exist.
+                    for key in self.pending.drain() {
+                        self.ready.insert(key, None);
+                    }
+                    self.stopped = true;
+                    break;
+                }
+            }
         }
     }
 
     fn request(&mut self, key: &str, source: Source, max_w: usize, max_h: usize) {
-        if self.ready.contains_key(key) || self.pending.contains(key) {
+        if self.stopped || self.ready.contains_key(key) || self.pending.contains(key) {
             return;
         }
         self.pending.insert(key.to_string());

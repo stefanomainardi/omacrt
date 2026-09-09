@@ -87,6 +87,11 @@ pub struct Audio {
     /// all rendered at startup.
     ambience: Option<Ambience>,
     loops: Vec<(Ambience, Arc<Vec<f32>>)>,
+    /// A loop being rendered on a thread, and which one it is. Four seconds
+    /// of samples take long enough that rendering one where the picture is
+    /// drawn costs a frame, and rendering it with the voice lock held costs
+    /// an audible gap as well.
+    rendering: Option<(Ambience, std::sync::mpsc::Receiver<Vec<f32>>)>,
 }
 
 impl Audio {
@@ -97,6 +102,7 @@ impl Audio {
             bank: Vec::new(),
             ambience: None,
             loops: Vec::new(),
+            rendering: None,
         }
     }
 
@@ -120,6 +126,7 @@ impl Audio {
             bank,
             ambience: None,
             loops: Vec::new(),
+            rendering: None,
         })
     }
 
@@ -128,10 +135,26 @@ impl Audio {
     /// different one fades the old loop out and the new one in, and `None`
     /// leaves silence behind.
     pub fn set_ambience(&mut self, want: Option<Ambience>) {
+        self.take_rendered();
         if self._device.is_none() || want == self.ambience {
             return;
         }
         self.ambience = want;
+        self.fade_loops_out();
+        let Some(a) = want else {
+            return;
+        };
+        match self.loops.iter().find(|(k, _)| *k == a) {
+            Some((_, data)) => {
+                let data = data.clone();
+                self.start_loop(data);
+            }
+            None => self.render_in_background(a),
+        }
+    }
+
+    /// Fade whatever weather is playing towards silence.
+    fn fade_loops_out(&self) {
         // Not `unwrap`: this runs on the thread that draws. A panic in the
         // audio callback poisons the lock, and taking it down with `unwrap`
         // here turned a lost sound into a black television on the next frame.
@@ -142,16 +165,12 @@ impl Audio {
             v.target = 0.0;
             v.ramp = AMBIENCE_RAMP;
         }
-        let Some(a) = want else {
+    }
+
+    /// Start a rendered loop, fading in.
+    fn start_loop(&self, data: Arc<Vec<f32>>) {
+        let Ok(mut voices) = self.voices.lock() else {
             return;
-        };
-        let data = match self.loops.iter().find(|(k, _)| *k == a) {
-            Some((_, data)) => data.clone(),
-            None => {
-                let data = Arc::new(a.render());
-                self.loops.push((a, data.clone()));
-                data
-            }
         };
         voices.push(Voice {
             data,
@@ -161,6 +180,43 @@ impl Audio {
             target: 1.0,
             ramp: AMBIENCE_RAMP,
         });
+    }
+
+    /// Render a loop on a thread. Only one is ever in flight: the weather
+    /// changes slowly, and a second request replaces the first.
+    fn render_in_background(&mut self, a: Ambience) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        if std::thread::Builder::new()
+            .name("ambience".into())
+            .spawn(move || {
+                let _ = tx.send(a.render());
+            })
+            .is_ok()
+        {
+            self.rendering = Some((a, rx));
+        }
+    }
+
+    /// Take up a loop a thread has finished, keeping it for next time and
+    /// starting it when it is still the weather that is wanted.
+    fn take_rendered(&mut self) {
+        let Some((a, rx)) = self.rendering.as_ref() else {
+            return;
+        };
+        let (a, data) = match rx.try_recv() {
+            Ok(data) => (*a, data),
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.rendering = None;
+                return;
+            }
+        };
+        self.rendering = None;
+        let data = Arc::new(data);
+        self.loops.push((a, data.clone()));
+        if self.ambience == Some(a) {
+            self.start_loop(data);
+        }
     }
 
     /// Play a buffer generated at runtime (the laser etch follows a random walk).
@@ -497,4 +553,44 @@ fn synth_click() -> Vec<f32> {
         *s = rng.next() * (-t * 900.0).exp() * 0.12;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A weather loop is four seconds of samples and takes long enough to
+    /// render that doing it where the picture is drawn costs a frame. It goes
+    /// to a thread, and the voice starts on a later frame: this walks that
+    /// path with no sound card in the machine.
+    #[test]
+    fn ambience_renders_on_a_thread_and_then_plays() {
+        let mut a = Audio::silent();
+        a.ambience = Some(Ambience::Rain);
+        a.render_in_background(Ambience::Rain);
+        assert!(a.rendering.is_some(), "no thread took the work");
+        assert!(a.loops.is_empty(), "the render happened on this thread");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while a.loops.is_empty() && std::time::Instant::now() < deadline {
+            a.take_rendered();
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert_eq!(a.loops.len(), 1, "the rendered loop was never taken up");
+        assert!(a.rendering.is_none(), "the thread was not let go");
+        let voices = a.voices.lock().expect("voices");
+        assert_eq!(voices.len(), 1, "the loop was not started");
+        assert!(voices[0].looping);
+    }
+
+    /// A loop already rendered is started without a thread at all.
+    #[test]
+    fn a_cached_loop_starts_at_once() {
+        let mut a = Audio::silent();
+        a.loops.push((Ambience::Calm, Arc::new(vec![0.0; 16])));
+        a.ambience = Some(Ambience::Calm);
+        let data = a.loops[0].1.clone();
+        a.start_loop(data);
+        assert!(a.rendering.is_none());
+        assert_eq!(a.voices.lock().expect("voices").len(), 1);
+    }
 }

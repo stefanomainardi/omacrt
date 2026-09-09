@@ -537,6 +537,9 @@ fn run(args: &Args) -> Result<(), String> {
     };
     let mut index_seen = index_stamp(&index_path);
     let mut index_check = 0.0f64;
+    // Reading the index is seconds of work on a large collection, so it
+    // happens on a thread and the result is taken up on a later frame.
+    let mut index_reload: Option<std::sync::mpsc::Receiver<library::Library>> = None;
     let mut follow_at = 0.0f64;
     let mut following: Option<u32> = None;
     // Whether the desktop preview window was up when the game started, and
@@ -1003,8 +1006,8 @@ fn run(args: &Args) -> Result<(), String> {
             // While a game runs it is a second copy of the picture on another
             // screen, so it goes away and comes back when the game ends,
             // unless the settings say to keep it.
-            preview_was_up = !scene.keep_preview_in_games()
-                && omacrt_shell::crt::output::window_exists("omacrt-monitor");
+            preview_was_up =
+                !scene.keep_preview_in_games() && omacrt_shell::crt::display::monitor_open();
             if preview_was_up {
                 let _ = omacrt_shell::crt::display::send("monitor off");
             }
@@ -1053,13 +1056,33 @@ fn run(args: &Args) -> Result<(), String> {
             }
         }
         // Once a second, and never while a game holds the tube.
-        if child.is_none() && now() >= index_check {
+        if let Some(rx) = index_reload.as_ref() {
+            match rx.try_recv() {
+                Ok(lib) => {
+                    scene.replace_library(lib);
+                    index_reload = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => index_reload = None,
+            }
+        }
+        if child.is_none() && index_reload.is_none() && now() >= index_check {
             index_check = now() + 1.0;
             let stamp = index_stamp(&index_path);
             if stamp != index_seen {
                 index_seen = stamp;
                 eprintln!("the library was scanned again, reading it");
-                scene.replace_library(library::Library::load(&systems_path(args)));
+                let path = systems_path(args);
+                let (tx, rx) = std::sync::mpsc::channel();
+                match std::thread::Builder::new()
+                    .name("library-reload".into())
+                    .spawn(move || {
+                        let _ = tx.send(library::Library::load(&path));
+                    }) {
+                    Ok(_) => index_reload = Some(rx),
+                    // No thread to be had: read it here rather than not at all.
+                    Err(_) => scene.replace_library(library::Library::load(&systems_path(args))),
+                }
             }
         }
         if let Some(n) = stick.poll(now())

@@ -24,6 +24,26 @@ caveat for a 0.x project: anything may still move.
 - `ffprobe` cannot freeze the launcher. A probe that has not answered in five
   seconds is killed and the video treated as unreadable, so a mount that has
   gone away costs one pause rather than the whole interface.
+- The library is read again on a thread when a scan changes it under the
+  launcher, instead of stopping the picture for as long as it takes.
+- A weather loop is rendered on a thread and outside the voice lock. Four
+  seconds of samples were being synthesised where the picture is drawn, with
+  the lock the audio callback needs held throughout: a dropped frame and an
+  audible gap on every weather change.
+- The desktop preview window's Wayland source is removed from the event loop
+  when the window closes. One socket and one live source were left behind by
+  every `monitor on` and `monitor off`.
+- Whether the preview window is open is answered from a file the display
+  process writes, not by asking the compositor. Starting a game no longer
+  spawns `hyprctl` to find out.
+- Recording no longer allocates a frame of video memory and two buffers thirty
+  times a second. The offscreen buffer is kept between frames, the picture is
+  scaled straight out of it, and the buffers the writer has finished with come
+  back to be filled again.
+- A worker thread that has died is no longer indistinguishable from one with
+  nothing to do. A dead cover worker resolves what it was asked for as no
+  picture, a dead music worker says so on the list and clears the transport,
+  and a dead photograph worker says so on the frame.
 - A page flip the connector refuses no longer retries for ever. Nothing marked
   the frame as queued when the flip failed, so every client commit drew the
   whole scene again and logged another line, indefinitely. Ten refusals in a

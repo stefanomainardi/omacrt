@@ -96,6 +96,10 @@ pub struct Crt {
     _drm: DrmOutputManager<Allocator, Exporter, (), DrmDeviceFd>,
     drm_output: Option<DrmOutput<Allocator, Exporter, (), DrmDeviceFd>>,
     frame_queued: bool,
+    /// The offscreen buffer the recording and the screenshot render into,
+    /// and the mode it was made for. Kept between frames.
+    capture_target: Option<GlesRenderbuffer>,
+    capture_size: Option<(i32, i32)>,
     /// Page flips refused in a row. A driver that will not take a frame
     /// takes none of them, so the count only ever runs away.
     flips_failed: u32,
@@ -116,6 +120,8 @@ pub struct Crt {
 struct Recorder {
     child: std::process::Child,
     tx: std::sync::mpsc::SyncSender<Vec<u8>>,
+    /// Buffers the writer has finished with, to be filled again.
+    spent: std::sync::mpsc::Receiver<Vec<u8>>,
     thread: Option<std::thread::JoinHandle<()>>,
     frames: u64,
     path: String,
@@ -181,10 +187,17 @@ impl Recorder {
         let mut child = cmd.spawn().map_err(|e| format!("ffmpeg: {e}"))?;
         let mut stdin = child.stdin.take().ok_or("ffmpeg stdin")?;
         let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(8);
+        // Written frames come back to be filled again: at 4.9 MB each, thirty
+        // times a second, allocating one per frame is 147 MB a second through
+        // the allocator while the compositor is trying to keep time.
+        let (spent_tx, spent_rx) = std::sync::mpsc::channel::<Vec<u8>>();
         let thread = std::thread::spawn(move || {
             use std::io::Write;
             for frame in rx {
                 if stdin.write_all(&frame).is_err() {
+                    break;
+                }
+                if spent_tx.send(frame).is_err() {
                     break;
                 }
             }
@@ -193,27 +206,26 @@ impl Recorder {
         Ok(Recorder {
             child,
             tx,
+            spent: spent_rx,
             thread: Some(thread),
             frames: 0,
             path: path.to_string(),
         })
     }
 
-    /// Scale the tube's frame into the recording size (nearest: the wide
-    /// super resolution becomes 4:3, each of the tube's lines four pixels).
-    fn push(&mut self, bgra: &[u8], w: usize, h: usize) {
-        let mut out = vec![0u8; REC_W * REC_H * 4];
-        for y in 0..REC_H {
-            let sy = y * h / REC_H;
-            let src_row = &bgra[sy * w * 4..(sy + 1) * w * 4];
-            let dst_row = &mut out[y * REC_W * 4..(y + 1) * REC_W * 4];
-            for x in 0..REC_W {
-                let sx = x * w / REC_W;
-                dst_row[x * 4..x * 4 + 4].copy_from_slice(&src_row[sx * 4..sx * 4 + 4]);
-            }
-        }
-        // Drop the frame rather than stall the compositor when ffmpeg lags.
-        if self.tx.try_send(out).is_ok() {
+    /// A buffer to scale the next frame into: one the writer has finished
+    /// with, or a new one the first few times.
+    fn buffer(&mut self) -> Vec<u8> {
+        let mut buf = self.spent.try_recv().unwrap_or_default();
+        buf.clear();
+        buf.resize(REC_W * REC_H * 4, 0);
+        buf
+    }
+
+    /// Hand a filled buffer to the writer, dropping the frame rather than
+    /// stalling the compositor when ffmpeg lags.
+    fn push(&mut self, frame: Vec<u8>) {
+        if self.tx.try_send(frame).is_ok() {
             self.frames += 1;
         }
     }
@@ -512,6 +524,8 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         _drm: drm,
         drm_output: Some(drm_output),
         frame_queued: false,
+        capture_target: None,
+        capture_size: None,
         flips_failed: 0,
         lease,
         running: true,
@@ -547,6 +561,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         })
         .map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(display::pid_path());
+    let _ = std::fs::remove_file(display::monitor_path());
     let _ = std::fs::remove_file(display::ctl_path());
     Ok(())
 }
@@ -611,12 +626,16 @@ impl Crt {
                             crate::host::APP_ID
                         ));
                         match crate::host::Host::open(&self.handle) {
-                            Ok(h) => self.host = Some(h),
+                            Ok(h) => {
+                                let _ = std::fs::write(display::monitor_path(), "");
+                                self.host = Some(h);
+                            }
                             Err(e) => eprintln!("monitor: {e}"),
                         }
                     }
                 }
                 _ => {
+                    let _ = std::fs::remove_file(display::monitor_path());
                     if let Some(mut h) = self.host.take() {
                         h.close();
                     }
@@ -709,23 +728,42 @@ impl Crt {
     }
 
     /// Render the current frame off screen: top-down BGRA bytes, width, height.
-    fn capture(&mut self) -> Result<(Vec<u8>, usize, usize), String> {
+    /// Render the tube's current picture off screen and hand the raw pixels
+    /// to `take`, along with which way up they are and how big they are. The
+    /// offscreen buffer is kept between calls: this runs thirty times a
+    /// second while recording, and allocating a full frame of video memory
+    /// each time is work the compositor does not have to do.
+    fn with_frame<R>(
+        &mut self,
+        take: impl FnOnce(&[u8], bool, usize, usize) -> R,
+    ) -> Result<R, String> {
         let size = self
             .output
             .current_mode()
             .map(|m| m.size)
             .ok_or("no mode")?;
         let (w, h) = (size.w, size.h);
-        let mut target: GlesRenderbuffer = self
-            .renderer
-            .create_buffer(Fourcc::Argb8888, (w, h).into())
-            .map_err(|e| format!("offscreen buffer: {e}"))?;
+        if self.capture_size != Some((w, h)) {
+            self.capture_target = None;
+        }
+        if self.capture_target.is_none() {
+            self.capture_target = Some(
+                self.renderer
+                    .create_buffer(Fourcc::Argb8888, (w, h).into())
+                    .map_err(|e| format!("offscreen buffer: {e}"))?,
+            );
+            self.capture_size = Some((w, h));
+        }
+        let target = self
+            .capture_target
+            .as_mut()
+            .ok_or("offscreen buffer went away")?;
         let elements = space_render_elements(&mut self.renderer, [&self.space], &self.output, 1.0)
             .map_err(|e| format!("elements: {e}"))?;
         let mut tracker = OutputDamageTracker::from_output(&self.output);
         let mut fb = self
             .renderer
-            .bind(&mut target)
+            .bind(target)
             .map_err(|e| format!("bind: {e}"))?;
         tracker
             .render_output(
@@ -745,15 +783,21 @@ impl Crt {
             .renderer
             .map_texture(&mapping)
             .map_err(|e| format!("map: {e}"))?;
-        let (w, h) = (w as usize, h as usize);
-        let row = w * 4;
-        let mut out = vec![0u8; row * h];
-        for y in 0..h {
-            // GL framebuffers read bottom-up unless the mapping says otherwise.
-            let src_y = if flipped { y } else { h - 1 - y };
-            out[y * row..(y + 1) * row].copy_from_slice(&bytes[src_y * row..(src_y + 1) * row]);
-        }
-        Ok((out, w, h))
+        Ok(take(bytes, flipped, w as usize, h as usize))
+    }
+
+    /// The picture the right way up, in a buffer of its own. For a still.
+    fn capture(&mut self) -> Result<(Vec<u8>, usize, usize), String> {
+        self.with_frame(|bytes, flipped, w, h| {
+            let row = w * 4;
+            let mut out = vec![0u8; row * h];
+            for y in 0..h {
+                // GL framebuffers read bottom-up unless the mapping says otherwise.
+                let src_y = if flipped { y } else { h - 1 - y };
+                out[y * row..(y + 1) * row].copy_from_slice(&bytes[src_y * row..(src_y + 1) * row]);
+            }
+            (out, w, h)
+        })
     }
 
     /// Write the current frame as a PNG. The desktop's screenshot tools
@@ -791,6 +835,8 @@ impl Crt {
     pub fn preview(&mut self) {
         let closed = self.host.as_ref().map(|h| h.closed).unwrap_or(false);
         if closed {
+            // Closed from the desktop, by the window's own button.
+            let _ = std::fs::remove_file(display::monitor_path());
             self.host = None;
             return;
         }
@@ -931,12 +977,31 @@ impl Crt {
         }
         self.frame_queued = false;
         self.frames += 1;
-        if self.recorder.is_some()
-            && self.frames.is_multiple_of(2)
-            && let Ok((bgra, w, h)) = self.capture()
-            && let Some(r) = self.recorder.as_mut()
-        {
-            r.push(&bgra, w, h);
+        if self.recorder.is_some() && self.frames.is_multiple_of(2) {
+            // Scale straight out of the mapped pixels into a buffer the
+            // writer thread has finished with: no full sized copy of the
+            // frame in between, and no allocation per frame.
+            let mut frame = self
+                .recorder
+                .as_mut()
+                .map(|r| r.buffer())
+                .unwrap_or_default();
+            let scaled = self.with_frame(|bytes, flipped, w, h| {
+                for y in 0..REC_H {
+                    let sy = y * h / REC_H;
+                    // GL reads bottom-up unless the mapping says otherwise.
+                    let src_y = if flipped { sy } else { h - 1 - sy };
+                    let src_row = &bytes[src_y * w * 4..(src_y + 1) * w * 4];
+                    let dst_row = &mut frame[y * REC_W * 4..(y + 1) * REC_W * 4];
+                    for x in 0..REC_W {
+                        let sx = x * w / REC_W;
+                        dst_row[x * 4..x * 4 + 4].copy_from_slice(&src_row[sx * 4..sx * 4 + 4]);
+                    }
+                }
+            });
+            if let (Ok(()), Some(r)) = (scaled, self.recorder.as_mut()) {
+                r.push(frame);
+            }
         }
         if self.last_stats.elapsed() >= Duration::from_secs(5) {
             self.last_stats = Instant::now();
