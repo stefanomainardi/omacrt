@@ -4,7 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Omarchy CRT bar widget: a television glyph that knows whether a 15 kHz
+// OmaCRT bar widget: a television glyph that knows whether a 15 kHz
 // tube is on the air. Everything real happens in the `omarchy-crt` binary
 // shipped next to this file; the widget renders its JSON and opens the panel.
 BarWidget {
@@ -119,8 +119,8 @@ BarWidget {
     // nf-md-television, with the line standard once the tube is on the air.
     text: root.active ? ("󰔂 " + root.lines) : "󰔂"
     tooltipText: root.active
-      ? ("Omarchy CRT on the air, " + root.lines)
-      : (root.connected ? "Omarchy CRT in standby" : "No CRT DAC connected")
+      ? ("OmaCRT on the air, " + root.lines)
+      : (root.connected ? "OmaCRT in standby" : "No CRT DAC connected")
     dimmed: !root.connected
     active: root.lockLost
     onPressed: function(buttonCode) {

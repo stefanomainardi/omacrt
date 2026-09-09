@@ -1,4 +1,4 @@
-# Omarchy CRT bar plugin
+# OmaCRT bar plugin
 
 A television in the Omarchy bar. The glyph shows whether the 15 kHz tube is
 on the air and the panel is the remote control: power, NTSC or PAL, keyboard

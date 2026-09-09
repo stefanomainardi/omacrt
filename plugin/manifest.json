@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "io.github.stefanomainardi.omarchy-crt",
-  "name": "Omarchy CRT",
+  "name": "OmaCRT",
   "version": "0.1.0",
   "author": "Stefano Mainardi",
   "license": "MIT",
@@ -10,7 +10,7 @@
   "kinds": ["bar-widget"],
   "entryPoints": { "barWidget": "BarWidget.qml" },
   "barWidget": {
-    "displayName": "Omarchy CRT",
+    "displayName": "OmaCRT",
     "description": "15 kHz CRT output: power, standard, DAC, audio, launcher",
     "category": "Hardware",
     "aliases": ["crt", "retro", "retroarch", "15khz", "scart", "rgb-pi", "tube"],
