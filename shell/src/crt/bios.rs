@@ -191,6 +191,15 @@ fn copy_file(src: &Path, dst: &Path) -> std::io::Result<bool> {
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // A file of the same name and a different size is a different file, and
+    // it belongs to RetroArch rather than to us. It is kept beside the new
+    // one instead of being written over: a BIOS is the one thing here that
+    // came off somebody's own console and cannot be fetched again.
+    if dst.is_file() {
+        let mut keep = dst.as_os_str().to_os_string();
+        keep.push(".replaced");
+        let _ = std::fs::rename(dst, std::path::PathBuf::from(keep));
+    }
     std::fs::copy(src, dst)?;
     Ok(true)
 }

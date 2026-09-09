@@ -1172,6 +1172,26 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             "sudo systemctl enable --now omacrt-lease.service".into()
         },
     ));
+    // The flag being set is not the same as the compositor having noticed.
+    // Hyprland picks its lease pool when it starts, so an override applied to
+    // a running session leaves the connector marked and still unavailable,
+    // which reads like a broken install and is only a reboot away.
+    if let Some(conn) = output::pick(cfg) {
+        let marked = display::leaseable(&conn.name);
+        let held = output::hypr_monitor(&conn.name).is_some();
+        rows.push((
+            "connector handed over".into(),
+            marked && !held,
+            match (marked, held) {
+                (true, true) => {
+                    "marked non-desktop, but the compositor still holds it: reboot".into()
+                }
+                (true, false) => "offered for leasing".into(),
+                _ => "not marked non-desktop: sudo bin/omacrt-install --system".into(),
+            },
+        ));
+    }
+
     // The bar plugin, and whether the shell has been told about it.
     let plugin_dir = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
         .join(".config/omarchy/plugins/io.github.stefanomainardi.omacrt");
@@ -2527,8 +2547,11 @@ fn main() {
                     println!("already in the watch later list");
                     return;
                 }
+                // A tab or a newline in the title would become extra rows,
+                // and every row is read back as something to open.
+                let title = title.replace(['\t', '\n', '\r'], " ");
                 text.push_str(&format!("{target}\t{title}\n"));
-                std::fs::write(&path, text).unwrap_or_else(|e| die(&e.to_string()));
+                omacrt_shell::store::save(&path, text).unwrap_or_else(|e| die(&e.to_string()));
                 println!("kept for later: {target}");
             } else {
                 let line = format!("watch {target}");

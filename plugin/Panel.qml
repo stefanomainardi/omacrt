@@ -98,7 +98,10 @@ Panel {
 
   function toggleWatch() {
     if (root.watching) {
-      Quickshell.execDetached(["pkill", "-f", "omacrt dac watch"])
+      // The full path, not the bare words: `pkill -f "omacrt dac watch"`
+      // matches any command line carrying that phrase, an editor open on this
+      // file included.
+      Quickshell.execDetached(["pkill", "-f", root.helper + " dac watch"])
     } else {
       Quickshell.execDetached(["setsid", root.helper, "dac", "watch"])
     }
@@ -156,7 +159,7 @@ Panel {
 
   Process {
     id: watchProc
-    command: ["pgrep", "-f", "omacrt dac watch"]
+    command: ["pgrep", "-f", root.helper + " dac watch"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.watching = String(text || "").trim() !== ""
