@@ -116,9 +116,7 @@ pub fn draw_floor(
         let dy = (y - horizon) as f32 + 1.0;
         let depth = 12000.0 / dy + scroll * 6.0; // world z of this scanline
         let lit = clamp01((front - y as f32) / 6.0);
-        let fog = clamp01((dy - 2.0) / 34.0)
-            * alpha
-            * (0.12 * clamp01(open * 3.0) + 0.88 * lit);
+        let fog = clamp01((dy - 2.0) / 34.0) * alpha * (0.12 * clamp01(open * 3.0) + 0.88 * lit);
         let row = (depth / 10.0).floor() as i32;
         let row_parity = row;
         for x in 0..w {
@@ -313,4 +311,3 @@ pub fn synth(rate: u32) -> Vec<f32> {
     }
     out
 }
-

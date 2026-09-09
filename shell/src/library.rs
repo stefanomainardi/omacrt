@@ -1542,8 +1542,7 @@ mod tests {
         // each one deletes what it wrote.
         static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir =
-            std::env::temp_dir().join(format!("omacrt-launch-{}-{n}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-launch-{}-{n}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let mut system = System {
             name: "snes".into(),

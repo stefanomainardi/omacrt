@@ -228,8 +228,7 @@ pub fn monitor_focus() -> String {
             .unwrap_or(false);
         if listed {
             super::output::focus_class("omacrt-monitor");
-            return "keyboard on the tube: the OmaCRT window has focus (close it to stop)"
-                .into();
+            return "keyboard on the tube: the OmaCRT window has focus (close it to stop)".into();
         }
     }
     "monitor window did not appear".into()

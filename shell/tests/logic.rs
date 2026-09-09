@@ -177,14 +177,8 @@ fn the_core_geometry_is_read_from_the_emulator_log() {
 ";
     // The last report wins: a game that changes its picture mid-play is what
     // this exists for.
-    assert_eq!(
-        omacrt_shell::library::core_geometry(log),
-        Some((320, 240))
-    );
-    assert_eq!(
-        omacrt_shell::library::core_geometry("nothing here"),
-        None
-    );
+    assert_eq!(omacrt_shell::library::core_geometry(log), Some((320, 240)));
+    assert_eq!(omacrt_shell::library::core_geometry("nothing here"), None);
     assert_eq!(
         omacrt_shell::library::core_geometry("Geometry: 99999x99999, Aspect: 1"),
         None,
