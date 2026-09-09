@@ -15,6 +15,15 @@ caveat for a 0.x project: anything may still move.
   holding a dead lease with the television black and the watchdog, which
   watches the pid, seeing nothing wrong. An error on the connection now counts
   too.
+- The Style screen no longer reads and parses a theme file for every visible
+  row of every frame. The swatch beside each name is read once, when the list
+  of installed themes is built.
+- The list of busiest processes is gathered on a thread of its own. Walking
+  every process on the machine means opening two files per process, and it was
+  happening twice a second where the picture is drawn.
+- `ffprobe` cannot freeze the launcher. A probe that has not answered in five
+  seconds is killed and the video treated as unreadable, so a mount that has
+  gone away costs one pause rather than the whole interface.
 - A page flip the connector refuses no longer retries for ever. Nothing marked
   the frame as queued when the flip failed, so every client commit drew the
   whole scene again and logged another line, indefinitely. Ten refusals in a

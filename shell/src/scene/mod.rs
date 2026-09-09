@@ -557,7 +557,7 @@ pub struct Scene {
     diag: Vec<(String, String)>,
     /// A game list opened from the home menu goes back to it, not to Games.
     list_from_home: bool,
-    themes: Vec<(String, PathBuf)>,
+    themes: Vec<crate::theme::Installed>,
     /// Theme transition: (from, to, start time).
     theme_blend: Option<(Theme, Theme, f64)>,
     launching: Option<Launch>,
@@ -738,7 +738,7 @@ impl Scene {
             profile_preview: false,
             game_dir: None,
             system_counts: Vec::new(),
-            themes: Theme::installed(),
+            themes: Theme::installed_with_swatches(),
             theme_blend: None,
             launching: None,
             post_clicks: 0,
@@ -988,8 +988,8 @@ impl Scene {
                 .and_then(|p| Theme::load(&p))
                 .unwrap_or_else(Theme::tokyo_night)
         } else {
-            match self.themes.iter().find(|(n, _)| n == name) {
-                Some((n, p)) => Theme::load_named(p, n).unwrap_or_else(Theme::tokyo_night),
+            match self.themes.iter().find(|t| t.name == name) {
+                Some(t) => Theme::load_named(&t.path, &t.name).unwrap_or_else(Theme::tokyo_night),
                 None => return,
             }
         };

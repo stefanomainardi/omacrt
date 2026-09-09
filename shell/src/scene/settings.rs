@@ -27,7 +27,7 @@ impl Scene {
                 } else {
                     self.themes
                         .iter()
-                        .position(|(n, _)| *n == cur)
+                        .position(|t| t.name == cur)
                         .map(|i| i + 1)
                         .unwrap_or(0)
                 };
@@ -418,7 +418,7 @@ impl Scene {
         // for them.
         let page = (((h - 28 - y0) / row_h - 1).max(1)) as usize;
         let names: Vec<String> = std::iter::once("system (follow Omarchy)".to_string())
-            .chain(self.themes.iter().map(|(n, _)| n.clone()))
+            .chain(self.themes.iter().map(|t| t.name.clone()))
             .collect();
         let top = sel
             .saturating_sub(page - 1)
@@ -439,11 +439,13 @@ impl Scene {
                 },
                 1,
             );
-            // Swatch: the theme's accent and green, read from disk once per frame for the visible rows.
+            // Swatch: the theme's accent and green, read when the list was
+            // built rather than here, where this runs once per visible row
+            // per frame.
             if i > 0 {
-                if let Some(t) = Theme::load_named(&self.themes[i - 1].1, &self.themes[i - 1].0) {
-                    fb.rect(left + 4, y + 1, 4, 6, t.accent);
-                    fb.rect(left + 9, y + 1, 4, 6, t.green);
+                if let Some((accent, green)) = self.themes.get(i - 1).and_then(|t| t.swatch) {
+                    fb.rect(left + 4, y + 1, 4, 6, accent);
+                    fb.rect(left + 9, y + 1, 4, 6, green);
                 }
             } else {
                 fb.rect(left + 4, y + 1, 4, 6, self.theme.accent);

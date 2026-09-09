@@ -8,6 +8,7 @@
 //! The drawing lives in the scene. This module only counts.
 
 use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::time::Instant;
 
 /// How many samples of history the graphs keep. At two samples a second this
@@ -70,7 +71,6 @@ struct Previous {
     cpu: Vec<(u64, u64)>,
     net: (u64, u64),
     disk: (u64, u64),
-    procs: HashMap<u32, u64>,
     at: Option<Instant>,
     /// The process list is walked less often than the counters, so its rates
     /// are worked out over its own interval.
@@ -92,6 +92,48 @@ pub struct Monitor {
     hwmon: Hwmon,
     /// Samples taken, so the process walk can happen every other one.
     tick: u64,
+    /// The process walk, on a thread of its own. Opening two files for every
+    /// process on the machine takes long enough to be seen as a dropped frame
+    /// when it happens where the picture is drawn.
+    walker: Option<Walker>,
+    /// The last list the walker sent, held so a sample taken while it is
+    /// still working has something to show.
+    top: Vec<Proc>,
+    procs_alive: u32,
+}
+
+/// The thread that walks `/proc`, and the two ends of the conversation with
+/// it. It is asked for a list and answers when it has one; nothing waits.
+struct Walker {
+    ask: Sender<f64>,
+    answer: Receiver<(Vec<Proc>, u32)>,
+    /// True between the asking and the answer, so it is asked once.
+    working: bool,
+}
+
+impl Walker {
+    fn spawn() -> Option<Self> {
+        let (ask, ask_rx) = channel::<f64>();
+        let (answer_tx, answer) = channel::<(Vec<Proc>, u32)>();
+        std::thread::Builder::new()
+            .name("sysmon-procs".into())
+            .spawn(move || {
+                let mut previous: HashMap<u32, u64> = HashMap::new();
+                while let Ok(elapsed) = ask_rx.recv() {
+                    let procs = walk_processes(&mut previous, elapsed);
+                    let alive = previous.len() as u32;
+                    if answer_tx.send((procs, alive)).is_err() {
+                        break;
+                    }
+                }
+            })
+            .ok()?;
+        Some(Self {
+            ask,
+            answer,
+            working: false,
+        })
+    }
 }
 
 impl Default for Monitor {
@@ -112,6 +154,9 @@ impl Monitor {
             gpu_dir: pick_gpu(),
             hwmon: Hwmon::probe(),
             tick: 0,
+            walker: Walker::spawn(),
+            top: Vec::new(),
+            procs_alive: 0,
         }
     }
 
@@ -188,26 +233,42 @@ impl Monitor {
         }
 
         // Walking every process means opening a couple of files per process,
-        // which is not something to do at the frame rate. Every other sample
-        // is often enough for a list that a person is reading.
+        // which is not something to do where the frame is drawn. The walker
+        // thread is asked every other sample and answers when it can; until
+        // then the last list it sent is what the screen shows.
         self.tick += 1;
-        let walk = self.tick % 2 == 1 || self.previous.procs.is_empty();
-        s.top = if walk {
+        if let Some(w) = self.walker.as_mut() {
+            match w.answer.try_recv() {
+                Ok((top, alive)) => {
+                    self.top = top;
+                    self.procs_alive = alive;
+                    w.working = false;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    // The thread is gone: the list stops moving, the rest of
+                    // the screen does not.
+                    self.walker = None;
+                }
+            }
+        }
+        if let Some(w) = self.walker.as_mut()
+            && !w.working
+            && (self.tick % 2 == 1 || self.top.is_empty())
+        {
             let since = self
                 .previous
                 .procs_at
                 .map(|t| now.duration_since(t).as_secs_f64())
                 .unwrap_or(0.0);
             self.previous.procs_at = Some(now);
-            self.top_processes(since)
-        } else {
-            self.last.top.clone()
-        };
-        s.procs_alive = if walk {
-            self.previous.procs.len() as u32
-        } else {
-            self.last.procs_alive
-        };
+            w.working = w.ask.send(since).is_ok();
+            if !w.working {
+                self.walker = None;
+            }
+        }
+        s.top = self.top.clone();
+        s.procs_alive = self.procs_alive;
 
         // The graphs move one pixel per sample.
         let push = |v: &mut Vec<f32>, x: f32| {
@@ -235,9 +296,12 @@ impl Monitor {
 
         self.last = s;
     }
+}
 
-    /// The busiest processes, by processor time used since the last sample.
-    fn top_processes(&mut self, elapsed: f64) -> Vec<Proc> {
+/// The busiest processes, by processor time used since the last walk. This
+/// runs on the walker thread: `previous` is its own memory of the last walk.
+fn walk_processes(previous: &mut HashMap<u32, u64>, elapsed: f64) -> Vec<Proc> {
+    {
         let ticks = 100.0; // CONFIG_HZ on every kernel this runs on.
         let mut seen: HashMap<u32, u64> = HashMap::new();
         let mut out: Vec<Proc> = Vec::new();
@@ -261,7 +325,7 @@ impl Monitor {
                 None => continue,
             };
             seen.insert(pid, used);
-            let before = self.previous.procs.get(&pid).copied();
+            let before = previous.get(&pid).copied();
             let cpu = match (before, elapsed > 0.0) {
                 (Some(b), true) => (used.saturating_sub(b) as f64 / ticks / elapsed * 100.0) as f32,
                 _ => 0.0,
@@ -276,7 +340,7 @@ impl Monitor {
                 rss_kb: rss_pages * 4,
             });
         }
-        self.previous.procs = seen;
+        *previous = seen;
         out.sort_by(|a, b| b.cpu.total_cmp(&a.cpu).then(b.rss_kb.cmp(&a.rss_kb)));
         out.truncate(8);
         out

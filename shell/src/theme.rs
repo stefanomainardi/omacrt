@@ -4,6 +4,15 @@
 use crate::fb::{Color, parse_hex, rgb};
 use std::path::{Path, PathBuf};
 
+/// An installed theme as the Style screen needs it: its name, where its
+/// colours live, and the swatch already read.
+pub struct Installed {
+    pub name: String,
+    pub path: PathBuf,
+    /// Accent and green, or nothing when the file would not parse.
+    pub swatch: Option<(Color, Color)>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Theme {
     pub name: String,
@@ -52,6 +61,20 @@ impl Theme {
     pub fn default_path() -> Option<PathBuf> {
         let home = std::env::var_os("HOME")?;
         Some(Path::new(&home).join(".config/omarchy/current/colors.toml"))
+    }
+
+    /// Every installed Omarchy theme, sorted, with the two colours the Style
+    /// screen shows beside each name. The swatch is read here, once, because
+    /// the alternative is a file read and a TOML parse per visible row per
+    /// frame on a screen that is drawn sixty times a second.
+    pub fn installed_with_swatches() -> Vec<Installed> {
+        Self::installed()
+            .into_iter()
+            .map(|(name, path)| {
+                let swatch = Self::load_named(&path, &name).map(|t| (t.accent, t.green));
+                Installed { name, path, swatch }
+            })
+            .collect()
     }
 
     /// Every installed Omarchy theme: (name, colors.toml path), sorted.

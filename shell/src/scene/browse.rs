@@ -855,7 +855,7 @@ impl Scene {
                     let name = if *sel == 0 {
                         "system".to_string()
                     } else {
-                        self.themes[*sel - 1].0.clone()
+                        self.themes[*sel - 1].name.clone()
                     };
                     self.settings.theme = name.clone();
                     self.apply_theme(&name);

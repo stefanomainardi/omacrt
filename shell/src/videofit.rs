@@ -7,6 +7,38 @@
 use crate::settings::VideoFit;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+/// How long a probe may take before the file is treated as unreadable. A
+/// local file answers in milliseconds; a mount that has gone away answers
+/// never, and the launcher is drawing while it waits.
+const PROBE_SECONDS: u64 = 5;
+
+/// Run a command and take its standard output, giving up after `limit`. A
+/// child that has outrun its deadline is killed and reaped, because a probe
+/// of a mount that has gone away never returns on its own and the caller is
+/// the thread that draws the picture.
+fn output_within(mut cmd: Command, limit: Duration) -> Option<Vec<u8>> {
+    let mut child = cmd.stdout(Stdio::piped()).spawn().ok()?;
+    let deadline = Instant::now() + limit;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {}
+            Err(_) => return None,
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    use std::io::Read;
+    let mut buf = Vec::new();
+    child.stdout.as_mut()?.read_to_end(&mut buf).ok()?;
+    Some(buf)
+}
 
 /// What ffprobe tells us about a source.
 #[derive(Clone, Debug, Default)]
@@ -20,26 +52,25 @@ pub struct Probe {
 }
 
 pub fn probe(file: &Path) -> Probe {
-    let out = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=width,height,r_frame_rate,field_order,color_transfer:format=duration",
-            "-of",
-            "json",
-        ])
-        .arg(file)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output();
+    let mut cmd = Command::new("ffprobe");
+    cmd.args([
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height,r_frame_rate,field_order,color_transfer:format=duration",
+        "-of",
+        "json",
+    ])
+    .arg(file)
+    .stdin(Stdio::null())
+    .stderr(Stdio::null());
     let mut p = Probe::default();
-    let Ok(out) = out else {
+    let Some(stdout) = output_within(cmd, Duration::from_secs(PROBE_SECONDS)) else {
         return p;
     };
-    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&stdout) else {
         return p;
     };
     if let Some(s) = v.get("streams").and_then(|s| s.get(0)) {
