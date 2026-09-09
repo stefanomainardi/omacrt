@@ -80,9 +80,16 @@ tail ~/.local/state/omacrt/display.log
 ```
 
 `hyprctl monitors` must not list the connector. If it does, the EDID
-override is not in place: `sudo bin/omacrt-install --system` installs
-it for every boot, `sudo scripts/crt-lease-setup.sh on` for now. `off`
+override is not in place: `sudo bin/omacrt-install --system` installs it for
+every boot, and `sudo scripts/crt-lease-setup.sh on` applies it now. `off`
 gives the connector back to the desktop.
+
+Applying it now is not the same as having it at boot. Hyprland decides which
+connectors it offers for leasing when it starts, so an override that arrives
+afterwards sets the flag but wins nothing: `non-desktop = 1` while
+`omacrt-display` still reports `connector HDMI-A-1 is not offered for lease
+(offered: none)`, and the picture only comes back at the next boot. Nothing
+else needs doing in the meantime.
 
 ## The in-game menu (RGUI) is blank
 
