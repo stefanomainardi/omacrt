@@ -7,6 +7,12 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-09
+
+Everything the pre-open review left open, and the documents brought in line
+with the code. The eleven issues filed with 0.4.0 are closed, and a twelfth
+found while testing the fixes for the first two.
+
 ### Changed
 
 - The documents describe what the project does rather than how it came to do
@@ -656,7 +662,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.1
 [0.4.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.0
 [0.3.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.3.0
 [0.2.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.2.0
