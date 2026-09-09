@@ -37,7 +37,7 @@ omacrt: drive a 15 kHz CRT from the Omarchy desktop
   game key <key> [ms]            press a key inside the running game (enter, rshift, or an
                                  evdev code), held for that many milliseconds
   watch <file|url> [--later [TITLE]]  play a video or a YouTube link on the tube, or keep it for later
-  game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
+  game menu|pause|save|load|reset|quit           press the emulator's hotkeys
   shot <file.png>                what the tube shows right now (leased output)
   monitor on|off                 desktop window: live preview of the tube, keyboard to the tube when focused
   record start <file.mp4>|stop   capture the tube, picture and sound, into a video
@@ -2284,7 +2284,7 @@ fn main() {
                 .unwrap_or("status")
                 .to_string();
             let r = match sub.as_str() {
-                "menu" => game::send("MENU_TOGGLE"),
+                "menu" => game::menu(),
                 "pause" => game::pause_toggle(),
                 "save" => game::save_state(),
                 "load" => game::load_state(),
@@ -2305,10 +2305,10 @@ fn main() {
                     };
                     crt::display::send(&line)
                 }
-                "cmd" => match positional(args).get(1) {
-                    Some(c) => game::send(c),
-                    None => die("game cmd needs a RetroArch command"),
-                },
+                // `game cmd` spoke RetroArch's UDP command interface, which
+                // this project disables at every launch because a datagram
+                // crashes it. `game key` is what presses a key for real.
+                "cmd" => die("game cmd is gone: use `game key <name>`"),
                 _ => {
                     println!(
                         "{}",

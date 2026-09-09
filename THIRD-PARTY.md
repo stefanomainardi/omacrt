@@ -6,17 +6,25 @@ fetched at run time.
 
 ## In the binary
 
-- **Omarchy's wordmark.** `shell/assets/wordmark.txt` is a copy of Omarchy's
-  own `logo.txt`, the block character drawing of the word, compiled in with
-  `include_str!` and redrawn by the launcher as a two pixel grid.
+- **The wordmark's letterforms.** `shell/assets/wordmark.txt` is a block
+  character drawing of the word OMACRT, compiled in with `include_str!` and
+  redrawn by the launcher as a two pixel grid. It is not Omarchy's drawing,
+  and it is not a copy of it: it spells a different word, and its T was built
+  by hand because the source has none. What it does take is the letterforms
+  of the letters the two words share, out of Omarchy's own `logo.txt`.
   Copyright (c) David Heinemeier Hansson, MIT, and the licence travels with
   it as [`shell/assets/LICENSE.omarchy`](shell/assets/LICENSE.omarchy) because
-  that is what MIT asks. **Omarchy's icon**, in `shell/src/assets.rs`, is a
-  24 by 24 trace of the official favicon, same source and same terms.
+  that is what MIT asks of a derivative as much as of a copy.
+
+  **Omarchy's icon is no longer here.** The boot used to open on a 24 by 24
+  trace of the official favicon; showing somebody else's mark in the first two
+  seconds of every boot was the opposite of the distance the rename was for,
+  so it was removed and the project draws a mark of its own - four bars
+  crossed by the dark cut of the beam's return, described in
+  `shell/src/assets.rs` as geometry rather than stored as a picture.
 
   This project is a fan project. It is not part of Omarchy, not endorsed by
-  the Omacom Foundation, and does not speak for either. Permission to use the
-  name was asked for in writing.
+  the Omacom Foundation, and does not speak for either.
 - **TerminalTextEffects**, ported rather than linked: the boot sequence's
   laser etch and the screensaver's nine effects are pixel reimplementations of
   effects from
