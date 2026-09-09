@@ -45,7 +45,7 @@ Settings, Video fit:
 | overscan 5% | on, off                           | on          |
 | retro 240p  | on, off                           | off         |
 
-Saved under `[video]` in `~/.config/omarchy-crt/settings.toml`.
+Saved under `[video]` in `~/.config/omacrt/settings.toml`.
 
 ## Live playback
 
@@ -86,8 +86,8 @@ Retro conversions skip interlacing and write 320x240 progressive.
 
 ## Files
 
-- `~/.config/omarchy-crt/mpv-input.conf`: keys mpv applies while focused.
-- `~/.config/omarchy-crt/mpv-osd.lua`: the themed on screen display.
-- `~/.config/omarchy-crt/convert.progress`: ffmpeg progress of the running
+- `~/.config/omacrt/mpv-input.conf`: keys mpv applies while focused.
+- `~/.config/omacrt/mpv-osd.lua`: the themed on screen display.
+- `~/.config/omacrt/convert.progress`: ffmpeg progress of the running
   conversion.
 - `<video>.crt.mp4`: the CRT ready sibling.

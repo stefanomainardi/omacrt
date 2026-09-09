@@ -7,7 +7,7 @@
 //! rather than all at once.
 
 use crate::art::{self, Image};
-use omarchy_crt_shell::{ambient, immich};
+use omacrt_shell::{ambient, immich};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, SyncSender, TryRecvError, sync_channel};
 

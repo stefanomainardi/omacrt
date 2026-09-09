@@ -14,7 +14,7 @@ use crate::fb::{Color, Framebuffer, lerp_color, rgb};
 
 /// Effect ticks per second (TTE runs at 120 on the site).
 pub const TICK_HZ: f32 = 120.0;
-const ETCH_SPEED: usize = 2; // cells per etch step (twice the site: a boot screen, not a web page)
+const ETCH_SPEED: usize = 3; // cells per etch step (twice the site: a boot screen, not a web page)
 const ETCH_DELAY: u32 = 1; // ticks between etch steps
 const SPAWN_TICKS: u32 = 3;
 const COOL_STEP_TICKS: u32 = 3;
@@ -47,9 +47,33 @@ struct Spark {
     glyph: u8,
 }
 
+/// How the tail of the word is recoloured.
+#[derive(Clone, Copy)]
+pub struct Swap {
+    pub from_col: i32,
+    pub rows_done: i32,
+    pub stops: [Color; 3],
+    pub flash: f32,
+    pub bright: f32,
+    pub scanlines: f32,
+}
+
+/// What the glass under the word is doing this frame.
+#[derive(Clone, Copy)]
+pub struct Glass {
+    pub fade: f32,
+    pub scroll: f32,
+    pub lit: Option<(i32, f32)>,
+}
+
 pub struct LaserEtch {
     pub cols: i32,
     pub rows: i32,
+    pub swap: Option<Swap>,
+    pub swap_below: Option<Swap>,
+    /// Which cells carry ink, so an edge of the letter can be told from the
+    /// inside of a stroke: a highlight on every cell gives venetian blinds.
+    filled: Vec<bool>,
     cells: Vec<Cell>,
     order: Vec<usize>,
     next: usize,
@@ -119,9 +143,19 @@ impl LaserEtch {
                 });
             }
         }
+        let filled = {
+            let mut f = vec![false; (rows * cols) as usize];
+            for c in &cells {
+                f[(c.row * cols + c.col) as usize] = true;
+            }
+            f
+        };
         let mut me = Self {
             cols,
             rows,
+            swap: None,
+            swap_below: None,
+            filled,
             cells,
             order: Vec::new(),
             next: 0,
@@ -324,11 +358,128 @@ impl LaserEtch {
     }
 
     /// Draw with the text's top-left corner at (x, y); each cell is `s` px wide and `2s` tall.
+    fn filled_at(&self, col: i32, row: i32) -> bool {
+        if col < 0 || row < 0 || col >= self.cols || row >= self.rows {
+            return false;
+        }
+        self.filled[(row * self.cols + col) as usize]
+    }
+
+    fn swapped(&self, row: i32, stops: [Color; 3]) -> Color {
+        let f = 1.0 - row as f32 / (self.rows - 1).max(1) as f32;
+        if f < 0.5 {
+            lerp_color(stops[0], stops[1], f * 2.0)
+        } else {
+            lerp_color(stops[1], stops[2], (f - 0.5) * 2.0)
+        }
+    }
+
+    fn settled(&self, cell: &Cell, swap: &Option<Swap>) -> (Color, f32) {
+        if let Some(sw) = swap
+            && cell.col >= sw.from_col
+            && (self.rows - 1 - cell.row) < sw.rows_done
+        {
+            let mut c = crate::fb::scale(self.swapped(cell.row, sw.stops), sw.bright);
+            if sw.flash > 0.0 {
+                c = lerp_color(c, 0xffffff, sw.flash.min(1.0));
+            }
+            return (c, sw.scanlines);
+        }
+        (cell.final_color, 0.0)
+    }
+
+    /// The word standing on the floor. Mirrored, squashed two to one,
+    /// every other pixel row only, fading with depth, sliding a pixel with
+    /// the floor's scroll, and lighting where a light crosses it.
+    pub fn draw_reflection(&self, fb: &mut Framebuffer, x: i32, top: i32, s: i32, g: Glass) {
+        if g.fade <= 0.0 {
+            return;
+        }
+        let ch = 2 * s;
+        for cell in &self.cells {
+            if cell.etched_at.is_none() {
+                continue;
+            }
+            let (color, _) = self.settled(cell, &self.swap_below);
+            let flipped = self.rows - 1 - cell.row;
+            let cy = top + flipped * ch / 2;
+            let depth = 1.0 - (flipped as f32 / self.rows as f32);
+            let drift = ((g.scroll * 0.35 + flipped as f32 * 0.9).sin() * 1.4) as i32;
+            let cx = x + cell.col * s + drift;
+            let base = crate::fb::scale(color, g.fade * 0.42 * depth);
+            let tall = match cell.shape {
+                Shape::Full => ch / 2,
+                _ => (s / 2).max(1),
+            };
+            let cy = match cell.shape {
+                Shape::Upper => cy + ch / 2 - tall,
+                _ => cy,
+            };
+            let mut yy = cy + ((cell.col + flipped) & 1);
+            while yy < cy + tall {
+                let mut c = base;
+                if let Some((ly, strength)) = g.lit {
+                    let d = (yy - ly).abs();
+                    if d < 7 {
+                        c = lerp_color(
+                            c,
+                            0xffffff,
+                            ((1.0 - d as f32 / 7.0) * strength).clamp(0.0, 1.0),
+                        );
+                    }
+                }
+                fb.rect(cx, yy, s, 1, c);
+                yy += 2;
+            }
+        }
+    }
+
     pub fn draw(&self, fb: &mut Framebuffer, x: i32, y: i32, s: i32, fade: f32) {
         if !self.started {
             return;
         }
         let ch = 2 * s;
+        // After SNK and CPS-1: a hard shadow three pixels down and
+        // right lifts the word off whatever is behind it, and an emboss --
+        // light along the top and left of the silhouette, dark along the
+        // bottom and right -- reads on any ground, which a dark keyline on a
+        // dark ground does not. Both go down before any face.
+        let geom = |cell: &Cell| -> (i32, i32, i32) {
+            let cx = x + cell.col * s;
+            let cy = y + cell.row * ch;
+            match cell.shape {
+                Shape::Full => (cx, cy, ch),
+                Shape::Upper => (cx, cy, s),
+                Shape::Lower => (cx, cy + s, s),
+            }
+        };
+        for cell in &self.cells {
+            if cell.etched_at.is_none() {
+                continue;
+            }
+            let (cx, top, tall) = geom(cell);
+            fb.rect(cx + 3, top + 3, s, tall, crate::fb::scale(0x0a0b12, fade));
+        }
+        for cell in &self.cells {
+            if cell.etched_at.is_none() {
+                continue;
+            }
+            let (cx, top, tall) = geom(cell);
+            let lit = crate::fb::scale(0xdfe7ff, fade * 0.55);
+            let dark = crate::fb::scale(0x05060b, fade);
+            if !self.filled_at(cell.col - 1, cell.row) {
+                fb.rect(cx - 1, top, 1, tall, lit);
+            }
+            if !self.filled_at(cell.col, cell.row - 1) {
+                fb.rect(cx, top - 1, s, 1, lit);
+            }
+            if !self.filled_at(cell.col + 1, cell.row) {
+                fb.rect(cx + s, top, 1, tall, dark);
+            }
+            if !self.filled_at(cell.col, cell.row + 1) {
+                fb.rect(cx, top + tall, s, 1, dark);
+            }
+        }
         for cell in &self.cells {
             let Some(at) = cell.etched_at else { continue };
             let age = self.tick - at;
@@ -354,11 +505,42 @@ impl LaserEtch {
                     cell.final_color
                 }
             };
+            let (color, lines) = if step >= self.cool.len() + 8 {
+                self.settled(cell, &self.swap)
+            } else {
+                (color, 0.0)
+            };
             let color = crate::fb::scale(color, fade);
             match cell.shape {
                 Shape::Full => fb.rect(cx, cy, s, ch, color),
                 Shape::Upper => fb.rect(cx, cy, s, s, color),
                 Shape::Lower => fb.rect(cx, cy + s, s, s, color),
+            }
+            // The Bitmap Brothers' metal: not a line but a ramp down
+            // the top of the stroke, white to the letter's own colour over
+            // three pixel rows, and one darker row where it ends.
+            if matches!(cell.shape, Shape::Full) {
+                if !self.filled_at(cell.col, cell.row - 1) {
+                    for (i, k) in [0.75f32, 0.45, 0.2].iter().enumerate() {
+                        fb.rect(cx, cy + i as i32, s, 1, lerp_color(color, 0xffffff, *k));
+                    }
+                }
+                if !self.filled_at(cell.col, cell.row + 1) {
+                    fb.rect(cx, cy + ch - 2, s, 2, crate::fb::scale(color, 0.55));
+                }
+            }
+            if lines > 0.0 {
+                let dim = crate::fb::scale(color, 1.0 - 0.55 * lines);
+                let (top, tall) = match cell.shape {
+                    Shape::Full => (cy, ch),
+                    Shape::Upper => (cy, s),
+                    Shape::Lower => (cy + s, s),
+                };
+                let mut yy = top;
+                while yy < top + tall {
+                    fb.rect(cx, yy, s, 1, dim);
+                    yy += 2;
+                }
             }
         }
 
@@ -396,7 +578,11 @@ impl LaserEtch {
             let phase = self.tick / BEAM_STEP_TICKS;
             let mut i = 0u32;
             let (mut c, mut r) = (bc, br);
-            while r >= -8 {
+            // The beam comes from outside the picture, not from a point in
+            // mid air: it is drawn until it has actually left the frame,
+            // through the top or through the right edge, instead of stopping
+            // eight rows above the word.
+            while (y + r * ch) + ch > 0 && (x + c * s) < fb.w as i32 {
                 let color = crate::fb::scale(self.beam_colors[((phase + i) % n) as usize], fade);
                 let cx = x + c * s;
                 let cy = y + r * ch;

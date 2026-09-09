@@ -136,8 +136,7 @@ class Canvas:
         # comes out too dark to read at this size.
         for yy in range(sy, sy + sh, 2):
             self.dither(sx, yy, sw, 1, (0, 0, 0), step=1)
-        self.text_centered(sx + sw // 2, sy + sh // 2 - 12, "OMARCHY", CYAN)
-        self.text_centered(sx + sw // 2, sy + sh // 2 - 1, "CRT", MAGENTA)
+        self.text_centered(sx + sw // 2, sy + sh // 2 - 6, "OMACRT", CYAN)
         self.rect(sx + 10, sy + sh // 2 + 11, sw - 20, 1, (40, 52, 84))
         self.rect(sx + 10, sy + sh // 2 + 15, sw - 34, 1, (30, 40, 64))
         # Glow spilling past the bezel, the way a tube does in a dark room.
@@ -160,8 +159,8 @@ def draw() -> Image.Image:
     # ------------------------------------------------------------ title
     c.rect(0, 0, W, 16, PANEL2)
     c.rect(0, 16, W, 1, ACCENT)
-    c.text(8, 4, "OMARCHY CRT", FG)
-    c.text(8 + 12 * 8, 4, "ARCHITECTURE", ACCENT)
+    c.text(8, 4, "OMACRT", FG)
+    c.text(8 + 7 * 8, 4, "ARCHITECTURE", ACCENT)
     right = "320x240 -> 3520x240 @ 15.7 kHz"
     c.text(W - 8 - len(right) * 8, 4, right, DIM)
 
@@ -172,14 +171,14 @@ def draw() -> Image.Image:
     c.text(24, 70, "bar plugin", MAGENTA)
     c.text(24, 80, "panel + library overlay", DIM)
     c.box(16, 100, 224, 30, "", CYAN, fill=PANEL2)
-    c.text(24, 106, "omarchy-crt", CYAN)
+    c.text(24, 106, "omacrt", CYAN)
     c.text(24, 116, "one CLI for everything", DIM)
     c.box(16, 136, 224, 30, "", GREEN, fill=PANEL2)
     c.text(24, 142, "cliamp --daemon", GREEN)
     c.text(24, 152, "radio, Spotify, spectrum", DIM)
 
     # ---------------------------------------------------------- display
-    c.box(272, 32, 216, 152, "omarchy-crt-display", ORANGE)
+    c.box(272, 32, 216, 152, "omacrt-display", ORANGE)
     c.text(280, 50, "Smithay compositor", DIM)
     c.box(280, 64, 200, 26, "", FG, fill=PANEL2)
     c.text(288, 72, "DRM modeset by hand", FG)
@@ -208,7 +207,7 @@ def draw() -> Image.Image:
     lines = [
         (MAGENTA, "1", "an EDID override at boot marks the DAC connector non-desktop,"),
         (MAGENTA, "", "so Hyprland drops it from its monitors and offers it for lease"),
-        (ORANGE, "2", "omarchy-crt-display takes that lease, programs 15.7 kHz through"),
+        (ORANGE, "2", "omacrt-display takes that lease, programs 15.7 kHz through"),
         (ORANGE, "", "DRM and runs its own Wayland show: nothing else can land there"),
         (CYAN, "3", "the CLI drives the launcher over a control pipe, the bar plugin"),
         (CYAN, "", "drives the CLI, and the launcher draws every pixel by hand"),

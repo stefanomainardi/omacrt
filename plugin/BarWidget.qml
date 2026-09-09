@@ -4,12 +4,12 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Omarchy CRT bar widget: a television glyph that knows whether a 15 kHz
-// tube is on the air. Everything real happens in the `omarchy-crt` binary
+// OmaCRT bar widget: a television glyph that knows whether a 15 kHz
+// tube is on the air. Everything real happens in the `omacrt` binary
 // shipped next to this file; the widget renders its JSON and opens the panel.
 BarWidget {
   id: root
-  moduleName: "io.github.stefanomainardi.omarchy-crt"
+  moduleName: "io.github.stefanomainardi.omacrt"
 
   property var status: ({})
   readonly property bool connected: !!(status.connector && status.connector.connected)
@@ -19,7 +19,7 @@ BarWidget {
   readonly property string lines: (status.mode && status.mode.lines) ? status.mode.lines : ""
   readonly property bool hideWhenAbsent: setting("hideWhenAbsent", false) === true
   readonly property int refreshIntervalSec: Math.max(2, Math.min(60, Number(setting("refreshIntervalSec", 5)) || 5))
-  readonly property string helper: Qt.resolvedUrl("bin/omarchy-crt").toString().replace("file://", "")
+  readonly property string helper: Qt.resolvedUrl("bin/omacrt").toString().replace("file://", "")
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item
     ? panelLoader.item.popoutSwitchClosing === true
@@ -119,8 +119,8 @@ BarWidget {
     // nf-md-television, with the line standard once the tube is on the air.
     text: root.active ? ("󰔂 " + root.lines) : "󰔂"
     tooltipText: root.active
-      ? ("Omarchy CRT on the air, " + root.lines)
-      : (root.connected ? "Omarchy CRT in standby" : "No CRT DAC connected")
+      ? ("OmaCRT on the air, " + root.lines)
+      : (root.connected ? "OmaCRT in standby" : "No CRT DAC connected")
     dimmed: !root.connected
     active: root.lockLost
     onPressed: function(buttonCode) {

@@ -42,18 +42,18 @@ common TV mode and XOR for PVM style monitors, so try both.
 RetroRGB reported a "jumpy screen" that the vendor attributes to a PLL
 decoupling problem in the current hardware revision. RePlayOS works around it
 with a background process that polls register `0x61` at 1 kHz and resets the
-DAC when it drops to `0xEF`. `omarchy-crt dac watch` does the same.
+DAC when it drops to `0xEF`. `omacrt dac watch` does the same.
 
 ## The tool
 
 ```sh
-omarchy-crt dac status            # lock register and csync mode
-omarchy-crt dac reset             # 2 s reset pulse, csync restored after
-omarchy-crt dac csync xor         # or and, separate
-omarchy-crt dac watch             # auto reset on signal loss
+omacrt dac status            # lock register and csync mode
+omacrt dac reset             # 2 s reset pulse, csync restored after
+omacrt dac csync xor         # or and, separate
+omacrt dac watch             # auto reset on signal loss
 ```
 
-`omarchy-crt on` runs the csync selection for you after the modeline. The
+`omacrt on` runs the csync selection for you after the modeline. The
 connector defaults to the first connected HDMI output whose EDID names a
 Mortaca device; the I2C bus is read from the connector's `ddc` link in sysfs.
 The device node is usually `root:i2c`, so join the `i2c` group.

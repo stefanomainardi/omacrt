@@ -59,7 +59,7 @@ jobs:
           SDL_VIDEODRIVER: dummy
         run: |
           # A headless boot must produce frames that are not a blank screen.
-          ./target/release/omarchy-crt-shell --headless \
+          ./target/release/omacrt-shell --headless \
             --dump 6.0,11.0,12.5 --dump-dir "$RUNNER_TEMP/frames" --no-audio
           ls -l "$RUNNER_TEMP/frames"
           test "$(ls "$RUNNER_TEMP/frames" | wc -l)" -ge 3

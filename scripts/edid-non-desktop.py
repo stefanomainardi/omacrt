@@ -4,7 +4,7 @@
 The kernel marks a connector non-desktop when its EDID carries a Microsoft
 vendor block of version 1 or 2 (the head-mounted display convention). A
 desktop compositor then leaves the output alone and offers it for DRM
-leasing, which is how omarchy-crt drives the tube directly.
+leasing, which is how omacrt drives the tube directly.
 
     edid-non-desktop.py /sys/class/drm/card1-HDMI-A-1/edid out.bin
 """
@@ -29,7 +29,7 @@ while j < len(data):
     if tag == 3 and data[j + 1 : j + 4] == oui:
         has_ms = True
     j += 1 + ln
-container = uuid.uuid5(uuid.NAMESPACE_DNS, "omarchy-crt.display").bytes
+container = uuid.uuid5(uuid.NAMESPACE_DNS, "omacrt.display").bytes
 vsdb = bytes([(3 << 5) | 21]) + oui + bytes([0x02, 0x00]) + container
 body = data if has_ms else data + vsdb
 if 4 + len(body) + len(dtds) > 127:

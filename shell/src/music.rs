@@ -785,7 +785,7 @@ fn fetch_cover(url: &str) -> Option<PathBuf> {
     let cache = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache"))
-        .join("omarchy-crt")
+        .join("omacrt")
         .join("music-art");
     std::fs::create_dir_all(&cache).ok()?;
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;

@@ -21,7 +21,7 @@ is one person and a television.
 
 One thing needs root, once, at install time:
 
-- `bin/omarchy-crt-install --system` installs
+- `bin/omacrt-install --system` installs
   `scripts/crt-lease-setup.sh`, `scripts/edid-non-desktop.py` and a systemd
   unit that runs the first of those at boot.
 
@@ -43,7 +43,7 @@ runs as your own user.
 ## The control pipe
 
 The launcher listens on a named pipe at
-`~/.local/state/omarchy-crt/shell.ctl`, created with mode `0600`, and the
+`~/.local/state/omacrt/shell.ctl`, created with mode `0600`, and the
 display process has one of its own. They accept a small vocabulary: navigation
 inputs, `type <text>`, `watch <file or url>`, `key <name>`, `record`, `mode`.
 Any process running as you can write to them, which is the same trust level as
@@ -73,14 +73,14 @@ chooses is how long and how large its own fetch may be.
 A name that came from a server never becomes a path. The photograph server's
 asset identifiers are checked against letters, digits and dashes before they
 are used in a file name, so an answer of `../../.ssh/authorized_keys` is not a
-photograph and is skipped. Everything lands in `~/.cache/omarchy-crt`, written
+photograph and is skipped. Everything lands in `~/.cache/omacrt`, written
 beside its final name and moved into place, so a fetch that is interrupted
 leaves nothing that looks finished.
 
 ## Your photograph server, if you have one
 
 The photo frame reads an Immich server on your own network. It needs
-`~/.config/omarchy-crt/immich.toml` with an address and an API key, which you
+`~/.config/omacrt/immich.toml` with an address and an API key, which you
 create in Immich and which needs read access and nothing else. The file is
 yours to write and this project only reads it.
 
@@ -108,7 +108,7 @@ cannot become an option to the player.
 
 ## What it kills
 
-`omarchy-crt doctor --fix`, and the sweep that runs when the launcher starts
+`omacrt doctor --fix`, and the sweep that runs when the launcher starts
 or stops, will stop an emulator. It decides in two steps and both have to
 hold: the process's command line carries **this project's own configuration
 file**, which nothing else on the machine passes, and **no launcher is above
@@ -119,8 +119,8 @@ wedged. Nothing else on the machine is ever a candidate.
 
 ## Your files
 
-The project writes `~/.config/omarchy-crt`, `~/.local/state/omarchy-crt`,
-`~/.cache/omarchy-crt`, and, when you ask it to, RetroArch's configuration
+The project writes `~/.config/omacrt`, `~/.local/state/omacrt`,
+`~/.cache/omacrt`, and, when you ask it to, RetroArch's configuration
 under `~/.config/retroarch`. Every durable file is written atomically through a
 temporary file and a rename, and the copy being replaced is kept as `.bak`.
 

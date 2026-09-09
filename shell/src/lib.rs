@@ -1,6 +1,6 @@
-//! Shared pieces of omarchy-crt: the game library, the video player and
+//! Shared pieces of omacrt: the game library, the video player and
 //! fitting logic, settings, the TV profile and the CRT output control used
-//! by both the launcher (`omarchy-crt-shell`) and the CLI (`omarchy-crt`).
+//! by both the launcher (`omacrt-shell`) and the CLI (`omacrt`).
 
 pub mod ambient;
 pub mod config;

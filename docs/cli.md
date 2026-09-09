@@ -1,43 +1,43 @@
-# omarchy-crt, the CLI
+# omacrt, the CLI
 
-`omarchy-crt` is the Rust binary that turns a desktop into a CRT station and
+`omacrt` is the Rust binary that turns a desktop into a CRT station and
 back. The bar plugin is a face over it, the launcher is started by it, and
 everything it does can be typed in a terminal.
 
 ```text
-omarchy-crt setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
+omacrt setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
                                      first run: the DAC's connector and the standard
-omarchy-crt status [--json]          output, mode, DAC, audio, launcher, library, BIOS
-omarchy-crt version                  which version this is
-omarchy-crt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
-omarchy-crt off                      launcher closed, audio back, output disabled
-omarchy-crt boot                     login reset: output off, audio back to the desktop
-omarchy-crt toggle
-omarchy-crt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
-omarchy-crt shell start|stop|restart|focus
-omarchy-crt shell key <input>...   # home up down left right fire back fav alt start
+omacrt status [--json]          output, mode, DAC, audio, launcher, library, BIOS
+omacrt version                  which version this is
+omacrt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
+omacrt off                      launcher closed, audio back, output disabled
+omacrt boot                     login reset: output off, audio back to the desktop
+omacrt toggle
+omacrt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
+omacrt shell start|stop|restart|focus
+omacrt shell key <input>...   # home up down left right fire back fav alt start
                                    # search osk del next prev first last
-omarchy-crt shell type <text>      # type into the search bar
-omarchy-crt game key <key> [ms]    # press a key inside the running game, held that long
+omacrt shell type <text>      # type into the search bar
+omacrt game key <key> [ms]    # press a key inside the running game, held that long
                                    # (enter is start, rshift the coin, or an evdev code)
-omarchy-crt watch <file|url> [--later [TITLE]]   # play on the tube now, or keep it in Videos
-omarchy-crt focus
-omarchy-crt audio crt|desktop|all|apps   # our own streams only, unless `all`
-omarchy-crt audio volume N           # TV sink volume, percent up to 150, kept in crt.toml
-omarchy-crt dac status|reset|csync and|xor|separate|watch
-omarchy-crt bios [--json]
-omarchy-crt bios import DIR [--all]
-omarchy-crt bios discover [--json]   # folders on the roots and disks that hold BIOS files
-omarchy-crt library [--json]
-omarchy-crt library cores [--json]   # the core each system needs, installed or not, its package
-omarchy-crt library set SYS core=X|dir=D   # change a system's core or folder in systems.toml
-omarchy-crt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
-omarchy-crt library scan [DIR...] [--progress]   # --progress: one plain line per folder
-omarchy-crt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
-omarchy-crt watchdog                 put the display back if it dies; `on` starts it, `off` stops it
-omarchy-crt doctor
-omarchy-crt config
-omarchy-crt config set KEY VALUE     # output.csync, output.standard, audio.volume, ...
+omacrt watch <file|url> [--later [TITLE]]   # play on the tube now, or keep it in Videos
+omacrt focus
+omacrt audio crt|desktop|all|apps   # our own streams only, unless `all`
+omacrt audio volume N           # TV sink volume, percent up to 150, kept in crt.toml
+omacrt dac status|reset|csync and|xor|separate|watch
+omacrt bios [--json]
+omacrt bios import DIR [--all]
+omacrt bios discover [--json]   # folders on the roots and disks that hold BIOS files
+omacrt library [--json]
+omacrt library cores [--json]   # the core each system needs, installed or not, its package
+omacrt library set SYS core=X|dir=D   # change a system's core or folder in systems.toml
+omacrt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
+omacrt library scan [DIR...] [--progress]   # --progress: one plain line per folder
+omacrt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
+omacrt watchdog                 put the display back if it dies; `on` starts it, `off` stops it
+omacrt doctor
+omacrt config
+omacrt config set KEY VALUE     # output.csync, output.standard, audio.volume, ...
 ```
 
 `--json` answers are what the bar plugin and its library overlay render.
@@ -65,9 +65,9 @@ durable file is written through a temporary file and a rename, with the copy
 being replaced kept as `.bak`, and read back through the backup when the
 current one is unreadable.
 
-Logs live in `~/.local/state/omarchy-crt`. They rotate past 8 MB, keeping one
+Logs live in `~/.local/state/omacrt`. They rotate past 8 MB, keeping one
 generation as `<name>.1`. The display process writes a line per second about
-frames and timing only when `OMARCHY_CRT_LOG=debug` is set; otherwise its log
+frames and timing only when `OMACRT_LOG=debug` is set; otherwise its log
 holds warnings, errors and what it is doing.
 
 Arcade collections name their files after the emulated set, `mslug.zip` for
@@ -78,7 +78,7 @@ search by them, and find their box art. Without those databases the set names
 stay as they are.
 
 `library covers` walks the collection and fetches the libretro thumbnail of
-every game into `~/.cache/omarchy-crt/art/<system>/`. The exact file name is
+every game into `~/.cache/omacrt/art/<system>/`. The exact file name is
 tried first; when the repository has no such name (collections without
 region tags), the name index of that system (downloaded once a fortnight into
 `art/_index/`) is searched for the same title, in the region order of
@@ -119,7 +119,7 @@ until asked and put audio back on the desktop after a reboot:
 -- ~/.config/hypr/monitors.lua, before the fallback rule
 hl.monitor({ output = "desc:ATG MORTACA DEV00", disabled = true })
 -- ~/.config/hypr/autostart.lua
-o.launch_on_start("omarchy-crt boot")
+o.launch_on_start("omacrt boot")
 ```
 
 `on` binds a named workspace `crt` to the CRT output, so terminals and
@@ -174,7 +174,7 @@ copies them from another collection; `--all` also copies the known folders
 
 ## Config
 
-`~/.config/omarchy-crt/crt.toml`, written with comments on first run:
+`~/.config/omacrt/crt.toml`, written with comments on first run:
 
 ```toml
 [output]
@@ -190,7 +190,7 @@ ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
 pal_i = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
 
 [shell]
-bin = "omarchy-crt-shell"
+bin = "omacrt-shell"
 args = ["--fullscreen", "--stretch", "--auto-boot"]
 autostart = false     # true: `boot` switches the tube on at login when the DAC is there
 
@@ -199,17 +199,17 @@ route = true
 volume = 100
 ```
 
-State lives in `~/.local/state/omarchy-crt/state.json` and the launcher log
-in `~/.local/state/omarchy-crt/shell.log`.
+State lives in `~/.local/state/omacrt/state.json` and the launcher log
+in `~/.local/state/omacrt/shell.log`.
 
 ## Driving the launcher
 
-The launcher listens on a named pipe, `~/.local/state/omarchy-crt/shell.ctl`,
+The launcher listens on a named pipe, `~/.local/state/omacrt/shell.ctl`,
 and treats every line as a key press or a pad button:
 
 ```
-omarchy-crt shell key down down fire   # two rows down, open
-omarchy-crt shell key back             # B
+omacrt shell key down down fire   # two rows down, open
+omacrt shell key back             # B
 ```
 
 Inputs: `home` (top of the main menu), `up`, `down`, `left`, `right`, `fire`
@@ -222,8 +222,8 @@ A whole screen can be asked for by name, which is what the desktop menu does
 rather than counting rows:
 
 ```
-omarchy-crt shell screen music
-omarchy-crt shell screen frame
+omacrt shell screen music
+omacrt shell screen frame
 ```
 
 Names: `home`, `games`, `videos`, `youtube`, `music`, `favorites`, `recent`,
@@ -235,8 +235,8 @@ it is doing.
 ## Clearing up after itself
 
 ```
-omarchy-crt doctor            # what is wrong, and what has been left behind
-omarchy-crt doctor --fix      # clear what has been left behind
+omacrt doctor            # what is wrong, and what has been left behind
+omacrt doctor --fix      # clear what has been left behind
 ```
 
 The survey looks for three things. An **emulator no launcher owns**: it is
@@ -262,10 +262,10 @@ rarely needed by hand:
 ## Starting a game from anywhere
 
 ```
-omarchy-crt play "metal slug"      # by name, out of the index
-omarchy-crt play /path/to/game.chd # by file
-omarchy-crt library games [--system S] [--limit N] [--json]
-omarchy-crt-pick [system]          # pick one on the desktop, play it on the tube
+omacrt play "metal slug"      # by name, out of the index
+omacrt play /path/to/game.chd # by file
+omacrt library games [--system S] [--limit N] [--json]
+omacrt-pick [system]          # pick one on the desktop, play it on the tube
 ```
 
 `play` matches the name against the index: the same title first, then one that
@@ -277,13 +277,13 @@ running.
 
 `--force` stops whatever is playing first and waits for the tube to be free.
 
-`omarchy-crt-pick` is that with a picker in front of it: every game the scan
+`omacrt-pick` is that with a picker in front of it: every game the scan
 has seen goes into walker (or fuzzel, or rofi), and what comes back is played
 on the television, turning the tube on first if it is off. It is the
 **Play a game...** row in the Omarchy menu, and it is worth a keybinding.
 
 Everything that stops it going through arrives as a notification, and every
-step goes to `~/.local/state/omarchy-crt/pick.log`, because a row run from a
+step goes to `~/.local/state/omacrt/pick.log`, because a row run from a
 menu has no terminal to print to and a silent failure looks like a row that
 does nothing.
 
@@ -304,12 +304,12 @@ is where a collection this size belongs anyway.
 ## The photo frame
 
 ```
-omarchy-crt frame check       # is the server there, does it take the key
-omarchy-crt frame fill [N]    # prepare N photographs ahead of an evening
-omarchy-crt frame clear       # throw the prepared ones away
+omacrt frame check       # is the server there, does it take the key
+omacrt frame fill [N]    # prepare N photographs ahead of an evening
+omacrt frame clear       # throw the prepared ones away
 ```
 
-The frame needs `~/.config/omarchy-crt/immich.toml`:
+The frame needs `~/.config/omacrt/immich.toml`:
 
 ```toml
 url = "https://immich.example.lan"
@@ -354,7 +354,7 @@ television as the picture. It plays only while that page is up, fades in and
 out over a second and a half, and is quieter than anything else the launcher
 does: the loudest, a thunderstorm, measures 0.012 against the boot chime's
 0.030. Hear them without the television with
-`omarchy-crt-shell --dump-audio DIR`, which writes every sound in the launcher
+`omacrt-shell --dump-audio DIR`, which writes every sound in the launcher
 as a WAV, `weather-*.wav` among them.
 
 A file written before these two sections existed keeps what it asked for: the
@@ -374,7 +374,7 @@ Four ways in, and none of them is the settings page:
   and switch **the photographs** on. Leave the other pages on too and they
   take turns.
 - **From the desktop**: the Omarchy menu, Television, Channel, Photo frame, or
-  `omarchy-crt shell screen frame` in a terminal.
+  `omacrt shell screen frame` in a terminal.
 
 ## What an idle television shows
 
@@ -430,10 +430,10 @@ becomes the wordmark page with that effect.
 
 ## The Omarchy menu
 
-`bin/omarchy-crt-install` adds a **Television** entry to Omarchy's own menu by
+`bin/omacrt-install` adds a **Television** entry to Omarchy's own menu by
 writing the block in `menu/omarchy-menu.jsonc` into
 `~/.config/omarchy/extensions/omarchy-menu.jsonc`, between two markers, with
-the previous file kept beside it as `.omarchy-crt.bak`. That path is the
+the previous file kept beside it as `.omacrt.bak`. That path is the
 extension point Omarchy offers: nothing is patched and nothing is forked.
 `--uninstall` takes the block out again.
 
@@ -446,13 +446,13 @@ Every one of them runs a command from this page.
 ## The display process
 
 ```
-omarchy-crt-display run [connector]       # lease the connector, hold the mode, host clients
-omarchy-crt-display probe [connector] [s] # take the lease, show a test card, release
-omarchy-crt-display props [connector]     # the kernel's view: state, modes, non-desktop
+omacrt-display run [connector]       # lease the connector, hold the mode, host clients
+omacrt-display probe [connector] [s] # take the lease, show a test card, release
+omacrt-display props [connector]     # the kernel's view: state, modes, non-desktop
 ```
 
-`omarchy-crt on` starts `run` itself when the connector is leaseable. Its
-control pipe, `~/.local/state/omarchy-crt/display.ctl`, takes one line at a
+`omacrt on` starts `run` itself when the connector is leaseable. Its
+control pipe, `~/.local/state/omacrt/display.ctl`, takes one line at a
 time: `top <app_id>` (stacking), `mode <modeline>` (live timing change),
 `key <name>` (press a key on the tube's keyboard: pause, save, load, reset,
 quit, ff, menu, or an evdev code) and `quit`.

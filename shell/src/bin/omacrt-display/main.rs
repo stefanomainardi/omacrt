@@ -8,12 +8,12 @@
 //! pointer, no window rules. This is the probe stage: take the lease, set the
 //! configured timing and show a test card for a while.
 //!
-//!   omarchy-crt-display probe [connector] [seconds]
+//!   omacrt-display probe [connector] [seconds]
 
 use drm::Device;
 use drm::control::{Device as ControlDevice, Mode, framebuffer};
-use omarchy_crt_shell::crt::Config;
-use omarchy_crt_shell::crt::output::Modeline;
+use omacrt_shell::crt::Config;
+use omacrt_shell::crt::output::Modeline;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 
 mod comp;
@@ -42,7 +42,7 @@ fn main() {
         return;
     }
     if args.first().map(|s| s.as_str()) != Some("probe") {
-        eprintln!("usage: omarchy-crt-display run|probe|props [connector] [seconds]");
+        eprintln!("usage: omacrt-display run|probe|props [connector] [seconds]");
         std::process::exit(2);
     }
     let cfg = Config::load();
@@ -246,6 +246,6 @@ fn test_card(px: &mut [u8], w: usize, h: usize) {
 }
 
 pub fn die(msg: &str) -> ! {
-    eprintln!("omarchy-crt-display: {msg}");
+    eprintln!("omacrt-display: {msg}");
     std::process::exit(1);
 }

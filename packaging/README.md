@@ -2,7 +2,7 @@
 
 `PKGBUILD` builds an Arch package: the three binaries, the root part of the
 lease setup with its systemd unit, the Omarchy plugins under
-`/usr/share/omarchy-crt`, and the documentation.
+`/usr/share/omacrt`, and the documentation.
 
 Building it from a checkout:
 

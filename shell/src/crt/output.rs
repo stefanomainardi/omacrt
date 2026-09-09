@@ -288,15 +288,15 @@ pub fn window_rules(name: &str) {
     let (_, _, w, h) = monitor_geometry(name).unwrap_or((0, 0, 320, 240));
     let fields = tube_rule_fields(w, h);
     hypr_eval(&format!(
-        "hl.window_rule({{ name = \"omarchy-crt-shell\", match = {{ class = \"{SHELL_CLASS}\" }}, monitor = \"{name}\", workspace = \"name:{WORKSPACE}\", {fields} }})"
+        "hl.window_rule({{ name = \"omacrt-shell\", match = {{ class = \"{SHELL_CLASS}\" }}, monitor = \"{name}\", workspace = \"name:{WORKSPACE}\", {fields} }})"
     ));
     hypr_eval(&format!(
-        "hl.window_rule({{ name = \"omarchy-crt-player\", match = {{ class = \"omarchy-crt-player\" }}, monitor = \"{name}\", workspace = \"name:{WORKSPACE}\", {fields} }})"
+        "hl.window_rule({{ name = \"omacrt-player\", match = {{ class = \"omacrt-player\" }}, monitor = \"{name}\", workspace = \"name:{WORKSPACE}\", {fields} }})"
     ));
     // RetroArch has no app id of ours; the window.open handler (`isolate`)
     // takes care of the one the launcher starts. Rules from older versions
     // go away.
-    for old in ["omarchy-crt-retroarch", "omarchy-crt-mpv"] {
+    for old in ["omacrt-retroarch", "omacrt-mpv"] {
         hypr_eval(&format!(
             "hl.window_rule({{ name = \"{old}\", match = {{ class = \"{old}\" }}, enabled = false }})"
         ));
@@ -372,15 +372,15 @@ pub fn isolate(name: &str) {
     };
     let (mx, my, _, _) = monitor_geometry(name).unwrap_or((0, 0, 0, 0));
     let code = format!(
-        r#"if omarchy_crt_isolate then omarchy_crt_isolate:remove() end
-omarchy_crt_isolate = hl.on("window.open", function(w)
+        r#"if omacrt_isolate then omacrt_isolate:remove() end
+omacrt_isolate = hl.on("window.open", function(w)
   if not w or not w.workspace then return end
   local ws = w.workspace.name
   local class = tostring(w.class or "")
-  local ours = class == "{SHELL_CLASS}" or class == "omarchy-crt-player"
-  local game = class == "com.libretro.RetroArch" and (ws == "{WORKSPACE}" or ws == "{GAME_WORKSPACE}" or omarchy_crt_expect_game)
+  local ours = class == "{SHELL_CLASS}" or class == "omacrt-player"
+  local game = class == "com.libretro.RetroArch" and (ws == "{WORKSPACE}" or ws == "{GAME_WORKSPACE}" or omacrt_expect_game)
   if game then
-    omarchy_crt_expect_game = false
+    omacrt_expect_game = false
     hl.dispatch(hl.dsp.window.move({{ window = w, workspace = "name:{WORKSPACE}" }}))
     hl.dispatch(hl.dsp.window.fullscreen({{ window = w, enable = false }}))
     hl.dispatch(hl.dsp.window.float({{ window = w, enable = true }}))
@@ -407,13 +407,13 @@ return "isolating"
 /// it expires on its own so a game that never starts cannot capture a
 /// RetroArch opened on the desktop later.
 pub fn expect_game() {
-    hypr_eval("omarchy_crt_expect_game = true; return \"ok\"");
+    hypr_eval("omacrt_expect_game = true; return \"ok\"");
 }
 
 /// Drop the isolation handler.
 pub fn unisolate() {
     hypr_eval(
-        "if omarchy_crt_isolate then omarchy_crt_isolate:remove(); omarchy_crt_isolate = nil end return \"ok\"",
+        "if omacrt_isolate then omacrt_isolate:remove(); omacrt_isolate = nil end return \"ok\"",
     );
 }
 
@@ -461,7 +461,7 @@ pub fn raise(class: &str) -> bool {
 
 /// Forget an expected game that never showed up.
 pub fn expect_game_clear() {
-    hypr_eval("omarchy_crt_expect_game = false; return \"ok\"");
+    hypr_eval("omacrt_expect_game = false; return \"ok\"");
 }
 
 /// Keyboard focus to the first window of a class.

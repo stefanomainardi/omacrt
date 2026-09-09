@@ -22,7 +22,7 @@ card() {  # title, subtitle, seconds
   n=$((n+1)); f="$work/$(printf '%02d' $n)-card.mp4"
   local t; t="$(esc "$1")"; local s; s="$(esc "$2")"
   ffmpeg -hide_banner -loglevel error -y -f lavfi -i "color=c=$bg:s=1920x1080:r=30:d=$3" -f lavfi -i "anullsrc=r=48000:cl=stereo" -t "$3" \
-    -vf "drawtext=fontfile=$font:text='$t':fontcolor=$fg:fontsize=72:x=(w-text_w)/2:y=(h/2)-90, drawtext=fontfile=$font2:text='$s':fontcolor=$accent:fontsize=36:x=(w-text_w)/2:y=(h/2)+20, drawtext=fontfile=$font2:text='omarchy-crt':fontcolor=$dim:fontsize=26:x=(w-text_w)/2:y=h-90, fade=t=in:st=0:d=0.4,fade=t=out:st=$(awk "BEGIN{print $3-0.4}"):d=0.4" \
+    -vf "drawtext=fontfile=$font:text='$t':fontcolor=$fg:fontsize=72:x=(w-text_w)/2:y=(h/2)-90, drawtext=fontfile=$font2:text='$s':fontcolor=$accent:fontsize=36:x=(w-text_w)/2:y=(h/2)+20, drawtext=fontfile=$font2:text='omacrt':fontcolor=$dim:fontsize=26:x=(w-text_w)/2:y=h-90, fade=t=in:st=0:d=0.4,fade=t=out:st=$(awk "BEGIN{print $3-0.4}"):d=0.4" \
     "${common[@]}" -shortest "$f"
   echo "file '$f'" >> "$list"
 }
@@ -51,7 +51,7 @@ desk() {  # source, start, duration: the desktop take, 3440x1440, no audio.
 }
 
 T="$dir/tube-tour.mp4"; VV="$dir/tube-videos.mp4"; D="$dir/desktop-plugin.mp4"; B="$dir/tube-boot.mp4"
-card "Omarchy CRT" "an Omarchy version for retro gaming on CRT · update, September 2026" 4.5
+card "OmaCRT" "an Omarchy version for retro gaming on CRT · update, September 2026" 4.5
 card "The bar plugin" "power, standard, sync, audio and library, from the bar" 3.5
 desk "$D" 1 48
 card "The tube is ours" "leased from the desktop, driven by our own compositor at 15 kHz" 4.5
@@ -73,6 +73,6 @@ card "Metal Slug" "Neo Geo · FinalBurn Neo" 3
 tube "$T" 178 22
 card "Videos" "mpv on the tube, fitted to 15 kHz" 3
 tube "$VV" 0 30
-card "github.com/stefanomainardi/omarchy-crt" "#omarchyCRT · music, video and the library, from the bar" 5
+card "github.com/stefanomainardi/omacrt" "#omarchyCRT · music, video and the library, from the bar" 5
 ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$list" -c copy "$out"
 echo "$out"; ffprobe -v error -show_entries format=duration -of csv=p=0 "$out"

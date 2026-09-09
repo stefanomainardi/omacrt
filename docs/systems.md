@@ -1,6 +1,6 @@
 # Systems, launch policy and the TV profile
 
-`~/.config/omarchy-crt/systems.toml` describes every system the launcher
+`~/.config/omacrt/systems.toml` describes every system the launcher
 shows: where the ROMs are, which libretro core runs them and what RetroArch
 should do so the game looks and plays right on first launch. When the file is
 missing the shell uses built-in defaults for the cores Arch ships.
@@ -104,12 +104,12 @@ The core wants a `.scummvm` launcher file holding a game id, beside the game's
 own data. The scan works out what each folder holds from its data files and
 writes that file itself, so a folder copied off a disc is playable without
 anybody reading a manual from 1997. A game still inside a disc image is
-reported rather than half configured, and `omarchy-crt library unpack` reads
+reported rather than half configured, and `omacrt library unpack` reads
 it out.
 
 ## The TV profile
 
-`tv-profile` in the menu edits `~/.config/omarchy-crt/profile.toml`:
+`tv-profile` in the menu edits `~/.config/omacrt/profile.toml`:
 
 - **monitor.** A Switchres preset: `generic_15`, `ntsc`, `pal`, `arcade_15`,
   `arcade_15_25`, `arcade_15_25_31`, `arcade_31`.
@@ -142,7 +142,7 @@ frame of input lag.
 
 ## The index: any layout, scanned once
 
-Nobody should have to rename folders for a launcher. `omarchy-crt library
+Nobody should have to rename folders for a launcher. `omacrt library
 scan DIR` walks whatever you point it at (an external disk, `~/Games`, a
 messy download folder) and decides the system of every file from the file
 inward:
@@ -154,16 +154,16 @@ inward:
 3. the file itself: disc signatures in `.cue`/`.bin`/`.iso` images (PlayStation,
    Saturn, Mega-CD, Dreamcast, PC Engine CD, Neo Geo CD, 3DO, CD-i), the file
    names inside a `.zip`, cartridge headers, arcade set names;
-4. what you told it before with `omarchy-crt library assign FOLDER SYSTEM`.
+4. what you told it before with `omacrt library assign FOLDER SYSTEM`.
 
-The result lands in `~/.local/share/omarchy-crt/library.json` with title,
+The result lands in `~/.local/share/omacrt/library.json` with title,
 tags, region and disc number per game. The launcher lists from it: one entry
 per title (regional variants collapse onto the preferred region, multi disc
 games onto disc 1), systems appear when they have games and hide when they
 do not, and folders no longer matter. Roots and your folder answers live in
-`~/.config/omarchy-crt/library.toml`. `systems.toml` keeps only what is
+`~/.config/omacrt/library.toml`. `systems.toml` keeps only what is
 tuning: core, options, video policy, run-ahead. Systems the scan finds but
 `systems.toml` does not mention take their core from the built in catalogue
-(`omarchy-crt library systems`).
+(`omacrt library systems`).
 
 A 28,000 game disk over USB scans in about four seconds.
