@@ -5,7 +5,7 @@
 <h1 align="center">OmaCRT</h1>
 
 <p align="center">
-  <a href="https://www.omacrt.com">omacrt.com</a>
+  <a href="https://omacrt.com">omacrt.com</a>
 </p>
 
 An [Omarchy](https://omarchy.org) PC plugged into a 15 kHz CRT television over
@@ -26,7 +26,7 @@ television outright. Written in Rust, drawn at 320x240.
 
 Every picture here came off the tube's own framebuffer with `omacrt shot`, and
 the boot with `omacrt record`; the television adds the scanlines.
-[omacrt.com](https://www.omacrt.com) has the rest of it moving, including the
+[omacrt.com](https://omacrt.com) has the rest of it moving, including the
 film.
 
 ## Why
