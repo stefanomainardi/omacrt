@@ -33,9 +33,22 @@ pub enum Kind {
     Stale(PathBuf),
 }
 
-/// Every process id whose command line carries our RetroArch configuration
-/// or our player's socket. `/proc` is read directly rather than through
-/// pgrep, so this can never match the process asking the question.
+/// The programs the launcher starts with those files on their command line.
+/// Carrying the path is not enough on its own: an editor open on
+/// `retroarch.cfg` carries it too, and this list is what the sweep signals.
+fn is_one_of_ours(line: &str) -> bool {
+    let argv0 = line.split_whitespace().next().unwrap_or("");
+    let name = std::path::Path::new(argv0)
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+    name == "mpv" || name.starts_with("retroarch")
+}
+
+/// Every process id that is one of our emulators or players and carries our
+/// RetroArch configuration or our player's socket. `/proc` is read directly
+/// rather than through pgrep, so this can never match the process asking the
+/// question.
 pub fn ours() -> Vec<(u32, String)> {
     let config = super::config_dir();
     let marks = [
@@ -60,7 +73,10 @@ pub fn ours() -> Vec<(u32, String)> {
         };
         // The command line is nul separated; spaces make it readable.
         let line = String::from_utf8_lossy(&raw).replace('\0', " ");
-        if marks.iter().any(|m| line.contains(m.as_str())) {
+        // Both halves: the file is ours *and* the program is one we start.
+        // Matching the path alone made `nvim ~/.config/omacrt/retroarch.cfg`
+        // an orphan, and the sweep sends orphans SIGTERM and then SIGKILL.
+        if marks.iter().any(|m| line.contains(m.as_str())) && is_one_of_ours(&line) {
             out.push((pid, line.trim().to_string()));
         }
     }
@@ -128,13 +144,23 @@ pub fn orphans() -> Vec<Mess> {
         .collect()
 }
 
-/// Half written files a fetch left behind, in the caches this owns.
+/// Half written files a fetch or a crashed write left behind, in the places
+/// this project owns.
+///
+/// The cache is reached through `crt::cache_dir` rather than through `$HOME`,
+/// because two of the writers respect `XDG_CACHE_HOME` and this used to look
+/// somewhere else entirely on a machine that sets it: the sweep reported
+/// nothing while the files piled up. The state and data directories are here
+/// too, for the `.tmp` a crash between the write and the rename leaves - the
+/// library index is five megabytes, and nothing was ever removing those.
 fn leftovers() -> Vec<Mess> {
-    let home = super::home();
+    let cache = super::cache_dir();
     let dirs = [
-        home.join(".cache/omacrt/art"),
-        home.join(".cache/omacrt/frame"),
-        home.join(".cache/omacrt/music-art"),
+        cache.join("art"),
+        cache.join("frame"),
+        cache.join("music-art"),
+        super::state_dir(),
+        crate::index::data_dir(),
     ];
     let mut out = Vec::new();
     for dir in dirs {
@@ -144,7 +170,11 @@ fn leftovers() -> Vec<Mess> {
         for entry in entries.flatten() {
             let path = entry.path();
             let name = path.file_name().unwrap_or_default().to_string_lossy();
-            if !(name.ends_with(".part") || name.ends_with(".small") || name.ends_with(".half")) {
+            if !(name.ends_with(".part")
+                || name.ends_with(".small")
+                || name.ends_with(".half")
+                || name.ends_with(".tmp"))
+            {
                 continue;
             }
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);

@@ -48,8 +48,13 @@ fn shellexpand(p: &str) -> String {
 /// Launcher processes. The kernel truncates `comm` to 15 bytes, so match
 /// the full command line instead of the process name.
 pub fn pids() -> Vec<u32> {
-    let pattern = format!("(^|/){SHELL_CLASS}( |$)");
-    let Some(text) = run("pgrep", &["-f", &pattern]) else {
+    // `-U` so this is the user's own launchers and nobody else's, and the
+    // pattern has to be the first word: without that anchor it matched any
+    // command line mentioning the binary, including the installer's own
+    // `install -m 755 … omacrt-shell`, which `shell stop` would then signal.
+    let pattern = format!("^(\\S*/)?{SHELL_CLASS}( |$)");
+    let uid = users_own_uid();
+    let Some(text) = run("pgrep", &["-U", &uid, "-f", &pattern]) else {
         return Vec::new();
     };
     let me = std::process::id();
@@ -57,6 +62,12 @@ pub fn pids() -> Vec<u32> {
         .filter_map(|s| s.parse().ok())
         .filter(|p| *p != me)
         .collect()
+}
+
+/// This user's id, for scoping a process search to their own session.
+fn users_own_uid() -> String {
+    // SAFETY: `getuid` reads a field of the calling process and cannot fail.
+    unsafe { libc::getuid() }.to_string()
 }
 
 /// Start the launcher on the CRT output. `sink` is the PipeWire sink the

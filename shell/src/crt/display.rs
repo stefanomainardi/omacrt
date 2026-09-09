@@ -91,7 +91,9 @@ pub fn running() -> bool {
     let Ok(pid) = pid.trim().parse::<i32>() else {
         return false;
     };
-    unsafe { libc::kill(pid, 0) == 0 }
+    // Alive is not enough: the number in the file can have been handed to
+    // something else entirely since it was written.
+    super::pid_runs(pid, "omacrt-display")
 }
 
 fn binary() -> PathBuf {
@@ -173,7 +175,7 @@ pub fn stop() -> String {
             return "stopped".into();
         }
     }
-    if pid > 0 {
+    if pid > 0 && super::pid_runs(pid, "omacrt-display") {
         unsafe { libc::kill(pid, libc::SIGTERM) };
     }
     std::thread::sleep(Duration::from_millis(300));

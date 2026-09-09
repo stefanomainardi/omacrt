@@ -79,7 +79,7 @@ impl LibraryConfig {
     }
 }
 
-fn data_dir() -> PathBuf {
+pub fn data_dir() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| crate::library::home().join(".local/share"))

@@ -101,6 +101,14 @@ pub fn default_sink() -> Option<String> {
     run("pactl", &["get-default-sink"]).map(|s| s.trim().to_string())
 }
 
+/// A sink's volume as a percentage, out of the first channel pactl prints:
+/// `Volume: front-left: 39254 /  60% / -13.36 dB, ...`.
+fn sink_volume(sink: &str) -> Option<String> {
+    let text = run("pactl", &["get-sink-volume", sink])?;
+    let pct = text.split('/').nth(1)?.trim().trim_end_matches('%');
+    pct.parse::<u32>().ok().map(|v| v.to_string())
+}
+
 /// Sink inputs of the launcher, RetroArch, mpv and cliamp: (id, application).
 fn our_streams() -> Vec<(String, String)> {
     let Some(text) = run("pactl", &["list", "sink-inputs"]) else {
@@ -150,6 +158,12 @@ pub fn route_to_crt(t: &Target, volume: u32, system_default: bool, state: &mut S
     state.audio_card = t.card.clone();
     run("pactl", &["set-card-profile", &t.card, &t.profile]);
     std::thread::sleep(std::time::Duration::from_millis(400));
+    if state.previous_volume.is_empty()
+        && let Some(prev) = sink_volume(&t.sink)
+    {
+        state.previous_volume = prev;
+        state.crt_sink = t.sink.clone();
+    }
     run(
         "pactl",
         &["set-sink-volume", &t.sink, &format!("{volume}%")],
@@ -190,6 +204,21 @@ pub fn route_back(state: &mut State) -> String {
         if state.previous_sink.is_empty() {
             note = def;
         }
+    }
+    // The volume goes back before the profile does: once the card leaves the
+    // profile the sink belongs to, the sink is gone and there is nothing left
+    // to set.
+    if !state.previous_volume.is_empty() && !state.crt_sink.is_empty() {
+        run(
+            "pactl",
+            &[
+                "set-sink-volume",
+                &state.crt_sink,
+                &format!("{}%", state.previous_volume),
+            ],
+        );
+        state.previous_volume.clear();
+        state.crt_sink.clear();
     }
     if !state.audio_card.is_empty() && !state.previous_profile.is_empty() {
         run(
