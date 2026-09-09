@@ -4,7 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// The Omarchy CRT panel: a little tube inside the bar. The hero is drawn as a
+// The OmaCRT panel: a little tube inside the bar. The hero is drawn as a
 // television on-screen display, scanlines and all, and reports what the
 // `omarchy-crt` binary knows. Buttons below are the remote control.
 Panel {
@@ -258,7 +258,7 @@ Panel {
               Row {
                 width: parent.width
                 Mono {
-                  text: "OMARCHY CRT"
+                  text: "OMACRT"
                   color: root.active ? root.phosphor : root.muted
                   font.bold: true
                   font.pixelSize: Style.font.caption

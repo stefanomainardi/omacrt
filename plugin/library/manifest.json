@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "id": "io.github.stefanomainardi.omarchy-crt.library",
-  "name": "Omarchy CRT library",
+  "name": "OmaCRT library",
   "version": "0.1.0",
   "author": "Stefano Mainardi",
   "license": "MIT",
   "homepage": "https://github.com/stefanomainardi/omarchy-crt",
-  "description": "Full screen overlay to manage the CRT game collection: sources and disks, systems and cores, BIOS files, unplaced folders. Summoned from the Omarchy CRT bar panel.",
+  "description": "Full screen overlay to manage the CRT game collection: sources and disks, systems and cores, BIOS files, unplaced folders. Summoned from the OmaCRT bar panel.",
   "kinds": ["overlay"],
   "keepLoaded": false,
   "entryPoints": { "overlay": "Library.qml" }
