@@ -115,12 +115,12 @@ else needs doing in the meantime.
 
 RetroArch's own menu opens and pauses the game (the picture freezes) but
 draws nothing over it on this gl/Wayland super-resolution path. So the
-launcher does not rely on RGUI: it drives the emulator over the network
-command interface instead (`omacrt game pause|save|load|reset|quit`),
-and its own pause overlay is still to be built. Commands only reach
-RetroArch when its input driver is `wayland`; a saved config carrying the
-`x` (X11) driver silently disables both keyboard input and the command
-loop under Wayland, so the launcher forces `input_driver = wayland`.
+launcher does not rely on RGUI: it draws its own pause menu and presses
+RetroArch's own hotkeys through the tube's compositor
+(`omacrt game pause|save|load|reset|quit`). Those keys only reach RetroArch
+when its input driver is `wayland`; a saved config carrying the `x` (X11)
+driver silently disables keyboard input under Wayland, so the launcher forces
+`input_driver = wayland`.
 
 ## RetroArch crashes are logged to the desktop
 

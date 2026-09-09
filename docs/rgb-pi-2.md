@@ -97,8 +97,10 @@ the desktop monitor on the same GPU loses HDMI audio while the CRT has it.
 - Green is reported about 100 mV low compared to red and blue on this
   hardware revision (RetroRGB scope measurement). Colors will not match a
   reference DAC.
-- Interlace is not reachable from Hyprland because of the dropped flag; 480i
-  and 576i wait for the KMS session.
-- The device stays an "HDMI tier" option: fixed progressive 15 kHz modes from
-  the desktop, no kernel patch. The DisplayPort DAC path remains the plan for
-  native 320x240 and interlace.
+- `mode 480i` and `mode 576i` reach the DAC through the leased output, and the
+  DAC keeps its lock on them. The picture does not arrive: a stock `amdgpu`
+  scans interlaced timings out progressively. See
+  [`docs/15khz.md`](15khz.md).
+- The device is an HDMI tier option: progressive 15 kHz modes from a stock
+  kernel, no patching. Native 320x240 timings and interlace belong to the
+  DisplayPort DAC tier, which has not been needed.

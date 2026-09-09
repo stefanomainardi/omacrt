@@ -63,9 +63,11 @@ when the mode is left alone.
 ## Interlace
 
 Systems that draw 480 or 576 lines (Dreamcast, Naomi, PlayStation 2, some
-PlayStation menus) get a real interlaced mode from the same mechanism: the core
-reports 480 lines, the timing calculator picks 480i at the game's refresh, the
-patched `amdgpu` driver accepts it. No half height fallback.
+PlayStation menus) would get a real interlaced mode from the same mechanism:
+the core reports 480 lines and the timing calculator picks 480i at the game's
+refresh. A stock `amdgpu` cannot scan that out, so `output.interlace` is off
+and those games are shown at 240p. See
+[`docs/15khz.md`](15khz.md) for what stands in the way and what it costs.
 
 ## Example
 
