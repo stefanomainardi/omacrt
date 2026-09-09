@@ -232,7 +232,10 @@ pub fn decode(path: &Path) -> Option<Image> {
     decoder.set_limits(png::Limits { bytes: 64 << 20 });
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().ok()?;
-    let mut buf = vec![0u8; reader.output_buffer_size()];
+    // png 0.18 returns None when the buffer the header asks for would not fit
+    // in a usize, which is the same hostile file the limit above is for: a
+    // picture that cannot be decoded is simply not a cover.
+    let mut buf = vec![0u8; reader.output_buffer_size()?];
     let info = reader.next_frame(&mut buf).ok()?;
     let (w, h) = (info.width as usize, info.height as usize);
     let data = &buf[..info.buffer_size()];
