@@ -248,9 +248,19 @@ RetroArch with libretro cores, mpv, cliamp (Omarchy's music player), yt-dlp
 for YouTube, ffmpeg, curl, a stable Rust toolchain. `omacrt doctor`
 tells what is missing.
 
-After `--system` the tube is handed over at every boot. Set
-`shell.autostart = true` in `~/.config/omacrt/crt.toml` and the
-television boots straight into the launcher along with the desktop.
+After `--system` the tube is handed over at every boot, and the first boot
+after it is when the handover starts working: Hyprland decides which
+connectors it offers for leasing when it starts, so the override has to be in
+place before it is. Set `shell.autostart = true` in
+`~/.config/omacrt/crt.toml` and the television boots straight into the
+launcher along with the desktop.
+
+The project was called `omarchy-crt` until it became OmaCRT. Upgrading from
+one of those builds needs nothing: the first start moves what is in
+`~/.config/omarchy-crt`, `~/.cache/omarchy-crt`, `~/.local/share/omarchy-crt`
+and `~/.local/state/omarchy-crt` into the `omacrt` folders and deletes
+nothing, and the installer moves the plugins and binaries it had put in place
+itself to `~/.local/share/omacrt/retired`.
 
 ## The launcher
 
