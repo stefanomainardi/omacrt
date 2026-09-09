@@ -67,8 +67,13 @@ logged and survives, a known one kills the process. The launcher does not
 use that interface any more: on the leased tube it presses the emulator's
 own hotkeys through the compositor (`omacrt-display` control pipe,
 `key pause|save|load|reset|quit`), and RetroArch runs with
-`network_cmd_enable = false`. If you see `omacrt game ...` misbehave
-outside the lease path, that is why.
+`network_cmd_enable = false`.
+
+The code that spoke that interface is gone rather than kept as a fallback.
+It could not have worked - the interface it needed is the one disabled above
+- and a UDP send to a port nobody listens on succeeds, so `omacrt game save`
+in a window reported a save that never happened. Off the leased tube those
+commands now say there is no emulator on this display.
 
 ## Is the tube ours?
 

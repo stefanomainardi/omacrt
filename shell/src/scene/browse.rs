@@ -336,7 +336,10 @@ impl Scene {
             return;
         };
         let n = self.games.len();
-        if n == 0 {
+        // The list can be shorter than the selection that was made on it: the
+        // guard that keeps those in step lives three functions away, so this
+        // one does not depend on it.
+        if sel >= n {
             return;
         }
         let key = Self::initial(&self.games[sel]);

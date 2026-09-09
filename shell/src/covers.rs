@@ -93,9 +93,18 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
+        // The two characters after a % are read as bytes, not as a string
+        // slice: the name comes off a web page, and slicing a multibyte
+        // character down the middle is a panic on the thread that fetches
+        // covers. `from_utf8` on two ASCII hex digits cannot fail.
         if bytes[i] == b'%'
             && i + 2 < bytes.len()
-            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+            && bytes[i + 1].is_ascii_hexdigit()
+            && bytes[i + 2].is_ascii_hexdigit()
+            && let Ok(v) = u8::from_str_radix(
+                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or("zz"),
+                16,
+            )
         {
             out.push(v);
             i += 3;
@@ -153,10 +162,15 @@ impl NameIndex {
             for part in html.split("href=\"").skip(1) {
                 let Some(end) = part.find('"') else { continue };
                 let href = &part[..end];
-                if let Some(stem) = href.strip_suffix(".png")
-                    && !stem.contains('/')
-                {
-                    names.push(percent_decode(stem));
+                // Decode first, then look for a separator. The other way
+                // round a `%2F` walks straight past the check, and while the
+                // decoded name never becomes a path today, the guard reading
+                // as though it does is worse than no guard at all.
+                if let Some(stem) = href.strip_suffix(".png") {
+                    let name = percent_decode(stem);
+                    if !name.contains('/') && !name.contains("..") {
+                        names.push(name);
+                    }
                 }
             }
             if names.is_empty() {
@@ -413,6 +427,16 @@ pub fn download(label: &str, name: &str, dest: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    // The names come off a web page: a `%` followed by anything, and any
+    // character at all, has to survive being read.
+    #[test]
+    fn a_name_from_the_server_is_decoded_without_slicing_a_character() {
+        assert_eq!(super::percent_decode("Metal%20Slug"), "Metal Slug");
+        assert_eq!(super::percent_decode("%aé"), "%aé");
+        assert_eq!(super::percent_decode("%"), "%");
+        assert_eq!(super::percent_decode("é%2"), "é%2");
+    }
+
     use super::*;
 
     #[test]

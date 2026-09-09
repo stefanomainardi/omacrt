@@ -132,7 +132,12 @@ impl Audio {
             return;
         }
         self.ambience = want;
-        let mut voices = self.voices.lock().unwrap();
+        // Not `unwrap`: this runs on the thread that draws. A panic in the
+        // audio callback poisons the lock, and taking it down with `unwrap`
+        // here turned a lost sound into a black television on the next frame.
+        let Ok(mut voices) = self.voices.lock() else {
+            return;
+        };
         for v in voices.iter_mut().filter(|v| v.looping) {
             v.target = 0.0;
             v.ramp = AMBIENCE_RAMP;
@@ -163,8 +168,12 @@ impl Audio {
         if self._device.is_none() {
             return;
         }
-        // Poisoned only if the audio callback panicked; see there.
-        self.voices.lock().unwrap().push(Voice {
+        // Poisoned only if the audio callback panicked; the picture carries on
+        // without the sound rather than going with it.
+        let Ok(mut voices) = self.voices.lock() else {
+            return;
+        };
+        voices.push(Voice {
             data: Arc::new(data),
             pos: 0,
             looping: false,
@@ -176,8 +185,11 @@ impl Audio {
 
     pub fn play(&self, s: Sound) {
         if let Some((_, data)) = self.bank.iter().find(|(k, _)| *k == s) {
-            // Poisoned only if the audio callback panicked; see there.
-            self.voices.lock().unwrap().push(Voice {
+            // Poisoned only if the audio callback panicked; see above.
+            let Ok(mut voices) = self.voices.lock() else {
+                return;
+            };
+            voices.push(Voice {
                 data: data.clone(),
                 pos: 0,
                 looping: false,

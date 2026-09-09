@@ -37,7 +37,9 @@ fn live_pid() -> Option<i32> {
         .trim()
         .parse()
         .ok()?;
-    (unsafe { libc::kill(pid, 0) } == 0).then_some(pid)
+    // The number in the file is a fact about the past: alive is not the same
+    // as still being the watchdog.
+    super::pid_runs(pid, "omacrt").then_some(pid)
 }
 
 pub fn running() -> bool {

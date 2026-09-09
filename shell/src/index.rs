@@ -79,7 +79,7 @@ impl LibraryConfig {
     }
 }
 
-fn data_dir() -> PathBuf {
+pub fn data_dir() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| crate::library::home().join(".local/share"))
@@ -501,7 +501,15 @@ fn cue_first_file(cue: &Path) -> Option<PathBuf> {
         if let Some(rest) = l.strip_prefix("FILE ") {
             let name = rest.trim().trim_start_matches('"');
             let name = name.split('"').next().unwrap_or("").trim();
-            if !name.is_empty() {
+            // A cue sheet names the track that sits beside it. Same rule as
+            // a playlist: no absolute line, no walking out of the folder.
+            if !name.is_empty()
+                && !name.starts_with('/')
+                && !name.starts_with('~')
+                && !Path::new(name)
+                    .components()
+                    .any(|c| c == std::path::Component::ParentDir)
+            {
                 return Some(cue.parent().unwrap_or(Path::new(".")).join(name));
             }
         }
@@ -517,7 +525,20 @@ fn m3u_files(m3u: &Path) -> Vec<PathBuf> {
     let dir = m3u.parent().unwrap_or(Path::new("."));
     text.lines()
         .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        // A playlist names discs that sit beside it. An absolute line would
+        // replace the directory outright and a `..` would walk out of the
+        // collection, and either one has the scan opening files it was never
+        // pointed at - including something that is not a file at all and
+        // blocks the read forever.
+        .filter(|l| {
+            !l.is_empty()
+                && !l.starts_with('#')
+                && !l.starts_with('/')
+                && !l.starts_with('~')
+                && !Path::new(l)
+                    .components()
+                    .any(|c| c == std::path::Component::ParentDir)
+        })
         .map(|l| dir.join(l))
         .collect()
 }
@@ -596,6 +617,16 @@ fn looks_like_arcade_set(stem: &str) -> bool {
 
 /// Decide the system of one file, or None when nothing tells.
 pub fn detect(path: &Path, root: &Path, hints: &Hints) -> Option<String> {
+    detect_within(path, root, hints, 0)
+}
+
+/// How many playlists deep the scan will follow before giving up. A `.m3u`
+/// naming itself, or two naming each other, used to recurse until the stack
+/// ran out and took the scan down with it; a collection is somebody else's
+/// files, so it has to be treated as such.
+const M3U_DEPTH: usize = 4;
+
+fn detect_within(path: &Path, root: &Path, hints: &Hints, depth: usize) -> Option<String> {
     // The user's word first: the closest hinted ancestor wins.
     let mut p = Some(path);
     while let Some(q) = p {
@@ -658,9 +689,11 @@ pub fn detect(path: &Path, root: &Path, hints: &Hints) -> Option<String> {
             hint.map(str::to_string)
         }
         "m3u" => {
-            for f in m3u_files(path) {
-                if let Some(s) = detect(&f, root, hints) {
-                    return Some(s);
+            if depth < M3U_DEPTH {
+                for f in m3u_files(path) {
+                    if let Some(s) = detect_within(&f, root, hints, depth + 1) {
+                        return Some(s);
+                    }
                 }
             }
             hint.map(str::to_string)
@@ -1216,4 +1249,33 @@ pub fn core_package(core: &str) -> (String, bool) {
         return ("libretro-vice-git".into(), true);
     }
     (format!("libretro-{}-git", core.replace('_', "-")), true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A collection is somebody else's files. A playlist that names itself
+    /// used to recurse until the stack ran out, and a line with a leading
+    /// slash or a `..` pointed the scan outside the folder it was given.
+    #[test]
+    fn a_playlist_stays_inside_its_own_folder() {
+        let dir = std::env::temp_dir().join(format!("omacrt-m3u-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let m3u = dir.join("loop.m3u");
+        std::fs::write(
+            &m3u,
+            "loop.m3u\n/etc/passwd\n../outside.cue\n~/secret.bin\ndisc1.cue\n",
+        )
+        .unwrap();
+
+        let files = m3u_files(&m3u);
+        assert_eq!(files, vec![dir.join("loop.m3u"), dir.join("disc1.cue")]);
+
+        // And following it terminates, however many times it names itself.
+        let hints = Hints::default();
+        assert!(detect(&m3u, &dir, &hints).is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

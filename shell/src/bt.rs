@@ -148,7 +148,11 @@ impl Bluetooth {
                             let tag = parts.next()?;
                             let mac = parts.next()?;
                             let name = parts.next().unwrap_or("").trim();
-                            (tag == "Device" && !name.is_empty())
+                            // The same check the pairing path makes. Without
+                            // it a line with a short token in the address
+                            // position reaches the list, and the screen that
+                            // draws it slices the address by byte.
+                            (tag == "Device" && !name.is_empty() && is_address(mac))
                                 .then(|| (mac.to_string(), name.to_string()))
                         })
                         .collect();
@@ -197,6 +201,13 @@ impl Bluetooth {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_six_hex_pairs_are_an_address() {
+        assert!(super::is_address("AA:BB:CC:DD:EE:FF"));
+        assert!(!super::is_address("short"));
+        assert!(!super::is_address("AA:BB:CC"));
+    }
+
     #[test]
     fn only_real_addresses_are_passed_to_bluetoothctl() {
         assert!(super::is_address("A4:C1:38:9F:2B:07"));

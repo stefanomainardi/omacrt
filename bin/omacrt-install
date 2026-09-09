@@ -35,10 +35,22 @@ menu_strip() {  # print $menu_ext without our block
   [ -f "$menu_ext" ] || return 0
   # The old name wrote its own pair of markers; both are recognised so a
   # machine that had the block under `omarchy-crt` does not end up with two.
+  #
+  # A begin without its end used to swallow everything after it, permanently:
+  # the block is only dropped when both markers are found, and a file with a
+  # dangling begin is handed back untouched for a person to look at.
   awk '
     /^\/\/ (omacrt|omarchy-crt): begin/ { skip = 1 }
-    !skip { print }
-    /^\/\/ (omacrt|omarchy-crt): end/ { skip = 0 }
+    !skip { keep[++n] = $0 }
+    /^\/\/ (omacrt|omarchy-crt): end/ { if (skip) { skip = 0; closed = 1 } }
+    { all[NR] = $0 }
+    END {
+      if (skip && !closed) {
+        for (i = 1; i <= NR; i++) print all[i]
+        exit 0
+      }
+      for (i = 1; i <= n; i++) print keep[i]
+    }
   ' "$menu_ext"
 }
 
@@ -82,16 +94,25 @@ retire() {  # $1 = what to move, $2 = subfolder of $legacy_retired
   mv -f "$1" "$legacy_retired/$2/" && echo "== retired $1 to $legacy_retired/$2/"
 }
 
-legacy_retire() {
+# The binaries: nothing watches ~/.local/bin, so this is safe at any time.
+legacy_retire_bin() {
+  for b in omarchy-crt omarchy-crt-shell omarchy-crt-display omarchy-crt-pick; do
+    retire "${bin_dir}/${b}" bin
+  done
+}
+
+# The plugin folders: the shell watches these and reloads plugin code on any
+# change, and under the lock screen that reload aborts Quickshell - which is
+# what the installer already stops before the plugin step for. Moving a
+# watched folder is a change in the watched tree, so this waits for the same
+# unlocked desktop the plugin install does.
+legacy_retire_plugins() {
   local dir
   for id in "${legacy_plugin_id}.library" "$legacy_plugin_id"; do
     dir="${HOME}/.config/omarchy/plugins/${id}"
     [ -d "$dir" ] || continue
     command -v omarchy >/dev/null 2>&1 && omarchy plugin disable "$id" >/dev/null 2>&1 || true
     retire "$dir" plugins
-  done
-  for b in omarchy-crt omarchy-crt-shell omarchy-crt-display omarchy-crt-pick; do
-    retire "${bin_dir}/${b}" bin
   done
 }
 
@@ -107,6 +128,12 @@ for arg in "$@"; do
     --system)
       [ "$(id -u)" = 0 ] || { echo "--system needs root: sudo $0 --system" >&2; exit 1; }
       conn="${OMACRT_CONNECTOR:-HDMI-A-1}"
+      # The same check crt-lease-setup.sh makes at runtime. This value is
+      # interpolated into a sed replacement that writes a root owned unit
+      # file, and a newline in it becomes a new directive in that file.
+      case "$conn" in
+        *[!A-Za-z0-9-]*|"") echo "not a connector name: $conn" >&2; exit 1 ;;
+      esac
       echo "== installing the lease setup for $conn (root)"
       install -d -m 755 /usr/local/lib/omacrt
       install -m 755 "$repo/scripts/crt-lease-setup.sh" "$repo/scripts/edid-non-desktop.py" /usr/local/lib/omacrt/
@@ -174,8 +201,9 @@ for b in omacrt omacrt-shell omacrt-display; do
   [ -x "$repo/shell/target/release/$b" ] || { echo "missing $repo/shell/target/release/$b" >&2; exit 1; }
 done
 
-# Before anything new goes in, what the old name left behind is moved aside.
-legacy_retire
+# Before anything new goes in, the old binaries are moved aside. The old
+# plugin folders wait for the lock check below.
+legacy_retire_bin
 
 echo "== installing binaries into $bin_dir"
 mkdir -p "$bin_dir"
@@ -200,9 +228,14 @@ menu_install
 # unlocked desktop; the binaries in ~/.local/bin are in place already.
 if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
   echo "note: the session is locked; run this again unlocked to update the bar plugin"
+  if [ -d "${HOME}/.config/omarchy/plugins/${legacy_plugin_id}" ]; then
+    echo "note: the plugins under the old name are still enabled until then"
+  fi
   "$bin_dir/omacrt" status || true
   exit 0
 fi
+
+legacy_retire_plugins
 
 echo "== installing plugin into $plugin_dir"
 # Overwrite in place: removing the folder makes the shell drop the plugin

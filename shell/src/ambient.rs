@@ -470,8 +470,19 @@ fn next_from_ics(text: &str, now: &str) -> String {
         }
     }
     match best {
-        Some((start, summary)) if start.len() >= 13 => {
-            let time = format!("{}:{}", &start[9..11], &start[11..13]);
+        // `20260909T143000Z`: the four digits after the T are the time. The
+        // value comes off a calendar somewhere on the network, so it is read
+        // as bytes and checked for digits rather than sliced by byte offset -
+        // one multibyte character in the field used to be a panic on the
+        // thread that keeps the weather and the calendar up to date.
+        Some((start, summary))
+            if start.len() >= 13 && start.as_bytes()[9..13].iter().all(u8::is_ascii_digit) =>
+        {
+            let hhmm = &start.as_bytes()[9..13];
+            let time = format!(
+                "{}{}:{}{}",
+                hhmm[0] as char, hhmm[1] as char, hhmm[2] as char, hhmm[3] as char
+            );
             let what = summary.replace("\\,", ",").replace("\\n", " ");
             if what.is_empty() {
                 time
