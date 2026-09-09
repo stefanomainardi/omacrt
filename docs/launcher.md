@@ -1,6 +1,3 @@
-<!-- Written for somebody who wants to know what is on the television. The
-README says what the project is; this says what it draws. -->
-
 # The launcher, screen by screen
 
 A 320x240 framebuffer drawn sixty times a second, no shader faking a tube. The

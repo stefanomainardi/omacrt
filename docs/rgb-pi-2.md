@@ -2,9 +2,9 @@
 
 The RGB-Pi 2 is an HDMI to SCART DAC built around a Chrontel CH7101 receiver.
 It is sold for the Raspberry Pi and RePlayOS, but it is a plain HDMI sink, so a
-PC can drive it. First light on the Bang & Olufsen BeoCenter 1 happened on
-2026-09-06 with this recipe. Everything here was measured on the device itself
-or read from the public parts of RePlayOS (the shell scripts under
+PC can drive it, and this is the recipe that gets a picture out of it on a Bang
+& Olufsen BeoCenter 1. The registers and the figures come from the device
+itself and from the public parts of RePlayOS (the shell scripts under
 `/opt/replay/extra` and the log strings of its frontend).
 
 ## What the device is
@@ -36,8 +36,8 @@ power cycle of the DAC:
 | 0               | `0x61`   | 0xFF  | locked; 0xEF after signal loss |
 
 A reset clears the csync selection, so reset first and select csync after.
-On the BeoCenter 1 only XOR locks; AND did not. RePlayOS documents AND as the
-common TV mode and XOR for PVM style monitors, so try both.
+On the BeoCenter 1 only XOR locks. RePlayOS documents AND as the common TV mode
+and XOR for PVM style monitors, so both are worth trying on another set.
 
 RetroRGB reported a "jumpy screen" that the vendor attributes to a PLL
 decoupling problem in the current hardware revision. RePlayOS works around it
@@ -60,7 +60,7 @@ The device node is usually `root:i2c`, so join the `i2c` group.
 
 ## Hyprland modelines that work
 
-Hyprland 0.56 has two quirks that cost an afternoon:
+Hyprland 0.56 has two quirks worth knowing before writing a modeline:
 
 - the modeline clock is truncated to whole MHz (`48.328` becomes `48`), so
   choose integer clocks and adapt `htotal` to hit 15.6 to 15.75 kHz;
@@ -82,8 +82,8 @@ modeline 48 2560 2632 2860 3051 240 244 247 262 -hsync -vsync
 
 The wide "super resolution" horizontals keep the HDMI pixel clock above the
 TMDS floor and let the shell stretch its 320 pixel wide framebuffer with
-integer factors (11x at 3520, 12x at 3840). The CH7101 locked at 48 and
-72 MHz; the higher clock gave the steadier picture.
+integer factors (11x at 3520, 12x at 3840). The CH7101 locks at 48 and
+72 MHz alike, and the higher clock gives the steadier picture.
 
 ## Audio routing
 
@@ -97,8 +97,10 @@ the desktop monitor on the same GPU loses HDMI audio while the CRT has it.
 - Green is reported about 100 mV low compared to red and blue on this
   hardware revision (RetroRGB scope measurement). Colors will not match a
   reference DAC.
-- Interlace is not reachable from Hyprland because of the dropped flag; 480i
-  and 576i wait for the KMS session.
-- The device stays an "HDMI tier" option: fixed progressive 15 kHz modes from
-  the desktop, no kernel patch. The DisplayPort DAC path remains the plan for
-  native 320x240 and interlace.
+- `mode 480i` and `mode 576i` reach the DAC through the leased output, and the
+  DAC keeps its lock on them. The picture does not arrive: a stock `amdgpu`
+  scans interlaced timings out progressively. See
+  [`docs/15khz.md`](15khz.md).
+- The device is an HDMI tier option: progressive 15 kHz modes from a stock
+  kernel, no patching. Native 320x240 timings and interlace belong to the
+  DisplayPort DAC tier instead.

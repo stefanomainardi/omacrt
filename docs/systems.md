@@ -89,11 +89,11 @@ off, native resolution.
 
 ### GameCube, and why it carries no options
 
-Every graphics setting written for the Dolphin core here was a guess at a
-value string, and each guess left it drawing a screen of magenta. With none of
-them the core uses its own defaults and the games run. What decides the
-picture is the line count the television is set to, which comes from
-`default_lines`, not from the core.
+The Dolphin core takes a graphics option only in the exact value string it
+expects, and a wrong one leaves it drawing a screen of magenta rather than
+refusing the setting. With no options at all the core uses its own defaults and
+the games run. What decides the picture is the line count the television is set
+to, which comes from `default_lines`, not from the core.
 
 The files Dolphin needs and does not ship, its `Sys` folder, are fetched once
 from the libretro buildbot on the first launch.

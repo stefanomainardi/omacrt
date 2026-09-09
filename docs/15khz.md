@@ -1,12 +1,9 @@
 # Driving a 15 kHz television from a modern PC
 
-This is the research the project rests on, and the correction it needed. The
-first version of this page was a feasibility study written before anything
-worked, and its two main conclusions were both wrong: it said HDMI was out of
-the question, and that a Wayland compositor could never change modes for each
-game. What ships does both. The parts of the study that were right are still
-right, and worth reading before buying anything, so they are here too, with
-the reasoning that replaced the rest.
+This is the research the project rests on: what a television with a SCART
+socket wants on its pins, why a modern graphics card cannot give it that on its
+own, and how a DAC, a leased connector and a wide modeline answer each of those
+in turn. It is worth reading before buying anything.
 
 ## What a 15 kHz television actually wants
 
@@ -48,14 +45,11 @@ deinterlacer and no crystal of their own. That is why the arcade community
 names those two chips and no others.
 
 **HDMI has a floor.** HDMI's TMDS encoding starts at 25 MHz, and `amdgpu`
-will not program a mode below it on an HDMI connector.
+will not program a mode below it on an HDMI connector. Taken at face value that
+leaves one road, DisplayPort into an RTD2166 with a kernel carrying the 15 kHz
+patches, and an emulator on KMS rather than on a desktop.
 
-The study concluded from the third wall that HDMI was out, and that the only
-road was DisplayPort into an RTD2166, with a kernel carrying the 15 kHz
-patches, and the emulator taking KMS on a second virtual terminal because a
-compositor cannot change modes per game.
-
-## What this project does instead
+## What this project does
 
 The third wall has a door in it. **The DAC is the sink, not the television.**
 An HDMI to SCART DAC that accepts arbitrary timings presents itself as a
@@ -76,11 +70,11 @@ or 320 pixels land on a whole number of them and the television, which only
 ever draws 4:3, does the rest. One game line on one television line, no
 scaling anywhere.
 
-The second wall the study raised, per game mode changes under a compositor, is
-answered by **DRM leasing**. It is a Wayland protocol built for virtual
-reality headsets, where a compositor hands one connector over to an
-application that then owns it. The desktop keeps every other output; the
-leased one belongs to whatever took it. So:
+A mode change for each game, which no desktop protocol can express, is answered
+by **DRM leasing**. It is a Wayland protocol built for virtual reality headsets,
+where a compositor hands one connector over to an application that then owns
+it. The desktop keeps every other output; the leased one belongs to whatever
+took it. So:
 
 1. A systemd oneshot marks the DAC's connector *non-desktop* by overriding its
    EDID at boot. Hyprland sees that flag and stops configuring the output,
@@ -93,19 +87,101 @@ leased one belongs to whatever took it. So:
    be changed live, per console, while the desktop carries on untouched.
 
 No patched kernel, no second virtual terminal, no `chvt`, no root for the mode
-change. The study's "not possible under a compositor" was true of the
-protocols it looked at, `wlr-output-management`, which carries a width, a
-height and a refresh rate and nothing else. Leasing sidesteps the question by
-handing over the connector rather than describing a mode to somebody else.
+change. What is genuinely impossible under a compositor is asking it for a
+timing: `wlr-output-management`, the protocol for that, carries a width, a
+height and a refresh rate and nothing else, so a modeline cannot be expressed
+through it at all. Leasing sidesteps the question by handing over the connector
+rather than describing a mode to somebody else.
 
 ## What a stock kernel still cannot do
 
-**Interlace.** `amdgpu` without the 15 kHz patches will accept a 480i
-modeline, program something, and scan out a narrow strip. This is not a
-subtlety to work around: the project carries `output.interlace`, off by
-default, precisely because turning it on with a stock kernel gives a broken
-picture. 480 line consoles are shown at 240p instead, which is what the line
-count per console exists for.
+**Interlace.** `amdgpu` without the 15 kHz patches accepts a 480i modeline,
+programs something, and scans out a narrow strip. On a Radeon RX 7700/7800 XT
+(Navi 32, DCN 3.2) running the stock Arch kernel 7.2.4, through the leased
+connector rather than through a compositor, `omacrt mode 480i` **succeeds**:
+the modeset returns without error, the DAC keeps its lock, `status` reports
+3520x480 at 59.927 Hz, and the television shows a narrow image in the middle of
+the screen. Nothing rejects the mode on the leased path. It is programmed with
+interlaced timings and scanned out progressively, which at a 525 line vertical
+total and 15.731 kHz is 29.96 Hz, and no television locks to that.
+
+Five things in the current upstream tree stand between that modeline and a
+picture on DCN 3.2.
+
+1. `fill_stream_properties_from_drm_display_mode` in `amdgpu_dm.c` never
+   copies `DRM_MODE_FLAG_INTERLACE` into `timing_out->flags.INTERLACE`, so
+   everything downstream believes the timing is progressive, which is what
+   produces the strip.
+2. `optc1_validate_timing` in `dcn10_optc.c` returns false for any interlaced
+   timing, under the comment *"Temporarily blocking interlacing mode until
+   it's supported"*. Forcing the flag alone turns a wrong picture into no
+   picture.
+3. The OTG register that enables interlacing is missing from the per-ASIC
+   tables for DCN 3.x, though the code that writes it is already there:
+
+   ```c
+   /* Interlace */
+   if (REG(OTG_INTERLACE_CONTROL)) {
+           if (patched_crtc_timing.flags.INTERLACE == 1)
+                   REG_UPDATE(OTG_INTERLACE_CONTROL, OTG_INTERLACE_ENABLE, 1);
+   ```
+
+   DCN 1 and 2 carry an address for it and interlace works there; for DCN 3.2
+   the entry is absent, so the offset is zero and the block is skipped.
+4. DML1, which is what DCN 3.2 validates through (`using_dml2 = false` in
+   `dcn32_resource.c`), doubles `VRatio` for an interlaced timing when the
+   ASIC does not claim `ptoi_supported`, and `dcn3_2_ip` sets that to false.
+   The doubling then fails the scaler taps validation.
+5. `interleave_en` on the scaler's line buffer is never set from the timing,
+   in `dcn10_hwseq.c` and `dcn20_hwseq.c`.
+
+Most of the work is upstream already and needs nothing: the OTG programming
+code, the front porch workaround, the field number handling, `dest.interlaced`
+reaching DML from `dcn20_fpu.c`, and the HDMI stream encoder, which the 15 kHz
+patches do not touch at all. The hardware is not the limit either, since AMD's
+own public headers for this ASIC carry the register and its bit:
+
+```c
+#define regOTG0_OTG_INTERLACE_CONTROL                     0x1b44
+#define OTG0_OTG_INTERLACE_CONTROL__OTG_INTERLACE_ENABLE__SHIFT  0x0
+#define OTG0_OTG_INTERLACE_CONTROL__OTG_INTERLACE_ENABLE_MASK    0x00000001L
+```
+
+For a DCN 3.2 card the whole of patch 03 comes to about ten lines: one register
+table entry, one shift and mask entry, three in `amdgpu_dm.c`, one deletion in
+`dcn10_optc.c`, two in `dcn20_hwseq.c` and two in `display_mode_vba.c`.
+
+With those changes the display engine does interlace. An owner of an RX 7700S,
+which is RDNA 3 and the same DCN 3.2 display engine as the card here, reported
+interlaced output as a black screen (`D0023R/linux_kernel_15khz#11`), then
+"Works great" with the version of patch 03 that covers DCN 3, and left a note
+for anybody arriving with the same problem:
+
+> for those reading who have an issue with a horizontally squished interlaced
+> image or no image on any AMD GPU newer than the RX 5x00 series, try this
+> patch
+
+A horizontally squished image is what this machine shows. Two warnings come
+with the patches. Vertical sync values want odd numbers on DCN 3, since on a
+6700 XT the field order came out wrong until they were made odd
+(`D0023R/linux_kernel_15khz#16`, `1280 1360 1536 1664 480 489 493 525`), while
+the interlaced modelines in `crt.toml` are even (`480 484 490 525`). And
+`amdgpu.dc=0` gives working interlace only on cards old enough to have the
+legacy DCE path, so it is not an option on Navi, where every part requires the
+Display Core.
+
+This project does not patch the kernel or the driver. `output.interlace` is off
+by default, 480 line consoles are shown at 240p instead, which is what the line
+count per console exists for, and this section is here to say what that costs
+and what changing it would take.
+
+What it costs is narrower than it first looks. Interlace concerns one group of
+systems, the Dreamcast, Naomi, GameCube and the PlayStation 2 if it ever
+arrives, and not the rest of a collection, which at 240p is already in its
+native shape. On those systems the gain is the full vertical resolution in
+text and menus. The price is the shimmer of alternating fields, which is the
+authentic look of that era and which many people find worse than 240p, and
+that is the whole of the trade.
 
 For anybody who wants the interlaced modes, the patches are maintained at
 `D0023R/linux_kernel_15khz`, which tracks Calamity's original work from
@@ -126,9 +202,10 @@ follows stable within days. Building one is a package that coexists with the
 stock kernel, its own UKI and its own boot entry, and the default entry stays
 the stock one.
 
-## Two findings about Hyprland
+## Modelines and interlace in Hyprland
 
-Both verified by reading the source on 2026-09-05, and both still true.
+Two things are true of Hyprland 0.56 and its aquamarine backend, and both are
+in the source.
 
 **Modelines work, the interlace flag does not.** The monitor rule takes a full
 modeline: `monitor = DP-2, modeline 6.400 320 336 368 400 240 244 247 262
@@ -190,10 +267,10 @@ document at length: anything with a slow PIC that loses sync when the timing
 changes, and any cable built for a MiSTer, which expects 3.3 to 5 V on pin 9
 and TTL composite sync on pin 13.
 
-## What was checked, and in what order
+## Bringing one up, in order
 
-The order mattered: everything that could be proved without spending money was
-proved first.
+The order matters: everything that can be proved without spending money comes
+first.
 
 1. Switchres dry, for the modelines: `switchres 320 240 60 -c -m ntsc`. No
    hardware needed.
@@ -207,7 +284,7 @@ proved first.
    programmed by our own process.
 5. RetroArch as a client of that compositor, with the line count following the
    console.
-6. Interlace, which is where the stock kernel stopped.
+6. Interlace, which is where a stock kernel stops.
 
 ## Sources
 

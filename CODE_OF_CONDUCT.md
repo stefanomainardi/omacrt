@@ -17,6 +17,7 @@ wrong answer here is a different set of hardware: another DAC, another kernel,
 another set that locks at a slightly different rate. Ask what they are running
 before deciding they are wrong.
 
-If somebody is making the project a worse place to be, write to
-<mainardistefano@gmail.com>. Reports stay between you and the maintainer.
-Anything from a comment left alone to a block, depending on what happened.
+If somebody is making the project a worse place to be, write to the address on
+[stefanomainardi.com](https://www.stefanomainardi.com). Reports stay between
+you and the maintainer. Anything from a comment left alone to a block,
+depending on what happened.

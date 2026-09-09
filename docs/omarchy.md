@@ -1,6 +1,3 @@
-<!-- The part no generic frontend can copy: the desktop's own shell, themes,
-music player and menu driving a television. -->
-
 # Omarchy on the tube
 
 The interesting part is not the emulator, it is what an integrated desktop
