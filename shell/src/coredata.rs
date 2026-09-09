@@ -49,25 +49,66 @@ pub fn ensure(core: &str, system_dir: &Path) -> Option<String> {
         return None;
     }
     std::fs::create_dir_all(system_dir).ok()?;
-    let tmp =
-        std::env::temp_dir().join(format!("omacrt-{}-{}.zip", extra.core, std::process::id()));
-    let ok = crate::net::curl(300, 134_217_728)
-        .arg("-o")
-        .arg(&tmp)
-        .arg(extra.url)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !ok {
-        let _ = std::fs::remove_file(&tmp);
-        return Some(format!("{}: could not be downloaded", extra.what));
+
+    // Everything happens in a directory this project owns. The archive used
+    // to land on a predictable name in /tmp, which another user on the same
+    // machine can pre-create as a symlink: curl follows it, and whatever was
+    // at the other end got unpacked into RetroArch's system directory. A
+    // staging directory under the cache is not writable by anybody else, and
+    // it also means a half unpacked archive never touches the real one.
+    let work = crate::crt::cache_dir().join("cores");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).ok()?;
+    let tmp = work.join(format!("{}.zip", extra.core));
+    let staged = work.join(extra.core);
+
+    let done = (|| {
+        let ok = crate::net::curl(300, 134_217_728)
+            .arg("-o")
+            .arg(&tmp)
+            .arg("--")
+            .arg(extra.url)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            return Err(format!("{}: could not be downloaded", extra.what));
+        }
+        std::fs::create_dir_all(&staged).map_err(|e| format!("{}: {e}", extra.what))?;
+        if !unpack(&tmp, &staged) {
+            return Err(format!("{}: could not be unpacked", extra.what));
+        }
+        // The archive is trusted by where it comes from rather than by a
+        // digest: it is rebuilt by libretro's buildbot, so a pinned hash would
+        // go stale and turn into a permanent failure. What is checked instead
+        // is that the unpacked tree really is the thing that was asked for,
+        // before any of it is put where RetroArch will read it.
+        if !staged.join(extra.marker).exists() {
+            return Err(format!("{}: the archive did not hold it", extra.what));
+        }
+        move_into(&staged, system_dir).map_err(|e| format!("{}: {e}", extra.what))?;
+        Ok(format!("{} installed", extra.what))
+    })();
+
+    let _ = std::fs::remove_dir_all(&work);
+    Some(done.unwrap_or_else(|e| e))
+}
+
+/// Move the staged tree into place, directory by directory, without removing
+/// anything already there that the archive does not carry.
+fn move_into(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let dest = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            move_into(&entry.path(), &dest)?;
+        } else {
+            std::fs::rename(entry.path(), &dest)
+                .or_else(|_| std::fs::copy(entry.path(), &dest).map(|_| ()))?;
+        }
     }
-    let unpacked = unpack(&tmp, system_dir);
-    let _ = std::fs::remove_file(&tmp);
-    if !unpacked {
-        return Some(format!("{}: could not be unpacked", extra.what));
-    }
-    Some(format!("{} installed", extra.what))
+    Ok(())
 }
 
 /// Unpack a zip with whichever of the usual tools is on the machine.

@@ -22,6 +22,10 @@ Item {
 
   property var shell: null
   property var manifest: null
+  // Resolved once, from this plugin's own directory: the overlay is installed
+  // as `<id>.library` beside `<id>`, which holds `bin/omacrt`.
+  readonly property string ownHelper:
+    Qt.resolvedUrl("../io.github.stefanomainardi.omacrt/bin/omacrt").toString().replace("file://", "")
   property string helper: ""
   property bool opened: false
 
@@ -60,11 +64,16 @@ Item {
   readonly property int games: (lib.index && lib.index.games) || 0
   readonly property string scannedAt: (lib.index && lib.index.scanned_at) ? String(lib.index.scanned_at).slice(0, 16).replace("T", " ") : ""
 
+  // The payload carries data, never the program to run. `helper` used to be
+  // read from it, and `refresh()` starts six processes with it the moment the
+  // overlay opens, so any program running as the user could have summoned this
+  // with a helper of its own and had it executed six times inside the shell.
+  // The binary is the one that sits beside the bar plugin, resolved from this
+  // file's own location, which is where the installer puts it.
   function open(payloadJson) {
     var payload = {}
     try { payload = JSON.parse(String(payloadJson || "{}")) || {} } catch (e) { payload = {} }
-    if (payload.helper) root.helper = String(payload.helper)
-    if (!root.helper) root.helper = Quickshell.env("HOME") + "/.local/bin/omacrt"
+    root.helper = root.ownHelper
     root.opened = true
     root.errorMessage = ""
     root.note = ""
@@ -103,6 +112,9 @@ Item {
   }
 
   // A command with progress or a password: a floating terminal.
+  // The receiver runs this through a shell - the `; echo; read` tail only
+  // works there - so everything variable in `cmd` has to arrive quoted. `q`
+  // is what does it, and every caller below uses it.
   function inTerminal(cmd) {
     Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation",
       cmd + "; echo; read -n 1 -s -r -p 'Press any key to close'"])
@@ -140,7 +152,7 @@ Item {
   }
 
   function installCore(c) {
-    var cmd = c.aur ? ("omarchy pkg aur add " + c.package) : ("omarchy pkg add " + c.package)
+    var cmd = "omarchy pkg " + (c.aur ? "aur " : "") + "add " + root.q(c.package)
     root.inTerminal(cmd)
   }
 
@@ -596,7 +608,7 @@ Item {
                 Row {
                   width: parent.width
                   spacing: Style.space(8)
-                  Act { text: "Full BIOS list"; onClicked: root.inTerminal(root.helper + " bios") }
+                  Act { text: "Full BIOS list"; onClicked: root.inTerminal(root.q(root.helper) + " bios") }
                 }
               }
 
@@ -651,7 +663,7 @@ Item {
             Row {
               width: parent.width
               spacing: Style.space(8)
-              Act { text: "Doctor"; onClicked: root.inTerminal(root.helper + " doctor") }
+              Act { text: "Doctor"; onClicked: root.inTerminal(root.q(root.helper) + " doctor") }
               Act { text: "Reload"; onClicked: root.refresh() }
               Act { visible: scanProc.running; text: "Stop the scan"; onClicked: root.stopScan() }
               Text {

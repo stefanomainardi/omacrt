@@ -2235,11 +2235,21 @@ fn main() {
                     "the display process is not running (the desktop's own tools see the tube when it is not leased)",
                 );
             }
-            let _ = std::fs::remove_file(&path);
+            // The file used to be deleted first so that its appearing meant
+            // the shot had been taken. That threw away whatever was there
+            // even when the shot then failed. The time it was last written
+            // answers the same question without touching it.
+            let before = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+            let written = |p: &str| {
+                std::fs::metadata(p)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .is_some_and(|now| before.is_none_or(|then| now > then))
+            };
             display::send(&format!("shot {path}")).unwrap_or_else(|e| die(&e.to_string()));
             for _ in 0..40 {
                 std::thread::sleep(std::time::Duration::from_millis(50));
-                if std::path::Path::new(&path).exists() {
+                if written(&path) {
                     println!("{path}");
                     return;
                 }
