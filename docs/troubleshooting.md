@@ -89,6 +89,21 @@ override is not in place: `sudo bin/omacrt-install --system` installs it for
 every boot, and `sudo scripts/crt-lease-setup.sh on` applies it now. `off`
 gives the connector back to the desktop.
 
+**First look for a monitor rule.** If `omacrt-display props HDMI` says
+`non-desktop = 1` and `hyprctl monitors all` still lists the connector, the
+kernel has done its part and something in `~/.config/hypr` is claiming it. A
+connector Hyprland has an `hl.monitor` rule for is a monitor to Hyprland, and
+a monitor is never offered for leasing. The rule usually matches by
+description rather than by name:
+
+```lua
+hl.monitor({ output = "desc:ATG MORTACA DEV00", disabled = true })
+```
+
+so searching the config for `HDMI-A-1` does not find it. Remove it and reboot.
+Reloading is not enough: Hyprland decides what a connector is when it is
+added, and keeps the answer.
+
 Applying it now is not the same as having it at boot. Hyprland decides which
 connectors it offers for leasing when it starts, so an override that arrives
 afterwards sets the flag but wins nothing: `non-desktop = 1` while
