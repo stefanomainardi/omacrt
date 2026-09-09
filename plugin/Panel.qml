@@ -54,7 +54,9 @@ Panel {
 
   function openLibrary() {
     root.close()
-    Quickshell.execDetached(["omarchy-shell", "shell", "summon", root.moduleName + ".library", JSON.stringify({ helper: root.helper })])
+    // No `helper` in the payload: the overlay resolves the binary from its own
+    // directory, so a summon from anywhere cannot name the program it runs.
+    Quickshell.execDetached(["omarchy-shell", "shell", "summon", root.moduleName + ".library", "{}"])
   }
 
   function open() {
@@ -85,14 +87,21 @@ Panel {
     actionProc.running = true
   }
 
+  // The receiver runs this through a shell - the `; echo; read` tail only
+  // works there - so anything variable in `cmd` arrives quoted through `q`.
   function inTerminal(cmd) {
     Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation",
       cmd + "; echo; read -n 1 -s -r -p 'Press any key to close'"])
   }
 
+  function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
+
   function toggleWatch() {
     if (root.watching) {
-      Quickshell.execDetached(["pkill", "-f", "omacrt dac watch"])
+      // The full path, not the bare words: `pkill -f "omacrt dac watch"`
+      // matches any command line carrying that phrase, an editor open on this
+      // file included.
+      Quickshell.execDetached(["pkill", "-f", root.helper + " dac watch"])
     } else {
       Quickshell.execDetached(["setsid", root.helper, "dac", "watch"])
     }
@@ -150,7 +159,7 @@ Panel {
 
   Process {
     id: watchProc
-    command: ["pgrep", "-f", "omacrt dac watch"]
+    command: ["pgrep", "-f", root.helper + " dac watch"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.watching = String(text || "").trim() !== ""
@@ -537,8 +546,8 @@ Panel {
               tooltipText: "sources, systems, cores, BIOS and unplaced folders, full screen"
               onClicked: root.openLibrary()
             }
-            Act { text: "Scan library"; onClicked: root.inTerminal(root.helper + " library scan") }
-            Act { text: "Doctor"; onClicked: root.inTerminal(root.helper + " doctor") }
+            Act { text: "Scan library"; onClicked: root.inTerminal(root.q(root.helper) + " library scan") }
+            Act { text: "Doctor"; onClicked: root.inTerminal(root.q(root.helper) + " doctor") }
           }
 
           // ------------------------------------------------------- footer

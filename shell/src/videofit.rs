@@ -362,6 +362,9 @@ pub struct Conversion {
     pub duration: f64,
     progress_file: PathBuf,
     pub done_secs: f64,
+    /// Whether this run is the one that created the destination. A failure
+    /// cleans up after itself and nothing else.
+    dst_was_new: bool,
 }
 
 impl Conversion {
@@ -374,6 +377,7 @@ impl Conversion {
         let p = probe(src);
         let plan = plan(&p, fit);
         let dst = crt_path(src);
+        let dst_was_new = !dst.exists();
         let progress_file = config_dir.join("convert.progress");
         let _ = std::fs::remove_file(&progress_file);
         let child = plan.ffmpeg(src, &dst, &progress_file).spawn()?;
@@ -385,6 +389,7 @@ impl Conversion {
             duration: p.duration,
             progress_file,
             done_secs: 0.0,
+            dst_was_new,
         })
     }
 
@@ -402,7 +407,10 @@ impl Conversion {
         match self.child.try_wait() {
             Ok(Some(status)) => {
                 let _ = std::fs::remove_file(&self.progress_file);
-                if !status.success() {
+                // Only what this run created. The file sits beside somebody's
+                // own video, and a failed second pass used to delete the good
+                // one a first pass had produced.
+                if !status.success() && self.dst_was_new {
                     let _ = std::fs::remove_file(&self.dst);
                 }
                 Some(status.success())

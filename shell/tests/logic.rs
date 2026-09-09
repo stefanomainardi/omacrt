@@ -108,6 +108,33 @@ fn an_interlaced_modeline_keeps_its_flag() {
 }
 
 #[test]
+fn a_modeline_carries_only_the_flags_a_modeline_has() {
+    // Everything after the numbers comes out of crt.toml and is written into
+    // a Lua string the compositor evaluates, so a word that is not a flag is
+    // dropped rather than passed on.
+    let m = Modeline::parse(
+        "72 3520 3695 4033 4577 240 242 245 262 -hsync \" }); os.execute(\"touch /tmp/x",
+    )
+    .expect("the numbers are still a modeline");
+    assert_eq!(m.flags, "-hsync");
+}
+
+#[test]
+fn a_monitor_position_is_auto_or_a_pair_of_numbers() {
+    use omacrt_shell::crt::output::hypr_position;
+    assert_eq!(hypr_position("auto"), "auto");
+    assert_eq!(hypr_position("auto-left"), "auto-left");
+    assert_eq!(hypr_position("1920x0"), "1920x0");
+    assert_eq!(hypr_position("-1920x0"), "-1920x0");
+    // Anything else falls back rather than reaching the compositor's Lua.
+    assert_eq!(
+        hypr_position("\" }); os.execute(\"touch /tmp/x\"); --"),
+        "auto"
+    );
+    assert_eq!(hypr_position(""), "auto");
+}
+
+#[test]
 fn nonsense_is_not_a_modeline() {
     assert!(Modeline::parse("").is_none());
     assert!(Modeline::parse("72 3520 3695").is_none());

@@ -112,6 +112,20 @@ pub struct Modeline {
     pub flags: String,
 }
 
+/// What may follow the numbers in a modeline. Anything else is not a flag,
+/// and this list is what keeps `crt.toml` from reaching the compositor's Lua.
+const MODELINE_FLAGS: &[&str] = &[
+    "+hsync",
+    "-hsync",
+    "+vsync",
+    "-vsync",
+    "+csync",
+    "-csync",
+    "interlace",
+    "doublescan",
+    "rgb",
+];
+
 impl Modeline {
     pub fn parse(text: &str) -> Option<Self> {
         // With or without Hyprland's leading "modeline" word.
@@ -131,7 +145,16 @@ impl Modeline {
             clock_mhz,
             h: [nums[0], nums[1], nums[2], nums[3]],
             v: [nums[4], nums[5], nums[6], nums[7]],
-            flags: parts[9..].join(" "),
+            // Only the tokens a modeline can actually carry. Everything
+            // after the numbers comes out of `crt.toml` and ends up inside a
+            // Lua string handed to the compositor, so an unknown word is
+            // dropped rather than passed on.
+            flags: parts[9..]
+                .iter()
+                .filter(|f| MODELINE_FLAGS.contains(&f.to_ascii_lowercase().as_str()))
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" "),
         })
     }
 
@@ -262,10 +285,31 @@ pub fn hypr_monitor(name: &str) -> Option<serde_json::Value> {
     list.into_iter().find(|m| m["name"] == name)
 }
 
+/// `auto`, `auto-left`, or a pair of coordinates. Hyprland takes nothing
+/// else, and the value is written straight into the Lua below.
+pub fn hypr_position(position: &str) -> &str {
+    let p = position.trim();
+    let ok = p.starts_with("auto")
+        && p.len() <= 16
+        && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        || p.split_once('x').is_some_and(|(a, b)| {
+            !a.is_empty()
+                && !b.is_empty()
+                && [a, b].iter().all(|n| {
+                    n.strip_prefix('-')
+                        .unwrap_or(n)
+                        .chars()
+                        .all(|c| c.is_ascii_digit())
+                })
+        });
+    if ok { p } else { "auto" }
+}
+
 pub fn apply_modeline(name: &str, ml: &Modeline, position: &str) -> (bool, String) {
     hypr_eval(&format!(
-        "hl.monitor({{ output = \"{name}\", mode = \"{}\", position = \"{position}\", scale = 1, disabled = false }})",
-        ml.to_hypr()
+        "hl.monitor({{ output = \"{name}\", mode = \"{}\", position = \"{}\", scale = 1, disabled = false }})",
+        ml.to_hypr(),
+        hypr_position(position)
     ))
 }
 

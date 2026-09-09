@@ -143,12 +143,18 @@ impl Scene {
         let before = lines.len();
         lines.retain(|l| l.split('\t').next() != Some(target.as_str()));
         let kept = if lines.len() == before {
-            lines.push(format!("{target}\t{}", entry.game.title));
+            // A tab or a newline in a title would become extra rows, and
+            // every row here is read back as something to open.
+            let title = entry.game.title.replace(['\t', '\n', '\r'], " ");
+            lines.push(format!("{target}\t{title}"));
             true
         } else {
             false
         };
-        if let Err(e) = std::fs::write(&path, lines.join("\n") + "\n") {
+        // Through the store: this is read, changed and written back, and the
+        // CLI writes it too, so a crash between the truncate and the write
+        // used to lose the whole list.
+        if let Err(e) = omacrt_shell::store::save(&path, lines.join("\n") + "\n") {
             self.message = Some((format!("watch later: {e}"), self.now + 3.0));
             return;
         }

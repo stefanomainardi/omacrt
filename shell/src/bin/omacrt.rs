@@ -37,7 +37,7 @@ omacrt: drive a 15 kHz CRT from the Omarchy desktop
   game key <key> [ms]            press a key inside the running game (enter, rshift, or an
                                  evdev code), held for that many milliseconds
   watch <file|url> [--later [TITLE]]  play a video or a YouTube link on the tube, or keep it for later
-  game menu|pause|save|load|reset|quit|cmd <CMD>   talk to the running emulator
+  game menu|pause|save|load|reset|quit           press the emulator's hotkeys
   shot <file.png>                what the tube shows right now (leased output)
   monitor on|off                 desktop window: live preview of the tube, keyboard to the tube when focused
   record start <file.mp4>|stop   capture the tube, picture and sound, into a video
@@ -1172,6 +1172,26 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             "sudo systemctl enable --now omacrt-lease.service".into()
         },
     ));
+    // The flag being set is not the same as the compositor having noticed.
+    // Hyprland picks its lease pool when it starts, so an override applied to
+    // a running session leaves the connector marked and still unavailable,
+    // which reads like a broken install and is only a reboot away.
+    if let Some(conn) = output::pick(cfg) {
+        let marked = display::leaseable(&conn.name);
+        let held = output::hypr_monitor(&conn.name).is_some();
+        rows.push((
+            "connector handed over".into(),
+            marked && !held,
+            match (marked, held) {
+                (true, true) => {
+                    "marked non-desktop, but the compositor still holds it: reboot".into()
+                }
+                (true, false) => "offered for leasing".into(),
+                _ => "not marked non-desktop: sudo bin/omacrt-install --system".into(),
+            },
+        ));
+    }
+
     // The bar plugin, and whether the shell has been told about it.
     let plugin_dir = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
         .join(".config/omarchy/plugins/io.github.stefanomainardi.omacrt");
@@ -2235,11 +2255,21 @@ fn main() {
                     "the display process is not running (the desktop's own tools see the tube when it is not leased)",
                 );
             }
-            let _ = std::fs::remove_file(&path);
+            // The file used to be deleted first so that its appearing meant
+            // the shot had been taken. That threw away whatever was there
+            // even when the shot then failed. The time it was last written
+            // answers the same question without touching it.
+            let before = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+            let written = |p: &str| {
+                std::fs::metadata(p)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .is_some_and(|now| before.is_none_or(|then| now > then))
+            };
             display::send(&format!("shot {path}")).unwrap_or_else(|e| die(&e.to_string()));
             for _ in 0..40 {
                 std::thread::sleep(std::time::Duration::from_millis(50));
-                if std::path::Path::new(&path).exists() {
+                if written(&path) {
                     println!("{path}");
                     return;
                 }
@@ -2254,7 +2284,7 @@ fn main() {
                 .unwrap_or("status")
                 .to_string();
             let r = match sub.as_str() {
-                "menu" => game::send("MENU_TOGGLE"),
+                "menu" => game::menu(),
                 "pause" => game::pause_toggle(),
                 "save" => game::save_state(),
                 "load" => game::load_state(),
@@ -2275,10 +2305,10 @@ fn main() {
                     };
                     crt::display::send(&line)
                 }
-                "cmd" => match positional(args).get(1) {
-                    Some(c) => game::send(c),
-                    None => die("game cmd needs a RetroArch command"),
-                },
+                // `game cmd` spoke RetroArch's UDP command interface, which
+                // this project disables at every launch because a datagram
+                // crashes it. `game key` is what presses a key for real.
+                "cmd" => die("game cmd is gone: use `game key <name>`"),
                 _ => {
                     println!(
                         "{}",
@@ -2517,8 +2547,11 @@ fn main() {
                     println!("already in the watch later list");
                     return;
                 }
+                // A tab or a newline in the title would become extra rows,
+                // and every row is read back as something to open.
+                let title = title.replace(['\t', '\n', '\r'], " ");
                 text.push_str(&format!("{target}\t{title}\n"));
-                std::fs::write(&path, text).unwrap_or_else(|e| die(&e.to_string()));
+                omacrt_shell::store::save(&path, text).unwrap_or_else(|e| die(&e.to_string()));
                 println!("kept for later: {target}");
             } else {
                 let line = format!("watch {target}");
