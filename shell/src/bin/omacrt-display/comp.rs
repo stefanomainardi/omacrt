@@ -96,6 +96,10 @@ pub struct Crt {
     _drm: DrmOutputManager<Allocator, Exporter, (), DrmDeviceFd>,
     drm_output: Option<DrmOutput<Allocator, Exporter, (), DrmDeviceFd>>,
     frame_queued: bool,
+    /// When the frame now in flight was queued. A page flip that is accepted
+    /// is always followed by a vblank, so one that is not means the device
+    /// has stopped answering and no error was reported anywhere.
+    queued_at: Option<Instant>,
     /// The offscreen buffer the recording and the screenshot render into,
     /// and the mode it was made for. Kept between frames.
     capture_target: Option<GlesRenderbuffer>,
@@ -132,6 +136,11 @@ struct Recorder {
 /// arriving, long enough to ride out a mode change and short enough that the
 /// watchdog puts the television back while somebody is still looking at it.
 const FLIP_FAILURES_ALLOWED: u32 = 10;
+
+/// How long a queued frame may go without its vblank. Two seconds is far
+/// beyond any mode change and short enough that somebody watching sees the
+/// television come back rather than wonder.
+const FRAME_DEADLINE: Duration = Duration::from_secs(2);
 
 const REC_W: usize = 1280;
 const REC_H: usize = 960;
@@ -450,6 +459,19 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
                     eprintln!("the compositor revoked the lease");
                     st.running = false;
                 }
+                // A frame was accepted and its vblank never came. Every other
+                // part of the process is healthy, so nothing else notices:
+                // the picture is simply gone, and `render` returns at its
+                // first line for ever because a frame is still in flight.
+                if let Some(at) = st.queued_at
+                    && at.elapsed() >= FRAME_DEADLINE
+                {
+                    eprintln!(
+                        "no vblank for {} s with a frame in flight: the device has stopped",
+                        FRAME_DEADLINE.as_secs()
+                    );
+                    st.running = false;
+                }
                 TimeoutAction::ToDuration(Duration::from_millis(250))
             },
         )
@@ -524,6 +546,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         _drm: drm,
         drm_output: Some(drm_output),
         frame_queued: false,
+        queued_at: None,
         capture_target: None,
         capture_size: None,
         flips_failed: 0,
@@ -910,6 +933,7 @@ impl Crt {
             ml.vfreq_hz()
         );
         self.frame_queued = false;
+        self.queued_at = None;
         self.render();
     }
 
@@ -962,6 +986,7 @@ impl Crt {
                 } else {
                     self.flips_failed = 0;
                     self.frame_queued = true;
+                    self.queued_at = Some(Instant::now());
                 }
             }
             Err(e) => {
@@ -976,6 +1001,7 @@ impl Crt {
             let _ = out.frame_submitted();
         }
         self.frame_queued = false;
+        self.queued_at = None;
         self.frames += 1;
         if self.recorder.is_some() && self.frames.is_multiple_of(2) {
             // Scale straight out of the mapped pixels into a buffer the

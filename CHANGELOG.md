@@ -9,6 +9,12 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- The display process notices a graphics device that has stopped answering.
+  A page flip that is accepted is always followed by a vblank; one that is not
+  left the process alive and idle, holding the lease, with a dark television
+  and nothing in the log, because the frame in flight was never cleared and
+  every render returned at its first line. Two seconds without the vblank now
+  ends the process and the watchdog puts the television back.
 - The display process notices a compositor that has died. Only a polite
   `Finished` from the lease protocol counted as revocation before, and a
   compositor that crashes sends no event at all, so the process stayed alive
