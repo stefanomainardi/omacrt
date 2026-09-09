@@ -143,7 +143,7 @@ impl Dac {
                 unsafe { libc::close(fd) };
                 return Err(io::Error::new(
                     io::ErrorKind::WouldBlock,
-                    "the bus is busy: another omarchy-crt is talking to the DAC",
+                    "the bus is busy: another omacrt is talking to the DAC",
                 ));
             }
             std::thread::sleep(Duration::from_millis(30));

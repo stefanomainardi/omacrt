@@ -119,9 +119,9 @@ fn our_streams() -> Vec<(String, String)> {
             // Plain "mpv" stays in the list for players started before this.
             if matches!(
                 app.as_str(),
-                "omarchy-crt-shell"
+                "omacrt-shell"
                     | "RetroArch"
-                    | "omarchy-crt-player"
+                    | "omacrt-player"
                     | "mpv"
                     | "PipeWire ALSA [cliamp]"
             ) {

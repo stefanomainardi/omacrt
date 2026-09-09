@@ -10,13 +10,13 @@ import qs.Ui
 // look like collections), the systems with their games and cores (with an
 // install offer for a missing core), the folders of the systems that read
 // one, the BIOS files and where to import them from, and the folders the
-// scan could not place. Every button runs one `omarchy-crt` command; the
+// scan could not place. Every button runs one `omacrt` command; the
 // scan runs here and shows the folder it reads, the few that need a
 // password open a floating terminal.
 //
 // An Omarchy shell plugin of kind `overlay`, its own id next to the bar
 // widget: the shell mounts it on `summon` and hands the payload to `open()`.
-// The bar panel summons it with the path of its `omarchy-crt` binary.
+// The bar panel summons it with the path of its `omacrt` binary.
 Item {
   id: root
 
@@ -64,7 +64,7 @@ Item {
     var payload = {}
     try { payload = JSON.parse(String(payloadJson || "{}")) || {} } catch (e) { payload = {} }
     if (payload.helper) root.helper = String(payload.helper)
-    if (!root.helper) root.helper = Quickshell.env("HOME") + "/.local/bin/omarchy-crt"
+    if (!root.helper) root.helper = Quickshell.env("HOME") + "/.local/bin/omacrt"
     root.opened = true
     root.errorMessage = ""
     root.note = ""
@@ -79,7 +79,7 @@ Item {
   function dismiss() {
     root.opened = false
     if (root.shell && typeof root.shell.hide === "function")
-      root.shell.hide((root.manifest && root.manifest.id) || "io.github.stefanomainardi.omarchy-crt.library")
+      root.shell.hide((root.manifest && root.manifest.id) || "io.github.stefanomainardi.omacrt.library")
   }
 
   function refresh() {
@@ -93,7 +93,7 @@ Item {
     if (root.catalog.length === 0) catalogProc.running = true
   }
 
-  // One omarchy-crt command, quiet; the overlay refreshes when it ends.
+  // One omacrt command, quiet; the overlay refreshes when it ends.
   function act(args) {
     if (!root.helper || actionProc.running) return
     root.errorMessage = ""
@@ -288,7 +288,7 @@ Item {
     visible: root.opened
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "omarchy-crt-library"
+    WlrLayershell.namespace: "omacrt-library"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
@@ -658,7 +658,7 @@ Item {
                 width: parent.width - Style.space(200)
                 anchors.verticalCenter: parent.verticalCenter
                 text: scanProc.running ? ("scanning  " + root.scanDir)
-                    : (root.busy !== "" ? ("omarchy-crt " + root.busy + " …")
+                    : (root.busy !== "" ? ("omacrt " + root.busy + " …")
                     : (root.scanResult !== "" ? root.scanResult
                     : (root.errorMessage !== "" ? root.errorMessage : root.note)))
                 color: root.errorMessage !== "" ? root.urgent : root.muted

@@ -6,10 +6,10 @@
 //! are the places where a silent mistake shows up on the tube weeks later, so
 //! they are the places worth pinning down.
 
-use omarchy_crt_shell::crt::output::Modeline;
-use omarchy_crt_shell::index::parse_name;
-use omarchy_crt_shell::library::clean_title;
-use omarchy_crt_shell::{covers, store, videofit};
+use omacrt_shell::crt::output::Modeline;
+use omacrt_shell::index::parse_name;
+use omacrt_shell::library::clean_title;
+use omacrt_shell::{covers, store, videofit};
 use std::path::Path;
 
 // ----------------------------------------------------------------- naming
@@ -128,7 +128,7 @@ fn probe(w: u32, h: u32, fps: f64) -> videofit::Probe {
 
 #[test]
 fn a_film_at_24_fps_is_either_sped_up_or_pulled_down_but_never_both() {
-    let fit = omarchy_crt_shell::settings::VideoFit::default();
+    let fit = omacrt_shell::settings::VideoFit::default();
     let plan = videofit::plan(&probe(1920, 1080, 23.976), &fit);
     assert!(
         !(plan.speedup && plan.pulldown),
@@ -140,7 +140,7 @@ fn a_film_at_24_fps_is_either_sped_up_or_pulled_down_but_never_both() {
 
 #[test]
 fn the_plan_never_asks_the_tube_for_more_lines_than_it_has() {
-    let fit = omarchy_crt_shell::settings::VideoFit::default();
+    let fit = omacrt_shell::settings::VideoFit::default();
     for (w, h, fps) in [(1920, 1080, 25.0), (640, 480, 30.0), (720, 576, 50.0)] {
         let plan = videofit::plan(&probe(w, h, fps), &fit);
         assert!(plan.height <= 576, "{w}x{h}@{fps} -> {} lines", plan.height);
@@ -152,7 +152,7 @@ fn the_plan_never_asks_the_tube_for_more_lines_than_it_has() {
 
 #[test]
 fn a_saved_file_survives_a_truncated_successor() {
-    let dir = std::env::temp_dir().join(format!("omarchy-crt-tests-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("omacrt-tests-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("systems.toml");
     store::save(&path, "first = true\n").unwrap();
@@ -178,15 +178,15 @@ fn the_core_geometry_is_read_from_the_emulator_log() {
     // The last report wins: a game that changes its picture mid-play is what
     // this exists for.
     assert_eq!(
-        omarchy_crt_shell::library::core_geometry(log),
+        omacrt_shell::library::core_geometry(log),
         Some((320, 240))
     );
     assert_eq!(
-        omarchy_crt_shell::library::core_geometry("nothing here"),
+        omacrt_shell::library::core_geometry("nothing here"),
         None
     );
     assert_eq!(
-        omarchy_crt_shell::library::core_geometry("Geometry: 99999x99999, Aspect: 1"),
+        omacrt_shell::library::core_geometry("Geometry: 99999x99999, Aspect: 1"),
         None,
         "a nonsense size is not a geometry"
     );
@@ -194,7 +194,7 @@ fn the_core_geometry_is_read_from_the_emulator_log() {
 
 #[test]
 fn a_console_that_drew_480_lines_asks_for_480() {
-    use omarchy_crt_shell::library::default_lines;
+    use omacrt_shell::library::default_lines;
     assert_eq!(default_lines("dreamcast"), Some(480));
     assert_eq!(default_lines("snes"), Some(224));
     assert_eq!(default_lines("nes"), Some(240));
@@ -205,7 +205,7 @@ fn a_console_that_drew_480_lines_asks_for_480() {
 
 #[test]
 fn the_picture_the_core_draws_carries_its_aspect_too() {
-    use omarchy_crt_shell::library::picture_in;
+    use omacrt_shell::library::picture_in;
     let log = "\
 [INFO] [Core] Geometry: 256x224, Aspect: 1.333, FPS: 60.10, Sample rate: 96000.00 Hz.
 [INFO] [Environ] SET_GEOMETRY: 256x240, Aspect: 1.067.
@@ -222,7 +222,7 @@ fn the_picture_the_core_draws_carries_its_aspect_too() {
 
 #[test]
 fn square_pixels_in_a_wide_frame_land_in_the_middle_of_a_four_by_three_screen() {
-    use omarchy_crt_shell::library::viewport_keys;
+    use omacrt_shell::library::viewport_keys;
     // A super resolution frame the set shows as 4:3. A 256x224 picture at
     // square pixels is 8:7, narrower than the screen, so it keeps every line
     // and loses width on both sides evenly.
@@ -258,7 +258,7 @@ fn square_pixels_in_a_wide_frame_land_in_the_middle_of_a_four_by_three_screen() 
 
 #[test]
 fn every_shader_the_pause_menu_offers_is_installed_and_off_comes_first() {
-    use omarchy_crt_shell::library::{installed_shaders, shader_path};
+    use omacrt_shell::library::{installed_shaders, shader_path};
     let shaders = installed_shaders();
     assert_eq!(shaders.first().map(|(name, _)| *name), Some(""));
     for (name, label) in &shaders {

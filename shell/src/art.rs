@@ -2,7 +2,7 @@
 //! and console illustrations from the RetroArch "systematic" asset set.
 //!
 //! Everything slow happens on a worker thread: downloading (through `curl`,
-//! cached under `~/.cache/omarchy-crt/art`), PNG decoding and downscaling to
+//! cached under `~/.cache/omacrt/art`), PNG decoding and downscaling to
 //! the few dozen pixels a 320x240 screen can show. The scene asks for an
 //! image every frame and gets `None` until it is ready; a miss is remembered
 //! so the network is asked once per title.

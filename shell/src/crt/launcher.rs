@@ -161,7 +161,7 @@ pub fn focus() -> (bool, String) {
     if super::display::running() {
         let who = match playing() {
             Some("retroarch") => "com.libretro.RetroArch",
-            Some("mpv") => "omarchy-crt-player",
+            Some("mpv") => "omacrt-player",
             _ => SHELL_CLASS,
         };
         return (
@@ -171,7 +171,7 @@ pub fn focus() -> (bool, String) {
     }
     match playing() {
         Some("retroarch") => output::focus_class("com.libretro.RetroArch"),
-        Some("mpv") => output::focus_class("omarchy-crt-player"),
+        Some("mpv") => output::focus_class("omacrt-player"),
         _ => output::focus_class(SHELL_CLASS),
     }
 }

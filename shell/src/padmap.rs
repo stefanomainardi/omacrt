@@ -3,7 +3,7 @@
 //! joystick with numbered buttons, axes and hats. The wizard asks for one
 //! RetroPad control at a time, records the raw input that answers, and
 //! writes the mapping line SDL wants (`SDL_GameControllerDB` format) into
-//! `~/.config/omarchy-crt/gamecontrollerdb.txt`, which the launcher loads at
+//! `~/.config/omacrt/gamecontrollerdb.txt`, which the launcher loads at
 //! start. RetroArch keeps its own autoconfig; this is for the launcher.
 
 use std::path::PathBuf;
@@ -166,7 +166,7 @@ pub fn save(mapping: &str) -> std::io::Result<()> {
         .collect();
     if lines.is_empty() {
         lines.push(
-            "# Pads mapped with the omarchy-crt launcher (SDL_GameControllerDB format).".into(),
+            "# Pads mapped with the omacrt launcher (SDL_GameControllerDB format).".into(),
         );
     }
     lines.push(mapping.to_string());
@@ -391,7 +391,7 @@ pub fn ensure_retroarch_profile(
             .collect::<String>()
     ));
     let body = format!(
-        "# Written by omarchy-crt from the SDL mapping of this pad.\n{}",
+        "# Written by omacrt from the SDL mapping of this pad.\n{}",
         retroarch_profile(name, vendor, product, sdl_mapping)
     );
     crate::store::save(&file, body).ok()?;

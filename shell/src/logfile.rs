@@ -19,10 +19,10 @@ use std::path::Path;
 pub const CAP_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Whether the log has anything to say beyond warnings and errors: set
-/// `OMARCHY_CRT_LOG=debug` for the per second bookkeeping.
+/// `OMACRT_LOG=debug` for the per second bookkeeping.
 pub fn debug_enabled() -> bool {
     matches!(
-        std::env::var("OMARCHY_CRT_LOG").as_deref(),
+        std::env::var("OMACRT_LOG").as_deref(),
         Ok("debug") | Ok("trace")
     )
 }
@@ -57,7 +57,7 @@ mod tests {
 
     #[test]
     fn a_big_log_is_rotated_and_one_generation_is_kept() {
-        let dir = std::env::temp_dir().join(format!("omarchy-crt-log-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-log-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("display.log");
         std::fs::write(&path, vec![b'x'; 32]).unwrap();
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn opening_gives_an_appending_handle() {
         use std::io::Write;
-        let dir = std::env::temp_dir().join(format!("omarchy-crt-log2-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("omacrt-log2-{}", std::process::id()));
         let path = dir.join("shell.log");
         let mut f = open(&path).unwrap();
         writeln!(f, "first").unwrap();

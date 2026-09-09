@@ -7,14 +7,14 @@ and every channel between them named, for the parts a picture cannot hold.
 flowchart LR
   subgraph desktop["Omarchy desktop (Hyprland)"]
     bar["Bar plugin<br/>Quickshell panel + library overlay"]
-    cli["omarchy-crt<br/>CLI"]
+    cli["omacrt<br/>CLI"]
     cliamp["cliamp --daemon<br/>music engine"]
     bar --> cli
   end
 
   subgraph tube["The tube (leased DRM connector)"]
-    display["omarchy-crt-display<br/>own Wayland compositor (smithay)<br/>sets 15 kHz modelines through DRM"]
-    shell["omarchy-crt-shell<br/>launcher, 320x240"]
+    display["omacrt-display<br/>own Wayland compositor (smithay)<br/>sets 15 kHz modelines through DRM"]
+    shell["omacrt-shell<br/>launcher, 320x240"]
     ra["RetroArch"]
     mpv["mpv"]
     display --- shell

@@ -71,7 +71,7 @@ button) and records the button, axis or hat that answers. Pressing the button
 already given as A skips a control the pad lacks; `Enter` skips too, `Esc`
 cancels. The mapping is written in the
 [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) format
-(MIT) to `~/.config/omarchy-crt/gamecontrollerdb.txt`, loaded at every start,
+(MIT) to `~/.config/omacrt/gamecontrollerdb.txt`, loaded at every start,
 and the pad works right away. `X` on the Settings, Pads screen runs the wizard
 again for the current pad when a mapping came out wrong. RetroArch keeps its
 own autoconfig profiles; the wizard is for the launcher.
@@ -84,7 +84,7 @@ read that state (it is left on disk until this session writes its own on
 exit). Games with no state start straight away.
 
 `Select` plus `Start` on the pad, the home button, `F1` on the keyboard, or
-`omarchy-crt shell key menu` pauses the game and raises the launcher's pause menu over it: resume,
+`omacrt shell key menu` pauses the game and raises the launcher's pause menu over it: resume,
 save state, load state, rewind two seconds, fast forward (toggles RetroArch's
 speed and resumes), slow motion (toggles it too), the picture and the shader,
 reset, back to the launcher. Rewind needs the system to allow it, since it
@@ -108,7 +108,7 @@ again.
 The menu shows when the game's latest save state was written. `B` or `Esc`
 resumes. `F1` reaches the launcher only while the launcher holds the
 keyboard, which is what the panel's "Keys to the launcher" button (and
-`omarchy-crt focus`) does: the game keeps running and the keys go to the
+`omacrt focus`) does: the game keeps running and the keys go to the
 launcher. With the game itself focused, use the pad or the CLI.
 
 ## In RetroArch
@@ -167,7 +167,7 @@ RetroPad Y is the left one, which SDL calls X. Hats, axes and triggers carry
 over as they are.
 
 ```sh
-omarchy-crt-shell --pads
+omacrt-shell --pads
 ```
 
 says what SDL makes of every connected pad, which mapping it found, where

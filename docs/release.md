@@ -147,7 +147,7 @@ rather than promised.
       `docs/architecture.md`. 484 lines, and every internal link in every
       markdown file resolves.
 - [x] **Contribution rules.** `CONTRIBUTING.md`, a bug template that asks for
-      the machine, the tube and the output of `omarchy-crt doctor`, blank
+      the machine, the tube and the output of `omacrt doctor`, blank
       issues disabled with Discussions in their place, a pull request template
       that asks what a change ran on, and `CODEOWNERS`. The README's own
       section became a pointer rather than a second copy.
@@ -176,7 +176,7 @@ rather than promised.
 - [x] Tag `v0.3.0` and give the CHANGELOG a release section with a date. Not
       `v0.1.0`: the CHANGELOG already carried 0.1.0 and 0.2.0 from the two
       earlier passes, so the release the repository opens with is 0.3.0.
-      `omarchy-crt version` says which one is installed, and the user agent
+      `omacrt version` says which one is installed, and the user agent
       the fetches send is built from the same number.
 - [x] Repository settings: the description now says what the project is
       rather than what it boots, twelve topics, Discussions on. **`main`

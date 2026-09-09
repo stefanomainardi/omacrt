@@ -1189,7 +1189,7 @@ impl Scene {
         }
     }
 
-    /// Start a game by its path, for `omarchy-crt play` and the desktop.
+    /// Start a game by its path, for `omacrt play` and the desktop.
     ///
     /// The path comes already resolved: the CLI has the index and does the
     /// matching, so what arrives here is a file the scan has seen. The system
@@ -2073,7 +2073,7 @@ impl Scene {
                     fb.text(
                         left,
                         y0 + 12,
-                        "omarchy-crt library collections import <folder>",
+                        "omacrt library collections import <folder>",
                         scale(self.theme.dim, 0.8),
                         1,
                     );

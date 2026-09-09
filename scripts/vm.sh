@@ -14,7 +14,7 @@
 # The user must be able to open /dev/kvm (group kvm, or udev rule).
 set -euo pipefail
 
-VM_DIR="${OMARCHY_CRT_VM_DIR:-$HOME/.local/share/omarchy-crt/vm}"
+VM_DIR="${OMACRT_VM_DIR:-$HOME/.local/share/omacrt/vm}"
 ISO_URL="${OMARCHY_ISO_URL:-https://iso.omarchy.org/omarchy-4.0.1.iso}"
 ISO="$VM_DIR/$(basename "$ISO_URL")"
 DISK="$VM_DIR/omarchy.qcow2"

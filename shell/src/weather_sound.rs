@@ -18,7 +18,7 @@
 //! quietest, snow, is 0.004.
 
 use crate::audio::{Lcg, RATE, lowpass, seconds};
-use omarchy_crt_shell::ambient::Kind;
+use omacrt_shell::ambient::Kind;
 
 /// The weather as the ear needs it, which is fewer cases than the eye does:
 /// nine kinds of sky make eight sounds, and a clear night is not a clear

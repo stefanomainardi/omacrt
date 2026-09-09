@@ -9,15 +9,15 @@
 #   scripts/shoot.sh music OUT.mp4     the deck, the turntable, a visualizer, the equaliser
 #   scripts/shoot.sh restore           NTSC timing
 #
-# The tour uses the collection "0 Tour" (~/.config/omarchy-crt/collections),
+# The tour uses the collection "0 Tour" (~/.config/omacrt/collections),
 # one famous game per system, oldest hardware first: Pac-Man, Super Mario
 # Bros. 3, Super Metroid, Sonic 2, Metal Slug, Tekken 3, Super Mario 64,
 # Virtua Fighter 2, Crazy Taxi and Marvel vs. Capcom 2 on Naomi. Discs and
 # 3D systems need longer before there is anything to film, so each row is
 # given its own waiting time.
 set -u
-id="io.github.stefanomainardi.omarchy-crt"
-key() { omarchy-crt shell key "$1"; sleep "${2:-0.3}"; }
+id="io.github.stefanomainardi.omacrt"
+key() { omacrt shell key "$1"; sleep "${2:-0.3}"; }
 # A key inside the running game: RetroArch's own bindings, start is enter,
 # select (the arcade coin) rshift, A is x. Games sit on their title or attract
 # screen otherwise, and a film of title screens says nothing.
@@ -25,8 +25,8 @@ key() { omarchy-crt shell key "$1"; sleep "${2:-0.3}"; }
 # and a half seconds, which is how a car accelerates or Sonic runs.
 pad() {
   case "$1" in
-    *:*) omarchy-crt game key "${1%%:*}" "${1##*:}" >/dev/null 2>&1; sleep "$(awk "BEGIN{print ${1##*:}/1000+0.3}")" ;;
-    *) omarchy-crt game key "$1" >/dev/null 2>&1; sleep "${2:-1.1}" ;;
+    *:*) omacrt game key "${1%%:*}" "${1##*:}" >/dev/null 2>&1; sleep "$(awk "BEGIN{print ${1##*:}/1000+0.3}")" ;;
+    *) omacrt game key "$1" >/dev/null 2>&1; sleep "${2:-1.1}" ;;
   esac
 }
 say() { printf '\n\033[1;32m>> %s\033[0m\n' "$*"; }
@@ -36,7 +36,7 @@ play_row() {  # $1 = row in "0 Tour" (0 based), $2 = seconds to wait before
               # pressing, $3 = keys to press in the game, $4 = seconds to
               # play after them, $5 = label
   say "$5"
-  omarchy-crt shell key home; sleep 0.6
+  omacrt shell key home; sleep 0.6
   key fire 1.6                       # Games
   key down 0.3; key down 0.5         # Collections row
   key fire 1.6                       # Collections list, "0 Tour" first
@@ -50,7 +50,7 @@ play_row() {  # $1 = row in "0 Tour" (0 based), $2 = seconds to wait before
   sleep "$4"
 }
 # The pause menu has eight rows; "Back to launcher" is the last one.
-quit_game() { omarchy-crt shell key menu; sleep 2.2; for _ in 1 2 3 4 5 6 7; do key down 0.35; done; key fire 1; wait_no_game; }
+quit_game() { omacrt shell key menu; sleep 2.2; for _ in 1 2 3 4 5 6 7; do key down 0.35; done; key fire 1; wait_no_game; }
 
 case "${1:-}" in
   desktop)
@@ -113,21 +113,21 @@ case "${1:-}" in
   boot)
     # The whole boot, from a black tube: recording runs before the launcher starts.
     out="${2:?output file}"
-    omarchy-crt shell stop >/dev/null 2>&1 || true
+    omacrt shell stop >/dev/null 2>&1 || true
     sleep 1
-    omarchy-crt record start "$out"
+    omacrt record start "$out"
     sleep 1.5
-    omarchy-crt shell start >/dev/null 2>&1 || omarchy-crt shell restart >/dev/null
+    omacrt shell start >/dev/null 2>&1 || omacrt shell restart >/dev/null
     sleep 19
-    omarchy-crt record stop
+    omacrt record stop
     say "boot take: $out"
     ;;
   tube)
     out="${2:?output file}"
     say "fresh launcher, recording starts with the boot"
-    omarchy-crt shell restart >/dev/null
+    omacrt shell restart >/dev/null
     sleep 1
-    omarchy-crt record start "$out"
+    omacrt record start "$out"
     sleep 13
     say "Games: systems and console pictures"
     key fire 2.0
@@ -146,7 +146,7 @@ case "${1:-}" in
     for k in 105:1800 108:1800 106:1800 103:1500; do pad "$k"; done
     sleep 8
     say "pause menu: save state, resume"
-    omarchy-crt shell key menu; sleep 3
+    omacrt shell key menu; sleep 3
     key down 0.5; key fire 2.5
     key up 0.5; key fire 1; sleep 5
     quit_game
@@ -175,13 +175,13 @@ case "${1:-}" in
              "45:400 44:400 45:400 106:1500 45:400"
     quit_game
     say "Videos: the Omarchy intro"
-    omarchy-crt shell key home; sleep 0.6
+    omacrt shell key home; sleep 0.6
     key down 0.6; key fire 2.5
     for _ in 1 2 3 4 5; do key down 0.7; done
     sleep 1; key fire 1; sleep 26
     key back 1.5; key back 0.8
-    omarchy-crt shell key home; sleep 2
-    omarchy-crt record stop
+    omacrt shell key home; sleep 2
+    omacrt record stop
     say "tube take: $out"
     ;;
   music)
@@ -190,9 +190,9 @@ case "${1:-}" in
     # first for the dial and its logo, then the deck looks, a visualizer and
     # the equaliser. Nothing here needs the desktop.
     say "recording the music screens"
-    omarchy-crt record start "$out"
+    omacrt record start "$out"
     sleep 2
-    omarchy-crt shell key home; sleep 1.2
+    omacrt shell key home; sleep 1.2
     for _ in 1 2 3 4 5 6 7 8; do key up 0.2; done   # to the top of the list
     key down 0.4; key down 0.7      # Music, the third row
     key fire 2.0
@@ -210,7 +210,7 @@ case "${1:-}" in
     key next 6
     key alt 2                       # back to the deck
     say "the equaliser"
-    omarchy-crt shell key home; sleep 1.2
+    omacrt shell key home; sleep 1.2
     for _ in 1 2 3 4 5 6 7 8; do key up 0.2; done
     key down 0.4; key down 0.7      # Music, the third row
     key fire 2.0
@@ -224,10 +224,10 @@ case "${1:-}" in
     for _ in 1 2 3; do key right 0.9; done
     sleep 2
     key back 1.5
-    omarchy-crt shell key home; sleep 2
-    omarchy-crt record stop
+    omacrt shell key home; sleep 2
+    omacrt record stop
     say "music take: $out"
     ;;
-  restore) omarchy-crt mode ntsc ;;
+  restore) omacrt mode ntsc ;;
   *) sed -n '2,13p' "$0" ;;
 esac

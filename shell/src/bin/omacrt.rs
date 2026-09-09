@@ -1,21 +1,21 @@
-//! `omarchy-crt`: drive a 15 kHz CRT from the Omarchy desktop.
+//! `omacrt`: drive a 15 kHz CRT from the Omarchy desktop.
 //!
 //! One command turns the tube on (modeline, DAC composite sync, audio to the
 //! TV, launcher fullscreen) and one turns it off. The rest is status,
 //! diagnostics, the game library and BIOS files. The Omarchy bar plugin is
-//! a thin face over `omarchy-crt status --json` and these commands.
+//! a thin face over `omacrt status --json` and these commands.
 
-use omarchy_crt_shell::crt::dac::{Csync, Dac, Lock};
-use omarchy_crt_shell::crt::output::{self, Connector, Modeline};
-use omarchy_crt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
-use omarchy_crt_shell::index::Index;
-use omarchy_crt_shell::library::{self, Library};
+use omacrt_shell::crt::dac::{Csync, Dac, Lock};
+use omacrt_shell::crt::output::{self, Connector, Modeline};
+use omacrt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
+use omacrt_shell::index::Index;
+use omacrt_shell::library::{self, Library};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
 const HELP: &str = "\
-omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
+omacrt: drive a 15 kHz CRT from the Omarchy desktop
 
   setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
                            first run: find the DAC's connector, write crt.toml
@@ -70,7 +70,7 @@ omarchy-crt: drive a 15 kHz CRT from the Omarchy desktop
   config                   config file path and contents
   config set KEY VALUE     change one setting (output.csync, output.standard, audio.volume, shell.autostart, ...)
 
-Config: ~/.config/omarchy-crt/crt.toml (written with defaults on first run)";
+Config: ~/.config/omacrt/crt.toml (written with defaults on first run)";
 
 /// Keyboard to the tube. With the connector leased the tube's clients have
 /// no keyboard of their own: the desktop monitor window carries it.
@@ -83,7 +83,7 @@ fn focus_note() -> String {
 }
 
 fn die(msg: &str) -> ! {
-    eprintln!("omarchy-crt: {msg}");
+    eprintln!("omacrt: {msg}");
     exit(1)
 }
 
@@ -453,7 +453,7 @@ fn apply_mode(
     };
     // The TV profile's shift is global; the caller adds the system's own.
     // Shifts are in launcher pixels (320 wide), scaled to the mode's width.
-    let profile = omarchy_crt_shell::profile::Profile::load(&omarchy_crt_shell::crt::config_dir());
+    let profile = omacrt_shell::profile::Profile::load(&omacrt_shell::crt::config_dir());
     let sx = (ml.width() as f64 / 320.0).max(1.0);
     let dx = ((profile.h_shift + shift.0) as f64 * sx).round() as i32;
     let dy = profile.v_shift + shift.1;
@@ -655,7 +655,7 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
     }
 }
 
-/// The watchdog process: `omarchy-crt watchdog`. Started by `on` when the
+/// The watchdog process: `omacrt watchdog`. Started by `on` when the
 /// tube is leased, it puts the display back when it dies with the state still
 /// saying the television is on. See `crt::watchdog`.
 fn cmd_watchdog(cfg: &Config) -> i32 {
@@ -790,7 +790,7 @@ fn cmd_boot(cfg: &Config) {
             && audio::default_sink().as_deref() == Some(t.sink.as_str())
             && let Some(other) = audio::other_sink(&t.sink)
         {
-            omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &other]);
+            omacrt_shell::crt::run("pactl", &["set-default-sink", &other]);
             println!("audio:      {other}");
         }
     }
@@ -800,7 +800,7 @@ fn cmd_boot(cfg: &Config) {
             .unwrap_or(false);
         if lit {
             output::disable(&conn.name);
-            println!("output:     {} disabled until `omarchy-crt on`", conn.name);
+            println!("output:     {} disabled until `omacrt on`", conn.name);
         }
     }
     state.on = false;
@@ -855,7 +855,7 @@ fn standard_for(locale: &str) -> &'static str {
     if locale.is_empty() { "ntsc" } else { "pal" }
 }
 
-/// `omarchy-crt setup`: look at the machine and write the two things that
+/// `omacrt setup`: look at the machine and write the two things that
 /// change from one to the next, the connector the DAC is on and the standard
 /// of the television. Everything else has a default that works.
 fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
@@ -1033,11 +1033,11 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
     // knows whether it has been done.
     println!("\nnext");
     if !display::leaseable(&chosen.drm) {
-        println!("  sudo bin/omarchy-crt-install --system   hand the connector over at boot");
+        println!("  sudo bin/omacrt-install --system   hand the connector over at boot");
     }
-    println!("  omarchy-crt doctor                     what is still missing");
-    println!("  omarchy-crt library scan ~/Games       index the collection");
-    println!("  omarchy-crt on                         tube on");
+    println!("  omacrt doctor                     what is still missing");
+    println!("  omacrt library scan ~/Games       index the collection");
+    println!("  omacrt on                         tube on");
     0
 }
 
@@ -1052,10 +1052,10 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             "off: 480 line consoles are shown at 240p (needs a 15 kHz kernel)".into()
         },
     ));
-    for extra in omarchy_crt_shell::coredata::TABLE {
-        let there = !omarchy_crt_shell::coredata::missing(
+    for extra in omacrt_shell::coredata::TABLE {
+        let there = !omacrt_shell::coredata::missing(
             extra.core,
-            &omarchy_crt_shell::coredata::system_dir(),
+            &omacrt_shell::coredata::system_dir(),
         );
         rows.push((
             format!("{} core files", extra.core),
@@ -1150,9 +1150,9 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
     }
     // The piece that makes leasing possible at all: without the boot time
     // unit the connector stays a desktop monitor and nothing else works.
-    let unit = std::path::Path::new("/etc/systemd/system/omarchy-crt-lease.service");
+    let unit = std::path::Path::new("/etc/systemd/system/omacrt-lease.service");
     let unit_enabled = std::process::Command::new("systemctl")
-        .args(["is-enabled", "--quiet", "omarchy-crt-lease.service"])
+        .args(["is-enabled", "--quiet", "omacrt-lease.service"])
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
@@ -1160,9 +1160,9 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         "lease unit installed".into(),
         unit.is_file(),
         if unit.is_file() {
-            "/etc/systemd/system/omarchy-crt-lease.service".into()
+            "/etc/systemd/system/omacrt-lease.service".into()
         } else {
-            "sudo bin/omarchy-crt-install --system".into()
+            "sudo bin/omacrt-install --system".into()
         },
     ));
     rows.push((
@@ -1171,19 +1171,19 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         if unit_enabled {
             "runs at boot".into()
         } else {
-            "sudo systemctl enable --now omarchy-crt-lease.service".into()
+            "sudo systemctl enable --now omacrt-lease.service".into()
         },
     ));
     // The bar plugin, and whether the shell has been told about it.
     let plugin_dir = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
-        .join(".config/omarchy/plugins/io.github.stefanomainardi.omarchy-crt");
+        .join(".config/omarchy/plugins/io.github.stefanomainardi.omacrt");
     rows.push((
         "bar plugin installed".into(),
         plugin_dir.join("manifest.json").is_file(),
         if plugin_dir.join("manifest.json").is_file() {
             plugin_dir.display().to_string()
         } else {
-            "bin/omarchy-crt-install (unlocked session)".into()
+            "bin/omacrt-install (unlocked session)".into()
         },
     ));
     // Somewhere to write: a read only config directory fails much later,
@@ -1193,7 +1193,7 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         ("state directory writable", crt::state_dir()),
     ] {
         let ok = std::fs::create_dir_all(&dir).is_ok()
-            && omarchy_crt_shell::store::save(&dir.join(".write-test"), b"ok").is_ok();
+            && omacrt_shell::store::save(&dir.join(".write-test"), b"ok").is_ok();
         let _ = std::fs::remove_file(dir.join(".write-test"));
         let _ = std::fs::remove_file(dir.join(".write-test.bak"));
         rows.push((
@@ -1293,7 +1293,7 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             }
         }
         if !fix {
-            println!("\n     omarchy-crt doctor --fix clears these");
+            println!("\n     omacrt doctor --fix clears these");
         }
     }
     if bad == 0 { 0 } else { 1 }
@@ -1309,7 +1309,7 @@ fn cmd_bios(args: &[String]) {
         .collect();
     let pos = positional(args);
     if pos.first().map(|s| s.as_str()) == Some("discover") {
-        use omarchy_crt_shell::index::{self, LibraryConfig};
+        use omacrt_shell::index::{self, LibraryConfig};
         let mut places = LibraryConfig::load().roots;
         for d in index::discover() {
             if !places.contains(&d) {
@@ -1384,7 +1384,7 @@ fn cmd_bios(args: &[String]) {
     );
 }
 
-/// Start a game by name or by path: `omarchy-crt play "metal slug"`.
+/// Start a game by name or by path: `omacrt play "metal slug"`.
 ///
 /// The matching happens here rather than in the launcher, because the CLI
 /// has the index in front of it and can say what it picked. What goes down
@@ -1402,7 +1402,7 @@ fn cmd_play(args: &[String]) {
         direct.to_path_buf()
     } else {
         let Some(index) = Index::load() else {
-            die("no library index yet: omarchy-crt library scan ~/Games");
+            die("no library index yet: omacrt library scan ~/Games");
         };
         let Some(item) = best_match(&index, query) else {
             die(&format!("no game matching {query}"));
@@ -1415,7 +1415,7 @@ fn cmd_play(args: &[String]) {
     // message goes to a screen with a game over it. Say so here, where the
     // person is.
     if let Some(what) = launcher::playing() {
-        use omarchy_crt_shell::game;
+        use omacrt_shell::game;
         if !has(args, "--force") {
             die(&format!(
                 "{what} is already running on the tube; add --force to stop it and play this"
@@ -1440,7 +1440,7 @@ fn cmd_play(args: &[String]) {
     match crt::control::send_play(&path.to_string_lossy()) {
         Ok(()) => {}
         Err(e) => die(&format!(
-            "{e}: the launcher has to be running (omarchy-crt on)"
+            "{e}: the launcher has to be running (omacrt on)"
         )),
     }
 }
@@ -1448,9 +1448,9 @@ fn cmd_play(args: &[String]) {
 /// The game a name most likely means: the same name, then one that starts
 /// with it, then one that contains it, shortest title first so "mario" is
 /// not answered with the longest name that happens to hold it.
-fn best_match<'a>(index: &'a Index, query: &str) -> Option<&'a omarchy_crt_shell::index::Item> {
+fn best_match<'a>(index: &'a Index, query: &str) -> Option<&'a omacrt_shell::index::Item> {
     let want = query.to_lowercase();
-    let mut best: Option<(u8, usize, &omarchy_crt_shell::index::Item)> = None;
+    let mut best: Option<(u8, usize, &omacrt_shell::index::Item)> = None;
     for item in &index.items {
         let title = item.title.to_lowercase();
         let rank = if title == want {
@@ -1476,7 +1476,7 @@ fn best_match<'a>(index: &'a Index, query: &str) -> Option<&'a omarchy_crt_shell
 
 /// The photo frame: check the server, fill the cache, empty it.
 fn cmd_frame(args: &[String]) {
-    use omarchy_crt_shell::immich;
+    use omacrt_shell::immich;
     let pos = positional(args);
     let what = pos.first().map(|s| s.as_str()).unwrap_or("check");
     let dir = crt::config_dir();
@@ -1508,7 +1508,7 @@ fn cmd_frame(args: &[String]) {
         .and_then(|v| v.parse().ok())
         .unwrap_or(40)
         .clamp(1, 250);
-    let settings = omarchy_crt_shell::settings::Settings::load(&dir);
+    let settings = omacrt_shell::settings::Settings::load(&dir);
     let source = immich::Source::named(&settings.frame.source);
     let shots = immich::list(&cfg, source, &settings.frame.album, want);
     if shots.is_empty() {
@@ -1547,14 +1547,14 @@ fn frame_size(state: &State) -> (u32, u32) {
 }
 
 fn cmd_library(args: &[String]) {
-    use omarchy_crt_shell::index::{self, Index, LibraryConfig};
+    use omacrt_shell::index::{self, Index, LibraryConfig};
     let pos = positional(args);
     match pos.first().map(|s| s.as_str()) {
         // Every game the scan has seen, for a picker on the desktop or for
         // anything else that wants the collection as lines.
         Some("games") => {
             let Some(index) = Index::load() else {
-                die("no library index yet: omarchy-crt library scan ~/Games");
+                die("no library index yet: omacrt library scan ~/Games");
             };
             let only = value(args, "--system");
             let limit: usize = value(args, "--limit")
@@ -1603,7 +1603,7 @@ fn cmd_library(args: &[String]) {
             if lc.roots.is_empty() {
                 let found = index::discover();
                 if found.is_empty() {
-                    die("nothing to scan: pass a folder, e.g. omarchy-crt library scan ~/Games");
+                    die("nothing to scan: pass a folder, e.g. omacrt library scan ~/Games");
                 }
                 println!("no roots configured, using what looks like a collection:");
                 for f in &found {
@@ -1616,14 +1616,14 @@ fn cmd_library(args: &[String]) {
             // launches a `.scummvm` file naming the game. Write the missing
             // ones before the scan, so they are picked up as games.
             for dir in scummvm_dirs(&lc.roots) {
-                for done in omarchy_crt_shell::scumm::prepare_all(&dir) {
+                for done in omacrt_shell::scumm::prepare_all(&dir) {
                     match done {
-                        omarchy_crt_shell::scumm::Prepared::Wrote(file, id) => {
+                        omacrt_shell::scumm::Prepared::Wrote(file, id) => {
                             println!("scummvm:    {id}, {}", file.display())
                         }
-                        omarchy_crt_shell::scumm::Prepared::Packaged(dir) => println!(
+                        omacrt_shell::scumm::Prepared::Packaged(dir) => println!(
                             "scummvm:    {} is still on its discs; \
-                             `omarchy-crt library unpack` reads them out",
+                             `omacrt library unpack` reads them out",
                             dir.display()
                         ),
                     }
@@ -1679,7 +1679,7 @@ fn cmd_library(args: &[String]) {
                 for (d, n) in dirs.iter().take(12) {
                     println!("  {:>5}  {}", n, d.display());
                 }
-                println!("assign one with: omarchy-crt library assign <folder> <system>");
+                println!("assign one with: omacrt library assign <folder> <system>");
             }
         }
         Some("discover") => {
@@ -1714,9 +1714,9 @@ fn cmd_library(args: &[String]) {
         }
         Some("covers") => {
             // Box art for the whole collection, exact names first, fuzzy after.
-            use omarchy_crt_shell::covers;
+            use omacrt_shell::covers;
             let lib = library();
-            let settings = omarchy_crt_shell::settings::Settings::load(&lib.config_dir);
+            let settings = omacrt_shell::settings::Settings::load(&lib.config_dir);
             let regions = covers::regions_for(&settings.music.country);
             let wanted: Vec<&String> = pos
                 .iter()
@@ -1862,7 +1862,7 @@ fn cmd_library(args: &[String]) {
             lc.hints.insert(p.display().to_string(), system.to_string());
             lc.save().unwrap_or_else(|e| die(&e.to_string()));
             println!(
-                "{} -> {system}; run `omarchy-crt library scan` to apply",
+                "{} -> {system}; run `omacrt library scan` to apply",
                 p.display()
             );
         }
@@ -1873,7 +1873,7 @@ fn cmd_library(args: &[String]) {
             let folders: Vec<PathBuf> = if given.is_empty() {
                 scummvm_dirs(&lc.roots)
                     .iter()
-                    .flat_map(|d| omarchy_crt_shell::scumm::packaged_under(d))
+                    .flat_map(|d| omacrt_shell::scumm::packaged_under(d))
                     .collect()
             } else {
                 given
@@ -1884,23 +1884,23 @@ fn cmd_library(args: &[String]) {
             }
             for dir in folders {
                 println!("unpacking {} ...", dir.display());
-                match omarchy_crt_shell::scumm::unpack(&dir) {
+                match omacrt_shell::scumm::unpack(&dir) {
                     Ok(note) => println!("  {note}"),
                     Err(e) => println!("  {e}"),
                 }
             }
-            println!("run `omarchy-crt library scan` to pick them up");
+            println!("run `omacrt library scan` to pick them up");
         }
         Some("unknown") => {
             let Some(ix) = Index::load() else {
-                die("no index yet, run omarchy-crt library scan")
+                die("no index yet, run omacrt library scan")
             };
             for u in &ix.unknown {
                 println!("{}", u.display());
             }
         }
         Some("collections") => {
-            let dir = omarchy_crt_shell::crt::config_dir().join("collections");
+            let dir = omacrt_shell::crt::config_dir().join("collections");
             match pos.get(1).map(|s| s.as_str()) {
                 Some("import") => {
                     let Some(src) = pos.get(2) else {
@@ -1910,7 +1910,7 @@ fn cmd_library(args: &[String]) {
                     };
                     let src = PathBuf::from(src);
                     let Some(ix) = Index::load() else {
-                        die("no index yet, run omarchy-crt library scan")
+                        die("no index yet, run omacrt library scan")
                     };
                     std::fs::create_dir_all(&dir).unwrap_or_else(|e| die(&e.to_string()));
                     let mut lists = 0;
@@ -2021,7 +2021,7 @@ fn cmd_library(args: &[String]) {
                     println!("  root {}", r.display());
                 }
             } else {
-                println!("no index: run `omarchy-crt library scan <folder>`");
+                println!("no index: run `omacrt library scan <folder>`");
             }
             for s in &scan {
                 let note = if !s.exists {
@@ -2040,10 +2040,11 @@ fn cmd_library(args: &[String]) {
 }
 
 fn main() {
-    // `omarchy-crt library | head` must not panic when the reader goes away.
+    // `omacrt library | head` must not panic when the reader goes away.
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
+    omacrt_shell::crt::migrate_legacy_dirs();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = argv.first().map(|s| s.as_str()) else {
         println!("{HELP}");
@@ -2054,7 +2055,7 @@ fn main() {
     match cmd {
         "-h" | "--help" | "help" => println!("{HELP}"),
         "-V" | "--version" | "version" => {
-            println!("omarchy-crt {}", env!("CARGO_PKG_VERSION"));
+            println!("omacrt {}", env!("CARGO_PKG_VERSION"));
         }
         "status" => {
             let st = status(&cfg);
@@ -2207,7 +2208,7 @@ fn main() {
                     display::record_start(&path, sink.as_deref())
                         .unwrap_or_else(|e| die(&e.to_string()));
                     println!(
-                        "recording the tube to {path}{} (omarchy-crt record stop)",
+                        "recording the tube to {path}{} (omacrt record stop)",
                         sink.as_deref()
                             .map(|s| format!(" with audio from {s}"))
                             .unwrap_or_default()
@@ -2247,10 +2248,10 @@ fn main() {
                     return;
                 }
             }
-            die("no screenshot written; see ~/.local/state/omarchy-crt/display.log");
+            die("no screenshot written; see ~/.local/state/omacrt/display.log");
         }
         "game" => {
-            use omarchy_crt_shell::game;
+            use omacrt_shell::game;
             let sub = positional(args)
                 .first()
                 .map(|s| s.as_str())
@@ -2411,12 +2412,12 @@ fn main() {
                             .unwrap_or_else(|_| die("audio volume: not a number")),
                     };
                     let v = v.min(150);
-                    omarchy_crt_shell::crt::set_value("audio.volume", &v.to_string())
+                    omacrt_shell::crt::set_value("audio.volume", &v.to_string())
                         .unwrap_or_else(|e| die(&e));
                     if state.on
                         || audio::active_profile(&target.card).is_some_and(|p| p == target.profile)
                     {
-                        omarchy_crt_shell::crt::run(
+                        omacrt_shell::crt::run(
                             "pactl",
                             &["set-sink-volume", &target.sink, &format!("{v}%")],
                         );
@@ -2430,19 +2431,19 @@ fn main() {
                     {
                         state.previous_sink = prev;
                     }
-                    omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &target.sink]);
+                    omacrt_shell::crt::run("pactl", &["set-default-sink", &target.sink]);
                     println!("system default: {}", target.sink);
                 }
                 Some("apps") => {
                     if !state.previous_sink.is_empty() {
-                        omarchy_crt_shell::crt::run(
+                        omacrt_shell::crt::run(
                             "pactl",
                             &["set-default-sink", &state.previous_sink],
                         );
                         println!("system default: {}", state.previous_sink);
                         state.previous_sink.clear();
                     } else if let Some(other) = audio::other_sink(&target.sink) {
-                        omarchy_crt_shell::crt::run("pactl", &["set-default-sink", &other]);
+                        omacrt_shell::crt::run("pactl", &["set-default-sink", &other]);
                         println!("system default: {other}");
                     }
                 }
@@ -2511,7 +2512,7 @@ fn main() {
             };
             if has(args, "--later") {
                 let title = pos.get(1).map(|s| s.as_str()).unwrap_or("");
-                let path = omarchy_crt_shell::crt::config_dir().join("watch-later.tsv");
+                let path = omacrt_shell::crt::config_dir().join("watch-later.tsv");
                 let mut text = std::fs::read_to_string(&path).unwrap_or_default();
                 if text
                     .lines()
@@ -2536,7 +2537,7 @@ fn main() {
                 let (Some(key), Some(value)) = (pos.get(1), pos.get(2)) else {
                     die("config set needs a key and a value, e.g. config set audio.volume 110")
                 };
-                omarchy_crt_shell::crt::set_value(key, value).unwrap_or_else(|e| die(&e));
+                omacrt_shell::crt::set_value(key, value).unwrap_or_else(|e| die(&e));
                 println!("{key} = {value}");
                 return;
             }

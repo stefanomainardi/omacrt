@@ -6,8 +6,8 @@
 # twenty thousand static rows would not be a menu anyway. What the desktop
 # does have is a fuzzy runner, which is where a collection this size belongs.
 #
-#   omarchy-crt-pick           every game the scan has seen
-#   omarchy-crt-pick <system>  one system's games
+#   omacrt-pick           every game the scan has seen
+#   omacrt-pick <system>  one system's games
 #
 # Used by the Television entry in the Omarchy menu, and fine to bind to a key.
 #
@@ -16,12 +16,12 @@
 # as a notification or it looks like the row did nothing at all.
 set -euo pipefail
 
-crt="${OMARCHY_CRT:-omarchy-crt}"
+crt="${OMACRT:-omacrt}"
 
 # Run from a menu row this has no terminal at all, so every step goes to a
 # log as well. It is the only way to tell "the row did nothing" from "the row
 # ran and something said no".
-log_file="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-crt/pick.log"
+log_file="${XDG_STATE_HOME:-$HOME/.local/state}/omacrt/pick.log"
 mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
 log() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >> "$log_file" 2>/dev/null || true; }
 log "--- started, args: ${*:-none}"
@@ -29,23 +29,23 @@ trap 'log "exit $?"' EXIT
 
 say() {
   if command -v notify-send >/dev/null 2>&1; then
-    notify-send -a "Omarchy CRT" "$1" "${2-}"
+    notify-send -a "OmaCRT" "$1" "${2-}"
   fi
   log "say: $1 ${2-}"
   printf '%s %s\n' "$1" "${2-}" >&2
 }
 
-command -v "$crt" >/dev/null 2>&1 || { say "omarchy-crt is not on PATH"; exit 1; }
+command -v "$crt" >/dev/null 2>&1 || { say "omacrt is not on PATH"; exit 1; }
 
 # The picker: walker is what Omarchy ships, the others are here so this works
 # on a desktop that swapped it out.
 pick() {
   local prompt="$1"
   # A picker of your own, and how this is tested without a window in the way:
-  #   OMARCHY_CRT_PICKER='head -1' omarchy-crt-pick snes
-  if [ -n "${OMARCHY_CRT_PICKER-}" ]; then
-    log "picker: $OMARCHY_CRT_PICKER"
-    eval "$OMARCHY_CRT_PICKER"
+  #   OMACRT_PICKER='head -1' omacrt-pick snes
+  if [ -n "${OMACRT_PICKER-}" ]; then
+    log "picker: $OMACRT_PICKER"
+    eval "$OMACRT_PICKER"
   elif command -v walker >/dev/null 2>&1; then
     # walker is a single instance application: started while another one is
     # up, the second process hands its arguments over and exits at once,
@@ -91,7 +91,7 @@ else
 fi
 log "rows: $(printf '%s\n' "$rows" | wc -l)"
 if [ -z "$rows" ]; then
-  say "nothing in the library" "omarchy-crt library scan ~/Games"
+  say "nothing in the library" "omacrt library scan ~/Games"
   exit 1
 fi
 
