@@ -15,8 +15,8 @@
 //! so the sky is the same sky every evening but it was never drawn by hand.
 
 use crate::fb::{Color, Framebuffer, lerp_color, rgb, scale};
-use omacrt_shell::theme::Theme;
 use omacrt_shell::ambient::{Kind, Reading};
+use omacrt_shell::theme::Theme;
 
 /// The ordered dither of every home computer that had to fake a gradient.
 const BAYER: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];

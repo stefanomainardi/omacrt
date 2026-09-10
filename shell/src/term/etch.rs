@@ -261,7 +261,10 @@ mod tests {
             e.tick(0.5, 4);
         }
         let half = e.done();
-        assert!((half - 0.5).abs() < 0.02, "cut {half} of the word, not half");
+        assert!(
+            (half - 0.5).abs() < 0.02,
+            "cut {half} of the word, not half"
+        );
         for _ in 0..400 {
             e.tick(1.0, 4);
         }

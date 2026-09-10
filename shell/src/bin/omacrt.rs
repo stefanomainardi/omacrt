@@ -9,8 +9,8 @@ use omacrt_shell::crt::dac::{Csync, Dac, Lock};
 use omacrt_shell::crt::output::{self, Connector, Modeline};
 use omacrt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
 use omacrt_shell::index::Index;
-use omacrt_shell::term;
 use omacrt_shell::library::{self, Library};
+use omacrt_shell::term;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::exit;
@@ -1048,8 +1048,19 @@ fn install_hint(pkg: &str) -> String {
             .to_string()
     };
     let ids = format!("{} {}", field("ID"), field("ID_LIKE"));
-    let family = |names: &[&str]| names.iter().any(|n| ids.split_whitespace().any(|i| i == *n));
-    if family(&["arch", "archarm", "omarchy", "cachyos", "endeavouros", "manjaro"]) {
+    let family = |names: &[&str]| {
+        names
+            .iter()
+            .any(|n| ids.split_whitespace().any(|i| i == *n))
+    };
+    if family(&[
+        "arch",
+        "archarm",
+        "omarchy",
+        "cachyos",
+        "endeavouros",
+        "manjaro",
+    ]) {
         format!("pacman -S {pkg}")
     } else if family(&["fedora", "rhel", "centos"]) {
         format!("dnf install {pkg}")
@@ -1190,23 +1201,28 @@ fn output_map(tube: Option<&Connector>) -> Vec<term::rich::Output> {
 }
 
 fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
-    use term::{COLLECTION, HOUSEKEEPING, MACHINE, PROGRAMS, Level, Probe, TELEVISION};
+    use term::{COLLECTION, HOUSEKEEPING, Level, MACHINE, PROGRAMS, Probe, TELEVISION};
 
     let mut probes: Vec<Probe> = Vec::new();
     let conn = output::pick(cfg);
 
     // ------------------------------------------------------------- machine
     let for_driver = conn.clone();
-    probes.push(Probe::new(MACHINE, "graphics driver", move || {
-        match for_driver.as_ref().and_then(card_driver) {
+    probes.push(Probe::new(
+        MACHINE,
+        "graphics driver",
+        move || match for_driver.as_ref().and_then(card_driver) {
             Some(d) if d == "amdgpu" => (Level::Ok, format!("{d}, the one this is known on")),
             Some(d) => (
                 Level::Warn,
                 format!("{d}: untested here. Nvidia's own driver offers no leasable connector"),
             ),
-            None => (Level::Warn, "no card to ask: is a connector connected?".into()),
-        }
-    }));
+            None => (
+                Level::Warn,
+                "no card to ask: is a connector connected?".into(),
+            ),
+        },
+    ));
     probes.push(Probe::new(MACHINE, "compositor", move || {
         match compositor_version() {
             Some(v) => {
@@ -1233,8 +1249,10 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             ),
         }
     }));
-    probes.push(Probe::new(MACHINE, "DRM leasing offered", || {
-        match leasing_offered() {
+    probes.push(Probe::new(
+        MACHINE,
+        "DRM leasing offered",
+        || match leasing_offered() {
             Ok(Some(names)) if names.is_empty() => (
                 Level::Fail,
                 "the compositor offers the protocol and no connector: mark one non-desktop".into(),
@@ -1245,8 +1263,8 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                 "this compositor advertises no lease device: the tube cannot be driven".into(),
             ),
             Err(e) => (Level::Fail, e),
-        }
-    }));
+        },
+    ));
     probes.push(Probe::new(MACHINE, "systemd", || {
         if std::path::Path::new("/run/systemd/system").is_dir() {
             (Level::Ok, "for the boot time override".into())
@@ -1312,15 +1330,19 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
 
     // ---------------------------------------------------------- television
     let found = conn.clone();
-    probes.push(Probe::yes_no(TELEVISION, "CRT connector found", move || {
-        (
-            found.is_some(),
-            found
-                .as_ref()
-                .map(|c| c.drm.clone())
-                .unwrap_or("set output.connector".into()),
-        )
-    }));
+    probes.push(Probe::yes_no(
+        TELEVISION,
+        "CRT connector found",
+        move || {
+            (
+                found.is_some(),
+                found
+                    .as_ref()
+                    .map(|c| c.drm.clone())
+                    .unwrap_or("set output.connector".into()),
+            )
+        },
+    ));
     if let Some(c) = conn.clone() {
         let edid = c.clone();
         probes.push(Probe::yes_no(TELEVISION, "EDID readable", move || {
@@ -1376,7 +1398,9 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             match open_dac(&dac_conn) {
                 Ok(d) => (
                     Level::Ok,
-                    d.lock().map(|l| l.label()).unwrap_or_else(|e| e.to_string()),
+                    d.lock()
+                        .map(|l| l.label())
+                        .unwrap_or_else(|e| e.to_string()),
                 ),
                 Err(e) => (Level::Fail, e),
             }
@@ -1639,7 +1663,11 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             println!("     {}  {}: {done}", m.what, m.detail);
         }
     }
-    if checks.iter().all(|c| c.level.ok()) { 0 } else { 1 }
+    if checks.iter().all(|c| c.level.ok()) {
+        0
+    } else {
+        1
+    }
 }
 
 /// Which BIOS files the systems that exist on this machine still want.

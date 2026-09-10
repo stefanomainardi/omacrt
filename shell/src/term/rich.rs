@@ -82,25 +82,53 @@ fn conv(c: Color, truecolor: bool) -> TColor {
         return TColor::Black;
     }
     if max - min < 40 {
-        return if max > 170 { TColor::White } else { TColor::Gray };
+        return if max > 170 {
+            TColor::White
+        } else {
+            TColor::Gray
+        };
     }
     let bright = max > 170;
     if rf == max && gf > bf + 40 {
-        return if bright { TColor::LightYellow } else { TColor::Yellow };
+        return if bright {
+            TColor::LightYellow
+        } else {
+            TColor::Yellow
+        };
     }
     if rf == max && bf > gf + 40 {
-        return if bright { TColor::LightMagenta } else { TColor::Magenta };
+        return if bright {
+            TColor::LightMagenta
+        } else {
+            TColor::Magenta
+        };
     }
     if rf == max {
-        return if bright { TColor::LightRed } else { TColor::Red };
+        return if bright {
+            TColor::LightRed
+        } else {
+            TColor::Red
+        };
     }
     if gf == max && bf > rf + 40 {
-        return if bright { TColor::LightCyan } else { TColor::Cyan };
+        return if bright {
+            TColor::LightCyan
+        } else {
+            TColor::Cyan
+        };
     }
     if gf == max {
-        return if bright { TColor::LightGreen } else { TColor::Green };
+        return if bright {
+            TColor::LightGreen
+        } else {
+            TColor::Green
+        };
     }
-    if bright { TColor::LightBlue } else { TColor::Blue }
+    if bright {
+        TColor::LightBlue
+    } else {
+        TColor::Blue
+    }
 }
 
 struct Paint {
@@ -247,11 +275,7 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
             let tail = if finished < total {
                 labels.get(finished).cloned()
             } else {
-                let bad = done
-                    .iter()
-                    .flatten()
-                    .filter(|c| !c.level.ok())
-                    .count();
+                let bad = done.iter().flatten().filter(|c| !c.level.ok()).count();
                 Some(if bad == 0 {
                     format!("{total} checks, all clear")
                 } else {
@@ -344,7 +368,10 @@ fn probing_frame(
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled("MEM  ", paint.style(paint.pal.theme.paper)),
-        Span::styled("█".repeat(filled), paint.style(paint.pal.theme.bright_green)),
+        Span::styled(
+            "█".repeat(filled),
+            paint.style(paint.pal.theme.bright_green),
+        ),
         Span::styled(
             "░".repeat(width.saturating_sub(filled)),
             paint.style(paint.pal.theme.dim),
@@ -379,7 +406,10 @@ fn report(paint: &Paint, etch: &Etch, checks: &[Check], extras: &Extras, actions
     ]));
     out.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("(C) 2026 OmaCRT, self test", paint.style(paint.pal.theme.dim)),
+        Span::styled(
+            "(C) 2026 OmaCRT, self test",
+            paint.style(paint.pal.theme.dim),
+        ),
     ]));
 
     let width = checks.iter().map(|c| c.label.len()).max().unwrap_or(10);
@@ -435,7 +465,10 @@ fn report(paint: &Paint, etch: &Etch, checks: &[Check], extras: &Extras, actions
                 }),
             ),
             Span::styled(
-                format!("  {}  csync {sync}", if *locked { "locked" } else { "lost" }),
+                format!(
+                    "  {}  csync {sync}",
+                    if *locked { "locked" } else { "lost" }
+                ),
                 paint.style(paint.pal.theme.paper),
             ),
         ]));
@@ -483,17 +516,26 @@ fn timing_lines(paint: &Paint, t: &Timing) -> Vec<Line<'static>> {
         };
         out.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(format!("{label}       "), paint.style(paint.pal.theme.paper)),
+            Span::styled(
+                format!("{label}       "),
+                paint.style(paint.pal.theme.paper),
+            ),
             Span::styled(
                 "█".repeat(seg(0, v[0]).max(1)),
                 paint.style(paint.pal.theme.cyan),
             ),
-            Span::styled("▒".repeat(seg(v[0], v[1])), paint.style(paint.pal.theme.dim)),
+            Span::styled(
+                "▒".repeat(seg(v[0], v[1])),
+                paint.style(paint.pal.theme.dim),
+            ),
             Span::styled(
                 "█".repeat(seg(v[1], v[2]).max(1)),
                 paint.style(paint.pal.theme.magenta),
             ),
-            Span::styled("▒".repeat(seg(v[2], v[3])), paint.style(paint.pal.theme.dim)),
+            Span::styled(
+                "▒".repeat(seg(v[2], v[3])),
+                paint.style(paint.pal.theme.dim),
+            ),
             Span::styled(
                 format!("  {} {unit}", v[0]),
                 paint.style(paint.pal.theme.dim),

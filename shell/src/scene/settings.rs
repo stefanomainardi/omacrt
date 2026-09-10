@@ -406,7 +406,8 @@ impl Scene {
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
     }
 
-    /// Style: pick one of the installed Omarchy themes, previewed live.
+    /// Style: pick a palette, previewed live. The desktop's own themes when
+    /// there are any, and the built in ones, which are always there.
     pub(super) fn draw_style(&mut self, fb: &mut Framebuffer, sel: usize) {
         let w = fb.w as i32;
         let h = fb.h as i32;
@@ -417,7 +418,16 @@ impl Scene {
         // The same: the twelve of a television, more where there are lines
         // for them.
         let page = (((h - 28 - y0) / row_h - 1).max(1)) as usize;
-        let names: Vec<String> = std::iter::once("system (follow Omarchy)".to_string())
+        // "system" follows the desktop's current theme. On a machine with
+        // no desktop themes to follow, saying so would be a promise nothing
+        // keeps, so the row names what it actually does.
+        let follows = self.themes.iter().any(|t| !t.built_in());
+        let first = if follows {
+            "system (follow the desktop)".to_string()
+        } else {
+            "system (no desktop theme here)".to_string()
+        };
+        let names: Vec<String> = std::iter::once(first)
             .chain(self.themes.iter().map(|t| t.name.clone()))
             .collect();
         let top = sel

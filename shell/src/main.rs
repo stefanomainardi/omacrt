@@ -228,7 +228,10 @@ fn systems_path(args: &Args) -> PathBuf {
 }
 
 fn build_scene(args: &Args) -> Scene {
-    let theme_path = args.theme.clone().or_else(omacrt_shell::theme::Theme::default_path);
+    let theme_path = args
+        .theme
+        .clone()
+        .or_else(omacrt_shell::theme::Theme::default_path);
     let theme = theme_path
         .and_then(|p| omacrt_shell::theme::Theme::load(&p))
         .unwrap_or_else(omacrt_shell::theme::Theme::tokyo_night);

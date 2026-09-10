@@ -21,9 +21,9 @@ use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
 use crate::states;
-use omacrt_shell::theme::Theme;
 use crate::videofit::{self, Conversion};
 use crate::yt;
+use omacrt_shell::theme::Theme;
 use std::path::{Path, PathBuf};
 
 fn clamp(v: f32, a: f32, b: f32) -> f32 {
@@ -989,6 +989,11 @@ impl Scene {
                 .unwrap_or_else(Theme::tokyo_night)
         } else {
             match self.themes.iter().find(|t| t.name == name) {
+                // A built in palette is compiled in and has no file.
+                Some(t) if t.built_in() => match Theme::by_name(&t.name) {
+                    Some(theme) => theme,
+                    None => return,
+                },
                 Some(t) => Theme::load_named(&t.path, &t.name).unwrap_or_else(Theme::tokyo_night),
                 None => return,
             }

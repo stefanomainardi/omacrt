@@ -4,13 +4,21 @@
 use crate::colour::{Color, parse_hex, rgb};
 use std::path::{Path, PathBuf};
 
-/// An installed theme as the Style screen needs it: its name, where its
-/// colours live, and the swatch already read.
+/// A theme as the Style screen needs it: its name, where its colours live if
+/// they live anywhere, and the swatch already read.
 pub struct Installed {
     pub name: String,
+    /// The file the colours came from. Empty for one of the built in
+    /// palettes, which are compiled in and need nothing installed.
     pub path: PathBuf,
     /// Accent and green, or nothing when the file would not parse.
     pub swatch: Option<(Color, Color)>,
+}
+
+impl Installed {
+    pub fn built_in(&self) -> bool {
+        self.path.as_os_str().is_empty()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -58,6 +66,84 @@ impl Theme {
         }
     }
 
+    /// Palettes that need nothing installed.
+    ///
+    /// Without Omarchy there is no `~/.local/share/omarchy/themes` to read,
+    /// and the Style screen offered one row that followed nothing. These are
+    /// the same shape as a theme file, chosen to be four different rooms
+    /// rather than four shades of one.
+    pub fn built_in() -> Vec<Theme> {
+        vec![
+            Self::tokyo_night(),
+            Self::phosphor(),
+            Self::amber(),
+            Self::trinitron(),
+        ]
+    }
+
+    /// A monochrome monitor that has been on since 1983.
+    pub fn phosphor() -> Self {
+        Self {
+            name: "phosphor".into(),
+            bg: rgb(0x03, 0x0a, 0x05),
+            fg: rgb(0x6d, 0xd0, 0x82),
+            dim: rgb(0x2c, 0x5c, 0x38),
+            paper: rgb(0x9c, 0xf0, 0xad),
+            accent: rgb(0x4c, 0xff, 0x7a),
+            selection: rgb(0x0d, 0x2a, 0x14),
+            green: rgb(0x6d, 0xd0, 0x82),
+            bright_green: rgb(0xb6, 0xff, 0xc4),
+            cyan: rgb(0x7a, 0xe8, 0xc0),
+            blue: rgb(0x5a, 0xc8, 0x9a),
+            magenta: rgb(0x9c, 0xf0, 0xad),
+            yellow: rgb(0xcf, 0xf7, 0x8a),
+            orange: rgb(0xa8, 0xe0, 0x60),
+            red: rgb(0xff, 0x8a, 0x6a),
+        }
+    }
+
+    /// The other monochrome, the one with the warm tube.
+    pub fn amber() -> Self {
+        Self {
+            name: "amber".into(),
+            bg: rgb(0x14, 0x0b, 0x02),
+            fg: rgb(0xe8, 0xa5, 0x3d),
+            dim: rgb(0x6b, 0x47, 0x14),
+            paper: rgb(0xff, 0xcb, 0x78),
+            accent: rgb(0xff, 0xb0, 0x33),
+            selection: rgb(0x33, 0x1d, 0x06),
+            green: rgb(0xd2, 0xc2, 0x4a),
+            bright_green: rgb(0xf6, 0xe4, 0x7a),
+            cyan: rgb(0xe0, 0xb6, 0x6a),
+            blue: rgb(0xc8, 0x92, 0x40),
+            magenta: rgb(0xff, 0xc0, 0x8a),
+            yellow: rgb(0xff, 0xd4, 0x6a),
+            orange: rgb(0xff, 0x9b, 0x2e),
+            red: rgb(0xff, 0x6b, 0x35),
+        }
+    }
+
+    /// A television, not a monitor: the colours a shadow mask gives you.
+    pub fn trinitron() -> Self {
+        Self {
+            name: "trinitron".into(),
+            bg: rgb(0x07, 0x08, 0x10),
+            fg: rgb(0xd6, 0xdc, 0xe8),
+            dim: rgb(0x4e, 0x56, 0x66),
+            paper: rgb(0xf2, 0xf4, 0xf8),
+            accent: rgb(0x3f, 0x8e, 0xff),
+            selection: rgb(0x14, 0x1a, 0x2a),
+            green: rgb(0x3f, 0xc5, 0x6b),
+            bright_green: rgb(0x6d, 0xf0, 0x95),
+            cyan: rgb(0x3f, 0xc7, 0xd8),
+            blue: rgb(0x3f, 0x8e, 0xff),
+            magenta: rgb(0xd0, 0x5f, 0xd0),
+            yellow: rgb(0xf2, 0xc0, 0x3f),
+            orange: rgb(0xf2, 0x8c, 0x3f),
+            red: rgb(0xe8, 0x3f, 0x50),
+        }
+    }
+
     pub fn default_path() -> Option<PathBuf> {
         let home = std::env::var_os("HOME")?;
         Some(Path::new(&home).join(".config/omarchy/current/colors.toml"))
@@ -68,13 +154,27 @@ impl Theme {
     /// the alternative is a file read and a TOML parse per visible row per
     /// frame on a screen that is drawn sixty times a second.
     pub fn installed_with_swatches() -> Vec<Installed> {
-        Self::installed()
+        let mut out: Vec<Installed> = Self::installed()
             .into_iter()
             .map(|(name, path)| {
                 let swatch = Self::load_named(&path, &name).map(|t| (t.accent, t.green));
                 Installed { name, path, swatch }
             })
-            .collect()
+            .collect();
+        // The built in palettes come last, and they are always there: a
+        // machine with no Omarchy themes installed still has something to
+        // choose between.
+        out.extend(Self::built_in().into_iter().map(|t| Installed {
+            name: t.name.clone(),
+            path: PathBuf::new(),
+            swatch: Some((t.accent, t.green)),
+        }));
+        out
+    }
+
+    /// One of the compiled in palettes, by name.
+    pub fn by_name(name: &str) -> Option<Theme> {
+        Self::built_in().into_iter().find(|t| t.name == name)
     }
 
     /// Every installed Omarchy theme: (name, colors.toml path), sorted.
@@ -171,5 +271,37 @@ impl Theme {
             orange: get("orange", base.orange),
             red: get("red", base.red),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A machine with no desktop themes still has something to choose
+    /// between, and every one of them resolves without touching a disk.
+    #[test]
+    fn the_built_in_palettes_need_nothing_installed() {
+        let built = Theme::built_in();
+        assert!(built.len() >= 4, "one palette is not a choice");
+        for t in &built {
+            let found = Theme::by_name(&t.name).expect("resolves by name");
+            assert_eq!(found.name, t.name);
+            assert_ne!(found.bg, found.paper, "{}: unreadable", t.name);
+        }
+        assert!(Theme::by_name("no such palette").is_none());
+    }
+
+    /// The Style screen reads this list, and a row with no swatch draws
+    /// nothing beside its name.
+    #[test]
+    fn every_built_in_palette_carries_its_swatch() {
+        let listed = Theme::installed_with_swatches();
+        let built: Vec<&Installed> = listed.iter().filter(|i| i.built_in()).collect();
+        assert_eq!(built.len(), Theme::built_in().len());
+        for i in built {
+            assert!(i.swatch.is_some(), "{} has no swatch", i.name);
+            assert!(i.path.as_os_str().is_empty());
+        }
     }
 }

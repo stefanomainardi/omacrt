@@ -30,6 +30,14 @@ if [ ! -d "$repo/shell" ] && [ -d "$here/plugin" ]; then
   packaged=1
   repo="$here"
 fi
+# Two channels. With Omarchy there is a bar widget, a library overlay and a
+# Television entry in the desktop menu, and all three live in Omarchy's own
+# extension points. Without it the television is identical and the desktop
+# side is the command line, so nothing is written under ~/.config/omarchy at
+# all: a plugin nothing loads and a menu file nothing reads are litter, and
+# leaving somebody to wonder where the widget is, is worse than saying so.
+have_omarchy=0
+command -v omarchy >/dev/null 2>&1 && have_omarchy=1
 plugin_id="io.github.stefanomainardi.omacrt"
 library_id="${plugin_id}.library"
 bin_dir="${HOME}/.local/bin"
@@ -175,7 +183,9 @@ for arg in "$@"; do
     --uninstall)
       # Everything this installer put in place, taken back out. The user's
       # games, configuration and cache are never touched.
-      menu_remove
+      if [ "$have_omarchy" = 1 ]; then
+        menu_remove
+      fi
       if [ "$packaged" = 1 ]; then
         echo "== the binaries belong to the package; remove it with pacman"
       else
@@ -184,8 +194,12 @@ for arg in "$@"; do
           rm -f "$bin_dir/$b"
         done
       fi
+      if [ "$have_omarchy" = 0 ]; then
+        echo "done. Your games, settings and cache are where they were."
+        exit 0
+      fi
       echo "== removing the plugins"
-      if command -v omarchy >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
+      if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
         echo "note: the session is locked; run this again unlocked to remove the plugins"
       else
         command -v omarchy >/dev/null 2>&1 && {
@@ -271,7 +285,24 @@ esac
 # The menu entry is a line in a file Omarchy reads for user extensions, not a
 # plugin folder, so it goes in whether or not the session is locked: nothing
 # reloads plugin code because of it.
-menu_install
+if [ "$have_omarchy" = 1 ]; then
+  menu_install
+fi
+
+if [ "$have_omarchy" = 0 ]; then
+  echo
+  echo "== no Omarchy here: this install is the television and the command line"
+  echo "   not installed: the bar widget, the panel, the library overlay and"
+  echo "   the Television entry in the desktop menu. They are Omarchy plugins"
+  echo "   and there is nothing here to load them."
+  echo "   instead: omacrt, and Hyprland keybindings that call it. The bindings"
+  echo "   are in docs/hyprland.md."
+  echo
+  say_status
+  echo
+  echo "next: omacrt doctor   (it says whether this machine can drive a tube)"
+  exit 0
+fi
 
 # The shell watches its plugin folders and reloads plugin code on any file
 # change; under the lock screen that reload aborts Quickshell (its lock plugin

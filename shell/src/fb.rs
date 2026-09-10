@@ -7,8 +7,8 @@ use crate::font8x8::FONT8X8;
 
 // Colour lives in the library so the command line can wear the same theme.
 // Re-exported here because every drawing call in the launcher says `fb::`.
-pub use omacrt_shell::colour::{Color, lerp_color, rgb};
 use omacrt_shell::colour::ch;
+pub use omacrt_shell::colour::{Color, lerp_color, rgb};
 
 /// Scale a color by `a` (0.0 .. 1.0+). Values above 1.0 bloom toward white.
 pub fn scale(c: Color, a: f32) -> Color {
