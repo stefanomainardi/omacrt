@@ -1,0 +1,171 @@
+//! How the command line looks.
+//!
+//! Two renderings of the same thing. In a terminal, `doctor` is the
+//! launcher's own power on self test: the wordmark cut by a laser while the
+//! machine is examined, the checks arriving in the vocabulary of a 1994 BIOS,
+//! and the timings drawn rather than listed. Anywhere else, and that means a
+//! pipe, a script, `NO_COLOR`, a terminal that says it is dumb, or `--plain`,
+//! it is the same plain lines it has always printed, because a report that
+//! changes shape when you redirect it is a report nobody can use twice.
+//!
+//! The rule the drawing follows: every drawn thing carries a fact. The etch
+//! advances because a check finished, the gauge fills because work is being
+//! done, the diagram is the modeline that is really configured. Nothing here
+//! is animation for its own sake.
+
+use crate::theme::Theme;
+use std::io::IsTerminal;
+
+pub mod etch;
+pub mod rich;
+
+
+/// What a check found. `Warn` and `Fail` both count as a failure for the exit
+/// code, exactly as before: the distinction is how it reads, not what it
+/// means to a script.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Level {
+    Ok,
+    Warn,
+    Fail,
+}
+
+impl Level {
+    pub fn ok(self) -> bool {
+        self == Level::Ok
+    }
+
+    /// The four characters `doctor` has always started a line with.
+    pub fn plain_tag(self) -> &'static str {
+        match self {
+            Level::Ok => "OK  ",
+            _ => "FAIL",
+        }
+    }
+
+    pub fn post_tag(self) -> &'static str {
+        match self {
+            Level::Ok => "OK",
+            Level::Warn => "??",
+            Level::Fail => "FAIL",
+        }
+    }
+}
+
+/// One question, and the answer once it has been asked.
+pub struct Check {
+    pub section: &'static str,
+    pub label: String,
+    pub level: Level,
+    pub note: String,
+}
+
+/// One question, not yet asked. The closure runs on a worker thread so the
+/// picture keeps moving while a subprocess takes its time.
+pub struct Probe {
+    pub section: &'static str,
+    pub label: String,
+    pub run: Box<dyn FnOnce() -> (Level, String) + Send>,
+}
+
+impl Probe {
+    pub fn new(
+        section: &'static str,
+        label: impl Into<String>,
+        run: impl FnOnce() -> (Level, String) + Send + 'static,
+    ) -> Self {
+        Self {
+            section,
+            label: label.into(),
+            run: Box::new(run),
+        }
+    }
+
+    /// The common case: a yes or no with a line of detail.
+    pub fn yes_no(
+        section: &'static str,
+        label: impl Into<String>,
+        run: impl FnOnce() -> (bool, String) + Send + 'static,
+    ) -> Self {
+        Self::new(section, label, move || {
+            let (ok, note) = run();
+            (if ok { Level::Ok } else { Level::Fail }, note)
+        })
+    }
+}
+
+/// What the POST calls itself.
+pub const NAME: &str = "OMACRT";
+
+pub const MACHINE: &str = "MACHINE";
+pub const TELEVISION: &str = "TELEVISION";
+pub const PROGRAMS: &str = "PROGRAMS";
+pub const COLLECTION: &str = "COLLECTION";
+pub const HOUSEKEEPING: &str = "HOUSEKEEPING";
+
+/// Whether to draw or to print.
+///
+/// A terminal is not enough on its own: somebody who has asked for no colour,
+/// or whose terminal cannot do it, or who piped us into `grep`, wants the
+/// lines and not the picture.
+pub fn interactive(plain_flag: bool) -> bool {
+    if plain_flag || !std::io::stdout().is_terminal() {
+        return false;
+    }
+    if std::env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    match std::env::var("TERM") {
+        Ok(t) => t != "dumb" && !t.is_empty(),
+        Err(_) => false,
+    }
+}
+
+/// True when the terminal will take 24 bit colour. Everything else is given
+/// the sixteen it is sure to have.
+pub fn truecolor() -> bool {
+    matches!(
+        std::env::var("COLORTERM").as_deref(),
+        Ok("truecolor") | Ok("24bit")
+    )
+}
+
+/// The colours of the television, for the terminal.
+pub struct Palette {
+    pub theme: Theme,
+    pub truecolor: bool,
+}
+
+impl Palette {
+    pub fn load() -> Self {
+        let theme = Theme::default_path()
+            .and_then(|p| Theme::load(&p))
+            .unwrap_or_else(Theme::tokyo_night);
+        Self {
+            theme,
+            truecolor: truecolor(),
+        }
+    }
+}
+
+/// The lines `doctor` has always printed, unchanged.
+///
+/// Byte for byte what came before, because scripts read it, CI reads it, and
+/// the floating terminal in the desktop menu reads it over somebody's
+/// shoulder. The new sections exist only in the drawn version.
+pub fn plain(probes: Vec<Probe>) -> Vec<Check> {
+    let mut done: Vec<Check> = Vec::with_capacity(probes.len());
+    let labels: Vec<usize> = probes.iter().map(|p| p.label.len()).collect();
+    let width = labels.iter().copied().max().unwrap_or(10);
+    for p in probes {
+        let (level, note) = (p.run)();
+        println!("{} {:<width$}  {}", level.plain_tag(), p.label, note);
+        done.push(Check {
+            section: p.section,
+            label: p.label,
+            level,
+            note,
+        });
+    }
+    done
+}

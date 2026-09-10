@@ -9,6 +9,7 @@ use omacrt_shell::crt::dac::{Csync, Dac, Lock};
 use omacrt_shell::crt::output::{self, Connector, Modeline};
 use omacrt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
 use omacrt_shell::index::Index;
+use omacrt_shell::term;
 use omacrt_shell::library::{self, Library};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -1034,88 +1035,396 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
     0
 }
 
+/// The install line for this machine, since a hint that says `pacman` on
+/// Fedora is worse than no hint.
+fn install_hint(pkg: &str) -> String {
+    let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+    let field = |k: &str| -> String {
+        release
+            .lines()
+            .find_map(|l| l.strip_prefix(k))
+            .unwrap_or("")
+            .trim_matches(['=', '"', '\''].as_ref())
+            .to_string()
+    };
+    let ids = format!("{} {}", field("ID"), field("ID_LIKE"));
+    let family = |names: &[&str]| names.iter().any(|n| ids.split_whitespace().any(|i| i == *n));
+    if family(&["arch", "archarm", "omarchy", "cachyos", "endeavouros", "manjaro"]) {
+        format!("pacman -S {pkg}")
+    } else if family(&["fedora", "rhel", "centos"]) {
+        format!("dnf install {pkg}")
+    } else if family(&["debian", "ubuntu"]) {
+        format!("apt install {pkg}")
+    } else if family(&["opensuse", "suse", "opensuse-tumbleweed", "opensuse-leap"]) {
+        format!("zypper in {pkg}")
+    } else if family(&["alpine"]) {
+        format!("apk add {pkg}")
+    } else if family(&["void"]) {
+        format!("xbps-install {pkg}")
+    } else if family(&["nixos"]) {
+        format!("nix profile install nixpkgs#{pkg}")
+    } else {
+        format!("install {pkg}")
+    }
+}
+
+/// What the compositor calls itself, when it will say.
+fn compositor_version() -> Option<String> {
+    let out = std::process::Command::new("hyprctl")
+        .arg("version")
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// True when Omarchy's own tooling is here, which is what decides whether the
+/// desktop half of this project exists on the machine at all.
+fn on_omarchy() -> bool {
+    which("omarchy").is_some()
+}
+
+fn which(cmd: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os("PATH").and_then(|p| {
+        std::env::split_paths(&p)
+            .map(|d| d.join(cmd))
+            .find(|c| c.is_file())
+    })
+}
+
+/// The driver bound to the card a connector belongs to. `amdgpu` is the one
+/// this is known to work on; the rest is reported rather than judged.
+fn card_driver(conn: &Connector) -> Option<String> {
+    let card = conn.drm.split('-').next()?;
+    let link = std::path::Path::new("/sys/class/drm")
+        .join(card)
+        .join("device/driver");
+    std::fs::canonicalize(link)
+        .ok()?
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+}
+
+/// Ask the compositor what it offers for leasing, through the display binary,
+/// which is where the protocol code lives. Takes no lease, so this is safe
+/// with the television running.
+fn leasing_offered() -> Result<Option<Vec<String>>, String> {
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("omacrt-display")))
+        .filter(|p| p.is_file())
+        .or_else(|| which("omacrt-display"))
+        .ok_or("omacrt-display not found")?;
+    let out = std::process::Command::new(bin)
+        .arg("globals")
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    match text.strip_prefix("lease:") {
+        Some(rest) if rest.trim() == "none" => Ok(None),
+        Some(rest) if rest.trim() == "offered" => Ok(Some(Vec::new())),
+        Some(rest) => Ok(Some(
+            rest.trim()
+                .strip_prefix("offered")
+                .unwrap_or("")
+                .split_whitespace()
+                .map(str::to_string)
+                .collect(),
+        )),
+        None => Err(text),
+    }
+}
+
+/// What the tube is asked to do, for the drawn diagram.
+fn timing_of(cfg: &Config) -> Option<term::rich::Timing> {
+    let state = State::load();
+    let standard = if state.standard.is_empty() {
+        cfg.output.standard.clone()
+    } else {
+        state.standard.clone()
+    };
+    let ml = Modeline::parse(cfg.modeline(&standard)?)?;
+    Some(term::rich::Timing {
+        name: standard.to_uppercase(),
+        clock_mhz: ml.clock_mhz,
+        h: ml.h,
+        v: ml.v,
+        khz: ml.hfreq_khz(),
+        hz: ml.vfreq_hz(),
+    })
+}
+
+/// Every output on the machine and what it is doing, for the drawn map.
+fn output_map(tube: Option<&Connector>) -> Vec<term::rich::Output> {
+    output::connectors()
+        .into_iter()
+        .filter(|c| c.connected || !c.edid_name.is_empty())
+        .map(|c| {
+            let role = if tube.is_some_and(|t| t.name == c.name) {
+                term::rich::Role::Tube
+            } else if !c.connected {
+                term::rich::Role::Disconnected
+            } else if output::hypr_monitor(&c.name)
+                .map(|m| !m["disabled"].as_bool().unwrap_or(true))
+                .unwrap_or(false)
+            {
+                term::rich::Role::Desktop
+            } else {
+                term::rich::Role::Free
+            };
+            term::rich::Output {
+                name: c.name.clone(),
+                edid: if c.edid_name.is_empty() {
+                    "no EDID name".into()
+                } else {
+                    c.edid_name.clone()
+                },
+                role,
+            }
+        })
+        .collect()
+}
+
 fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
-    let mut rows: Vec<(String, bool, String)> = Vec::new();
-    rows.push((
-        "interlaced modes".into(),
-        true,
-        if cfg.output.interlace {
-            "on: 480i and 576i are used where a console drew them".into()
-        } else {
-            "off: 480 line consoles are shown at 240p (needs a 15 kHz kernel)".into()
-        },
-    ));
-    for extra in omacrt_shell::coredata::TABLE {
-        let there =
-            !omacrt_shell::coredata::missing(extra.core, &omacrt_shell::coredata::system_dir());
-        rows.push((
-            format!("{} core files", extra.core),
-            there,
-            if there {
-                extra.what.into()
-            } else {
-                format!("missing; fetched on the first launch ({})", extra.what)
-            },
-        ));
-    }
+    use term::{COLLECTION, HOUSEKEEPING, MACHINE, PROGRAMS, Level, Probe, TELEVISION};
+
+    let mut probes: Vec<Probe> = Vec::new();
     let conn = output::pick(cfg);
-    rows.push((
-        "CRT connector found".into(),
-        conn.is_some(),
-        conn.as_ref()
-            .map(|c| c.drm.clone())
-            .unwrap_or("set output.connector".into()),
-    ));
-    if let Some(c) = &conn {
-        rows.push((
-            "EDID readable".into(),
-            !c.edid_name.is_empty(),
-            if c.edid_name.is_empty() {
-                "empty EDID".into()
+
+    // ------------------------------------------------------------- machine
+    let for_driver = conn.clone();
+    probes.push(Probe::new(MACHINE, "graphics driver", move || {
+        match for_driver.as_ref().and_then(card_driver) {
+            Some(d) if d == "amdgpu" => (Level::Ok, format!("{d}, the one this is known on")),
+            Some(d) => (
+                Level::Warn,
+                format!("{d}: untested here. Nvidia's own driver offers no leasable connector"),
+            ),
+            None => (Level::Warn, "no card to ask: is a connector connected?".into()),
+        }
+    }));
+    probes.push(Probe::new(MACHINE, "compositor", move || {
+        match compositor_version() {
+            Some(v) => {
+                let first = v.lines().next().unwrap_or("Hyprland").trim();
+                // "Hyprland 0.56.2 built from branch ... at commit ..." is a
+                // paragraph; the name and the number are the answer.
+                let short: String = first
+                    .split_whitespace()
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                (
+                    Level::Ok,
+                    if short.is_empty() {
+                        first.to_string()
+                    } else {
+                        short
+                    },
+                )
+            }
+            None => (
+                Level::Warn,
+                "no hyprctl: leasing may still work, the desktop conveniences will not".into(),
+            ),
+        }
+    }));
+    probes.push(Probe::new(MACHINE, "DRM leasing offered", || {
+        match leasing_offered() {
+            Ok(Some(names)) if names.is_empty() => (
+                Level::Fail,
+                "the compositor offers the protocol and no connector: mark one non-desktop".into(),
+            ),
+            Ok(Some(names)) => (Level::Ok, names.join(" ")),
+            Ok(None) => (
+                Level::Fail,
+                "this compositor advertises no lease device: the tube cannot be driven".into(),
+            ),
+            Err(e) => (Level::Fail, e),
+        }
+    }));
+    probes.push(Probe::new(MACHINE, "systemd", || {
+        if std::path::Path::new("/run/systemd/system").is_dir() {
+            (Level::Ok, "for the boot time override".into())
+        } else {
+            (
+                Level::Warn,
+                "no systemd: run scripts/crt-lease-setup.sh at boot your own way".into(),
+            )
+        }
+    }));
+    probes.push(Probe::new(MACHINE, "debugfs mounted", || {
+        // The directory is root only, so its contents cannot be listed by
+        // whoever runs this. The mount point is what the unit checks too.
+        if std::path::Path::new("/sys/kernel/debug").is_dir() {
+            (Level::Ok, "/sys/kernel/debug".into())
+        } else {
+            (
+                Level::Fail,
+                "the EDID override is written through debugfs: mount -t debugfs none /sys/kernel/debug"
+                    .into(),
+            )
+        }
+    }));
+    probes.push(Probe::new(MACHINE, "desktop integration", || {
+        if on_omarchy() {
+            (
+                Level::Ok,
+                "Omarchy: bar widget, library overlay and the Television menu".into(),
+            )
+        } else {
+            (
+                Level::Ok,
+                "Hyprland: the command line, see docs/hyprland.md for keybindings".into(),
+            )
+        }
+    }));
+    let unit = std::path::Path::new("/etc/systemd/system/omacrt-lease.service");
+    probes.push(Probe::yes_no(MACHINE, "lease unit installed", move || {
+        (
+            unit.is_file(),
+            if unit.is_file() {
+                "/etc/systemd/system/omacrt-lease.service".into()
             } else {
-                c.edid_name.clone()
+                "sudo bin/omacrt-install --system".into()
+            },
+        )
+    }));
+    probes.push(Probe::yes_no(MACHINE, "lease unit enabled", || {
+        let on = std::process::Command::new("systemctl")
+            .args(["is-enabled", "--quiet", "omacrt-lease.service"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        (
+            on,
+            if on {
+                "runs at boot".into()
+            } else {
+                "sudo systemctl enable --now omacrt-lease.service".into()
+            },
+        )
+    }));
+
+    // ---------------------------------------------------------- television
+    let found = conn.clone();
+    probes.push(Probe::yes_no(TELEVISION, "CRT connector found", move || {
+        (
+            found.is_some(),
+            found
+                .as_ref()
+                .map(|c| c.drm.clone())
+                .unwrap_or("set output.connector".into()),
+        )
+    }));
+    if let Some(c) = conn.clone() {
+        let edid = c.clone();
+        probes.push(Probe::yes_no(TELEVISION, "EDID readable", move || {
+            (
+                !edid.edid_name.is_empty(),
+                if edid.edid_name.is_empty() {
+                    "empty EDID".into()
+                } else {
+                    edid.edid_name.clone()
+                },
+            )
+        }));
+        let audio = c.clone();
+        probes.push(Probe::yes_no(
+            TELEVISION,
+            "EDID advertises audio",
+            move || {
+                (
+                    audio.edid_audio,
+                    if audio.edid_audio {
+                        "HDMI audio pin available".into()
+                    } else {
+                        "no audio over this DAC".into()
+                    },
+                )
             },
         ));
-        rows.push((
-            "EDID advertises audio".into(),
-            c.edid_audio,
-            if c.edid_audio {
-                "HDMI audio pin available".into()
-            } else {
-                "no audio over this DAC".into()
-            },
-        ));
-        let bus = Dac::bus_of(&c.path).unwrap_or_default();
-        let writable = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&bus)
-            .is_ok();
-        rows.push((
-            "I2C bus writable".into(),
-            writable,
-            if writable {
-                bus.clone()
-            } else {
-                format!("{bus}: join the i2c group")
-            },
-        ));
-        let dac = open_dac(c);
-        rows.push((
-            "RGB-Pi 2 answers at 0x78".into(),
-            dac.is_ok(),
-            dac.as_ref()
-                .map(|d| d.lock().map(|l| l.label()).unwrap_or_default())
-                .unwrap_or_else(|e| e.clone()),
-        ));
-        let t = audio::target(c);
-        rows.push((
-            "HDMI audio pin matched".into(),
-            t.is_some(),
-            t.map(|t| t.profile)
-                .unwrap_or("no ELD pin with this EDID name".into()),
-        ));
+        let bus_of = c.clone();
+        probes.push(Probe::yes_no(TELEVISION, "I2C bus writable", move || {
+            let bus = Dac::bus_of(&bus_of.path).unwrap_or_default();
+            let writable = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&bus)
+                .is_ok();
+            (
+                writable,
+                if writable {
+                    bus.clone()
+                } else {
+                    format!("{bus}: join the i2c group")
+                },
+            )
+        }));
+        let dac_conn = c.clone();
+        probes.push(Probe::new(TELEVISION, "DAC answers", move || {
+            if !dac_conn.is_rgbpi2() {
+                return (
+                    Level::Ok,
+                    "not an RGB-Pi 2: sync is set on the device, not over I2C".into(),
+                );
+            }
+            match open_dac(&dac_conn) {
+                Ok(d) => (
+                    Level::Ok,
+                    d.lock().map(|l| l.label()).unwrap_or_else(|e| e.to_string()),
+                ),
+                Err(e) => (Level::Fail, e),
+            }
+        }));
+        let handed = c.clone();
+        probes.push(Probe::new(TELEVISION, "connector handed over", move || {
+            let marked = display::leaseable(&handed.name);
+            // Being listed is not being used: Hyprland reports a non-desktop
+            // connector under `monitors all` with `disabled` set, and reading
+            // the listing alone made this say the compositor was holding a
+            // connector it had already handed over.
+            let held = output::hypr_monitor(&handed.name)
+                .map(|m| !m["disabled"].as_bool().unwrap_or(true))
+                .unwrap_or(false);
+            match (marked, held) {
+                (true, false) => (Level::Ok, "offered for leasing".into()),
+                (true, true) => (
+                    Level::Fail,
+                    concat!(
+                        "marked non-desktop and the compositor still holds it. ",
+                        "Remove any hl.monitor rule for it from ~/.config/hypr ",
+                        "(it may match on desc: rather than the name) and reboot"
+                    )
+                    .into(),
+                ),
+                _ => (
+                    Level::Fail,
+                    "not marked non-desktop: sudo bin/omacrt-install --system".into(),
+                ),
+            }
+        }));
     }
+    let interlace = cfg.output.interlace;
+    probes.push(Probe::new(TELEVISION, "interlaced modes", move || {
+        if interlace {
+            (
+                Level::Ok,
+                "on: 480i and 576i are used where a console drew them".into(),
+            )
+        } else {
+            (
+                Level::Ok,
+                "off: 480 line consoles are shown at 240p (needs a 15 kHz kernel)".into(),
+            )
+        }
+    }));
+
+    // ------------------------------------------------------------ programs
     for (label, cmd) in [
         ("hyprctl", "hyprctl"),
         ("pactl", "pactl"),
@@ -1126,181 +1435,191 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         ("yt-dlp", "yt-dlp"),
         ("cliamp", "cliamp"),
     ] {
-        let found = std::env::var_os("PATH")
-            .map(|p| std::env::split_paths(&p).any(|d| d.join(cmd).is_file()))
-            .unwrap_or(false);
-        rows.push((
+        probes.push(Probe::yes_no(
+            PROGRAMS,
             format!("{label} installed"),
-            found,
-            if found {
-                "ok".into()
-            } else {
-                format!("pacman -S {cmd}")
-            },
-        ));
-    }
-    // The piece that makes leasing possible at all: without the boot time
-    // unit the connector stays a desktop monitor and nothing else works.
-    let unit = std::path::Path::new("/etc/systemd/system/omacrt-lease.service");
-    let unit_enabled = std::process::Command::new("systemctl")
-        .args(["is-enabled", "--quiet", "omacrt-lease.service"])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    rows.push((
-        "lease unit installed".into(),
-        unit.is_file(),
-        if unit.is_file() {
-            "/etc/systemd/system/omacrt-lease.service".into()
-        } else {
-            "sudo bin/omacrt-install --system".into()
-        },
-    ));
-    rows.push((
-        "lease unit enabled".into(),
-        unit_enabled,
-        if unit_enabled {
-            "runs at boot".into()
-        } else {
-            "sudo systemctl enable --now omacrt-lease.service".into()
-        },
-    ));
-    // The flag being set is not the same as the compositor having noticed.
-    // Hyprland picks its lease pool when it starts, so an override applied to
-    // a running session leaves the connector marked and still unavailable,
-    // which reads like a broken install and is only a reboot away.
-    if let Some(conn) = output::pick(cfg) {
-        let marked = display::leaseable(&conn.name);
-        let held = output::hypr_monitor(&conn.name).is_some();
-        rows.push((
-            "connector handed over".into(),
-            marked && !held,
-            match (marked, held) {
-                // The cause is almost always a monitor rule: a connector
-                // with one is a monitor to Hyprland, and a monitor is never
-                // offered for leasing however the kernel has flagged it. The
-                // rule usually matches by description, so it does not turn up
-                // when the config is searched for the connector's name.
-                (true, true) => concat!(
-                    "marked non-desktop and the compositor still holds it. ",
-                    "Remove any hl.monitor rule for it from ~/.config/hypr ",
-                    "(it may match on desc: rather than the name) and reboot"
+            move || {
+                let found = which(cmd).is_some();
+                (
+                    found,
+                    if found {
+                        "ok".into()
+                    } else {
+                        install_hint(cmd)
+                    },
                 )
-                .into(),
-                (true, false) => "offered for leasing".into(),
-                _ => "not marked non-desktop: sudo bin/omacrt-install --system".into(),
             },
         ));
     }
 
-    // The bar plugin, and whether the shell has been told about it.
-    let plugin_dir = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
-        .join(".config/omarchy/plugins/io.github.stefanomainardi.omacrt");
-    rows.push((
-        "bar plugin installed".into(),
-        plugin_dir.join("manifest.json").is_file(),
-        if plugin_dir.join("manifest.json").is_file() {
-            plugin_dir.display().to_string()
-        } else {
-            "bin/omacrt-install (unlocked session)".into()
-        },
-    ));
-    // Somewhere to write: a read only config directory fails much later,
-    // in the middle of saving something the player cares about.
+    // ---------------------------------------------------------- collection
+    for extra in omacrt_shell::coredata::TABLE {
+        probes.push(Probe::new(
+            COLLECTION,
+            format!("{} core files", extra.core),
+            move || {
+                let there = !omacrt_shell::coredata::missing(
+                    extra.core,
+                    &omacrt_shell::coredata::system_dir(),
+                );
+                if there {
+                    (Level::Ok, extra.what.into())
+                } else {
+                    (
+                        Level::Warn,
+                        format!("fetched on the first launch ({})", extra.what),
+                    )
+                }
+            },
+        ));
+    }
+    probes.push(Probe::yes_no(COLLECTION, "ROM folders with games", || {
+        let scan = roms::scan(&library());
+        let with_games = scan
+            .iter()
+            .filter(|s| s.games > 0 && s.name != "videos")
+            .count();
+        (with_games > 0, format!("{with_games} systems"))
+    }));
+    probes.push(Probe::yes_no(COLLECTION, "cores for every folder", || {
+        let scan = roms::scan(&library());
+        let missing: Vec<&str> = scan
+            .iter()
+            .filter(|s| s.exists && !s.core_present)
+            .map(|s| s.name.as_str())
+            .collect();
+        (
+            missing.is_empty(),
+            if missing.is_empty() {
+                "ok".into()
+            } else {
+                missing.join(", ")
+            },
+        )
+    }));
+    probes.push(Probe::yes_no(COLLECTION, "BIOS files", || {
+        let miss = bios_report().missing().len();
+        (
+            miss == 0,
+            if miss == 0 {
+                "all required present".into()
+            } else {
+                format!("{miss} missing")
+            },
+        )
+    }));
+
+    // ------------------------------------------------------- housekeeping
     for (label, dir) in [
         ("config directory writable", crt::config_dir()),
         ("state directory writable", crt::state_dir()),
     ] {
-        let ok = std::fs::create_dir_all(&dir).is_ok()
-            && omacrt_shell::store::save(&dir.join(".write-test"), b"ok").is_ok();
-        let _ = std::fs::remove_file(dir.join(".write-test"));
-        let _ = std::fs::remove_file(dir.join(".write-test.bak"));
-        rows.push((
-            label.into(),
-            ok,
-            if ok {
-                dir.display().to_string()
+        probes.push(Probe::yes_no(HOUSEKEEPING, label, move || {
+            let ok = std::fs::create_dir_all(&dir).is_ok()
+                && omacrt_shell::store::save(&dir.join(".write-test"), b"ok").is_ok();
+            let _ = std::fs::remove_file(dir.join(".write-test"));
+            let _ = std::fs::remove_file(dir.join(".write-test.bak"));
+            (
+                ok,
+                if ok {
+                    dir.display().to_string()
+                } else {
+                    format!("cannot write {}", dir.display())
+                },
+            )
+        }));
+    }
+    let launcher_bin = launcher::binary(cfg);
+    let configured = cfg.shell.bin.clone();
+    probes.push(Probe::yes_no(HOUSEKEEPING, "launcher binary", move || {
+        (
+            launcher_bin.is_some(),
+            launcher_bin
+                .map(|b| b.display().to_string())
+                .unwrap_or(configured),
+        )
+    }));
+    if on_omarchy() {
+        probes.push(Probe::yes_no(HOUSEKEEPING, "bar plugin installed", || {
+            let dir = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join(".config/omarchy/plugins/io.github.stefanomainardi.omacrt");
+            let there = dir.join("manifest.json").is_file();
+            (
+                there,
+                if there {
+                    dir.display().to_string()
+                } else {
+                    "bin/omacrt-install (unlocked session)".into()
+                },
+            )
+        }));
+    }
+    probes.push(Probe::yes_no(HOUSEKEEPING, "nothing left behind", || {
+        let mess = crt::tidy::survey();
+        (
+            mess.is_empty(),
+            if mess.is_empty() {
+                "no orphans, no stale files".into()
             } else {
-                format!("cannot write {}", dir.display())
+                format!("{} to clear (doctor --fix)", mess.len())
             },
-        ));
-    }
-    let bin = launcher::binary(cfg);
-    rows.push((
-        "launcher binary".into(),
-        bin.is_some(),
-        bin.map(|b| b.display().to_string())
-            .unwrap_or(cfg.shell.bin.clone()),
-    ));
-    let lib = library();
-    let scan = roms::scan(&lib);
-    let with_games = scan
-        .iter()
-        .filter(|s| s.games > 0 && s.name != "videos")
-        .count();
-    rows.push((
-        "ROM folders with games".into(),
-        with_games > 0,
-        format!("{with_games} systems"),
-    ));
-    let missing: Vec<&str> = scan
-        .iter()
-        .filter(|s| s.exists && !s.core_present)
-        .map(|s| s.name.as_str())
-        .collect();
-    rows.push((
-        "cores for every folder".into(),
-        missing.is_empty(),
-        if missing.is_empty() {
-            "ok".into()
-        } else {
-            missing.join(", ")
-        },
-    ));
-    let names: Vec<String> = lib
-        .systems
-        .iter()
-        .filter(|s| !s.is_video() && library::expand(&s.dir).is_dir())
-        .map(|s| s.name.clone())
-        .collect();
-    let rep = bios::report(&names);
-    let miss = rep.missing();
-    rows.push((
-        "BIOS files".into(),
-        miss.is_empty(),
-        if miss.is_empty() {
-            "all required present".into()
-        } else {
-            format!("{} missing", miss.len())
-        },
-    ));
-    // What has been left behind, which is a different question from what is
-    // missing: a survey of the machine's own mess.
-    let mess = crt::tidy::survey();
-    rows.push((
-        "nothing left behind".into(),
-        mess.is_empty(),
-        if mess.is_empty() {
-            "no orphans, no stale files".into()
-        } else {
-            format!("{} to clear (doctor --fix)", mess.len())
-        },
-    ));
+        )
+    }));
 
-    let width = rows.iter().map(|r| r.0.len()).max().unwrap_or(10);
-    let mut bad = 0;
-    for (label, ok, note) in &rows {
-        if !ok {
-            bad += 1;
+    // ------------------------------------------------------------- render
+    let plain = has(args, "--plain");
+    let checks = if term::interactive(plain) {
+        let extras = term::rich::Extras {
+            timing: timing_of(cfg),
+            outputs: output_map(conn.as_ref()),
+            lock: conn.as_ref().filter(|c| c.is_rgbpi2()).map(|c| {
+                let label = open_dac(c)
+                    .and_then(|d| d.lock().map_err(|e| e.to_string()))
+                    .map(|l| l.label())
+                    .unwrap_or_else(|e| e);
+                (label.starts_with("locked"), cfg.output.csync.clone())
+            }),
+        };
+        let mess = crt::tidy::survey();
+        let mut actions = Vec::new();
+        if !mess.is_empty() {
+            actions.push(term::rich::Action {
+                key: 'f',
+                what: "clear what was left behind",
+            });
         }
-        println!(
-            "{} {:<width$}  {}",
-            if *ok { "OK  " } else { "FAIL" },
-            label,
-            note
-        );
-    }
-    if !mess.is_empty() {
+        if !bios_report().missing().is_empty() {
+            actions.push(term::rich::Action {
+                key: 'b',
+                what: "list the missing BIOS files",
+            });
+        }
+        actions.push(term::rich::Action {
+            key: 'q',
+            what: "quit",
+        });
+        let (checks, pressed) = term::rich::run(probes, extras, &actions);
+        match pressed {
+            Some('f') => {
+                for m in &crt::tidy::survey() {
+                    let (_, done) = crt::tidy::clear(m);
+                    println!("  {}  {}: {done}", m.what, m.detail);
+                }
+            }
+            Some('b') => {
+                for f in bios_report().missing() {
+                    println!("  {:<10}  {:<28}  {}", f.system, f.file, f.description);
+                }
+            }
+            _ => {}
+        }
+        checks
+    } else {
+        term::plain(probes)
+    };
+
+    let mess = crt::tidy::survey();
+    if !mess.is_empty() && !term::interactive(plain) {
         println!();
         let fix = has(args, "--fix");
         for m in &mess {
@@ -1314,8 +1633,25 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         if !fix {
             println!("\n     omacrt doctor --fix clears these");
         }
+    } else if has(args, "--fix") {
+        for m in &mess {
+            let (_, done) = crt::tidy::clear(m);
+            println!("     {}  {}: {done}", m.what, m.detail);
+        }
     }
-    if bad == 0 { 0 } else { 1 }
+    if checks.iter().all(|c| c.level.ok()) { 0 } else { 1 }
+}
+
+/// Which BIOS files the systems that exist on this machine still want.
+fn bios_report() -> bios::Report {
+    let lib = library();
+    let names: Vec<String> = lib
+        .systems
+        .iter()
+        .filter(|s| !s.is_video() && library::expand(&s.dir).is_dir())
+        .map(|s| s.name.clone())
+        .collect();
+    bios::report(&names)
 }
 
 fn cmd_bios(args: &[String]) {

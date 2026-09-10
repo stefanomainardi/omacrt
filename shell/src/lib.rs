@@ -24,5 +24,6 @@ pub mod settings;
 pub mod states;
 pub mod theme;
 pub mod store;
+pub mod term;
 pub mod videofit;
 pub mod yt;
