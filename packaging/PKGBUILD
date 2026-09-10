@@ -13,8 +13,13 @@ pkgdesc="Retro gaming on a real 15 kHz CRT television, from Hyprland or Omarchy"
 arch=('x86_64')
 url="https://github.com/stefanomainardi/omacrt"
 license=('MIT')
-depends=('sdl2' 'systemd-libs' 'libinput' 'libxkbcommon' 'mesa' 'seatd'
-         'ffmpeg' 'curl')
+# What the binaries actually need. `ldd` on all three: the launcher links
+# libSDL2, the display process links libdrm, libgbm, libwayland-server and
+# libxkbcommon, and it opens libEGL and libgbm by name at run time. libinput
+# and libseat were listed and are not used by anything here: the display
+# process attaches no input devices and takes no seat, it is handed a file
+# descriptor by the compositor. curl and ffmpeg are programs it runs.
+depends=('sdl2' 'libdrm' 'mesa' 'wayland' 'libxkbcommon' 'ffmpeg' 'curl')
 optdepends=('retroarch: playing games'
             'mpv: films and YouTube on the tube'
             'yt-dlp: YouTube search and streams'

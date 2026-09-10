@@ -53,6 +53,8 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The package declares what the binaries link. `libinput` and `seatd` were
+  listed and are used by nothing here; `libdrm` and `wayland` were missing.
 - cliamp is not Omarchy's music player. It is `bjarneo/cliamp`, found on
   `PATH`, and four places said otherwise, including the message the Music
   screen shows when it is missing.
