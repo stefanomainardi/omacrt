@@ -1135,7 +1135,8 @@ fn save_favorites(list: &[Track]) -> std::io::Result<()> {
             format!("{}\t{}\t{}\n", title.replace('\t', " "), t.path, t.note)
         })
         .collect();
-    crate::store::save(&path, text)
+    // Somebody's stations and what they starred.
+    crate::store::save_private(&path, text)
 }
 
 fn list(src: &Source) -> Result<Vec<Item>, String> {

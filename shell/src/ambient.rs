@@ -290,16 +290,68 @@ fn fresh(path: &Path, max_age_secs: u64) -> bool {
 }
 
 fn fetch(url: &str, dest: &Path) -> Option<String> {
+    fetch_inner(url, dest, false)
+}
+
+/// The same, for an address that is itself a secret.
+///
+/// A private calendar subscription link carries its token in the path or the
+/// query, so the whole address is a credential: on the command line every
+/// other program on the machine can read it out of `/proc`. This hands it to
+/// curl on standard input, the way the photograph server's key is handed
+/// over, and follows no redirect, since a redirect would put the address in
+/// the `Referer` of somebody else's server.
+fn fetch_private(url: &str, dest: &Path) -> Option<String> {
+    fetch_inner(url, dest, true)
+}
+
+fn fetch_inner(url: &str, dest: &Path, private: bool) -> Option<String> {
     if let Some(dir) = dest.parent() {
-        std::fs::create_dir_all(dir).ok()?;
+        // The calendar cache holds a person's appointments in full, so the
+        // directory that holds it is theirs alone.
+        crate::store::create_private_dir(dir).ok()?;
     }
-    let out = crate::net::curl(20, 4_194_304).arg(url).output().ok()?;
-    if !out.status.success() || out.stdout.is_empty() {
+    let text = if private {
+        let config = curl_url_config(url)?;
+        let mut cmd = crate::net::curl_no_redirect(20, 4_194_304);
+        cmd.args(["-K", "-"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null());
+        let mut child = cmd.spawn().ok()?;
+        {
+            use std::io::Write;
+            let stdin = child.stdin.as_mut()?;
+            stdin.write_all(config.as_bytes()).ok()?;
+        }
+        let out = child.wait_with_output().ok()?;
+        if !out.status.success() || out.stdout.is_empty() {
+            return None;
+        }
+        String::from_utf8_lossy(&out.stdout).to_string()
+    } else {
+        let out = crate::net::curl(20, 4_194_304).arg(url).output().ok()?;
+        if !out.status.success() || out.stdout.is_empty() {
+            return None;
+        }
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let _ = crate::store::save_private(dest, &text);
+    Some(text)
+}
+
+/// One `url = "..."` line for a curl configuration file.
+///
+/// curl's own quoting: the value is in double quotes, and a backslash or a
+/// double quote inside it is escaped with a backslash. A control character
+/// would end the line early and turn the rest of the address into another
+/// option, so an address containing one is refused rather than sent.
+fn curl_url_config(url: &str) -> Option<String> {
+    if url.chars().any(|c| c.is_control()) {
         return None;
     }
-    let text = String::from_utf8_lossy(&out.stdout).to_string();
-    let _ = std::fs::write(dest, &text);
-    Some(text)
+    let escaped = url.replace('\\', "\\\\").replace('"', "\\\"");
+    Some(format!("url = \"{escaped}\"\n"))
 }
 
 /// The city in the machine's own timezone: "Europe/Brussels" is Brussels.
@@ -415,7 +467,8 @@ fn next_event(url: &str) -> String {
     let text = if fresh(&file, 600) {
         std::fs::read_to_string(&file).unwrap_or_default()
     } else {
-        fetch(url, &file).unwrap_or_else(|| std::fs::read_to_string(&file).unwrap_or_default())
+        fetch_private(url, &file)
+            .unwrap_or_else(|| std::fs::read_to_string(&file).unwrap_or_default())
     };
     let now = chrono::Local::now();
     next_from_ics(&text, &now.format("%Y%m%dT%H%M%S").to_string())

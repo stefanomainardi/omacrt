@@ -68,7 +68,6 @@ case "${1:-}" in
     out="${2:?output file}"
     command -v wf-recorder >/dev/null || { echo "wf-recorder missing (pacman -S wf-recorder)" >&2; exit 1; }
     read -r mon mx my mw mh <<<"$(hyprctl monitors -j | python3 -c 'import json,sys; m=[m for m in json.load(sys.stdin) if m["focused"]][0]; print(m["name"], m["x"], m["y"], m["width"], m["height"])')"
-    widget_x=$((mx + mw - 332)); widget_y=$((my + 14))   # the CRT widget in the bar's right group
     idle_before="$(omarchy toggle idle status | grep -c '"enabled":true' || true)"
     omarchy toggle idle stay-awake >/dev/null
     dnd_before="$(omarchy-shell notifications dndState 2>/dev/null || echo off)"

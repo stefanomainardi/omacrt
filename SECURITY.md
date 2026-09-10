@@ -85,13 +85,23 @@ Nothing is downloaded during installation. While running, the project fetches:
   both only when the ambient page is set up
 - your own photographs from your own Immich server, if you set one up
 
-All eight go out through `curl`, and all eight ask one function for it:
-`net::curl` restricts the protocol list to HTTP and HTTPS on the request and
-on any redirect, sets a timeout and a size cap, fails on an error status
+Seven of the eight go out through `curl`, and all seven ask one function for
+it: `net::curl` restricts the protocol list to HTTP and HTTPS on the request
+and on any redirect, sets a timeout and a size cap, fails on an error status
 rather than saving the error page, and passes arguments as arguments. A
 crafted URL cannot make it read a local file, a redirect cannot leave those
 two protocols, and none of that is a decision at the call site: what a caller
-chooses is how long and how large its own fetch may be.
+chooses is how long and how large its own fetch may be. The eighth is
+YouTube, which goes through `yt-dlp` and its own network stack, with the
+target after a `--` and never through a shell.
+
+Two of those seven ask for a variant, because a request that carries a
+secret cannot be allowed to follow a redirect at all. curl resends a header
+given with `-H`, or with `header =` in a configuration, to whatever host a
+redirect names: a server that answers with a redirect is therefore handed
+the credential. The photograph server's requests and the calendar fetch use
+`net::curl_no_redirect`, which sets `--max-redirs 0`. The core data download
+follows redirects but may only follow them to HTTPS.
 
 A name that came from a server never becomes a path. The photograph server's
 asset identifiers are checked against letters, digits and dashes before they
@@ -116,9 +126,22 @@ yours to write and this project only reads it.
 
 The key is handed to curl **on its standard input**, never as an argument, so
 it does not appear in the process list where every other program on the
-machine could read it. It is not logged, not printed by any command, and never
-sent anywhere but to the address in that file. Nothing else in the project
-holds a credential.
+machine could read it. It is not logged and not printed by any command. It
+goes to the address in that file and to no other, because those requests
+follow no redirect: curl would otherwise send the key header to whatever host
+a redirect named, and a photograph server that redirects, by mistake or on
+purpose, would be handing your key to somebody else.
+
+The file is yours, so its permissions are yours. This project cannot change
+them without changing a file you wrote, but it reads them: when the mode lets
+anybody but you read it, the launcher says so on its error output.
+
+The other thing here that is a secret is the calendar address, when it is a
+private subscription link: those carry a token in the path or the query, so
+the whole address is a credential. It is handed to curl the same way, on
+standard input, and the cached calendar is written `0600` in a directory
+created `0700`. So are the settings that hold the address, the captions
+beside your photographs, and the list of what you have been watching.
 
 ## What is executed
 

@@ -27,7 +27,7 @@ lens=()    # their durations, in the same order
 
 font=/usr/share/fonts/TTF/CaskaydiaMonoNerdFont-Bold.ttf
 font2=/usr/share/fonts/TTF/CaskaydiaMonoNerdFont-Regular.ttf
-bg=0x07090f; fg=0xc0caf5; accent=0x7aa2f7; dim=0x565f89
+bg=0x07090f; fg=0xc0caf5; accent=0x7aa2f7
 # 2.39:1 in a 1080 frame: 804 lines of picture, 138 of black above and below.
 H=804
 # How long each dissolve lasts. Every shot is cut this much longer than it
@@ -64,7 +64,9 @@ add() { clips+=("$1"); lens+=("$2"); }
 # The room: the whole phone frame cropped to the wide ratio. The camera never
 # moves, and neither does the shot.
 wide() {  # start, seconds, caption
-  n=$((n+1)); local f="$work/$(printf '%02d' $n)-wide.mp4"
+  n=$((n+1))
+  local f
+  f="$work/$(printf '%02d' $n)-wide.mp4"
   local d="$2" cap; cap="$(caption "${3:-}" "$2")"
   local vf="crop=1920:${H}:0:138,setsar=1"
   [ "$cap" = "null" ] || vf="$vf,$cap"
@@ -77,7 +79,9 @@ wide() {  # start, seconds, caption
 # The screen alone, as the camera saw it. Kept for the record; this cut does
 # not use it, because the subject is the set and not the pixels.
 screen() {  # start, seconds, caption
-  n=$((n+1)); local f="$work/$(printf '%02d' $n)-screen.mp4"
+  n=$((n+1))
+  local f
+  f="$work/$(printf '%02d' $n)-screen.mp4"
   local d="$2" cap; cap="$(caption "${3:-}" "$2")"
   local vf="crop=730:548:585:125,scale=-2:${H},setsar=1,pad=1920:${H}:(ow-iw)/2:0:color=$bg"
   [ "$cap" = "null" ] || vf="$vf,$cap"
@@ -88,7 +92,9 @@ screen() {  # start, seconds, caption
 }
 
 card() {  # title, subtitle, seconds
-  n=$((n+1)); local f="$work/$(printf '%02d' $n)-card.mp4"
+  n=$((n+1))
+  local f
+  f="$work/$(printf '%02d' $n)-card.mp4"
   local t; t="$(esc "$1")"; local s; s="$(esc "$2")"; local d="$3"
   ffmpeg -hide_banner -loglevel error -y \
     -f lavfi -i "color=c=$bg:s=1920x1080:r=30:d=$d" \
@@ -134,8 +140,8 @@ inputs=(); for f in "${clips[@]}"; do inputs+=(-i "$f"); done
 filter=""; prev="0:v"; preva="0:a"; acc="${lens[0]}"
 for i in $(seq 1 $(( ${#clips[@]} - 1 ))); do
   off="$(awk "BEGIN{printf \"%.3f\", $acc-$X}")"
-  filter+="[$prev][$i:v]xfade=transition=fade:duration=$X:offset=$off[v$i];"
-  filter+="[$preva][$i:a]acrossfade=d=$X:c1=tri:c2=tri[a$i];"
+  filter+="[$prev][${i}:v]xfade=transition=fade:duration=$X:offset=${off}[v${i}];"
+  filter+="[$preva][${i}:a]acrossfade=d=$X:c1=tri:c2=tri[a${i}];"
   prev="v$i"; preva="a$i"
   acc="$(awk "BEGIN{printf \"%.3f\", $acc+${lens[$i]}-$X}")"
 done

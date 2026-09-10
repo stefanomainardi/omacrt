@@ -403,7 +403,10 @@ impl Settings {
         let mut stamped = self.clone();
         stamped.version = crate::config::VERSION;
         let text = toml::to_string_pretty(&stamped).map_err(std::io::Error::other)?;
-        crate::store::save(&Self::path(config_dir), text)
+        // The settings hold the calendar address, which on a private
+        // subscription is a credential, and the place the weather is asked
+        // about, which is where somebody lives.
+        crate::store::save_private(&Self::path(config_dir), text)
     }
 }
 

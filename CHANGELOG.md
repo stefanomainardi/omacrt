@@ -7,6 +7,65 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Security
+
+- An authenticated request follows no redirect. curl resends a header given
+  with `-H`, or with `header =` in a configuration, to whatever host a
+  redirect names, and its redirect protocol list allowed HTTPS to fall back
+  to HTTP, so a photograph server answering with a redirect was handed the
+  API key in clear text. Those requests now use `--max-redirs 0`. Reproduced
+  against two local servers before and after.
+- A private calendar address is treated as the credential it is. The token in
+  such a link was on curl's command line, where every process on the machine
+  can read it; it goes in on standard input now, quoted for curl's
+  configuration format, and an address containing a control character is
+  refused rather than sent.
+- Files holding personal things are created `0600` in directories created
+  `0700`, rather than taking whatever the umask allows: the settings, which
+  hold the calendar address and the place the weather is asked about, the
+  calendar cache, the captions beside photographs, the watch-later list and
+  the radio stations. Previously a common `022` umask left them readable by
+  every user on the machine.
+- The launcher says so when `immich.toml`, which holds the photograph
+  server's key, can be read by anybody but its owner.
+- A core's extra archive is refused when it names a path outside itself. It
+  is unpacked beside another program's data, and the three tools that might
+  do the unpacking are not all equally careful.
+- The core download may follow a redirect only to HTTPS.
+
+### Fixed
+
+- The advisory check fails when it cannot reach the database, instead of
+  reporting success. It retries three times, requires one answer per crate,
+  and rejects a malformed reply. A network outage used to read as no known
+  vulnerabilities.
+- ShellCheck's result decides the CI job it runs in. Two real errors it had
+  been reporting into the void are fixed: `-e` with a glob in the lease
+  script, which fails outright on a machine with two graphics cards, and an
+  array-looking expansion in the montage script.
+- The packaged installer can find what it installs. It computed its own
+  repository root as `/usr/share` and stopped at a missing binary, so the
+  package's instructions could not work; it now recognises the packaged
+  layout, takes the binaries from the package and installs only the plugins
+  and the menu entry. Verified against a simulated package tree.
+- The package carries Omarchy's notice for the wordmark letterforms, which
+  MIT asks for, along with the third-party and licence-scope documents, the
+  picker and the menu block.
+- The package builds against the lock file with no fallback. `cargo fetch`,
+  `cargo build` and `cargo test` fell back to unlocked commands, which can
+  resolve a dependency set the release was never tested with.
+- The CI workflow declares `permissions: contents: read`.
+
+### Changed
+
+- `SECURITY.md` no longer claims the photograph server's key is never sent
+  anywhere but to the address in its configuration file, or that all eight
+  outside services go through one curl helper. Neither was true: the first is
+  what the redirect fix above makes true, and YouTube goes through `yt-dlp`.
+- `LICENSE-SCOPE.md` no longer claims the licence covers the screenshots
+  outright. They show game titles, cover art and other programs' interfaces,
+  and no licence here can grant anything over that material.
+
 ## [0.4.1] - 2026-09-09
 
 Everything the pre-open review left open, and the documents brought in line

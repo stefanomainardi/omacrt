@@ -63,7 +63,7 @@ pub fn ensure(core: &str, system_dir: &Path) -> Option<String> {
     let staged = work.join(extra.core);
 
     let done = (|| {
-        let ok = crate::net::curl(300, 134_217_728)
+        let ok = crate::net::curl_https_redirect(300, 134_217_728)
             .arg("-o")
             .arg(&tmp)
             .arg("--")
@@ -75,6 +75,16 @@ pub fn ensure(core: &str, system_dir: &Path) -> Option<String> {
             return Err(format!("{}: could not be downloaded", extra.what));
         }
         std::fs::create_dir_all(&staged).map_err(|e| format!("{}: {e}", extra.what))?;
+        // What the archive says it holds, before anything is written: an
+        // entry naming an absolute path or climbing out with `..` would put
+        // a file wherever it liked, and this one is unpacked next door to
+        // another program's data.
+        if !names_stay_inside(&tmp) {
+            return Err(format!(
+                "{}: the archive names a path outside itself",
+                extra.what
+            ));
+        }
         if !unpack(&tmp, &staged) {
             return Err(format!("{}: could not be unpacked", extra.what));
         }
@@ -109,6 +119,50 @@ fn move_into(from: &Path, to: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// True when every name in the archive stays inside it.
+///
+/// The unpacking tools mostly refuse a traversing entry themselves, but they
+/// are three different programs chosen by whatever is installed, and the
+/// destination is beside RetroArch's own files. Reading the list first costs
+/// one process and does not depend on which tool wins.
+///
+/// An archive whose list cannot be read at all is refused: not being able to
+/// look is not the same as having looked.
+fn names_stay_inside(archive: &Path) -> bool {
+    let listing = [
+        ("bsdtar", vec!["-tf"]),
+        ("unzip", vec!["-Z1"]),
+        ("7z", vec!["l", "-ba", "-slt"]),
+    ]
+    .iter()
+    .find_map(|(bin, args)| {
+        let out = std::process::Command::new(bin)
+            .args(args)
+            .arg(archive)
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    });
+    let Some(listing) = listing else {
+        return false;
+    };
+    listing.lines().all(|line| {
+        let name = line.strip_prefix("Path = ").unwrap_or(line).trim();
+        if name.is_empty() {
+            return true;
+        }
+        !name.starts_with('/')
+            && !name.starts_with("\\")
+            && !name.contains(':')
+            && !Path::new(name)
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+    })
 }
 
 /// Unpack a zip with whichever of the usual tools is on the machine.
@@ -179,5 +233,96 @@ mod tests {
             assert!(!e.marker.starts_with('/'), "{}", e.marker);
             assert!(!e.marker.contains(".."), "{}", e.marker);
         }
+    }
+
+    use std::io::Write;
+
+    /// Write a zip with the given entry names, using the store method so no
+    /// compressor is needed.
+    fn zip_with(path: &Path, names: &[&str]) {
+        let mut central = Vec::new();
+        let mut out = Vec::new();
+        for name in names {
+            let offset = out.len() as u32;
+            let n = name.as_bytes();
+            out.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04]);
+            out.extend_from_slice(&[10, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            out.extend_from_slice(&[0, 0, 0, 0]); // crc of nothing
+            out.extend_from_slice(&0u32.to_le_bytes()); // compressed
+            out.extend_from_slice(&0u32.to_le_bytes()); // uncompressed
+            out.extend_from_slice(&(n.len() as u16).to_le_bytes());
+            out.extend_from_slice(&0u16.to_le_bytes());
+            out.extend_from_slice(n);
+
+            central.extend_from_slice(&[0x50, 0x4b, 0x01, 0x02]);
+            central.extend_from_slice(&[20, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            central.extend_from_slice(&[0, 0, 0, 0]);
+            central.extend_from_slice(&0u32.to_le_bytes());
+            central.extend_from_slice(&0u32.to_le_bytes());
+            central.extend_from_slice(&(n.len() as u16).to_le_bytes());
+            central.extend_from_slice(&0u16.to_le_bytes());
+            central.extend_from_slice(&0u16.to_le_bytes());
+            central.extend_from_slice(&0u16.to_le_bytes());
+            central.extend_from_slice(&0u16.to_le_bytes());
+            central.extend_from_slice(&0u32.to_le_bytes());
+            central.extend_from_slice(&offset.to_le_bytes());
+            central.extend_from_slice(n);
+        }
+        let central_at = out.len() as u32;
+        let count = names.len() as u16;
+        out.extend_from_slice(&central);
+        out.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06]);
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&count.to_le_bytes());
+        out.extend_from_slice(&count.to_le_bytes());
+        out.extend_from_slice(&(central.len() as u32).to_le_bytes());
+        out.extend_from_slice(&central_at.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        std::fs::File::create(path)
+            .expect("create")
+            .write_all(&out)
+            .expect("write");
+    }
+
+    fn tmp(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("omacrt-{}-{name}", std::process::id()))
+    }
+
+    #[test]
+    fn an_ordinary_archive_is_accepted() {
+        let p = tmp("good.zip");
+        zip_with(
+            &p,
+            &[
+                "dolphin-emu/Sys/codehandler.bin",
+                "dolphin-emu/Sys/GC/font.bin",
+            ],
+        );
+        assert!(names_stay_inside(&p));
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn an_archive_that_climbs_out_is_refused() {
+        for bad in [
+            "../../../../tmp/escaped.txt",
+            "/etc/absolute.txt",
+            "dolphin-emu/../../escaped",
+        ] {
+            let p = tmp("evil.zip");
+            zip_with(&p, &["dolphin-emu/Sys/codehandler.bin", bad]);
+            assert!(!names_stay_inside(&p), "{bad} was accepted");
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+
+    /// A file no tool can list is not an empty archive.
+    #[test]
+    fn an_unreadable_archive_is_refused() {
+        let p = tmp("junk.zip");
+        std::fs::write(&p, b"not a zip at all").expect("write");
+        assert!(!names_stay_inside(&p));
+        let _ = std::fs::remove_file(&p);
     }
 }

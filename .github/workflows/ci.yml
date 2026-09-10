@@ -11,6 +11,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Every job here reads the repository and writes nothing back. Saying so
+# means the token these jobs are handed cannot do anything else, whatever
+# the repository's default happens to be.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
@@ -104,7 +110,7 @@ jobs:
             sleep 15
           done
           sudo apt-get install -y shellcheck
-          shellcheck -S warning bin/* scripts/*.sh || true
+          shellcheck -S warning bin/* scripts/*.sh
 
   advisories:
     name: no new advisory against a locked crate
@@ -133,6 +139,13 @@ jobs:
             sleep 15
           done
           sudo apt-get install -y --no-install-recommends qt6-declarative-dev-tools
+          # Advisory, and it says so rather than pretending: the QML here
+          # is written against Quickshell and Omarchy's own modules, which
+          # cannot be installed on a runner, so every unresolved type
+          # produces a warning and qmllint exits non-zero for reasons that
+          # have nothing to do with this code. What it still catches, and
+          # what this step is for, is a syntax error, which shows up in the
+          # output above whatever else it says.
           qmllint plugin/*.qml plugin/library/*.qml || true
 
   python:

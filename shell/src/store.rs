@@ -16,7 +16,26 @@
 
 use std::fs;
 use std::io::Write;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+
+/// A file only its owner can read. What this project writes is a person's
+/// settings, their appointments, the captions of their photographs and the
+/// names of what they play, and the default mode is whatever the umask
+/// happens to be, which on a common `022` is readable by everybody on the
+/// machine.
+const OWNER_ONLY_FILE: u32 = 0o600;
+/// The same for a directory, so a file inside one cannot be reached even
+/// when its own mode is missed.
+const OWNER_ONLY_DIR: u32 = 0o700;
+
+/// Create `dir` and everything above it, and make sure `dir` itself is
+/// private. Directories above it are left as they are: they are
+/// `~/.config` and its like, and they belong to the person, not to us.
+pub fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dir)?;
+    fs::set_permissions(dir, fs::Permissions::from_mode(OWNER_ONLY_DIR))
+}
 
 /// Where the backup of `path` lives.
 fn backup_path(path: &Path) -> PathBuf {
@@ -30,9 +49,27 @@ fn backup_path(path: &Path) -> PathBuf {
 /// The temporary file is created in the same directory as the target, since a
 /// rename across filesystems is not atomic (and not even possible).
 pub fn save(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    save_with_mode(path, contents, None)
+}
+
+/// The same, for a file whose contents are nobody else's business: it is
+/// created `0600` and its directory `0700`, rather than inheriting whatever
+/// the umask allows.
+pub fn save_private(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    save_with_mode(path, contents, Some(OWNER_ONLY_FILE))
+}
+
+fn save_with_mode(
+    path: &Path,
+    contents: impl AsRef<[u8]>,
+    mode: Option<u32>,
+) -> std::io::Result<()> {
     let contents = contents.as_ref();
     if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
+        match mode {
+            Some(_) => create_private_dir(dir)?,
+            None => fs::create_dir_all(dir)?,
+        }
     }
     // Keep the copy that is about to be replaced, but never overwrite a good
     // backup with a file we have not managed to replace yet.
@@ -41,7 +78,14 @@ pub fn save(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     }
     let tmp = temp_beside(path);
     {
-        let mut f = fs::File::create(&tmp)?;
+        // The mode goes on at creation, not after: a file that is briefly
+        // world readable has already been read by anybody watching.
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        if let Some(m) = mode {
+            opts.mode(m);
+        }
+        let mut f = opts.open(&tmp)?;
         f.write_all(contents)?;
         f.flush()?;
         // Ask the filesystem to put the bytes on the disk before the rename,
@@ -120,5 +164,33 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().contains(".tmp"))
             .collect();
         assert!(leftovers.is_empty(), "temporary files left: {leftovers:?}");
+    }
+
+    use std::os::unix::fs::PermissionsExt;
+
+    fn mode_of(p: &Path) -> u32 {
+        fs::metadata(p).expect("stat").permissions().mode() & 0o777
+    }
+
+    /// The umask decides the mode of a file created without one, and a
+    /// common `022` leaves a settings file readable by everybody on the
+    /// machine. `save_private` does not ask the umask.
+    #[test]
+    fn a_private_save_is_owner_only() {
+        let dir = std::env::temp_dir().join(format!("omacrt-store-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let file = dir.join("inner").join("secret.toml");
+        save_private(&file, b"key = \"nobody else's\"\n").expect("save");
+        assert_eq!(mode_of(&file), 0o600, "the file is readable by others");
+        assert_eq!(
+            mode_of(file.parent().expect("parent")),
+            0o700,
+            "the directory is traversable by others"
+        );
+        // A second write keeps the mode, and the backup it makes inherits it.
+        save_private(&file, b"key = \"still nobody else's\"\n").expect("save again");
+        assert_eq!(mode_of(&file), 0o600);
+        assert_eq!(mode_of(&backup_path(&file)), 0o600, "the backup is open");
+        let _ = fs::remove_dir_all(&dir);
     }
 }

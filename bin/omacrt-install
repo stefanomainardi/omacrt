@@ -17,13 +17,33 @@
 #                                      OMACRT_CONNECTOR (default HDMI-A-1)
 set -euo pipefail
 
-repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/.." && pwd)"
+# Two layouts. In a checkout this script sits in `bin/` and everything it
+# installs is built under `shell/target/release`. Installed from a package it
+# sits in `/usr/share/omacrt/` beside the plugin sources, the binaries are
+# already in `/usr/bin`, and there is no source tree to build: computing the
+# repository root as the parent directory would make it `/usr/share` and the
+# run would stop at the missing binary check.
+packaged=0
+if [ ! -d "$repo/shell" ] && [ -d "$here/plugin" ]; then
+  packaged=1
+  repo="$here"
+fi
 plugin_id="io.github.stefanomainardi.omacrt"
 library_id="${plugin_id}.library"
 bin_dir="${HOME}/.local/bin"
 plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
 library_dir="${HOME}/.config/omarchy/plugins/${library_id}"
 build=1
+# The status line the run ends on, from wherever the binary actually is.
+say_status() {
+  if [ "$packaged" = 1 ]; then
+    "$built_dir/omacrt" status || true
+  else
+    "$bin_dir/omacrt" status || true
+  fi
+}
 # The Television entry in the Omarchy menu. Omarchy reads
 # ~/.config/omarchy/extensions/omarchy-menu.jsonc for exactly this, so the
 # rows go in there between two markers: nothing patched, nothing forked, and
@@ -156,10 +176,14 @@ for arg in "$@"; do
       # Everything this installer put in place, taken back out. The user's
       # games, configuration and cache are never touched.
       menu_remove
-      echo "== removing the binaries from $bin_dir"
-      for b in omacrt omacrt-shell omacrt-display omacrt-pick; do
-        rm -f "$bin_dir/$b"
-      done
+      if [ "$packaged" = 1 ]; then
+        echo "== the binaries belong to the package; remove it with pacman"
+      else
+        echo "== removing the binaries from $bin_dir"
+        for b in omacrt omacrt-shell omacrt-display omacrt-pick; do
+          rm -f "$bin_dir/$b"
+        done
+      fi
       echo "== removing the plugins"
       if command -v omarchy >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
         echo "note: the session is locked; run this again unlocked to remove the plugins"
@@ -192,26 +216,53 @@ for arg in "$@"; do
   esac
 done
 
+if [ "$packaged" = 1 ]; then
+  build=0
+fi
+
 if [ "$build" = 1 ]; then
   echo "== building (cargo build --release)"
   (cd "$repo/shell" && cargo build --release)
 fi
 
+# Where the built things are: the package puts them on the PATH, a checkout
+# leaves them under the target directory.
+if [ "$packaged" = 1 ]; then
+  # The package's own binaries, not whatever an older manual install left
+  # earlier on the PATH.
+  if [ -x /usr/bin/omacrt ]; then
+    built_dir=/usr/bin
+  else
+    built_dir="$(dirname "$(command -v omacrt || echo /usr/bin/omacrt)")"
+  fi
+  picker="$here/omacrt-pick"
+else
+  built_dir="$repo/shell/target/release"
+  picker="$repo/bin/omacrt-pick"
+fi
+
 for b in omacrt omacrt-shell omacrt-display; do
-  [ -x "$repo/shell/target/release/$b" ] || { echo "missing $repo/shell/target/release/$b" >&2; exit 1; }
+  [ -x "$built_dir/$b" ] || { echo "missing $built_dir/$b" >&2; exit 1; }
 done
+[ -f "$picker" ] || { echo "missing $picker" >&2; exit 1; }
 
 # Before anything new goes in, the old binaries are moved aside. The old
 # plugin folders wait for the lock check below.
 legacy_retire_bin
 
-echo "== installing binaries into $bin_dir"
-mkdir -p "$bin_dir"
-install -m 755 "$repo/shell/target/release/omacrt" "$bin_dir/omacrt"
-install -m 755 "$repo/shell/target/release/omacrt-shell" "$bin_dir/omacrt-shell"
-install -m 755 "$repo/shell/target/release/omacrt-display" "$bin_dir/omacrt-display"
-# The desktop picker: a script, not a binary, but it belongs beside them.
-install -m 755 "$repo/bin/omacrt-pick" "$bin_dir/omacrt-pick"
+if [ "$packaged" = 1 ]; then
+  # The package owns /usr/bin; only the plugins and the menu entry are this
+  # script's business there.
+  echo "== the binaries come from the package in $built_dir"
+else
+  echo "== installing binaries into $bin_dir"
+  mkdir -p "$bin_dir"
+  install -m 755 "$built_dir/omacrt" "$bin_dir/omacrt"
+  install -m 755 "$built_dir/omacrt-shell" "$bin_dir/omacrt-shell"
+  install -m 755 "$built_dir/omacrt-display" "$bin_dir/omacrt-display"
+  # The desktop picker: a script, not a binary, but it belongs beside them.
+  install -m 755 "$picker" "$bin_dir/omacrt-pick"
+fi
 case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) echo "note: $bin_dir is not in PATH" ;;
@@ -231,7 +282,7 @@ if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 
   if [ -d "${HOME}/.config/omarchy/plugins/${legacy_plugin_id}" ]; then
     echo "note: the plugins under the old name are still enabled until then"
   fi
-  "$bin_dir/omacrt" status || true
+  say_status
   exit 0
 fi
 
@@ -244,7 +295,7 @@ mkdir -p "$plugin_dir/bin"
 for f in "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$repo/plugin/README.md"; do
   [ -f "$f" ] && install -m 644 "$f" "$plugin_dir/$(basename "$f")"
 done
-install -m 755 "$repo/shell/target/release/omacrt" "$plugin_dir/bin/omacrt"
+install -m 755 "$built_dir/omacrt" "$plugin_dir/bin/omacrt"
 
 # The library overlay is a second plugin (kind overlay) the panel summons.
 echo "== installing the library overlay into $library_dir"
@@ -274,5 +325,5 @@ sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
 fi
 
-"$bin_dir/omacrt" status || true
+say_status
 echo "done. Try: omacrt on"

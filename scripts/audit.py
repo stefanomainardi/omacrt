@@ -15,6 +15,8 @@ reason written next to it. Anything else fails the run.
 import json
 import re
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -34,6 +36,10 @@ ACCEPTED = {
 }
 
 OSV = "https://api.osv.dev/v1/querybatch"
+# The database is asked again before the run is given up on. A check that
+# passes when it could not reach the database is not a check.
+ATTEMPTS = 3
+BACKOFF_SECONDS = 5
 
 
 def locked(lock: Path) -> list[tuple[str, str]]:
@@ -59,10 +65,37 @@ def advisories(packages: list[tuple[str, str]]) -> list[tuple[str, str, str]]:
         data=json.dumps({"queries": queries}).encode(),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(request, timeout=60) as answer:
-        results = json.load(answer).get("results", [])
+    last = None
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as answer:
+                body = json.load(answer)
+            break
+        except Exception as why:  # network, timeout, or a body that is not JSON
+            last = why
+            if attempt < ATTEMPTS:
+                print(
+                    f"advisory database attempt {attempt} failed ({why}); "
+                    f"trying again in {BACKOFF_SECONDS}s",
+                    file=sys.stderr,
+                )
+                time.sleep(BACKOFF_SECONDS)
+    else:
+        raise RuntimeError(f"the advisory database could not be reached: {last}")
+
+    results = body.get("results")
+    if not isinstance(results, list):
+        raise RuntimeError(f"the advisory database answered without results: {body!r}")
+    # One answer per question, or the answers do not line up with the crates
+    # they are about and `zip` would quietly drop the rest.
+    if len(results) != len(packages):
+        raise RuntimeError(
+            f"asked about {len(packages)} crates and got {len(results)} answers"
+        )
     found = []
     for (name, version), result in zip(packages, results):
+        if not isinstance(result, dict):
+            raise RuntimeError(f"{name} {version}: the answer is not an object")
         for vuln in result.get("vulns") or []:
             found.append((vuln.get("id", "?"), name, version))
     return found
@@ -78,9 +111,11 @@ def main() -> int:
     print(f"{len(packages)} crates locked")
     try:
         found = advisories(packages)
-    except Exception as why:  # a network that is not there is not a failure
-        print(f"could not reach the advisory database: {why}", file=sys.stderr)
-        return 0
+    except Exception as why:
+        # A run that could not ask is not a run that found nothing. Saying so
+        # and returning success is how a green tick comes to mean nothing.
+        print(f"the advisory check did not run: {why}", file=sys.stderr)
+        return 2
 
     unexpected = []
     for advisory, name, version in sorted(found):

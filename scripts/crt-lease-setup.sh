@@ -14,8 +14,17 @@ conn="${2:-HDMI-A-1}"
 case "$conn" in
   *[!A-Za-z0-9-]*|"") echo "not a connector name: $conn" >&2; exit 1 ;;
 esac
-[ -e "/sys/class/drm/card"*"-$conn" ] || { echo "no such connector: $conn" >&2; exit 1; }
-card="$(basename "$(dirname "$(readlink -f /sys/class/drm/card*-"$conn")")")"
+# `[ -e ... ]` with a glob in it takes the first match as its only argument
+# and fails outright on a machine with two cards, so the match is resolved
+# first and then counted.
+sysfs=""
+for candidate in /sys/class/drm/card*-"$conn"; do
+  [ -e "$candidate" ] || continue
+  sysfs="$candidate"
+  break
+done
+[ -n "$sysfs" ] || { echo "no such connector: $conn" >&2; exit 1; }
+card="$(basename "$(dirname "$(readlink -f "$sysfs")")")"
 minor="${card#card}"
 dbg="/sys/kernel/debug/dri/$minor/$conn"
 status="/sys/class/drm/$card-$conn/status"

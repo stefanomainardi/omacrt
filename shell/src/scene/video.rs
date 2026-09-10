@@ -154,7 +154,8 @@ impl Scene {
         // Through the store: this is read, changed and written back, and the
         // CLI writes it too, so a crash between the truncate and the write
         // used to lose the whole list.
-        if let Err(e) = omacrt_shell::store::save(&path, lines.join("\n") + "\n") {
+        // What somebody has been watching and how far they got.
+        if let Err(e) = omacrt_shell::store::save_private(&path, lines.join("\n") + "\n") {
             self.message = Some((format!("watch later: {e}"), self.now + 3.0));
             return;
         }

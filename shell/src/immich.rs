@@ -29,13 +29,37 @@ impl Config {
     /// Read `immich.toml` from the configuration directory. Absent means the
     /// photo frame is simply not set up, which is not an error.
     pub fn load(config_dir: &Path) -> Option<Self> {
-        let text = std::fs::read_to_string(config_dir.join("immich.toml")).ok()?;
+        let path = config_dir.join("immich.toml");
+        let text = std::fs::read_to_string(&path).ok()?;
+        warn_if_readable(&path);
         let mut cfg: Config = toml::from_str(&text).ok()?;
         cfg.url = cfg.url.trim_end_matches('/').to_string();
         if cfg.url.is_empty() || cfg.key.is_empty() {
             return None;
         }
         Some(cfg)
+    }
+}
+
+/// Say so when the file holding the key can be read by somebody else.
+///
+/// This file is written by hand, so its mode is whoever wrote it and their
+/// umask. Nothing here can fix that without changing a file the person owns,
+/// but a line on the error output when it is group or world readable is the
+/// difference between a key that is exposed and a key that is exposed
+/// silently.
+fn warn_if_readable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(meta) = std::fs::metadata(path) else {
+        return;
+    };
+    let mode = meta.permissions().mode() & 0o777;
+    if mode & 0o077 != 0 {
+        eprintln!(
+            "{}: mode {:o} lets other users read your photograph server key; chmod 600 it",
+            path.display(),
+            mode
+        );
     }
 }
 
@@ -216,7 +240,9 @@ impl RawAsset {
 /// A key on a command line is readable by every process on the machine, and
 /// this one opens somebody's whole photograph collection.
 fn ask(cfg: &Config, path: &str, body: Option<&str>, out: Option<&Path>) -> Option<Vec<u8>> {
-    let mut cmd = crate::net::curl(40, 33_554_432);
+    // No redirect is followed: curl would send the key header to whatever
+    // host the redirect named. See `net::curl_no_redirect`.
+    let mut cmd = crate::net::curl_no_redirect(40, 33_554_432);
     // curl reads the key from its own standard input, not from a flag.
     cmd.args(["-K", "-"]);
     if let Some(json) = body {
@@ -411,7 +437,9 @@ pub fn prepared_path(shot: &Shot, screen_w: u32, screen_h: u32) -> Option<PathBu
 /// picture is allowed to drift.
 pub fn prepare(cfg: &Config, shot: &Shot, screen_w: u32, screen_h: u32) -> Option<PathBuf> {
     let dir = cache_dir();
-    std::fs::create_dir_all(&dir).ok()?;
+    // Somebody's photographs: the directory is theirs to read and nobody
+    // else's, whatever the umask says.
+    crate::store::create_private_dir(&dir).ok()?;
     let (fit, out_w, out_h) = prepared_size(shot, screen_w, screen_h);
     let dest = dir.join(format!("{}-{out_w}x{out_h}.png", shot.id));
     if dest.exists() {
@@ -510,7 +538,9 @@ impl Note {
             one_line(&self.ago),
             one_line(&self.people.join(", "))
         );
-        let _ = std::fs::write(Self::path(picture), text);
+        // A caption carries the place a photograph was taken and the names
+        // of the people in it, so it is written for its owner alone.
+        let _ = crate::store::save_private(&Self::path(picture), text);
     }
 
     pub fn read(picture: &Path) -> Self {

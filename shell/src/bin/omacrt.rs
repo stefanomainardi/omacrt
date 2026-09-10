@@ -2559,7 +2559,8 @@ fn main() {
                 // and every row is read back as something to open.
                 let title = title.replace(['\t', '\n', '\r'], " ");
                 text.push_str(&format!("{target}\t{title}\n"));
-                omacrt_shell::store::save(&path, text).unwrap_or_else(|e| die(&e.to_string()));
+                omacrt_shell::store::save_private(&path, text)
+                    .unwrap_or_else(|e| die(&e.to_string()));
                 println!("kept for later: {target}");
             } else {
                 let line = format!("watch {target}");

@@ -31,20 +31,24 @@ install="$pkgname.install"
 prepare() {
   cd "$pkgname-$pkgver/shell"
   export RUSTUP_TOOLCHAIN=stable
-  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')" || cargo fetch
+  # No fallback: without --locked a build can resolve a different dependency
+  # set from the one the release was tested with, which is the opposite of
+  # what a package is for. A lock file that needs changing is a change to
+  # commit, not something to paper over at build time.
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 
 build() {
   cd "$pkgname-$pkgver/shell"
   export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
-  cargo build --release --frozen || cargo build --release
+  cargo build --release --frozen
 }
 
 check() {
   cd "$pkgname-$pkgver/shell"
   export RUSTUP_TOOLCHAIN=stable
   # The suite that does not need a television.
-  cargo test --release --frozen || cargo test --release
+  cargo test --release --frozen
 }
 
 package() {
@@ -70,7 +74,23 @@ package() {
   install -Dm755 bin/omacrt-install \
     "$pkgdir/usr/share/omacrt/omacrt-install"
 
+  # The Television rows the installer merges into Omarchy's menu extension
+  # file. Without them the packaged installer has nothing to add.
+  install -Dm644 menu/omarchy-menu.jsonc \
+    "$pkgdir/usr/share/omacrt/menu/omarchy-menu.jsonc"
+
+  # The picker is a script rather than a build product, and the packaged
+  # installer needs it beside itself.
+  install -Dm755 bin/omacrt-pick "$pkgdir/usr/share/omacrt/omacrt-pick"
+
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  # The wordmark's letterforms are Omarchy's, MIT, and MIT asks that its
+  # notice travel with them. The binary carries the letterforms, so the
+  # package carries the notice.
+  install -Dm644 shell/assets/LICENSE.omarchy \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.omarchy"
+  install -Dm644 LICENSE-SCOPE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE-SCOPE.md"
+  install -Dm644 THIRD-PARTY.md "$pkgdir/usr/share/licenses/$pkgname/THIRD-PARTY.md"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
   install -Dm644 SECURITY.md "$pkgdir/usr/share/doc/$pkgname/SECURITY.md"
   install -Dm644 CHANGELOG.md "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
