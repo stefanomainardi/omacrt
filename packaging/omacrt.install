@@ -9,8 +9,12 @@ omacrt is installed. Two steps are left, and both are yours to take:
        sudo systemctl edit omacrt-lease.service
      and set Environment=OMACRT_CONNECTOR=HDMI-A-2
 
-  2. install the bar plugin into your own session (not as root):
+  2. set up your own session (not as root):
        /usr/share/omacrt/omacrt-install --no-build
+
+     On Omarchy that installs the bar plugin, the library overlay and the
+     Television menu entry. Anywhere else it says so and installs neither:
+     the television is the same and the desktop side is the command line.
 
 Then check the setup with:  omacrt doctor
 
@@ -20,7 +24,7 @@ MSG
 post_upgrade() {
   cat <<'MSG'
 
-omacrt upgraded. If the bar plugin looks stale, refresh it with:
+omacrt upgraded. On Omarchy, if the bar plugin looks stale, refresh it with:
   /usr/share/omacrt/omacrt-install --no-build
 
 MSG

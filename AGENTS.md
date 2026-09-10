@@ -23,6 +23,13 @@ configuration for window rules. **A change that requires patching Omarchy is
 the wrong change.** That constraint is the project's argument, not a
 limitation to work around.
 
+There are two channels, and the Rust belongs to neither. Omarchy gets the
+desktop half; plain Hyprland gets the television and the command line, which
+is everything else. **Nothing in `shell/src` may come to need Omarchy**: today
+not one line calls it, every path under `~/.config/omarchy` is read with a
+fallback already in place, and it stays that way. What needs Omarchy lives in
+`plugin/` and `menu/`, where it can be absent.
+
 ## Rules that do damage when they are broken
 
 None of these is theoretical.

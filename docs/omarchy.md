@@ -1,5 +1,8 @@
 # Omarchy on the tube
 
+This is one of two channels. Without Omarchy the television is the same and
+the desktop side is the command line: see [`hyprland.md`](hyprland.md).
+
 The interesting part is not the emulator, it is what an integrated desktop
 can send to a television once the television is just another output it owns.
 

@@ -46,7 +46,9 @@ what you did check.
 - **Anything that patches Omarchy.** The whole argument of this project is
   that it did not have to. A change that needs a patched desktop, a forked
   plugin or a modified upstream file is the wrong change, and there is nearly
-  always an extension point that does the job.
+  always an extension point that does the job. Making something work without
+  Omarchy is not a patch to it and is welcome: the television has never needed
+  it, and [`docs/hyprland.md`](docs/hyprland.md) is where that half lives.
 
 ## Standards
 

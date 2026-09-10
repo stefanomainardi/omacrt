@@ -8,11 +8,11 @@
   <a href="https://omacrt.com">omacrt.com</a>
 </p>
 
-An [Omarchy](https://omarchy.org) PC plugged into a 15 kHz CRT television over
-RGB SCART, playing retro games the way they were drawn: native lines, native
-refresh, real scanlines, no scaler in between. A launcher on the tube in the
-Omarchy look, a bar plugin on the desktop, and a display process that owns the
-television outright. Written in Rust, drawn at 320x240.
+A PC plugged into a 15 kHz CRT television over RGB SCART, playing retro games
+the way they were drawn: native lines, native refresh, real scanlines, no
+scaler in between. A launcher on the tube, a display process that owns the
+television outright, and on [Omarchy](https://omarchy.org) a bar plugin and a
+menu entry on the desktop as well. Written in Rust, drawn at 320x240.
 
 <p align="center">
   <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
@@ -47,10 +47,14 @@ invites the experiments the big frontends never bothered with.
 > real television in a real living room. If a codebase built that way is not
 > for you, no hard feelings: there are many other repositories.
 >
-> **This project is for Omarchy.** It leans on Omarchy's shell, bar, theme
-> files, plugins and music player on purpose. It is not a generic Linux CRT
-> frontend and will not become one. If Omarchy is not your thing, this is not
-> either.
+> **This project is built for Omarchy and runs on plain Hyprland.** The
+> television, the launcher, the timings and the whole command line need
+> Hyprland and nothing else. The bar widget, the library overlay and the
+> Television menu entry are Omarchy plugins, and without Omarchy there is
+> the command line in their place. It is not a generic Linux CRT frontend
+> and will not become one: what it will not do is pretend the desktop half
+> is the whole thing. [`docs/hyprland.md`](docs/hyprland.md) is the second
+> channel.
 >
 > **This project is about preservation, not piracy.** It ships no games, no
 > BIOS files and no copyrighted material, and it links to none. It is a
@@ -117,7 +121,7 @@ and pad bindings: [`docs/input.md`](docs/input.md).
 
 | Part | What worked |
 | --- | --- |
-| GPU | AMD Radeon RX 7700/7800 XT, stock Omarchy kernel |
+| GPU | AMD Radeon RX 7700/7800 XT, stock kernel |
 | DAC | [RGB-Pi 2](docs/rgb-pi-2.md), HDMI in, SCART RGB out, composite sync selected over I2C, audio on SCART |
 | Television | Bang & Olufsen BeoCenter 1, RGB SCART |
 | Pads | Anything SDL knows; unknown pads get a mapping wizard on the tube |
@@ -131,7 +135,8 @@ elsewhere:
 | GPU | Any AMD card on `amdgpu`: the lease and the 15 kHz timings are kernel side, not vendor side | Nvidia's proprietary driver does not offer non-desktop connectors for leasing. Intel is untested |
 | DAC | Anything that takes HDMI and puts RGB on a SCART or VGA pin. `omacrt setup` recognises the RGB-Pi 2 from its EDID | Sync mode is set over I2C only on the RGB-Pi 2; on anything else set it on the device itself |
 | Television | Any 15 kHz set with RGB in, PAL or NTSC. The standard follows your locale, `--standard` overrides it | A VGA monitor: 15 kHz is below what it will lock onto |
-| Compositor | Hyprland 0.56 or later, which is what Omarchy ships | Anything without DRM leasing |
+| Compositor | Hyprland 0.56 or later, which is what Omarchy ships | Anything without DRM leasing. wlroots, KWin and Mutter all have the protocol, none of them has been tried |
+| Desktop | Omarchy for the bar widget, the library overlay and the menu entry | Plain Hyprland gets the television and the command line: [`docs/hyprland.md`](docs/hyprland.md) |
 
 Run `omacrt setup` first on a machine that is not this one: it lists the
 connectors with what their EDID says, picks the one the DAC is on, works out
@@ -156,10 +161,13 @@ There is an Arch package in [`packaging/`](packaging/README.md) for people who
 would rather not build by hand, and `bin/omacrt-install --uninstall`
 (plus `--uninstall-system` as root) puts everything back.
 
-Requirements: Omarchy with Hyprland 0.56 or later (the Lua configuration),
-RetroArch with libretro cores, mpv, cliamp (a terminal music player), yt-dlp
-for YouTube, ffmpeg, curl, a stable Rust toolchain. `omacrt doctor`
-tells what is missing.
+Requirements, and the distribution is not one of them: an AMD card on
+`amdgpu`, Hyprland 0.56 or later (the Lua configuration), systemd for the boot
+time override, RetroArch with libretro cores, mpv, cliamp (a terminal music
+player), yt-dlp for YouTube, ffmpeg, curl, a stable Rust toolchain. What
+decides whether a machine can run this is the card, the compositor and the
+DAC, not what is on the rest of the disk. `omacrt doctor` says which of them
+this machine has, in its own words, before anything is bought.
 
 After `--system` the tube is handed over at every boot, and the first boot
 after it is when the handover starts working: Hyprland decides which
@@ -198,7 +206,7 @@ which is how every screenshot and video in this repository was made.
 | `bin/omacrt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
-| `docs/` | The 15 kHz study, what is on the tube screen by screen, what Omarchy lends it, hardware notes, systems and video policy, controllers, CLI, troubleshooting |
+| `docs/` | The 15 kHz study, what is on the tube screen by screen, what Omarchy lends it, the same without Omarchy, hardware notes, systems and video policy, controllers, CLI, troubleshooting |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
 | `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |

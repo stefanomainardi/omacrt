@@ -7,6 +7,56 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- A second channel: OmaCRT runs on plain Hyprland. The television, the
+  launcher, the timings and the whole command line never needed Omarchy;
+  what needed it was the bar widget, the library overlay and the Television
+  menu entry, which are its plugins. Without it the installer writes none of
+  them, says so, and points at `docs/hyprland.md`, which carries the
+  keybindings that replace them.
+- Four palettes compiled into the launcher, so the Style screen offers a
+  choice on a machine with no desktop themes to read: Tokyo Night, a green
+  phosphor monitor, an amber one, and a television.
+- `omacrt doctor` asks the four questions that decide whether a machine can
+  drive a television at all, before a DAC is bought: which driver the card is
+  on, whether the compositor offers DRM leasing and for which connector,
+  whether systemd is there for the boot unit, and whether debugfs is mounted.
+  Install hints come from `/etc/os-release`, so Fedora is told `dnf` and
+  Debian `apt` rather than `pacman`.
+- In a terminal, `doctor` is the launcher's own power on self test: the
+  wordmark cut out of the dark by the same laser the boot screen uses, in
+  characters, advancing as each check answers. Under it the report: the
+  timings drawn as a diagram with the real numbers, the card's outputs and
+  what each is for, and the DAC's lock as a lamp. Piped, redirected,
+  `NO_COLOR`, `TERM=dumb` or `--plain`, it prints the lines it always did,
+  and the exit code is unchanged.
+- `omacrt setup` shows that same map and lets the arrow keys choose the
+  output, instead of printing a list and guessing.
+- `omacrt-display globals` reports what the compositor offers for leasing
+  without taking a lease, so it is safe with the television running.
+
+### Fixed
+
+- `doctor` no longer reports `connector handed over` as a failure on a
+  machine where the tube is working. A non-desktop connector still appears in
+  `hyprctl monitors all`, marked disabled, and being listed was read as the
+  compositor still holding it.
+- `doctor` no longer reports debugfs as missing. It looked inside a directory
+  that only root can open.
+- The launcher no longer installs five Hyprland window rules in a leased
+  session, where no window they describe can exist.
+- `off` no longer writes `misc:on_focus_under_fullscreen = 1` into a session
+  that never had it. Only a value this project saved is put back.
+- The one time cleanup of what versions up to 0.2.0 left on the compositor
+  runs once and is remembered, instead of on every `off` and every login.
+
+### Changed
+
+- cliamp is not Omarchy's music player. It is `bjarneo/cliamp`, found on
+  `PATH`, and four places said otherwise, including the message the Music
+  screen shows when it is missing.
+
 ### Changed
 
 - The television's connector is found whoever made the DAC. Detection asked

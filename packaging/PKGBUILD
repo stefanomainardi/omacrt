@@ -9,7 +9,7 @@
 pkgname=omacrt
 pkgver=0.4.2
 pkgrel=1
-pkgdesc="An Omarchy edition for retro gaming on 15 kHz CRT televisions"
+pkgdesc="Retro gaming on a real 15 kHz CRT television, from Hyprland or Omarchy"
 arch=('x86_64')
 url="https://github.com/stefanomainardi/omacrt"
 license=('MIT')
