@@ -243,4 +243,6 @@ is not here at all: the mark in the boot and on every inner page is the
 project's own. OmaCRT is a fan project, not part of Omarchy, not endorsed by
 the Omacom Foundation, and speaks for neither.
 
-License: MIT.
+License: MIT, and it covers the pictures and the documentation as well as
+the code. Reusing the wordmark means carrying Omarchy's notice with it; see
+[`LICENSE`](LICENSE).

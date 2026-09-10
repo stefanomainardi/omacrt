@@ -4,6 +4,11 @@ What this project uses that it did not write, and under what terms. Three
 things are compiled into the binary; everything else is spoken to, read or
 fetched at run time.
 
+The project's own licence, MIT, covers the whole repository: the code, this
+documentation, and the screenshots and recordings under `docs/`. Where a
+piece below carries somebody else's copyright as well, reusing that piece
+means carrying their notice with it.
+
 ## In the binary
 
 - **The wordmark's letterforms.** `shell/assets/wordmark.txt` is a block
