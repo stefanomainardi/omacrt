@@ -58,6 +58,10 @@ you like.
 
 ## What to check first
 
+<p align="center">
+  <img src="screens/doctor-etch.gif" width="620" alt="The OmaCRT wordmark cut out of the dark by a laser in a terminal, one letter growing at a time, with a gauge below it counting the checks">
+</p>
+
 `omacrt doctor`. The first four rows are the ones that decide whether the
 machine can do this at all: the driver the card is on, whether the compositor
 offers DRM leasing and for which connector, whether systemd is here for the
@@ -66,6 +70,21 @@ before a DAC is bought.
 
 The row after them says which channel you are on, and everything below it is
 the same on both.
+
+<p align="center">
+  <img src="screens/doctor.png" width="760" alt="The doctor report: the wordmark, a BIOS line, the checks grouped by machine, television, programs, collection and housekeeping, then the modeline drawn as a diagram, the card's outputs and the DAC's lock">
+</p>
+
+The laser is not a loading bar with a costume on. It advances because a check
+answered, and when a probe is slow it waits with you. The diagram under the
+report is the modeline that is actually configured, read out of `crt.toml`:
+active, front porch, sync, back porch, for both axes.
+
+This is what the install looks like on a machine with no Omarchy:
+
+<p align="center">
+  <img src="screens/install-hyprland.png" width="720" alt="The installer saying it has put the binaries in ~/.local/bin, that there is no Omarchy so the bar widget, panel, library overlay and menu entry are not installed, and that the bindings are in docs/hyprland.md">
+</p>
 
 ## What is not promised
 

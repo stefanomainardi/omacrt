@@ -21,7 +21,9 @@ pub fn binary(cfg: &Config) -> Option<PathBuf> {
         for dir in std::env::split_paths(&path) {
             let p = dir.join(name);
             if p.is_file() {
-                return Some(p);
+                // Tidied for the eye: a PATH entry may be written with a
+                // `..` in it, and `doctor` prints this path.
+                return Some(std::fs::canonicalize(&p).unwrap_or(p));
             }
         }
     }

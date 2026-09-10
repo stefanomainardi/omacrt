@@ -262,7 +262,25 @@ it is doing.
 ```
 omacrt doctor            # what is wrong, and what has been left behind
 omacrt doctor --fix      # clear what has been left behind
+omacrt doctor --plain    # the lines, with no picture
 ```
+
+`doctor` answers, before anything else, the four questions that decide
+whether a machine can drive a television at all: which driver the card is on,
+whether the compositor offers DRM leasing and for which connector, whether
+systemd is there for the boot time override, and whether debugfs is mounted.
+They can all be answered before a DAC is bought.
+
+In a terminal it draws: the wordmark cut by the same laser the launcher's
+boot screen uses, advancing as each check answers, and then the report, with
+the configured modeline drawn as a diagram and the card's outputs as a map.
+Piped, redirected, under `NO_COLOR` or `TERM=dumb`, or with `--plain`, it
+prints the same lines it always has, and the exit code is unchanged: zero
+when everything passed.
+
+<p align="center">
+  <img src="screens/doctor.png" width="740" alt="The doctor report: the wordmark, a BIOS line, the checks grouped into machine, television, programs, collection and housekeeping, then the modeline drawn as a diagram, the card's outputs and the DAC's lock">
+</p>
 
 The survey looks for three things. An **emulator no launcher owns**: it is
 ours when its command line carries our own RetroArch configuration, which

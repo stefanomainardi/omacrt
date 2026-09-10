@@ -38,6 +38,14 @@ fi
 # leaving somebody to wonder where the widget is, is worse than saying so.
 have_omarchy=0
 command -v omarchy >/dev/null 2>&1 && have_omarchy=1
+# One piece of styling, and only in a terminal: the `==` lines are the steps,
+# and in a wall of paths they are what the eye looks for. No palette in shell:
+# the colours belong to `omacrt doctor`, which is where the setup is explained.
+bold=""; plain=""
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+  bold=$'\033[1m'; plain=$'\033[0m'
+fi
+step() { echo "${bold}== $*${plain}"; }
 plugin_id="io.github.stefanomainardi.omacrt"
 library_id="${plugin_id}.library"
 bin_dir="${HOME}/.local/bin"
@@ -103,7 +111,7 @@ if at < 0:
 sys.stdout.write(text[:at] + block + text[at:])
 ' "$menu_block" > "${menu_ext}.new"
   mv -f "${menu_ext}.new" "$menu_ext"
-  echo "== Television added to the Omarchy menu ($menu_ext)"
+  step "Television added to the Omarchy menu ($menu_ext)"
 }
 
 # What the project left behind under its old name.
@@ -119,7 +127,7 @@ legacy_retired="${HOME}/.local/share/omacrt/retired"
 retire() {  # $1 = what to move, $2 = subfolder of $legacy_retired
   [ -e "$1" ] || return 0
   mkdir -p "$legacy_retired/$2"
-  mv -f "$1" "$legacy_retired/$2/" && echo "== retired $1 to $legacy_retired/$2/"
+  mv -f "$1" "$legacy_retired/$2/" && step "retired $1 to $legacy_retired/$2/"
 }
 
 # The binaries: nothing watches ~/.local/bin, so this is safe at any time.
@@ -148,7 +156,7 @@ menu_remove() {
   [ -f "$menu_ext" ] || return 0
   menu_strip > "${menu_ext}.new"
   mv -f "${menu_ext}.new" "$menu_ext"
-  echo "== Television removed from the Omarchy menu"
+  step "Television removed from the Omarchy menu"
 }
 
 for arg in "$@"; do
@@ -162,7 +170,7 @@ for arg in "$@"; do
       case "$conn" in
         *[!A-Za-z0-9-]*|"") echo "not a connector name: $conn" >&2; exit 1 ;;
       esac
-      echo "== installing the lease setup for $conn (root)"
+      step "installing the lease setup for $conn (root)"
       install -d -m 755 /usr/local/lib/omacrt
       install -m 755 "$repo/scripts/crt-lease-setup.sh" "$repo/scripts/edid-non-desktop.py" /usr/local/lib/omacrt/
       sed "s/^Environment=OMACRT_CONNECTOR=.*/Environment=OMACRT_CONNECTOR=$conn/" "$repo/systemd/omacrt-lease.service" > /etc/systemd/system/omacrt-lease.service
@@ -171,7 +179,7 @@ for arg in "$@"; do
       # override back off the connector, which a running launcher is leasing.
       if [ -f /etc/systemd/system/omarchy-crt-lease.service ]; then
         systemctl disable omarchy-crt-lease.service >/dev/null 2>&1 || true
-        echo "== the old omarchy-crt-lease.service is disabled; it stays loaded until the next boot"
+        step "the old omarchy-crt-lease.service is disabled; it stays loaded until the next boot"
       fi
       systemctl daemon-reload
       systemctl enable --now omacrt-lease.service
@@ -187,9 +195,9 @@ for arg in "$@"; do
         menu_remove
       fi
       if [ "$packaged" = 1 ]; then
-        echo "== the binaries belong to the package; remove it with pacman"
+        step "the binaries belong to the package; remove it with pacman"
       else
-        echo "== removing the binaries from $bin_dir"
+        step "removing the binaries from $bin_dir"
         for b in omacrt omacrt-shell omacrt-display omacrt-pick; do
           rm -f "$bin_dir/$b"
         done
@@ -198,7 +206,7 @@ for arg in "$@"; do
         echo "done. Your games, settings and cache are where they were."
         exit 0
       fi
-      echo "== removing the plugins"
+      step "removing the plugins"
       if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell lock isLocked 2>/dev/null)" = "true" ]; then
         echo "note: the session is locked; run this again unlocked to remove the plugins"
       else
@@ -235,7 +243,7 @@ if [ "$packaged" = 1 ]; then
 fi
 
 if [ "$build" = 1 ]; then
-  echo "== building (cargo build --release)"
+  step "building (cargo build --release)"
   (cd "$repo/shell" && cargo build --release)
 fi
 
@@ -267,9 +275,9 @@ legacy_retire_bin
 if [ "$packaged" = 1 ]; then
   # The package owns /usr/bin; only the plugins and the menu entry are this
   # script's business there.
-  echo "== the binaries come from the package in $built_dir"
+  step "the binaries come from the package in $built_dir"
 else
-  echo "== installing binaries into $bin_dir"
+  step "installing binaries into $bin_dir"
   mkdir -p "$bin_dir"
   install -m 755 "$built_dir/omacrt" "$bin_dir/omacrt"
   install -m 755 "$built_dir/omacrt-shell" "$bin_dir/omacrt-shell"
@@ -291,7 +299,7 @@ fi
 
 if [ "$have_omarchy" = 0 ]; then
   echo
-  echo "== no Omarchy here: this install is the television and the command line"
+  step "no Omarchy here: this install is the television and the command line"
   echo "   not installed: the bar widget, the panel, the library overlay and"
   echo "   the Television entry in the desktop menu. They are Omarchy plugins"
   echo "   and there is nothing here to load them."
@@ -319,7 +327,7 @@ fi
 
 legacy_retire_plugins
 
-echo "== installing plugin into $plugin_dir"
+step "installing plugin into $plugin_dir"
 # Overwrite in place: removing the folder makes the shell drop the plugin
 # for a moment and the bar widget vanishes; changed files hot reload instead.
 mkdir -p "$plugin_dir/bin"
@@ -329,7 +337,7 @@ done
 install -m 755 "$built_dir/omacrt" "$plugin_dir/bin/omacrt"
 
 # The library overlay is a second plugin (kind overlay) the panel summons.
-echo "== installing the library overlay into $library_dir"
+step "installing the library overlay into $library_dir"
 mkdir -p "$library_dir"
 for f in "$repo/plugin/library/manifest.json" "$repo/plugin/library/"*.qml; do
   [ -f "$f" ] && install -m 644 "$f" "$library_dir/$(basename "$f")"
