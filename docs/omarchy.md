@@ -11,7 +11,7 @@ can send to a television once the television is just another output it owns.
 - **Themes.** The launcher reads Omarchy's theme colours and offers every
   installed theme; switching one blends the whole screen, icon and wordmark
   included.
-- **cliamp.** Omarchy's music player runs as a daemon and the launcher is its
+- **cliamp.** The music player runs as a daemon and the launcher is its
   face on the CRT over a Unix socket: radio through the Radio Browser
   directory it ships, Spotify, YouTube Music and the other providers set up
   once with `cliamp setup`, its spectrum analyser feeding the visualizers, its

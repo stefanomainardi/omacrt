@@ -514,23 +514,33 @@ fn compositor_fullscreen_policy(on: bool) {
             state.save();
         }
         output::hypr_eval("hl.config({ misc = { on_focus_under_fullscreen = 0 } })");
-    } else {
-        // 1 is what Omarchy sets, and what to fall back on when the tube was
-        // turned on by a version that saved nothing.
-        let back = state.previous_focus_under_fullscreen.take().unwrap_or(1);
+    } else if let Some(back) = state.previous_focus_under_fullscreen.take() {
+        // Only what was actually saved goes back. Older versions assumed 1,
+        // which is Omarchy's default and nobody else's promise: writing it
+        // into a session that never had it is changing somebody's desktop on
+        // the way out.
         state.save();
         output::hypr_eval(&format!(
             "hl.config({{ misc = {{ on_focus_under_fullscreen = {back} }} }})"
         ));
     }
-    // Always, in both directions: versions up to 0.2.0 turned this on for the
-    // whole session and never turned it off again. It makes the next window
-    // inherit the fullscreen of one that just closed, which on this desktop
-    // means the screensaver handing its own fullscreen to whatever comes back
-    // after the lock screen, on a machine that may not have had a television
-    // switched on for days. Nothing here needs it: every window on the tube is
-    // floating, pinned and sized to the output, never fullscreen.
-    output::hypr_eval("hl.config({ misc = { exit_window_retains_fullscreen = false } })");
+    // Once, ever: versions up to 0.2.0 turned this on for the whole session
+    // and never turned it off again. It makes the next window inherit the
+    // fullscreen of one that just closed, which on this desktop means the
+    // screensaver handing its own fullscreen to whatever comes back after the
+    // lock screen, on a machine that may not have had a television switched on
+    // for days. Nothing here needs it: every window on the tube is floating,
+    // pinned and sized to the output, never fullscreen.
+    //
+    // It is written once and remembered, rather than on every `off` and every
+    // login: a session that never ran those versions should not have its
+    // compositor configured by us at all.
+    let mut state = State::load();
+    if !state.legacy_fullscreen_cleared {
+        output::hypr_eval("hl.config({ misc = { exit_window_retains_fullscreen = false } })");
+        state.legacy_fullscreen_cleared = true;
+        state.save();
+    }
 }
 
 fn cmd_on(cfg: &Config, standard: Option<&str>) {

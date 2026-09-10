@@ -157,7 +157,7 @@ would rather not build by hand, and `bin/omacrt-install --uninstall`
 (plus `--uninstall-system` as root) puts everything back.
 
 Requirements: Omarchy with Hyprland 0.56 or later (the Lua configuration),
-RetroArch with libretro cores, mpv, cliamp (Omarchy's music player), yt-dlp
+RetroArch with libretro cores, mpv, cliamp (a terminal music player), yt-dlp
 for YouTube, ffmpeg, curl, a stable Rust toolchain. `omacrt doctor`
 tells what is missing.
 

@@ -125,7 +125,7 @@ impl Scene {
     pub(super) fn open_music(&mut self) {
         if !Music::available() {
             self.message = Some((
-                "cliamp not found: Omarchy's music player is needed".into(),
+                "cliamp is not installed: the music screen needs it".into(),
                 self.now + 4.0,
             ));
             return;

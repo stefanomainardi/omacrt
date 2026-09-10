@@ -1,4 +1,4 @@
-//! Music through cliamp, Omarchy's music player, running as a daemon. The
+//! Music through cliamp, a terminal music player, running as a daemon. The
 //! launcher is only a face on it: a 240p one with the pad language of the
 //! games. cliamp speaks newline delimited JSON on a Unix socket; the radio
 //! directory it ships (Radio Browser) is also queried directly for the

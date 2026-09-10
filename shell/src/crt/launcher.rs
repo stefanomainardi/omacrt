@@ -81,7 +81,12 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
     }
     // Anything of ours still running belongs to a launcher that is gone.
     super::tidy::sweep_orphans();
-    output::window_rules(output_name);
+    // Window rules are for windows on the desktop compositor. With the
+    // display process up, the launcher is a client of our own compositor on
+    // the leased connector and Hyprland will never see a window to match.
+    if !super::display::running() {
+        output::window_rules(output_name);
+    }
     let _ = std::fs::create_dir_all(state_dir());
     let log = crate::logfile::open(&state_dir().join("shell.log")).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;

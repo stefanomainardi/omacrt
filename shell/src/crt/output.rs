@@ -561,14 +561,6 @@ pub fn workspace_rule(name: &str) {
 /// Stacking among pinned windows is fixed, so raising is done with the pin
 /// itself: the game unpinned sits below the pinned launcher (still mapped,
 /// rendered and answering), pinned again it is back above. Focus follows.
-/// True when a window of this class is open on the desktop.
-pub fn window_exists(class: &str) -> bool {
-    let (ok, out) = hypr_eval(&format!(
-        "return #hl.get_windows({{ class = \"{class}\" }}) > 0 and \"yes\" or \"no\""
-    ));
-    ok && out.contains("yes")
-}
-
 pub fn raise(class: &str) -> bool {
     let game = "com.libretro.RetroArch";
     let pin_game = class != SHELL_CLASS;

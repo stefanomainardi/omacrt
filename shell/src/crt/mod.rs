@@ -391,6 +391,11 @@ pub struct State {
     /// What `misc:on_focus_under_fullscreen` was before the tube took it,
     /// so that turning the television off puts the desktop back as it was.
     pub previous_focus_under_fullscreen: Option<i64>,
+    /// Whether the one time cleanup of what versions up to 0.2.0 left on the
+    /// compositor has run. Without this the cleanup writes into somebody's
+    /// Hyprland on every `off` and every login, for ever, including sessions
+    /// that never ran those versions.
+    pub legacy_fullscreen_cleared: bool,
 }
 
 impl State {
