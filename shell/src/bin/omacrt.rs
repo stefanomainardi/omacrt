@@ -1051,6 +1051,12 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
 /// Fedora is worse than no hint.
 fn install_hint(pkg: &str) -> String {
     let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+    install_hint_for(&release, pkg)
+}
+
+/// The same, from the contents of an `os-release` file, so the mapping can be
+/// tested without one.
+fn install_hint_for(release: &str, pkg: &str) -> String {
     let field = |k: &str| -> String {
         release
             .lines()
@@ -1059,7 +1065,7 @@ fn install_hint(pkg: &str) -> String {
             .trim_matches(['=', '"', '\''].as_ref())
             .to_string()
     };
-    let ids = format!("{} {}", field("ID"), field("ID_LIKE"));
+    let ids = format!("{} {}", field("ID="), field("ID_LIKE="));
     let family = |names: &[&str]| {
         names
             .iter()
@@ -2987,5 +2993,37 @@ mod tests {
         assert_eq!(value(&args, "--connector").as_deref(), Some("HDMI-A-1"));
         assert_eq!(value(&args, "--standard"), None, "no value after it");
         assert_eq!(value(&args, "--force"), None);
+    }
+
+    /// A hint that says `pacman` on Fedora is worse than no hint, and this is
+    /// the only Arch shaped thing left in the Rust.
+    #[test]
+    fn the_install_hint_matches_the_distribution() {
+        let cases = [
+            ("ID=arch\n", "pacman -S mpv"),
+            ("ID=omarchy\nID_LIKE=arch\n", "pacman -S mpv"),
+            ("ID=cachyos\nID_LIKE=\"arch\"\n", "pacman -S mpv"),
+            ("ID=fedora\nVERSION_ID=42\n", "dnf install mpv"),
+            ("ID=nobara\nID_LIKE=\"fedora\"\n", "dnf install mpv"),
+            ("ID=debian\n", "apt install mpv"),
+            ("ID=ubuntu\nID_LIKE=debian\n", "apt install mpv"),
+            (
+                "ID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n",
+                "zypper in mpv",
+            ),
+            ("ID=alpine\n", "apk add mpv"),
+            ("ID=void\n", "xbps-install mpv"),
+            ("ID=nixos\n", "nix profile install nixpkgs#mpv"),
+        ];
+        for (release, want) in cases {
+            assert_eq!(install_hint_for(release, "mpv"), want, "for {release:?}");
+        }
+    }
+
+    /// Something nobody has heard of gets a sentence that is still true.
+    #[test]
+    fn an_unknown_distribution_is_not_guessed_at() {
+        assert_eq!(install_hint_for("ID=plan9\n", "mpv"), "install mpv");
+        assert_eq!(install_hint_for("", "mpv"), "install mpv");
     }
 }
