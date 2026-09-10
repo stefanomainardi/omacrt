@@ -136,6 +136,40 @@ pub struct Lease {
     _lease: lease::WpDrmLeaseV1,
 }
 
+/// What the desktop compositor offers for leasing, without taking anything.
+///
+/// The whole project turns on this one answer, and until now the only way to
+/// get it was to take a lease, which cannot be done while the television is
+/// running. This asks the registry and stops: is there a
+/// `wp_drm_lease_device_v1` at all, and which connectors does it name.
+///
+/// `Ok(None)` means the compositor advertises no lease device, which is the
+/// answer for a compositor that does not implement the protocol. `Ok(Some)`
+/// with an empty list means it implements it and is offering nothing, which
+/// is what a connector that has not been marked non-desktop looks like.
+pub fn offered() -> Result<Option<Vec<String>>, String> {
+    let conn = Connection::connect_to_env().map_err(|e| format!("wayland: {e}"))?;
+    let mut queue = conn.new_event_queue::<State>();
+    let qh = queue.handle();
+    let display = conn.display();
+    let _registry = display.get_registry(&qh, ());
+    let mut st = State::default();
+    for _ in 0..6 {
+        queue
+            .roundtrip(&mut st)
+            .map_err(|e| format!("roundtrip: {e}"))?;
+        if !st.devices.is_empty() && st.devices_done >= st.devices.len() {
+            break;
+        }
+    }
+    if st.devices.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        st.connectors.iter().map(|(_, _, n, _)| n.clone()).collect(),
+    ))
+}
+
 impl Lease {
     /// Ask the compositor for `want` (a connector name such as `HDMI-A-1`).
     pub fn take(want: &str) -> Result<Lease, String> {

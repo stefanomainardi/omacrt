@@ -22,7 +22,6 @@ mod photos;
 mod scene;
 mod sky;
 mod sysmon;
-mod theme;
 mod weather_sound;
 use omacrt_shell::padmap::Raw;
 use omacrt_shell::{
@@ -229,10 +228,10 @@ fn systems_path(args: &Args) -> PathBuf {
 }
 
 fn build_scene(args: &Args) -> Scene {
-    let theme_path = args.theme.clone().or_else(theme::Theme::default_path);
+    let theme_path = args.theme.clone().or_else(omacrt_shell::theme::Theme::default_path);
     let theme = theme_path
-        .and_then(|p| theme::Theme::load(&p))
-        .unwrap_or_else(theme::Theme::tokyo_night);
+        .and_then(|p| omacrt_shell::theme::Theme::load(&p))
+        .unwrap_or_else(omacrt_shell::theme::Theme::tokyo_night);
     let info = SysInfo::probe(args.w, args.h, args.hz);
     let library = library::Library::load(&systems_path(args));
     Scene::new(theme, info, args.idle, library)

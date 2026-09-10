@@ -1,7 +1,7 @@
 //! Palette read from the current Omarchy theme (`~/.config/omarchy/current/colors.toml`).
 //! Falls back to Tokyo Night when the file is missing or a key is absent.
 
-use crate::fb::{Color, parse_hex, rgb};
+use crate::colour::{Color, parse_hex, rgb};
 use std::path::{Path, PathBuf};
 
 /// An installed theme as the Style screen needs it: its name, where its
@@ -35,7 +35,7 @@ pub struct Theme {
 impl Theme {
     /// A step above the background, for the dark squares of the Mode 7 floor.
     pub fn fg_dark_floor(&self) -> Color {
-        crate::fb::lerp_color(self.bg, self.dim, 0.28)
+        crate::colour::lerp_color(self.bg, self.dim, 0.28)
     }
 
     pub fn tokyo_night() -> Self {
@@ -114,7 +114,7 @@ impl Theme {
 
     /// Linear blend between two themes, for live switching.
     pub fn blend(a: &Self, b: &Self, t: f32) -> Self {
-        let l = |x: Color, y: Color| crate::fb::lerp_color(x, y, t);
+        let l = |x: Color, y: Color| crate::colour::lerp_color(x, y, t);
         Self {
             name: if t < 0.5 {
                 a.name.clone()

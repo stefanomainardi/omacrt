@@ -5,34 +5,15 @@
 
 use crate::font8x8::FONT8X8;
 
-pub type Color = u32; // 0x00RRGGBB
-
-pub fn rgb(r: u8, g: u8, b: u8) -> Color {
-    ((r as u32) << 16) | ((g as u32) << 8) | b as u32
-}
-
-pub fn parse_hex(s: &str) -> Option<Color> {
-    let s = s.trim().trim_start_matches('#');
-    if s.len() != 6 {
-        return None;
-    }
-    u32::from_str_radix(s, 16).ok()
-}
-
-fn ch(c: Color, shift: u32) -> f32 {
-    ((c >> shift) & 0xff) as f32
-}
+// Colour lives in the library so the command line can wear the same theme.
+// Re-exported here because every drawing call in the launcher says `fb::`.
+pub use omacrt_shell::colour::{Color, lerp_color, rgb};
+use omacrt_shell::colour::ch;
 
 /// Scale a color by `a` (0.0 .. 1.0+). Values above 1.0 bloom toward white.
 pub fn scale(c: Color, a: f32) -> Color {
     let f = |v: f32| (v * a).round().clamp(0.0, 255.0) as u8;
     rgb(f(ch(c, 16)), f(ch(c, 8)), f(ch(c, 0)))
-}
-
-pub fn lerp_color(a: Color, b: Color, t: f32) -> Color {
-    let t = t.clamp(0.0, 1.0);
-    let f = |s: u32| (ch(a, s) + (ch(b, s) - ch(a, s)) * t).round() as u8;
-    rgb(f(16), f(8), f(0))
 }
 
 pub fn add(a: Color, b: Color) -> Color {

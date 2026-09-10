@@ -15,7 +15,7 @@
 //! so the sky is the same sky every evening but it was never drawn by hand.
 
 use crate::fb::{Color, Framebuffer, lerp_color, rgb, scale};
-use crate::theme::Theme;
+use omacrt_shell::theme::Theme;
 use omacrt_shell::ambient::{Kind, Reading};
 
 /// The ordered dither of every home computer that had to fake a gradient.

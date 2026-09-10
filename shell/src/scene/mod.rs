@@ -21,7 +21,7 @@ use crate::player::Player;
 use crate::profile::{PRESETS, Profile};
 use crate::settings::Settings;
 use crate::states;
-use crate::theme::Theme;
+use omacrt_shell::theme::Theme;
 use crate::videofit::{self, Conversion};
 use crate::yt;
 use std::path::{Path, PathBuf};
@@ -557,7 +557,7 @@ pub struct Scene {
     diag: Vec<(String, String)>,
     /// A game list opened from the home menu goes back to it, not to Games.
     list_from_home: bool,
-    themes: Vec<crate::theme::Installed>,
+    themes: Vec<omacrt_shell::theme::Installed>,
     /// Theme transition: (from, to, start time).
     theme_blend: Option<(Theme, Theme, f64)>,
     launching: Option<Launch>,

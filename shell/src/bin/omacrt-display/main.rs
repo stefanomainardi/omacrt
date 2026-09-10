@@ -29,6 +29,24 @@ impl AsFd for Leased {
 impl Device for Leased {}
 impl ControlDevice for Leased {}
 
+/// Ask the desktop compositor what it offers for leasing, and say so on one
+/// line. Takes nothing, so it is safe with the television running: `doctor`
+/// runs it to answer the question the whole project turns on.
+///
+/// `lease: none` is a compositor without the protocol. `lease: offered` with
+/// no names is a compositor that has it and is offering nothing.
+fn globals() {
+    match lease::offered() {
+        Ok(None) => println!("lease: none"),
+        Ok(Some(names)) if names.is_empty() => println!("lease: offered"),
+        Ok(Some(names)) => println!("lease: offered {}", names.join(" ")),
+        Err(e) => {
+            eprintln!("lease: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(|s| s.as_str()) == Some("props") {
@@ -41,8 +59,12 @@ fn main() {
         }
         return;
     }
+    if args.first().map(|s| s.as_str()) == Some("globals") {
+        globals();
+        return;
+    }
     if args.first().map(|s| s.as_str()) != Some("probe") {
-        eprintln!("usage: omacrt-display run|probe|props [connector] [seconds]");
+        eprintln!("usage: omacrt-display run|probe|props|globals [connector] [seconds]");
         std::process::exit(2);
     }
     let cfg = Config::load();

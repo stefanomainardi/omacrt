@@ -12,7 +12,7 @@
 
 use crate::art::Image;
 use crate::fb::{Color, Framebuffer, lerp_color, scale};
-use crate::theme::Theme;
+use omacrt_shell::theme::Theme;
 
 pub const MODES: usize = 7;
 pub const MODE_NAMES: [&str; MODES] = [

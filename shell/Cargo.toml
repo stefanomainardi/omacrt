@@ -10,6 +10,11 @@ drm = "0.14"
 drm-ffi = "0.9"
 libc = "0.2"
 png = "0.18"
+# The terminal side of the project: `doctor` and `setup`. Only the crossterm
+# backend, since the others drag in termwiz and its colour and regex chain for
+# nothing. The layout cache is left out too: this interface solves a handful of
+# rectangles a second, not a thousand.
+ratatui = { version = "0.30", default-features = false, features = ["crossterm", "underline-color"] }
 sdl2 = "0.38"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
