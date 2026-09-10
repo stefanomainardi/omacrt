@@ -585,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "omacrt-shell"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "calloop-wayland-source",
  "chrono",

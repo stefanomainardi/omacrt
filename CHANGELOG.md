@@ -7,6 +7,12 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-10
+
+What an external audit of the public repository found, fixed. The credential
+findings are the ones to read: an authenticated request could hand its key to
+a redirecting server, and a private calendar address sat on a command line.
+
 ### Security
 
 - An authenticated request follows no redirect. curl resends a header given
@@ -721,7 +727,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.2
 [0.4.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.1
 [0.4.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.0
 [0.3.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.3.0
