@@ -566,22 +566,9 @@ fn output_lines(paint: &Paint, outs: &[Output]) -> Vec<Line<'static>> {
         Span::styled("OUTPUTS", paint.bold(paint.pal.theme.accent)),
     ])];
     for o in outs {
-        let (mark, colour, what) = match o.role {
-            Role::Tube => ("▐█▌", paint.pal.theme.bright_green, "the television"),
-            Role::Desktop => ("▐▓▌", paint.pal.theme.blue, "the desktop"),
-            Role::Free => ("▐░▌", paint.pal.theme.dim, "free"),
-            Role::Disconnected => ("▐ ▌", paint.pal.theme.dim, "nothing plugged in"),
-        };
-        out.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(mark, paint.style(colour)),
-            Span::styled(
-                format!("  {:<12}", o.name),
-                paint.style(paint.pal.theme.paper),
-            ),
-            Span::styled(format!("{:<22}", o.edid), paint.style(paint.pal.theme.dim)),
-            Span::styled(what, paint.style(colour)),
-        ]));
+        let mut spans = output_line(paint, o, false);
+        spans.insert(0, Span::raw("  "));
+        out.push(Line::from(spans));
     }
     out
 }
@@ -699,4 +686,108 @@ fn wait_for_key(actions: &[Action]) -> Option<char> {
     let _ = disable_raw_mode();
     println!();
     pressed
+}
+
+/// Choose an output by pointing at the picture rather than copying a name.
+///
+/// Returns the index chosen, or nothing when the reader gave up or there is
+/// no terminal to ask. The rows are the same map the report draws, so
+/// `setup` and `doctor` describe the machine the same way.
+pub fn pick_output(outs: &[Output], preselect: usize) -> Option<usize> {
+    if outs.is_empty() || !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return None;
+    }
+    let pal = Palette::load();
+    let paint = Paint { pal };
+    let mut sel = preselect.min(outs.len() - 1);
+    if enable_raw_mode().is_err() {
+        return None;
+    }
+    let height = outs.len() as u16 + 2;
+    let mut first = true;
+    let chosen = loop {
+        let mut lines = vec![Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                "which output is the television?",
+                paint.bold(paint.pal.theme.accent),
+            ),
+        ])];
+        for (i, o) in outs.iter().enumerate() {
+            let mut spans = output_line(&paint, o, i == sel);
+            if i == sel {
+                spans.insert(0, Span::styled("▸ ", paint.bold(paint.pal.theme.accent)));
+            } else {
+                spans.insert(0, Span::raw("  "));
+            }
+            lines.push(Line::from(spans));
+        }
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                "↑↓ or j k to move   enter to choose   esc to leave it alone",
+                paint.style(paint.pal.theme.dim),
+            ),
+        ]));
+        draw_area(&lines, height, first);
+        first = false;
+        match event::read() {
+            Ok(Event::Key(k)) if k.kind == KeyEventKind::Press => match k.code {
+                KeyCode::Up | KeyCode::Char('k') => sel = sel.saturating_sub(1),
+                KeyCode::Down | KeyCode::Char('j') => sel = (sel + 1).min(outs.len() - 1),
+                KeyCode::Enter => break Some(sel),
+                KeyCode::Esc | KeyCode::Char('q') => break None,
+                KeyCode::Char('c') if k.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                    break None;
+                }
+                _ => {}
+            },
+            Ok(_) => {}
+            Err(_) => break None,
+        }
+    };
+    let _ = disable_raw_mode();
+    print!("\x1b[{height}A");
+    chosen
+}
+
+/// One row of the output map, as spans.
+fn output_line(paint: &Paint, o: &Output, selected: bool) -> Vec<Span<'static>> {
+    let (mark, colour, what) = match o.role {
+        Role::Tube => ("▐█▌", paint.pal.theme.bright_green, "the television"),
+        Role::Desktop => ("▐▓▌", paint.pal.theme.blue, "the desktop"),
+        Role::Free => ("▐░▌", paint.pal.theme.dim, "free"),
+        Role::Disconnected => ("▐ ▌", paint.pal.theme.dim, "nothing plugged in"),
+    };
+    let name = if selected {
+        paint.bold(paint.pal.theme.paper)
+    } else {
+        paint.style(paint.pal.theme.paper)
+    };
+    vec![
+        Span::styled(mark, paint.style(colour)),
+        Span::styled(format!("  {:<12}", o.name), name),
+        Span::styled(format!("{:<22}", o.edid), paint.style(paint.pal.theme.dim)),
+        Span::styled(what, paint.style(colour)),
+    ]
+}
+
+/// Draw a reserved area of `height` lines in place, the way the self test
+/// draws its own.
+fn draw_area(lines: &[Line<'static>], height: u16, first: bool) {
+    use std::io::Write;
+    let mut out = String::new();
+    if !first {
+        out.push_str(&format!("\x1b[{height}A"));
+    }
+    for i in 0..height as usize {
+        out.push_str("\r\x1b[2K");
+        if let Some(l) = lines.get(i) {
+            out.push_str(&line_text(l));
+        }
+        out.push_str("\r\n");
+    }
+    let mut stdout = stdout().lock();
+    let _ = stdout.write_all(out.as_bytes());
+    let _ = stdout.flush();
 }

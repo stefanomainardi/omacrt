@@ -902,8 +902,9 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
         );
     }
 
-    // The connector: what was asked for, else a known DAC, else a connected
-    // HDMI output the desktop is not already drawing on.
+    // The connector: what was asked for, else the reader pointing at the map,
+    // else a known DAC, else a connected HDMI output the desktop is not
+    // already drawing on.
     let chosen = match want.as_deref() {
         Some(name) => match all.iter().find(|c| c.name == name || c.drm == name) {
             Some(c) => c.clone(),
@@ -923,7 +924,18 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
                         .map(|m| !m["disabled"].as_bool().unwrap_or(true))
                         .unwrap_or(false)
             });
-            match by_dac.or(free_hdmi) {
+            let guess = by_dac.or(free_hdmi);
+            // In a terminal, show the map and let the reader point at the
+            // right one: which cable goes where is a question about the back
+            // of a machine, and a picture answers it better than a name does.
+            let map = output_map(guess);
+            let preselect = guess
+                .and_then(|g| map.iter().position(|o| o.name == g.name))
+                .unwrap_or(0);
+            let picked = term::rich::pick_output(&map, preselect)
+                .and_then(|i| map.get(i))
+                .and_then(|o| all.iter().find(|c| c.name == o.name));
+            match picked.or(guess) {
                 Some(c) => c.clone(),
                 None => {
                     println!(
