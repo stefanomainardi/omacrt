@@ -87,8 +87,10 @@ key follows that pattern. Never commit one, never print one, never pass one as
 an argument.
 
 **Never name the DAC's proprietary video feature.** Public wording for what
-this project is: "an Omarchy version for retro gaming on CRT". Never "recorded
-from a CRT", and no personal library figures in README prose.
+this project is: retro gaming on a real 15 kHz CRT television from an Omarchy
+desktop. It runs on Omarchy; it is not a version of it, and calling it one
+invites the reader to look for a distribution or a fork. Never "recorded from
+a CRT", and no personal library figures in README prose.
 
 **No attribution lines in commit messages or pull request descriptions.**
 
