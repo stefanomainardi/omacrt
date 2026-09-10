@@ -175,7 +175,9 @@ pub struct Config {
 #[serde(default)]
 pub struct Output {
     /// DRM connector (`HDMI-A-1` or `card1-HDMI-A-1`); empty picks the first
-    /// connected HDMI output whose EDID names a Mortaca (RGB-Pi 2) device.
+    /// connected HDMI output the desktop is not using as a monitor, which
+    /// is what the boot time override makes of a DAC's connector whoever
+    /// made it.
     pub connector: String,
     /// Hyprland position of the CRT output.
     pub position: String,
@@ -296,7 +298,10 @@ pub const DEFAULT_CONFIG: &str = r#"# omacrt configuration. Every key is optiona
 
 [output]
 # DRM connector of the CRT DAC (HDMI-A-1 or card1-HDMI-A-1). Empty = the first
-# connected HDMI output whose EDID names a Mortaca (RGB-Pi 2) device.
+# connected HDMI output the desktop is not using as a monitor. That is what
+# the boot time override makes of the DAC's connector, so a DAC of any make
+# is found this way; the name is only needed when two spare outputs are
+# connected and the wrong one is chosen.
 connector = ""
 # Hyprland position of the CRT output.
 position = "auto"

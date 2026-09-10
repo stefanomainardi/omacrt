@@ -90,18 +90,94 @@ pub fn connectors() -> Vec<Connector> {
     out
 }
 
-/// The connector named in the config, else the first connected HDMI output
-/// with a Mortaca EDID, else the first connected HDMI output.
+/// Known DACs, by the product name their EDID carries. The first field is
+/// what shows up in `edid_name`, uppercased; the second is what to call it;
+/// the third says whether the sync mode can be set over I2C, which is a
+/// thing only the RGB-Pi 2 does so far.
+///
+/// The list is a convenience, not the way a DAC is found: [`choose`] finds
+/// one of any make once its connector is marked non-desktop. What the list
+/// buys is a name in `setup` and `status`, and a right answer before the
+/// boot time override is installed.
+pub const KNOWN_DACS: &[(&str, &str, bool)] = &[
+    ("MORTACA", "RGB-Pi 2", true),
+    ("RGB-PI", "RGB-Pi", false),
+    ("RETROTINK", "RetroTINK", false),
+    ("OSSC", "OSSC", false),
+];
+
+pub fn known_dac(edid_name: &str) -> Option<(&'static str, bool)> {
+    let up = edid_name.to_ascii_uppercase();
+    KNOWN_DACS
+        .iter()
+        .find(|(needle, _, _)| up.contains(needle))
+        .map(|(_, label, csync)| (*label, *csync))
+}
+
+/// Which connector the television is on.
 pub fn pick(cfg: &Config) -> Option<Connector> {
-    let all = connectors();
-    let want = cfg.output.connector.trim();
+    choose(
+        &connectors(),
+        &desktop_monitor_names(),
+        &cfg.output.connector,
+    )
+}
+
+/// The names the compositor is currently using as desktop monitors.
+///
+/// Empty when there is no compositor to ask, which is a fact about the
+/// question rather than an answer to it: [`choose`] treats it that way.
+fn desktop_monitor_names() -> Vec<String> {
+    let Some(text) = run("hyprctl", &["monitors", "all", "-j"]) else {
+        return Vec::new();
+    };
+    let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(&text) else {
+        return Vec::new();
+    };
+    list.iter()
+        .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
+        .collect()
+}
+
+/// Pick the television's connector, in order of how much each signal is
+/// worth knowing.
+///
+/// 1. What the configuration says, if it says anything. Nothing overrules a
+///    person who has written the name down.
+/// 2. A DAC this project knows by the name in its EDID. Works before the
+///    boot time override is installed, which is when somebody most needs to
+///    be told which connector to hand over.
+/// 3. A connected HDMI output the compositor is not using as a monitor.
+///    That is exactly what the override makes of the DAC's connector, and
+///    it says nothing about who made the device: any DAC marked non-desktop
+///    is found this way. With more than one such output the first is taken,
+///    which is a guess, but a guess among outputs that are not somebody's
+///    desktop, and `status` names the one it took so a wrong guess costs one
+///    line of configuration.
+/// 4. Failing all that, the first connected HDMI output.
+pub fn choose(all: &[Connector], desktop: &[String], configured: &str) -> Option<Connector> {
+    let want = configured.trim();
     if !want.is_empty() {
-        return all.into_iter().find(|c| c.drm == want || c.name == want);
+        return all
+            .iter()
+            .find(|c| c.drm == want || c.name == want)
+            .cloned();
     }
-    all.iter()
-        .find(|c| c.connected && c.name.contains("HDMI") && c.is_rgbpi2())
-        .or_else(|| all.iter().find(|c| c.connected && c.name.contains("HDMI")))
-        .cloned()
+    let hdmi: Vec<&Connector> = all
+        .iter()
+        .filter(|c| c.connected && c.name.contains("HDMI"))
+        .collect();
+    if let Some(c) = hdmi.iter().find(|c| known_dac(&c.edid_name).is_some()) {
+        return Some((*c).clone());
+    }
+    if !desktop.is_empty()
+        && let Some(spare) = hdmi
+            .iter()
+            .find(|c| !desktop.iter().any(|n| n == &c.name || n == &c.drm))
+    {
+        return Some((*spare).clone());
+    }
+    hdmi.first().map(|c| (*c).clone())
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -518,4 +594,94 @@ pub fn focus_class(class: &str) -> (bool, String) {
         "local w = hl.get_windows({{ class = \"{class}\" }})[1]; if not w then return \"no window\" end; hl.dispatch(hl.dsp.focus({{ window = w }})); return \"focused\""
     ));
     (ok && out.contains("focused"), out)
+}
+
+#[cfg(test)]
+mod choose_tests {
+    use super::*;
+
+    fn conn(name: &str, connected: bool, edid: &str) -> Connector {
+        Connector {
+            path: PathBuf::from(format!("/sys/class/drm/card1-{name}")),
+            drm: format!("card1-{name}"),
+            name: name.to_string(),
+            connected,
+            edid_name: edid.to_string(),
+            edid_audio: true,
+        }
+    }
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_configuration_wins() {
+        let all = [
+            conn("HDMI-A-1", true, "MORTACA DEV00"),
+            conn("HDMI-A-2", true, "PRISM"),
+        ];
+        let picked = choose(&all, &names(&["HDMI-A-1", "HDMI-A-2"]), "HDMI-A-2").expect("picked");
+        assert_eq!(picked.name, "HDMI-A-2");
+        // The kernel name works too, since that is what sysfs calls it.
+        let picked = choose(&all, &[], "card1-HDMI-A-2").expect("picked");
+        assert_eq!(picked.name, "HDMI-A-2");
+    }
+
+    /// Before the boot time override there is nothing to tell the DAC from a
+    /// monitor except the name in its EDID, so the one name this project
+    /// knows is still worth checking first.
+    #[test]
+    fn a_dac_known_by_name_is_found_among_monitors() {
+        let all = [
+            conn("HDMI-A-1", true, "Samsung C34J79x"),
+            conn("HDMI-A-2", true, "MORTACA DEV00"),
+        ];
+        let picked = choose(&all, &names(&["HDMI-A-1", "HDMI-A-2"]), "").expect("picked");
+        assert_eq!(picked.name, "HDMI-A-2");
+    }
+
+    /// The vendor neutral case: any DAC at all, once its connector is marked
+    /// non-desktop, is the connected HDMI output the compositor is not using.
+    #[test]
+    fn a_dac_of_any_make_is_found_by_the_desktop_not_using_it() {
+        let all = [
+            conn("HDMI-A-1", true, "Fujitsu B24W-7"),
+            conn("HDMI-A-2", true, "Reflex Prism"),
+        ];
+        let picked = choose(&all, &names(&["HDMI-A-1"]), "").expect("picked");
+        assert_eq!(picked.name, "HDMI-A-2");
+    }
+
+    /// With two candidates the first is taken, but never one the desktop is
+    /// on: putting somebody's monitor at 15 kHz is the one wrong answer
+    /// here, and a wrong guess between the other two costs a line of
+    /// configuration.
+    #[test]
+    fn a_monitor_in_use_is_never_taken_for_the_television() {
+        let all = [
+            conn("HDMI-A-1", true, "Samsung C34J79x"),
+            conn("HDMI-A-2", true, "two"),
+            conn("HDMI-A-3", true, "three"),
+        ];
+        let picked = choose(&all, &names(&["HDMI-A-1"]), "").expect("picked");
+        assert_eq!(picked.name, "HDMI-A-2");
+    }
+
+    #[test]
+    fn a_single_hdmi_output_is_it() {
+        let all = [
+            conn("DP-2", true, "Samsung C34J79x"),
+            conn("HDMI-A-1", true, "Reflex Prism"),
+            conn("HDMI-A-2", false, ""),
+        ];
+        let picked = choose(&all, &names(&["DP-2", "HDMI-A-1"]), "").expect("picked");
+        assert_eq!(picked.name, "HDMI-A-1");
+    }
+
+    #[test]
+    fn nothing_connected_is_nothing() {
+        let all = [conn("HDMI-A-1", false, "")];
+        assert!(choose(&all, &[], "").is_none());
+    }
 }

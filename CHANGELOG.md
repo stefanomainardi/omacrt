@@ -7,6 +7,17 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Changed
+
+- The television's connector is found whoever made the DAC. Detection asked
+  the EDID for a name it knew and otherwise took the first connected HDMI
+  output, which on a machine with a monitor on HDMI could be the monitor. It
+  now prefers a connected HDMI output the desktop is not using as a monitor,
+  which is exactly what the boot time override makes of a DAC's connector,
+  and never takes an output the compositor is drawing on. A name in the EDID
+  still wins first, so a known DAC is recognised before the override is
+  installed.
+
 ## [0.4.2] - 2026-09-10
 
 What an external audit of the public repository found, fixed. The credential

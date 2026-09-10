@@ -811,24 +811,7 @@ fn cmd_boot(cfg: &Config) {
     }
 }
 
-/// Known DACs, by the product name their EDID carries. The first field is
-/// what shows up in `edid_name`, uppercased; the second is what to call it;
-/// the third says whether the sync mode can be set over I2C, which is a
-/// thing only the RGB-Pi 2 does so far.
-const KNOWN_DACS: &[(&str, &str, bool)] = &[
-    ("MORTACA", "RGB-Pi 2", true),
-    ("RGB-PI", "RGB-Pi", false),
-    ("RETROTINK", "RetroTINK", false),
-    ("OSSC", "OSSC", false),
-];
-
-fn known_dac(edid_name: &str) -> Option<(&'static str, bool)> {
-    let up = edid_name.to_ascii_uppercase();
-    KNOWN_DACS
-        .iter()
-        .find(|(needle, _, _)| up.contains(needle))
-        .map(|(_, label, csync)| (*label, *csync))
-}
+use omacrt_shell::crt::output::known_dac;
 
 /// The television standard the locale suggests. The line count of a country
 /// is not something to ask about when the environment already says it.
