@@ -7,7 +7,8 @@ fetched at run time.
 The project's own licence, MIT, covers the whole repository: the code, this
 documentation, and the screenshots and recordings under `docs/`. Where a
 piece below carries somebody else's copyright as well, reusing that piece
-means carrying their notice with it.
+means carrying their notice with it. [`LICENSE-SCOPE.md`](LICENSE-SCOPE.md)
+says the same thing beside the licence itself.
 
 ## In the binary
 
