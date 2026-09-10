@@ -17,5 +17,13 @@ printed as the two remaining steps: the first needs a decision about which
 connector belongs to the television, the second belongs to a user and not to
 the system.
 
-`sha256sums` is `SKIP` because the source is a tag tarball from GitHub; for a
-release in the AUR, replace it with the real checksum of that tarball.
+`sha256sums` carries the real checksum of the tag tarball GitHub builds. It
+can only be filled in after the tag is pushed, since the tarball does not
+exist before then, so cutting a release is: bump the version, tag, push, then
+
+    curl -fsSL -o /tmp/omacrt.tar.gz \
+      https://github.com/stefanomainardi/omacrt/archive/refs/tags/vX.Y.Z.tar.gz
+    sha256sum /tmp/omacrt.tar.gz
+
+and commit that value here. Leaving it as `SKIP` would mean the package
+builds whatever the download happens to be.
