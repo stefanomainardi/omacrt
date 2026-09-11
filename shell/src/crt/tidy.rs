@@ -31,6 +31,10 @@ pub enum Kind {
     Orphan(u32),
     /// A file to delete.
     Stale(PathBuf),
+    /// The bar widget's copy of the CLI, older than the one running: the
+    /// widget runs its own copy, so a rebuild leaves it behind. Clearing it
+    /// means copying this binary over it.
+    OldHelper(PathBuf),
 }
 
 /// The programs the launcher starts with those files on their command line.
@@ -219,7 +223,45 @@ pub fn survey() -> Vec<Mess> {
     let mut out = orphans();
     out.extend(stale_watchdog());
     out.extend(leftovers());
+    out.extend(old_helper());
     out
+}
+
+/// The bar widget's own copy of the CLI, when it is not this one.
+///
+/// Omarchy's plugin validator refuses a symlink inside a plugin folder, so
+/// the copy is a copy and a rebuild leaves it behind: the widget went on
+/// running an old version of the program for a whole release, and nothing
+/// said so. This says so, and clearing it copies the running binary over it.
+///
+/// Not while the session is locked: a changed file in a plugin folder makes
+/// the shell reload the plugin, and a reload under the lock screen takes
+/// Quickshell down with it.
+fn old_helper() -> Vec<Mess> {
+    let Ok(home) = std::env::var("HOME") else {
+        return Vec::new();
+    };
+    let helper = PathBuf::from(home)
+        .join(".config/omarchy/plugins/io.github.stefanomainardi.omacrt/bin/omacrt");
+    if !helper.is_file() {
+        return Vec::new();
+    }
+    let Ok(mine) = std::env::current_exe() else {
+        return Vec::new();
+    };
+    // The same file, byte for byte, is nothing to report. Length first: two
+    // builds of the same program are rarely the same size, and reading three
+    // megabytes to answer a question nobody asked is not free.
+    let size = |p: &PathBuf| std::fs::metadata(p).map(|m| m.len()).ok();
+    if size(&helper) == size(&mine) && std::fs::read(&helper).ok() == std::fs::read(&mine).ok() {
+        return Vec::new();
+    }
+    vec![Mess {
+        what: "old helper".into(),
+        detail: "the bar widget carries an older copy of omacrt".into(),
+        fix: "copy this one over it".into(),
+        kind: Kind::OldHelper(helper),
+    }]
 }
 
 /// Clear one thing. Says whether it went, and what happened in words for a
@@ -249,6 +291,27 @@ pub fn clear(mess: &Mess) -> (bool, String) {
             Ok(()) => (true, "deleted".into()),
             Err(e) => (false, format!("could not delete: {e}")),
         },
+        Kind::OldHelper(path) => {
+            if super::locked() {
+                return (
+                    false,
+                    "the session is locked: a plugin reload would take the shell down".into(),
+                );
+            }
+            let Ok(mine) = std::env::current_exe() else {
+                return (false, "cannot find the running binary".into());
+            };
+            // Beside it and then renamed, so the widget never sees half a
+            // binary, and never a file it is in the middle of running.
+            let tmp = path.with_extension("new");
+            match std::fs::copy(&mine, &tmp).and_then(|_| std::fs::rename(&tmp, path)) {
+                Ok(()) => (true, "updated".into()),
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp);
+                    (false, format!("could not copy: {e}"))
+                }
+            }
+        }
     }
 }
 

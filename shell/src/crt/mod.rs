@@ -443,6 +443,18 @@ pub fn applied_standard_with(standard: &str, lines: u32, interlace: bool) -> &st
 }
 
 /// Run a command and return stdout when it succeeded.
+/// Whether the desktop's lock screen is up.
+///
+/// Only Omarchy can answer, and only Omarchy has plugins to reload, so
+/// anything else is "not locked". It matters because a changed file in a
+/// plugin folder makes the shell reload the plugin, and a reload under the
+/// lock screen takes Quickshell down with it.
+pub fn locked() -> bool {
+    run("omarchy-shell", &["lock", "isLocked"])
+        .map(|s| s.trim() == "true")
+        .unwrap_or(false)
+}
+
 pub fn run(cmd: &str, args: &[&str]) -> Option<String> {
     let out = Command::new(cmd).args(args).output().ok()?;
     if out.status.success() {

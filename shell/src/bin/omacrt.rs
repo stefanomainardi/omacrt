@@ -1983,6 +1983,31 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                 },
             )
         }));
+        // The widget runs the binary in its own folder, and a copy of a
+        // binary is a version that stopped moving: this one ran a release
+        // behind for a week without anybody noticing. Byte for byte, because
+        // two builds of one version are still two different programs.
+        probes.push(Probe::new(HOUSEKEEPING, "bar plugin helper", || {
+            let helper = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join(".config/omarchy/plugins/io.github.stefanomainardi.omacrt/bin/omacrt");
+            if !helper.is_file() {
+                return (Level::Fail, "not installed: bin/omacrt-install".into());
+            }
+            let Ok(mine) = std::env::current_exe() else {
+                return (
+                    Level::Warn,
+                    "cannot find the running binary to compare".into(),
+                );
+            };
+            if std::fs::read(&helper).ok() == std::fs::read(&mine).ok() {
+                (Level::Ok, "the same binary this is".into())
+            } else {
+                (
+                    Level::Fail,
+                    "an older copy: omacrt doctor --fix, or bin/omacrt-install".into(),
+                )
+            }
+        }));
     }
     probes.push(Probe::yes_no(HOUSEKEEPING, "nothing left behind", || {
         let mess = crt::tidy::survey();

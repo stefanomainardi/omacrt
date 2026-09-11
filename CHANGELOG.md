@@ -7,6 +7,17 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- The self test says when the bar widget is running an older copy of the
+  command line than the one that answered. The widget runs a copy of `omacrt`
+  from its own folder, because Omarchy's plugin validator refuses a symlink
+  inside a plugin folder, so a rebuild leaves it behind: this machine ran a
+  release-old copy for a week. `omacrt doctor --fix`, or the `f` key on the
+  report, puts the running binary in its place, and refuses to while the
+  session is locked, because a plugin reload under the lock screen takes the
+  shell down.
+
 ### Fixed
 
 - The launcher's first sound comes out of the television, not the desktop's

@@ -336,6 +336,10 @@ mkdir -p "$plugin_dir/bin"
 for f in "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$repo/plugin/README.md"; do
   [ -f "$f" ] && install -m 644 "$f" "$plugin_dir/$(basename "$f")"
 done
+# A copy, not a link: Omarchy's plugin validator refuses symlinks inside a
+# plugin folder. A copy goes stale the moment the CLI is rebuilt, which is
+# why `omacrt doctor` checks it against the running version and offers to
+# put it right.
 install -m 755 "$built_dir/omacrt" "$plugin_dir/bin/omacrt"
 
 # The library overlay is a second plugin (kind overlay) the panel summons.
