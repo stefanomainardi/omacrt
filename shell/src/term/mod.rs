@@ -147,6 +147,20 @@ impl Palette {
     }
 }
 
+/// A string with nothing in it that a terminal will act on.
+///
+/// Some of what a check reports comes from outside: the name a device wrote
+/// into its own EDID, a line another program printed. An escape sequence in
+/// there can repaint the line it is on, and a report that can be repainted
+/// by the thing it is reporting on is worth nothing. The drawn version is
+/// safe already, because a cell in a buffer holds a character and not a
+/// command; this is the plain one.
+pub fn printable(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
+}
+
 /// The lines `doctor` has always printed, unchanged.
 ///
 /// Byte for byte what came before, because scripts read it, CI reads it, and
@@ -158,7 +172,12 @@ pub fn plain(probes: Vec<Probe>) -> Vec<Check> {
     let width = labels.iter().copied().max().unwrap_or(10);
     for p in probes {
         let (level, note) = (p.run)();
-        println!("{} {:<width$}  {}", level.plain_tag(), p.label, note);
+        println!(
+            "{} {:<width$}  {}",
+            level.plain_tag(),
+            p.label,
+            printable(&note)
+        );
         done.push(Check {
             section: p.section,
             label: p.label,
@@ -167,4 +186,21 @@ pub fn plain(probes: Vec<Probe>) -> Vec<Check> {
         });
     }
     done
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What a check reports is not always ours: a device names itself in its
+    /// own EDID, and another program's output is quoted verbatim. A report
+    /// that the subject can repaint is not a report.
+    #[test]
+    fn nothing_a_check_reports_can_drive_the_terminal() {
+        let hostile = "\u{1b}[2K\rOK   everything is fine\u{7}";
+        let safe = printable(hostile);
+        assert!(!safe.chars().any(|c| c.is_control()), "{safe:?}");
+        assert!(safe.contains("everything is fine"), "the text is kept");
+        assert_eq!(printable("MORTACA DEV00"), "MORTACA DEV00");
+    }
 }

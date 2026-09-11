@@ -37,7 +37,9 @@ fi
 # all: a plugin nothing loads and a menu file nothing reads are litter, and
 # leaving somebody to wonder where the widget is, is worse than saying so.
 have_omarchy=0
-command -v omarchy >/dev/null 2>&1 && have_omarchy=1
+if command -v omarchy >/dev/null 2>&1; then
+  have_omarchy=1
+fi
 # One piece of styling, and only in a terminal: the `==` lines are the steps,
 # and in a wall of paths they are what the eye looks for. No palette in shell:
 # the colours belong to `omacrt doctor`, which is where the setup is explained.

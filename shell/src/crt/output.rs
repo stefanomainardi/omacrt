@@ -40,10 +40,18 @@ pub fn edid_info(path: &Path) -> (String, bool) {
     while off + 18 <= 126 {
         let b = &edid[off..off + 18];
         if b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 0xFC {
+            // Thirteen bytes chosen by whatever is plugged in. The EDID
+            // specification says printable ASCII; a device is free to say
+            // otherwise, and this string is printed straight into a
+            // terminal by `status`, `setup` and `doctor`. An escape
+            // sequence in it can repaint the line it is on, which on a
+            // report somebody trusts is worth more to an attacker than it
+            // sounds. Anything that is not printable is dropped.
             name = b[5..18]
                 .iter()
                 .take_while(|&&c| c != b'\n' && c != 0)
                 .map(|&c| c as char)
+                .filter(|c| !c.is_control())
                 .collect::<String>()
                 .trim()
                 .to_string();
@@ -675,5 +683,63 @@ mod choose_tests {
     fn nothing_connected_is_nothing() {
         let all = [conn("HDMI-A-1", false, "")];
         assert!(choose(&all, &[], "").is_none());
+    }
+}
+
+#[cfg(test)]
+mod edid_tests {
+    use super::*;
+    use std::io::Write;
+
+    /// Build an EDID with `name` in its product name descriptor.
+    fn edid_with(name: &[u8]) -> Vec<u8> {
+        let mut e = vec![0u8; 128];
+        e[54] = 0;
+        e[55] = 0;
+        e[56] = 0;
+        e[57] = 0xFC;
+        e[58] = 0;
+        for (i, b) in name.iter().take(13).enumerate() {
+            e[59 + i] = *b;
+        }
+        e
+    }
+
+    fn name_of(tag: &str, bytes: &[u8]) -> String {
+        // A directory of its own: these run in parallel.
+        let dir = std::env::temp_dir().join(format!("omacrt-edid-{}-{tag}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let mut f = std::fs::File::create(dir.join("edid")).expect("write edid");
+        f.write_all(bytes).expect("write");
+        drop(f);
+        let (name, _) = edid_info(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        name
+    }
+
+    #[test]
+    fn an_ordinary_product_name_is_read() {
+        assert_eq!(
+            name_of("plain", &edid_with(b"MORTACA DEV00")),
+            "MORTACA DEV00"
+        );
+    }
+
+    /// Thirteen bytes chosen by whatever is plugged in, printed into a
+    /// terminal by three commands. A device that puts an escape sequence
+    /// there could repaint the line of a report somebody is trusting.
+    #[test]
+    fn a_device_cannot_write_escapes_into_the_terminal() {
+        let hostile = b"\x1b[2K\rOK   fine";
+        let got = name_of("hostile", &edid_with(hostile));
+        assert!(!got.contains('\x1b'), "escape survived: {got:?}");
+        assert!(!got.contains('\r'), "carriage return survived: {got:?}");
+        assert!(
+            !got.chars().any(|c| c.is_control()),
+            "a control character survived: {got:?}"
+        );
+        // Thirteen bytes is all a descriptor holds, so the lie is cut
+        // short as well as disarmed.
+        assert_eq!(got, "[2KOK   fin");
     }
 }

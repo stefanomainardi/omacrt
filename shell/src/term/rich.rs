@@ -64,6 +64,29 @@ pub struct Action {
     pub what: &'static str,
 }
 
+/// Raw mode, given back whatever happens.
+///
+/// In raw mode a terminal does not echo, does not translate newlines and
+/// does not turn Ctrl+C into a signal. A panic between turning it on and
+/// turning it off would leave somebody with a shell they cannot type into,
+/// so it is turned off by a value going out of scope rather than by a line
+/// of code at the end that a panic can skip.
+struct RawMode(bool);
+
+impl RawMode {
+    fn on() -> Self {
+        Self(enable_raw_mode().is_ok())
+    }
+}
+
+impl Drop for RawMode {
+    fn drop(&mut self) {
+        if self.0 {
+            let _ = disable_raw_mode();
+        }
+    }
+}
+
 /// The height of the animated viewport: the wordmark, air, the BIOS line,
 /// air, and the line that says what is being asked.
 const VIEWPORT: u16 = 15;
@@ -251,7 +274,7 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
         // anything, may never give; the report then came out empty. Moving a
         // known number of lines needs nobody's permission.
         animated = true;
-        let raw = enable_raw_mode().is_ok();
+        let raw = RawMode::on();
         let frame = Duration::from_millis(33);
         let mut first = true;
         // Set once the input has gone away: after that the frames are timed
@@ -335,9 +358,7 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
         }
         // Step back over the animation so the report is written where it was.
         print!("\x1b[{VIEWPORT}A");
-        if raw {
-            let _ = disable_raw_mode();
-        }
+        drop(raw);
         if interrupted {
             println!();
             return (done.into_iter().flatten().collect(), None);
@@ -695,7 +716,8 @@ fn named(c: TColor) -> &'static str {
 
 /// Wait for one of the offered keys, or for the reader to give up.
 fn wait_for_key(actions: &[Action]) -> Option<char> {
-    if enable_raw_mode().is_err() {
+    let raw = RawMode::on();
+    if !raw.0 {
         return None;
     }
     let mut pressed = None;
@@ -714,7 +736,7 @@ fn wait_for_key(actions: &[Action]) -> Option<char> {
             Ok(_) => {}
         }
     }
-    let _ = disable_raw_mode();
+    drop(raw);
     println!();
     pressed
 }
@@ -731,7 +753,8 @@ pub fn pick_output(outs: &[Output], preselect: usize) -> Option<usize> {
     let pal = Palette::load();
     let paint = Paint { pal };
     let mut sel = preselect.min(outs.len() - 1);
-    if enable_raw_mode().is_err() {
+    let raw = RawMode::on();
+    if !raw.0 {
         return None;
     }
     let height = outs.len() as u16 + 2;
@@ -777,7 +800,7 @@ pub fn pick_output(outs: &[Output], preselect: usize) -> Option<usize> {
             Err(_) => break None,
         }
     };
-    let _ = disable_raw_mode();
+    drop(raw);
     print!("\x1b[{height}A");
     chosen
 }
