@@ -62,9 +62,10 @@ use smithay::wayland::shell::xdg::{
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::socket::ListeningSocketSource;
+use smithay::wayland::viewporter::ViewporterState;
 use smithay::{
     delegate_compositor, delegate_dmabuf, delegate_output, delegate_seat, delegate_shm,
-    delegate_xdg_shell,
+    delegate_viewporter, delegate_xdg_shell,
 };
 use std::ffi::OsString;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
@@ -378,6 +379,13 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     let compositor_state = CompositorState::new::<Crt>(&dh);
     let xdg_shell_state = XdgShellState::new::<Crt>(&dh);
     let shm_state = ShmState::new::<Crt>(&dh, vec![]);
+    // wp_viewporter: a client says which part of its buffer to show and at
+    // what size, and the compositor does the scaling. mpv asks for it at
+    // every start and said so in the log a hundred and eighty-four times;
+    // without it a player has to scale into a buffer of the right size
+    // itself. smithay's surface elements read the viewport, so this is the
+    // whole of it.
+    let _viewporter_state = ViewporterState::new::<Crt>(&dh);
     let output_manager_state = OutputManagerState::new_with_xdg_output::<Crt>(&dh);
     let mut seat_state = SeatState::new();
     let mut seat: Seat<Crt> = seat_state.new_wl_seat(&dh, "crt");
@@ -1216,3 +1224,4 @@ delegate_shm!(Crt);
 delegate_seat!(Crt);
 delegate_output!(Crt);
 delegate_dmabuf!(Crt);
+delegate_viewporter!(Crt);

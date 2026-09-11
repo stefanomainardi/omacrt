@@ -9,6 +9,20 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- The self test reads the two logs nobody reads. A launcher that stopped and
+  a line repeated often enough to be a condition rather than an event are
+  rows in the report now: `4 stop(s): src/sky.rs:1444: attempt to multiply
+  with overflow` is how the crash above was found, a morning after it
+  happened. `omacrt logs` shows the end of both logs with what went wrong in
+  them at the top, and `omacrt logs --clear` moves them aside once they have
+  been read.
+- `wp_viewporter`. The player asked for it at every start and said so in the
+  log; a client can now tell the compositor which part of its buffer to show
+  and at what size, instead of scaling into a buffer of the exact size
+  itself.
+
+### Added
+
 - The claim that this needs Hyprland rather than Omarchy or a distribution is
   now checked rather than written. Continuous integration installs the whole
   thing on the runner, which has no Omarchy, no Arch, no graphics card and no
@@ -32,6 +46,10 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- The launcher no longer asks for window decorations it does not want. SDL
+  loads libdecor to draw them, libdecor's GTK plugin then complains about a
+  seat at every single start, and that line sat in the log where a real
+  failure has to be visible. A television has no title bar.
 - The launcher's own screens stopped saying Omarchy. The About page was
   titled OMARCHY CRT, which is not even the name any more, and said the tube
   is driven "from your everyday Omarchy machine"; the boot screen signed

@@ -2002,6 +2002,35 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             )
         }));
     }
+    // Nobody reads a log in a state directory. The crash this was written
+    // for sat in one for a morning before anybody looked, so the report
+    // looks for them: a launcher that stopped, and a line repeated often
+    // enough to be a condition rather than an event.
+    for (what, path) in [
+        ("launcher log", launcher::log_path()),
+        ("display log", display::log_path()),
+    ] {
+        probes.push(Probe::new(HOUSEKEEPING, what, move || {
+            if !path.is_file() {
+                return (Level::Ok, "nothing written yet".into());
+            }
+            let t = omacrt_shell::logfile::trouble(&path);
+            match (t.panics.last(), t.flood) {
+                (Some(last), _) => (
+                    Level::Fail,
+                    format!(
+                        "{} stop(s): {last}  (omacrt logs, then omacrt logs --clear)",
+                        t.panics.len()
+                    ),
+                ),
+                (None, Some((line, n))) => (
+                    Level::Warn,
+                    format!("{n} times: {}", term::printable(&line)),
+                ),
+                (None, None) => (Level::Ok, "no stop, nothing repeating".into()),
+            }
+        }));
+    }
     probes.push(Probe::yes_no(HOUSEKEEPING, "nothing left behind", || {
         let mess = crt::tidy::survey();
         (
@@ -3546,6 +3575,85 @@ fn main() {
                         .unwrap_or_else(|e| die(&e.to_string()));
                 }
                 other => die(&format!("unknown dac command {other}")),
+            }
+        }
+        "logs" => {
+            let pos = positional(args);
+            let logs = [
+                ("launcher", launcher::log_path()),
+                ("display", display::log_path()),
+            ];
+            if pos.first().map(|s| s.as_str()) == Some("--clear") || has(args, "--clear") {
+                // Moved aside rather than deleted: what was in it is the
+                // only account of what happened, and the row in the report
+                // goes quiet without throwing the evidence away.
+                for (what, path) in &logs {
+                    if path.is_file() {
+                        let ok = omacrt_shell::logfile::rotate_if_big(path, 0);
+                        term::sheet::step(
+                            what,
+                            if ok {
+                                format!("moved aside as {}.1", path.display())
+                            } else {
+                                "could not be moved aside".into()
+                            },
+                        );
+                    }
+                }
+                return;
+            }
+            let lines: usize = value(args, "--lines")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(20);
+            let mut sh = term::sheet::Sheet::open(
+                has(args, "--plain"),
+                "logs",
+                "what the television's own processes wrote",
+            );
+            for (what, path) in &logs {
+                let t = omacrt_shell::logfile::trouble(path);
+                let tail = omacrt_shell::logfile::tail(path, 256 * 1024).unwrap_or_default();
+                let last: Vec<&str> = tail
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .rev()
+                    .take(lines)
+                    .collect();
+                match &mut sh {
+                    Some(sh) => {
+                        sh.section(what);
+                        sh.field("file", path.display().to_string());
+                        for p in &t.panics {
+                            sh.check(term::Level::Fail, "stopped", term::printable(p));
+                        }
+                        if let Some((line, n)) = &t.flood {
+                            sh.check(
+                                term::Level::Warn,
+                                &format!("{n} times"),
+                                term::printable(line),
+                            );
+                        }
+                        sh.blank();
+                        for l in last.iter().rev() {
+                            sh.note(term::printable(l));
+                        }
+                    }
+                    None => {
+                        println!("== {what}: {}", path.display());
+                        for p in &t.panics {
+                            println!("stopped: {}", term::printable(p));
+                        }
+                        if let Some((line, n)) = &t.flood {
+                            println!("{n} times: {}", term::printable(line));
+                        }
+                        for l in last.iter().rev() {
+                            println!("{}", term::printable(l));
+                        }
+                    }
+                }
+            }
+            if let Some(sh) = sh {
+                sh.print();
             }
         }
         "plugin" => {

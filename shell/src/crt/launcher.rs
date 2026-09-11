@@ -75,6 +75,11 @@ fn users_own_uid() -> String {
 /// Start the launcher on the CRT output. `sink` is the PipeWire sink the
 /// launcher and everything it spawns should play on; it travels through
 /// `PULSE_SINK` and `PIPEWIRE_NODE`, which SDL, RetroArch and mpv honour.
+/// Where the launcher's own output goes.
+pub fn log_path() -> std::path::PathBuf {
+    state_dir().join("shell.log")
+}
+
 pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<String, String> {
     let bin =
         binary(cfg).ok_or_else(|| format!("launcher binary not found ({})", cfg.shell.bin))?;
@@ -90,7 +95,7 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
         output::window_rules(output_name);
     }
     let _ = std::fs::create_dir_all(state_dir());
-    let log = crate::logfile::open(&state_dir().join("shell.log")).map_err(|e| e.to_string())?;
+    let log = crate::logfile::open(&log_path()).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(bin);
     if let Some(s) = sink {
@@ -118,6 +123,12 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
     // thread runs 200 ms without sleeping. libpulse leaves the limits alone,
     // rtkit refuses it, and the games run as they do from a terminal.
     cmd.env("SDL_AUDIODRIVER", "pulseaudio");
+    // No window decorations on a television. SDL loads libdecor to draw
+    // them, libdecor's default plugin on Arch is the GTK one, and GTK then
+    // complains about a seat at every start: `gdk_seat_get_keyboard:
+    // assertion 'GDK_IS_SEAT (seat)' failed`, once per launch, in the log
+    // where a real failure has to be visible.
+    cmd.env("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR", "0");
     cmd.args(&cfg.shell.args)
         .stdin(Stdio::null())
         .stdout(Stdio::from(log))
