@@ -1441,7 +1441,13 @@ impl Sky {
                 if cy + 2 >= air.horizon {
                     continue;
                 }
-                let wait = 0.55 + ((b.x as usize * 7 + i * 13) % 22) as f32 * 0.075;
+                // The town scrolls, so a building's x goes negative as it
+                // leaves on the left. `as usize` on a negative number is a
+                // very large one, and the multiplication then overflows: the
+                // launcher panicked on the tube during a storm, which the
+                // release profile's overflow checks are there to catch.
+                let seed = b.x.unsigned_abs() as usize * 7 + i * 13;
+                let wait = 0.55 + (seed % 22) as f32 * 0.075;
                 if air.struck_since < wait {
                     continue;
                 }
@@ -2418,6 +2424,45 @@ impl Sky {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_building_that_has_left_on_the_left_does_not_take_the_launcher_with_it() {
+        // The town scrolls. A building's x goes negative on its way out, and
+        // the window delay was worked out by casting it to an unsigned
+        // number: it panicked on the tube in the middle of a storm.
+        let mut sky = Sky::new();
+        sky.town = vec![Building {
+            x: -37,
+            w: 24,
+            h: 20,
+            windows: vec![true; 12],
+            aerial: true,
+        }];
+        let mut fb = Framebuffer::new(320, 240);
+        let theme = Theme::tokyo_night();
+        let air = Air {
+            theme: &theme,
+            kind: Kind::Clear,
+            day: false,
+            dusk: 0.0,
+            wind: 0.0,
+            horizon: 200,
+            now: 10.0,
+            from: Kind::Clear,
+            to: Kind::Clear,
+            blend: 1.0,
+            moon: 0.5,
+            moonlight: 0.5,
+            sun: (0.0, 0.0),
+            cover: 0.0,
+            shadow: (0.0, 1.0),
+            // Long enough ago that the windows are coming back on, which is
+            // where the arithmetic was, and dark enough that they are drawn.
+            struck_since: 10.0,
+            darkness: 1.0,
+        };
+        sky.draw_town(&mut fb, &air);
+    }
 
     #[test]
     fn weather_arrives_over_twenty_five_seconds() {
