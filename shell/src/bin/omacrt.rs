@@ -2230,7 +2230,10 @@ fn cmd_library(args: &[String]) {
                     use std::io::Write;
                     let _ = std::io::stdout().flush();
                 } else if !quiet {
-                    eprint!("\r\x1b[2K  {dir}");
+                    // Cut to the width: a line that wraps cannot be erased,
+                    // and a collection has folder names longer than any
+                    // terminal.
+                    eprint!("\r\x1b[2K  {}", term::fit(dir, term::width() - 4));
                 }
             });
             if !quiet && !progress {
@@ -2366,7 +2369,10 @@ fn cmd_library(args: &[String]) {
                         continue;
                     }
                     done += 1;
-                    eprint!("\r\x1b[2K  {} {}", system.name, stem);
+                    eprint!(
+                        "\r\x1b[2K  {}",
+                        term::fit(&format!("{} {}", system.name, stem), term::width() - 4)
+                    );
                     // Arcade files are named after the set, the repository by
                     // title: the databases RetroArch ships pair them.
                     let stem = covers::title_for(&system.name, stem);

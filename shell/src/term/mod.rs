@@ -149,68 +149,113 @@ impl Palette {
     }
 }
 
-/// The wordmark at half its size, which is what a terminal has room for.
+/// The wordmark at half its size, drawn with quadrants.
 ///
 /// The drawing in `assets/wordmark.txt` is sixty-eight columns of block
 /// characters, and a block character is two pixels tall: twenty pixel rows by
-/// sixty-eight. Every two by two square of that becomes one pixel here, lit
-/// when at least half of it was, which gives thirty-four columns by ten pixel
-/// rows, or five character rows. It is the same letterforms at half scale
-/// rather than a second drawing to keep in step with the first.
+/// sixty-eight, in square pixels. Half of that on the screen is thirty-four
+/// columns by five rows, and there are two ways to get there.
+///
+/// Averaging every two by two square down to one pixel is the obvious one and
+/// it ruins the word: the strokes are two pixels wide, so half of every
+/// letter goes and what is left is mush. Instead the picture is halved
+/// vertically only - a row survives if either of the two rows it stands for
+/// had anything - and then drawn with the quadrant characters, which hold
+/// four pixels in a cell. Every column of the original survives, which is
+/// where the letterforms live, and the word is still readable at half size.
 pub fn wordmark_half() -> Vec<String> {
     let art: Vec<Vec<char>> = crate::assets::WORDMARK_TXT
         .lines()
         .map(|l| l.chars().collect())
         .collect();
     let cols = art.iter().map(|l| l.len()).max().unwrap_or(0);
-    // Two pixel rows per character row.
+    // Two pixel rows per character row of the source.
     let px: Vec<Vec<bool>> = art
         .iter()
         .flat_map(|line| {
             let at = |c: usize| line.get(c).copied().unwrap_or(' ');
-            let top: Vec<bool> = (0..cols)
-                .map(|c| matches!(at(c), '\u{2588}' | '\u{2580}'))
-                .collect();
-            let bottom: Vec<bool> = (0..cols)
-                .map(|c| matches!(at(c), '\u{2588}' | '\u{2584}'))
-                .collect();
+            let top: Vec<bool> = (0..cols).map(|c| matches!(at(c), '█' | '▀')).collect();
+            let bottom: Vec<bool> = (0..cols).map(|c| matches!(at(c), '█' | '▄')).collect();
             [top, bottom]
         })
         .collect();
-    let half: Vec<Vec<bool>> = (0..px.len() / 2)
+    // Half as tall, every column kept.
+    let short: Vec<Vec<bool>> = (0..px.len() / 2)
         .map(|y| {
-            (0..cols / 2)
-                .map(|x| {
-                    let n = [
-                        px[y * 2][x * 2],
-                        px[y * 2][x * 2 + 1],
-                        px[y * 2 + 1][x * 2],
-                        px[y * 2 + 1][x * 2 + 1],
-                    ]
-                    .iter()
-                    .filter(|b| **b)
-                    .count();
-                    n >= 2
-                })
+            (0..cols)
+                .map(|x| px[y * 2][x] || px[y * 2 + 1][x])
                 .collect()
         })
         .collect();
-    (0..half.len().div_ceil(2))
+    let get = |y: usize, x: usize| {
+        short
+            .get(y)
+            .and_then(|r| r.get(x))
+            .copied()
+            .unwrap_or(false)
+    };
+    (0..short.len().div_ceil(2))
         .map(|r| {
-            (0..cols / 2)
+            (0..cols.div_ceil(2))
                 .map(|c| {
-                    let top = half[r * 2][c];
-                    let bottom = half.get(r * 2 + 1).map(|row| row[c]).unwrap_or(false);
-                    match (top, bottom) {
-                        (true, true) => '\u{2588}',
-                        (true, false) => '\u{2580}',
-                        (false, true) => '\u{2584}',
-                        (false, false) => ' ',
-                    }
+                    quadrant(
+                        get(r * 2, c * 2),
+                        get(r * 2, c * 2 + 1),
+                        get(r * 2 + 1, c * 2),
+                        get(r * 2 + 1, c * 2 + 1),
+                    )
                 })
                 .collect()
         })
         .collect()
+}
+
+/// The character that lights those four corners of a cell.
+fn quadrant(tl: bool, tr: bool, bl: bool, br: bool) -> char {
+    match (tl, tr, bl, br) {
+        (false, false, false, false) => ' ',
+        (true, false, false, false) => '▘',
+        (false, true, false, false) => '▝',
+        (true, true, false, false) => '▀',
+        (false, false, true, false) => '▖',
+        (true, false, true, false) => '▌',
+        (false, true, true, false) => '▞',
+        (true, true, true, false) => '▛',
+        (false, false, false, true) => '▗',
+        (true, false, false, true) => '▚',
+        (false, true, false, true) => '▐',
+        (true, true, false, true) => '▜',
+        (false, false, true, true) => '▄',
+        (true, false, true, true) => '▙',
+        (false, true, true, true) => '▟',
+        (true, true, true, true) => '█',
+    }
+}
+
+/// How wide the terminal is, or eighty when there is nobody to ask.
+pub fn width() -> usize {
+    ratatui::crossterm::terminal::size()
+        .ok()
+        .map(|(cols, _)| cols as usize)
+        .filter(|c| *c > 20)
+        .unwrap_or(80)
+}
+
+/// A path cut to fit on one line, keeping the end.
+///
+/// A progress line is erased and rewritten in place, and `\x1b[2K` erases
+/// one line: anything long enough to wrap leaves the rest of itself on the
+/// screen for ever. Which is how a scan of a collection printed a thousand
+/// folder names down the terminal. The end of a path is the part that says
+/// where the scan has got to, so the front is what goes.
+pub fn fit(text: &str, max: usize) -> String {
+    let n = text.chars().count();
+    if n <= max || max < 4 {
+        return text.to_string();
+    }
+    let keep = max - 1;
+    let tail: String = text.chars().skip(n - keep).collect();
+    format!("\u{2026}{tail}")
 }
 
 /// A string with nothing in it that a terminal will act on.
@@ -256,6 +301,17 @@ pub fn plain(probes: Vec<Probe>) -> Vec<Check> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_long_line_is_cut_to_the_width_and_keeps_its_end() {
+        let long = "/run/media/somebody/External HD/roms/arcade/Horizontal Games/00";
+        let cut = super::fit(long, 30);
+        assert_eq!(cut.chars().count(), 30);
+        assert!(cut.starts_with('\u{2026}'));
+        assert!(cut.ends_with("Games/00"));
+        // Short enough to fit is left alone.
+        assert_eq!(super::fit("nes", 30), "nes");
+    }
+
     use super::*;
 
     /// What a check reports is not always ours: a device names itself in its

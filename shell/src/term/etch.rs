@@ -66,7 +66,10 @@ impl Etch {
         let mut index = vec![usize::MAX; (rows * cols).max(0) as usize];
         for (r, line) in lines.iter().enumerate() {
             for (c, ch) in line.iter().enumerate() {
-                if !matches!(ch, '█' | '▀' | '▄') {
+                // Anything that is not blank is a cell the laser has to cut:
+                // the wordmark is drawn with quadrant characters, not only
+                // with halves.
+                if *ch == ' ' {
                     continue;
                 }
                 let f = 1.0 - r as f32 / (rows - 1).max(1) as f32;
