@@ -23,6 +23,17 @@ toml = "1.1"
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 
+[features]
+# The latency probe is a measuring instrument, not a product. Behind a
+# feature it is absent from every build anyone installs, and present with
+# `cargo run --features latency --bin latency` when a number is wanted.
+latency = []
+
+[[bin]]
+name = "latency"
+path = "src/bin/latency.rs"
+required-features = ["latency"]
+
 [profile.release]
 # The builds people run are release builds, and without this an arithmetic
 # overflow wraps in silence: `len() - 1` on an empty list becomes a very large

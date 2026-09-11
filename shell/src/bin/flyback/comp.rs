@@ -73,8 +73,9 @@ use smithay::wayland::shell::xdg::{
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::desktop::utils::{
     OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
-    surface_primary_scanout_output,
+    surface_primary_scanout_output, update_surface_primary_scanout_output,
 };
+use smithay::backend::renderer::element::default_primary_scanout_output_compare;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::wayland::presentation::{PresentationState, Refresh};
@@ -130,6 +131,18 @@ pub struct Crt {
     /// Page flips refused in a row. A driver that will not take a frame
     /// takes none of them, so the count only ever runs away.
     flips_failed: u32,
+    /// Whether anything has changed since the last flip was queued. See
+    /// `damaged`.
+    dirty: bool,
+    /// Whether a pacer tick is already on its way, so that the several paths
+    /// that can ask for one do not stack up a timer each.
+    pacer_armed: bool,
+    /// When a client last committed, and how many commits arrived while a
+    /// page flip was already in the air and so could not be drawn at once.
+    /// Only kept when `FLYBACK_TRACE` is set: this is a measuring aid.
+    trace: bool,
+    last_commit: Option<Instant>,
+    commits_blocked: u32,
     /// Whether the last frame reached the plane as the client's own buffer,
     /// or `None` before the first one. Kept only so the log says it once
     /// rather than sixty times a second.
@@ -590,6 +603,11 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         capture_target: None,
         capture_size: None,
         flips_failed: 0,
+        dirty: true,
+        pacer_armed: false,
+        trace: std::env::var_os("FLYBACK_TRACE").is_some(),
+        last_commit: None,
+        commits_blocked: 0,
         scanout_direct: None,
         lease,
         running: true,
@@ -612,7 +630,8 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         "compositor up: WAYLAND_DISPLAY={}",
         crt.socket_name.to_string_lossy()
     );
-    crt.render();
+    crt.damaged();
+    crt.arm_pacer();
     let signal = event_loop.get_signal();
     event_loop
         .run(Duration::from_millis(50), &mut crt, |st| {
@@ -656,7 +675,7 @@ impl Crt {
                 if let Some(w) = self.window_with_app_id(target) {
                     self.space.raise_element(&w, true);
                     self.focus_top();
-                    self.render();
+                    self.damaged();
                 } else {
                     eprintln!("top: no window with app id {target}");
                 }
@@ -990,11 +1009,79 @@ impl Crt {
         );
         self.frame_queued = false;
         self.queued_at = None;
+        self.damaged();
+    }
+
+    /// Something on the tube changed, so the next frame has to be drawn and
+    /// shown. Every caller that is not the vblank or its own retry goes
+    /// through here: that is what tells the compositor a flip is worth
+    /// making, and what keeps it from holding one in the air when nothing
+    /// has changed.
+    fn damaged(&mut self) {
+        self.dirty = true;
         self.render();
     }
 
+    /// A frame's worth of work that does not depend on a flip: tell every
+    /// client it may draw, then draw. Called from the vblank while the tube
+    /// is flipping, and from the pacer while it is not.
+    ///
+    /// A client asks for a frame callback and waits for it before drawing
+    /// again. Once the compositor stops flipping there are no vblanks, so
+    /// without a pacer of its own an idle tube would never let anybody draw
+    /// again and would stay idle for ever.
+    fn tick(&mut self) {
+        let t = self.start.elapsed();
+        let output = self.output.clone();
+        for w in self.space.elements() {
+            w.send_frame(&output, t, Some(Duration::from_secs(1)), |_, _| {
+                Some(output.clone())
+            });
+        }
+        self.render();
+        if !self.frame_queued {
+            self.arm_pacer();
+        }
+    }
+
+    /// One tick in a frame's time, unless one is already on its way.
+    fn arm_pacer(&mut self) {
+        if self.pacer_armed {
+            return;
+        }
+        let period = self
+            .output
+            .current_mode()
+            .map(|m| Duration::from_nanos(1_000_000_000_000u64 / (m.refresh.max(1) as u64)))
+            .unwrap_or(Duration::from_nanos(16_666_666));
+        self.pacer_armed = self
+            .handle
+            .insert_source(Timer::from_duration(period), |_, _, st: &mut Crt| {
+                st.pacer_armed = false;
+                st.tick();
+                TimeoutAction::Drop
+            })
+            .is_ok();
+    }
+
     fn render(&mut self) {
+        // Nothing has changed since the last flip, so do not make another
+        // one. A flip in the air is a frame of latency for whatever is
+        // committed next: the client's picture cannot be queued until the
+        // one already queued has landed. Staying idle means the next commit
+        // is queued the moment it arrives and reaches the screen a whole
+        // frame sooner. While recording, keep flipping: the recorder counts
+        // frames on the vblank, and a vblank only arrives for a flip.
+        if !self.dirty && self.recorder.is_none() {
+            self.arm_pacer();
+            return;
+        }
         if self.frame_queued {
+            // A flip is already in the air. Whatever was just committed
+            // cannot be drawn until it lands, which costs the client a whole
+            // frame; how often that happens is the one number that says
+            // whether the compositor is in the way.
+            self.commits_blocked += 1;
             return;
         }
         let Some(out) = self.drm_output.as_mut() else {
@@ -1017,17 +1104,11 @@ impl Crt {
         ) {
             Ok(res) => {
                 if res.is_empty {
-                    // Nothing changed: look again in a frame's time. No
+                    // Nothing to show after all, so the damage is spent. No
                     // feedback is taken off the surfaces here, because taking
                     // it would owe a client an answer that this frame is
                     // never going to give.
-                    let _ = self.handle.insert_source(
-                        Timer::from_duration(Duration::from_millis(16)),
-                        |_, _, st: &mut Crt| {
-                            st.render();
-                            TimeoutAction::Drop
-                        },
-                    );
+                    self.dirty = false;
                     return;
                 }
                 // Whether the client's own buffer went straight to the plane
@@ -1045,6 +1126,21 @@ impl Crt {
                             "composited into ours"
                         }
                     );
+                }
+                // Which output each surface was drawn on. There is only one
+                // here, but the record is what `surface_primary_scanout_output`
+                // reads a moment later, and without it every surface looks
+                // like it was drawn nowhere and nobody is ever told anything.
+                for window in self.space.elements() {
+                    window.with_surfaces(|surface, states| {
+                        update_surface_primary_scanout_output(
+                            surface,
+                            &self.output,
+                            states,
+                            &res.states,
+                            default_primary_scanout_output_compare,
+                        );
+                    });
                 }
                 // Who to tell, and when. Collected before the flip is queued
                 // because the states belong to this frame's render, and kept
@@ -1076,8 +1172,16 @@ impl Crt {
                     }
                 } else {
                     self.flips_failed = 0;
+                    self.dirty = false;
                     self.frame_queued = true;
                     self.queued_at = Some(Instant::now());
+                    if self.trace {
+                        let since = self
+                            .last_commit
+                            .map(|t| t.elapsed().as_micros())
+                            .unwrap_or(0);
+                        eprintln!("trace: commit to flip queued {since} us");
+                    }
                 }
             }
             Err(e) => {
@@ -1124,6 +1228,9 @@ impl Crt {
                 flags,
             );
         }
+        if self.trace && let Some(t) = self.queued_at {
+            eprintln!("trace: flip queued to vblank {} us", t.elapsed().as_micros());
+        }
         self.frame_queued = false;
         self.queued_at = None;
         self.frames += 1;
@@ -1163,10 +1270,18 @@ impl Crt {
             self.commits.clear();
             if omacrt_shell::logfile::debug_enabled() {
                 println!(
-                    "{} frames so far, {} client window(s) mapped, commits in 5 s: {}",
+                    "{} frames so far, {} client window(s) mapped, commits in 5 s: {}{}",
                     self.frames,
                     self.space.elements().count(),
-                    commits.join(" ")
+                    commits.join(" "),
+                    if self.commits_blocked > 0 {
+                        format!(
+                            ", {} commit(s) waited for a flip already in the air",
+                            std::mem::take(&mut self.commits_blocked)
+                        )
+                    } else {
+                        String::new()
+                    }
                 );
             }
             // While it runs, keep the file from growing without end.
@@ -1175,14 +1290,7 @@ impl Crt {
                 omacrt_shell::logfile::CAP_BYTES,
             );
         }
-        let t = self.start.elapsed();
-        let output = self.output.clone();
-        for w in self.space.elements() {
-            w.send_frame(&output, t, Some(Duration::from_secs(1)), |_, _| {
-                Some(output.clone())
-            });
-        }
-        self.render();
+        self.tick();
     }
 
     fn window_for(&self, surface: &WlSurface) -> Option<Window> {
@@ -1239,7 +1347,8 @@ impl CompositorHandler for Crt {
                 }
             }
         }
-        self.render();
+        self.last_commit = Some(Instant::now());
+        self.damaged();
     }
 }
 
@@ -1317,7 +1426,7 @@ impl XdgShellHandler for Crt {
             self.space.unmap_elem(&w);
         }
         self.focus_top();
-        self.render();
+        self.damaged();
     }
 }
 
