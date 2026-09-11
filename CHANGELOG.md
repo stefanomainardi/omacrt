@@ -7,6 +7,13 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-11
+
+The whole command line speaks with one voice, and the two things that could
+not be reached from outside can be: the desktop plugin after a package
+upgrade, and the logs nobody reads. Also a launcher that stopped on the
+television, found in one of those logs the morning after it happened.
+
 ### Added
 
 - The self test reads the two logs nobody reads. A launcher that stopped and
@@ -20,9 +27,6 @@ caveat for a 0.x project: anything may still move.
   log; a client can now tell the compositor which part of its buffer to show
   and at what size, instead of scaling into a buffer of the exact size
   itself.
-
-### Added
-
 - The claim that this needs Hyprland rather than Omarchy or a distribution is
   now checked rather than written. Continuous integration installs the whole
   thing on the runner, which has no Omarchy, no Arch, no graphics card and no
@@ -888,7 +892,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.6.0
 [0.5.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.5.0
 [0.4.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.2
 [0.4.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.1
