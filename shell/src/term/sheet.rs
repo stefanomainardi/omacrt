@@ -135,6 +135,32 @@ impl Sheet {
         ]));
     }
 
+    /// A row that answers yes or no, in the self test's vocabulary.
+    pub fn check(&mut self, level: super::Level, label: &str, note: impl Into<String>) {
+        let (tag, colour) = match level {
+            super::Level::Ok => ("OK  ", self.pal.theme.green),
+            super::Level::Warn => ("WARN", self.pal.theme.yellow),
+            super::Level::Fail => ("FAIL", self.pal.theme.red),
+        };
+        self.lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(tag.to_string(), self.bold(colour)),
+            Span::raw("  "),
+            Span::styled(label.to_string(), self.style(self.pal.theme.paper)),
+            Span::raw("  "),
+            Span::styled(note.into(), self.style(self.pal.theme.dim)),
+        ]));
+    }
+
+    /// The name of a group of rows.
+    pub fn section(&mut self, name: &str) {
+        self.lines.push(Line::raw(""));
+        self.lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(name.to_uppercase(), self.bold(self.pal.theme.accent)),
+        ]));
+    }
+
     /// A line of nothing, to separate one group of fields from the next.
     pub fn blank(&mut self) {
         self.lines.push(Line::raw(""));

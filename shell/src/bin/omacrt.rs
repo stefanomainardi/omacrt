@@ -1921,6 +1921,38 @@ fn cmd_bios(args: &[String]) {
         );
         return;
     }
+    let missing = rep.missing().len();
+    let summary = if missing == 0 {
+        "every file the systems you have ask for is here".to_string()
+    } else {
+        format!("{missing} required file(s) missing for the systems you have")
+    };
+    if let Some(mut sh) = term::sheet::Sheet::open(has(args, "--plain"), "bios", &summary) {
+        sh.field("system", rep.system_dir.display().to_string());
+        sh.blank();
+        let mut system = "";
+        for i in &rep.items {
+            if i.system != system {
+                system = &i.system;
+                sh.section(system);
+            }
+            let level = if i.present {
+                term::Level::Ok
+            } else if i.required {
+                term::Level::Fail
+            } else {
+                term::Level::Warn
+            };
+            let note = if i.relevant {
+                i.description.clone()
+            } else {
+                format!("{}  (no ROM folder)", i.description)
+            };
+            sh.check(level, &format!("{:<34}", i.file), note);
+        }
+        sh.print();
+        return;
+    }
     println!("RetroArch system directory: {}", rep.system_dir.display());
     for i in &rep.items {
         let mark = if i.present {
@@ -1936,10 +1968,7 @@ fn cmd_bios(args: &[String]) {
             i.system, i.file, i.description
         );
     }
-    println!(
-        "{} required file(s) missing for the systems you have.",
-        rep.missing().len()
-    );
+    println!("{missing} required file(s) missing for the systems you have.");
 }
 
 /// Start a game by name or by path: `omacrt play "metal slug"`.
