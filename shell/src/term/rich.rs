@@ -254,8 +254,10 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
         while *finished < total {
             match rx.recv() {
                 Ok((i, c)) => {
-                    done[i] = Some(c);
-                    *finished += 1;
+                    if let Some(slot) = done.get_mut(i) {
+                        *slot = Some(c);
+                        *finished += 1;
+                    }
                 }
                 Err(_) => break,
             }
@@ -290,8 +292,10 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
             loop {
                 match rx.try_recv() {
                     Ok((i, c)) => {
-                        done[i] = Some(c);
-                        finished += 1;
+                        if let Some(slot) = done.get_mut(i) {
+                            *slot = Some(c);
+                            finished += 1;
+                        }
                     }
                     Err(mpsc::TryRecvError::Empty) => break,
                     // The thread that asks the questions has gone, which
@@ -563,8 +567,11 @@ fn timing_lines(paint: &Paint, t: &Timing) -> Vec<Line<'static>> {
     for (label, v, unit) in [("H", t.h, "px"), ("V", t.v, "lines")] {
         let total = v[3].max(1) as f32;
         let bar = 46.0;
+        // Clamped to the bar: these numbers come from a configuration file,
+        // and a modeline whose active width is larger than its total would
+        // otherwise ask for a string as long as it liked.
         let seg = |from: u32, to: u32| -> usize {
-            ((to.saturating_sub(from) as f32 / total) * bar).round() as usize
+            (((to.saturating_sub(from) as f32 / total) * bar).round() as usize).min(bar as usize)
         };
         out.push(Line::from(vec![
             Span::raw("  "),
