@@ -274,3 +274,25 @@ impl Sheet {
 pub fn colour(c: crate::colour::Color, truecolor: bool) -> TColor {
     super::rich::conv(c, truecolor)
 }
+
+/// One step of something happening: `on`, `off` and the rest print these as
+/// they go, so they are lines rather than a sheet.
+///
+/// The label is the same width it has always been, and the same text goes
+/// out when nobody is looking at it.
+pub fn step(label: &str, value: impl AsRef<str>) {
+    let value = value.as_ref();
+    if !super::interactive(false) {
+        println!("{:<12}{value}", format!("{label}:"));
+        return;
+    }
+    let pal = Palette::load();
+    let style = |c: crate::colour::Color| Style::default().fg(super::rich::conv(c, pal.truecolor));
+    super::rich::print_lines(&[Line::from(vec![
+        Span::styled(
+            format!("{:<12}", format!("{label}:")),
+            style(pal.theme.accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(value.to_string(), style(pal.theme.paper)),
+    ])]);
+}

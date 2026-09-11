@@ -888,20 +888,23 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
     output::window_rules(&conn.name);
     output::isolate(&conn.name);
     match apply_mode(cfg, &conn, &standard, None, (0, 0)) {
-        Ok(ml) => println!(
-            "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
-            standard.to_uppercase(),
-            ml.width(),
-            ml.height(),
-            ml.hfreq_khz(),
-            ml.vfreq_hz()
+        Ok(ml) => term::sheet::step(
+            "mode",
+            format!(
+                "{} {}x{} {:.2} kHz {:.2} Hz",
+                standard.to_uppercase(),
+                ml.width(),
+                ml.height(),
+                ml.hfreq_khz(),
+                ml.vfreq_hz()
+            ),
         ),
         Err(e) => die(&e),
     }
     std::thread::sleep(std::time::Duration::from_millis(1000));
     match set_csync(cfg, &conn) {
-        Ok(m) => println!("dac:        csync {m}"),
-        Err(e) => println!("dac:        {e}"),
+        Ok(m) => term::sheet::step("dac", format!("csync {m}")),
+        Err(e) => term::sheet::step("dac", &e),
     }
     if cfg.audio.route {
         match audio::target(&conn) {
@@ -910,17 +913,17 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
                 let note =
                     audio::route_to_crt(&t, cfg.audio.volume, cfg.audio.system_default, &mut state);
                 state.save();
-                println!("audio:      {note}");
+                term::sheet::step("audio", &note);
             }
-            None => println!("audio:      no HDMI audio pin for this output"),
+            None => term::sheet::step("audio", "no HDMI audio pin for this output"),
         }
     }
     match launcher::start(cfg, &conn.name, crt_sink(cfg, &conn).as_deref()) {
         Ok(note) => {
-            println!("launcher:   {note}");
+            term::sheet::step("launcher", &note);
             launcher::focus();
         }
-        Err(e) => println!("launcher:   {e}"),
+        Err(e) => term::sheet::step("launcher", &e),
     }
     let mut state = State::load();
     state.on = true;
@@ -936,25 +939,28 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
     state.lines = 0;
     state.save();
     match display::start_with_sink(&conn.name, crt_sink(cfg, conn).as_deref()) {
-        Ok(note) => println!("display:    {note}"),
+        Ok(note) => term::sheet::step("display", &note),
         Err(e) => die(&format!("display: {e}")),
     }
     if let Some(text) = cfg.modeline(standard)
         && let Some(ml) = Modeline::parse(text)
     {
-        println!(
-            "mode:       {} {}x{} {:.2} kHz {:.2} Hz",
-            standard.to_uppercase(),
-            ml.width(),
-            ml.height(),
-            ml.hfreq_khz(),
-            ml.vfreq_hz()
+        term::sheet::step(
+            "mode",
+            format!(
+                "{} {}x{} {:.2} kHz {:.2} Hz",
+                standard.to_uppercase(),
+                ml.width(),
+                ml.height(),
+                ml.hfreq_khz(),
+                ml.vfreq_hz()
+            ),
         );
         display::mode(text);
     }
     match set_csync(cfg, conn) {
-        Ok(m) => println!("dac:        csync {m}"),
-        Err(e) => println!("dac:        {e}"),
+        Ok(m) => term::sheet::step("dac", format!("csync {m}")),
+        Err(e) => term::sheet::step("dac", &e),
     }
     if cfg.audio.route {
         // The HDMI audio pin exists only while a mode is up; give PipeWire a
@@ -966,26 +972,26 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
                 let note =
                     audio::route_to_crt(&t, cfg.audio.volume, cfg.audio.system_default, &mut state);
                 state.save();
-                println!("audio:      {note}");
+                term::sheet::step("audio", &note);
                 routed = true;
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
         if !routed {
-            println!("audio:      no HDMI audio pin for this output");
+            term::sheet::step("audio", "no HDMI audio pin for this output");
         }
     }
     match launcher::start(cfg, &conn.name, crt_sink(cfg, conn).as_deref()) {
-        Ok(note) => println!("launcher:   {note}"),
-        Err(e) => println!("launcher:   {e}"),
+        Ok(note) => term::sheet::step("launcher", &note),
+        Err(e) => term::sheet::step("launcher", &e),
     }
     let mut state = State::load();
     state.on = true;
     state.save();
     match watchdog::start() {
-        Ok(()) => println!("watchdog:   up"),
-        Err(e) => println!("watchdog:   {e}"),
+        Ok(()) => term::sheet::step("watchdog", "up"),
+        Err(e) => term::sheet::step("watchdog", &e),
     }
 }
 
@@ -1056,9 +1062,9 @@ fn cmd_watchdog(cfg: &Config) -> i32 {
             state.standard.clone()
         };
         match display::start_with_sink(&conn.name, crt_sink(cfg, &conn).as_deref()) {
-            Ok(note) => eprintln!("display: {note}"),
+            Ok(note) => eprintln!("display:    {note}"),
             Err(e) => {
-                eprintln!("display: {e}");
+                eprintln!("display:    {e}");
                 continue;
             }
         }
@@ -1066,13 +1072,13 @@ fn cmd_watchdog(cfg: &Config) -> i32 {
             display::mode(text);
         }
         match set_csync(cfg, &conn) {
-            Ok(m) => eprintln!("dac: csync {m}"),
-            Err(e) => eprintln!("dac: {e}"),
+            Ok(m) => eprintln!("dac:        csync {m}"),
+            Err(e) => eprintln!("dac:        {e}"),
         }
         if had_launcher {
             match launcher::start(cfg, &conn.name, crt_sink(cfg, &conn).as_deref()) {
-                Ok(note) => eprintln!("launcher: {note}"),
-                Err(e) => eprintln!("launcher: {e}"),
+                Ok(note) => eprintln!("launcher:   {note}"),
+                Err(e) => eprintln!("launcher:   {e}"),
             }
         }
         was_up = display::running();
