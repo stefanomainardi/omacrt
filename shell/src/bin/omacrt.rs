@@ -1146,7 +1146,7 @@ fn cmd_boot(cfg: &Config) {
     state.on = false;
     state.save();
     if cfg.shell.autostart && output::pick(cfg).is_some_and(|c| c.connected) {
-        println!("autostart: the DAC is connected, switching the tube on");
+        term::sheet::step("autostart", "the DAC is connected, switching the tube on");
         cmd_on(cfg, None);
     }
 }
@@ -2038,12 +2038,12 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             Some('f') => {
                 for m in &crt::tidy::survey() {
                     let (_, done) = crt::tidy::clear(m);
-                    println!("  {}  {}: {done}", m.what, m.detail);
+                    term::sheet::step(&m.what, format!("{}: {done}", m.detail));
                 }
             }
             Some('b') => {
                 for f in bios_report().missing() {
-                    println!("  {:<10}  {:<28}  {}", f.system, f.file, f.description);
+                    term::sheet::step(&f.system, format!("{:<28}  {}", f.file, f.description));
                 }
             }
             _ => {}
@@ -2060,18 +2060,19 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         for m in &mess {
             if fix {
                 let (_, done) = crt::tidy::clear(m);
-                println!("     {}  {}: {done}", m.what, m.detail);
+                term::sheet::step(&m.what, format!("{}: {done}", m.detail));
             } else {
-                println!("     {}  {}: {}", m.what, m.detail, m.fix);
+                term::sheet::step(&m.what, format!("{}: {}", m.detail, m.fix));
             }
         }
         if !fix {
-            println!("\n     omacrt doctor --fix clears these");
+            println!();
+            term::sheet::step("next", "omacrt doctor --fix clears these");
         }
     } else if has(args, "--fix") {
         for m in &mess {
             let (_, done) = crt::tidy::clear(m);
-            println!("     {}  {}: {done}", m.what, m.detail);
+            term::sheet::step(&m.what, format!("{}: {done}", m.detail));
         }
     }
     if checks.iter().all(|c| c.level.ok()) {
@@ -2123,7 +2124,7 @@ fn cmd_bios(args: &[String]) {
             println!("no folder with known BIOS files under the roots or the mounted disks");
         }
         for (p, n) in &found {
-            println!("{:>4} known file(s)  {}", n, p.display());
+            term::sheet::step("found", format!("{n:>4} known file(s)  {}", p.display()));
         }
         return;
     }
@@ -2136,9 +2137,12 @@ fn cmd_bios(args: &[String]) {
             die(&format!("{dir} is not a directory"));
         }
         match bios::import(&src, has(args, "--all")) {
-            Ok((copied, skipped)) => println!(
-                "{copied} file(s) copied into {}, {skipped} already there",
-                bios::system_dir().display()
+            Ok((copied, skipped)) => term::sheet::step(
+                "copied",
+                format!(
+                    "{copied} file(s) into {}, {skipped} already there",
+                    bios::system_dir().display()
+                ),
             ),
             Err(e) => die(&e.to_string()),
         }
@@ -2230,7 +2234,7 @@ fn cmd_play(args: &[String]) {
         let Some(item) = best_match(&index, query) else {
             die(&format!("no game matching {query}"));
         };
-        println!("{}  ({})", item.title, item.system);
+        term::sheet::step("playing", format!("{}  ({})", item.title, item.system));
         item.path.clone()
     };
     // Something already on the tube is the usual reason a launch from the
@@ -2338,10 +2342,9 @@ fn cmd_frame(args: &[String]) {
             source.label()
         ));
     }
-    println!(
-        "source:     {} ({} photographs)",
-        source.label(),
-        shots.len()
+    term::sheet::step(
+        "source",
+        format!("{} ({} photographs)", source.label(), shots.len()),
     );
     let state = State::load();
     let (w, h) = frame_size(&state);
@@ -2426,9 +2429,12 @@ fn cmd_library(args: &[String]) {
                 if found.is_empty() {
                     die("nothing to scan: pass a folder, e.g. omacrt library scan ~/Games");
                 }
-                println!("no roots configured, using what looks like a collection:");
+                term::sheet::step(
+                    "roots",
+                    "none configured, using what looks like a collection",
+                );
                 for f in &found {
-                    println!("  {}", f.display());
+                    term::sheet::step("", f.display().to_string());
                 }
                 lc.roots = found;
             }
@@ -2440,12 +2446,14 @@ fn cmd_library(args: &[String]) {
                 for done in omacrt_shell::scumm::prepare_all(&dir) {
                     match done {
                         omacrt_shell::scumm::Prepared::Wrote(file, id) => {
-                            println!("scummvm:    {id}, {}", file.display())
+                            term::sheet::step("scummvm", format!("{id}, {}", file.display()))
                         }
-                        omacrt_shell::scumm::Prepared::Packaged(dir) => println!(
-                            "scummvm:    {} is still on its discs; \
-                             `omacrt library unpack` reads them out",
-                            dir.display()
+                        omacrt_shell::scumm::Prepared::Packaged(dir) => term::sheet::step(
+                            "scummvm",
+                            format!(
+                                "{} is still on its discs; `omacrt library unpack` reads them out",
+                                dir.display()
+                            ),
                         ),
                     }
                 }
@@ -2512,9 +2520,9 @@ fn cmd_library(args: &[String]) {
                 }
             }
             if !ix.unknown.is_empty() {
-                println!(
-                    "{} file(s) with no system; folders involved:",
-                    ix.unknown.len()
+                term::sheet::step(
+                    "unplaced",
+                    format!("{} file(s) with no system, in:", ix.unknown.len()),
                 );
                 let mut dirs: std::collections::BTreeMap<PathBuf, usize> = Default::default();
                 for u in &ix.unknown {
@@ -2523,9 +2531,9 @@ fn cmd_library(args: &[String]) {
                     }
                 }
                 for (d, n) in dirs.iter().take(12) {
-                    println!("  {:>5}  {}", n, d.display());
+                    term::sheet::step("", format!("{n:>5}  {}", d.display()));
                 }
-                println!("assign one with: omacrt library assign <folder> <system>");
+                term::sheet::step("assign", "omacrt library assign <folder> <system>");
             }
         }
         Some("discover") => {
@@ -2574,7 +2582,7 @@ fn cmd_library(args: &[String]) {
                 die("library set needs key=value (core, dir, aspect or shader)");
             };
             library::set_system_field(system, key, value).unwrap_or_else(|e| die(&e));
-            println!("{system}: {key} = {value}");
+            term::sheet::step(system, format!("{key} = {value}"));
         }
         Some("covers") => {
             // Box art for the whole collection, exact names first, fuzzy after.
@@ -2607,7 +2615,7 @@ fn cmd_library(args: &[String]) {
                     continue;
                 }
                 let Some(index) = covers::NameIndex::load(label) else {
-                    println!("{:<12} no thumbnail index reachable", system.name);
+                    term::sheet::step(&system.name, "no thumbnail index reachable");
                     continue;
                 };
                 let (mut have, mut exact, mut fuzzy, mut none) = (0, 0, 0, 0);
@@ -2649,10 +2657,12 @@ fn cmd_library(args: &[String]) {
                     }
                 }
                 eprint!("\r\x1b[2K");
-                println!(
-                    "{:<12} {:>5} games: {have} had art, {exact} exact, {fuzzy} matched by title, {none} without",
-                    system.name,
-                    games.len()
+                term::sheet::step(
+                    &system.name,
+                    format!(
+                        "{:>5} games: {have} had art, {exact} exact, {fuzzy} matched by title, {none} without",
+                        games.len()
+                    ),
                 );
             }
         }
@@ -2748,6 +2758,20 @@ fn cmd_library(args: &[String]) {
                 }
                 _ => {}
             }
+            let summary = format!("{} root(s) the scan walks", lc.roots.len());
+            if let Some(mut sh) =
+                term::sheet::Sheet::open(has(args, "--plain"), "library roots", &summary)
+            {
+                for r in &lc.roots {
+                    sh.field_note(
+                        "root",
+                        r.display().to_string(),
+                        if r.is_dir() { "" } else { "not mounted" },
+                    );
+                }
+                sh.print();
+                return;
+            }
             for r in &lc.roots {
                 println!(
                     "{}{}",
@@ -2767,10 +2791,8 @@ fn cmd_library(args: &[String]) {
             let p = std::fs::canonicalize(path).unwrap_or(PathBuf::from(path));
             lc.hints.insert(p.display().to_string(), system.to_string());
             lc.save().unwrap_or_else(|e| die(&e.to_string()));
-            println!(
-                "{} -> {system}; run `omacrt library scan` to apply",
-                p.display()
-            );
+            term::sheet::step("assigned", format!("{} to {system}", p.display()));
+            term::sheet::step("next", "omacrt library scan, to apply it");
         }
         // `library unpack [DIR...]`: read a ScummVM game out of its discs.
         Some("unpack") => {
@@ -2785,22 +2807,38 @@ fn cmd_library(args: &[String]) {
                 given
             };
             if folders.is_empty() {
-                println!("nothing to unpack: every ScummVM game is already readable");
+                term::sheet::step(
+                    "unpack",
+                    "nothing to do: every ScummVM game is already readable",
+                );
                 return;
             }
             for dir in folders {
-                println!("unpacking {} ...", dir.display());
+                term::sheet::step("unpacking", dir.display().to_string());
                 match omacrt_shell::scumm::unpack(&dir) {
                     Ok(note) => println!("  {note}"),
                     Err(e) => println!("  {e}"),
                 }
             }
-            println!("run `omacrt library scan` to pick them up");
+            term::sheet::step("next", "omacrt library scan, to pick them up");
         }
         Some("unknown") => {
             let Some(ix) = Index::load() else {
                 die("no index yet, run omacrt library scan")
             };
+            let summary = format!("{} file(s) the scan could not place", ix.unknown.len());
+            if let Some(mut sh) =
+                term::sheet::Sheet::open(has(args, "--plain"), "library unknown", &summary)
+            {
+                for u in &ix.unknown {
+                    sh.field("file", u.display().to_string());
+                }
+                if ix.unknown.is_empty() {
+                    sh.note("every file the scan saw belongs to a system");
+                }
+                sh.print();
+                return;
+            }
             for u in &ix.unknown {
                 println!("{}", u.display());
             }
@@ -2872,13 +2910,28 @@ fn cmd_library(args: &[String]) {
                         std::fs::write(dir.join(format!("{pretty}.txt")), paths.join("\n") + "\n")
                             .unwrap_or_else(|e| die(&e.to_string()));
                     }
-                    println!(
-                        "{lists} collection(s), {games} games, {missing} entries not in the index, written to {}",
-                        dir.display()
+                    term::sheet::step(
+                        "written",
+                        format!(
+                            "{lists} collection(s), {games} games, {missing} not in the index, into {}",
+                            dir.display()
+                        ),
                     );
                 }
                 _ => {
                     let lib = library();
+                    let summary = format!("{} curated list(s)", lib.collections().len());
+                    if let Some(mut sh) = term::sheet::Sheet::open(
+                        has(args, "--plain"),
+                        "library collections",
+                        &summary,
+                    ) {
+                        for (name, items) in lib.collections() {
+                            sh.field(name, format!("{:>5} games", items.len()));
+                        }
+                        sh.print();
+                        return;
+                    }
                     for (name, items) in lib.collections() {
                         println!("{:<32} {:>5}", name, items.len());
                     }
@@ -3126,13 +3179,13 @@ fn main() {
             }
             display::send(&format!("monitor {}", if on { "on" } else { "off" }))
                 .unwrap_or_else(|e| die(&e.to_string()));
-            println!(
-                "monitor {}",
+            term::sheet::step(
+                "monitor",
                 if on {
                     "on: a desktop window shows the tube; focus it to type on the tube"
                 } else {
                     "off"
-                }
+                },
             );
         }
         "record" => {
@@ -3161,11 +3214,14 @@ fn main() {
                     let sink = crt_sink(&cfg, &conn);
                     display::record_start(&path, sink.as_deref())
                         .unwrap_or_else(|e| die(&e.to_string()));
-                    println!(
-                        "recording the tube to {path}{} (omacrt record stop)",
-                        sink.as_deref()
-                            .map(|s| format!(" with audio from {s}"))
-                            .unwrap_or_default()
+                    term::sheet::step(
+                        "recording",
+                        format!(
+                            "to {path}{}, until `omacrt record stop`",
+                            sink.as_deref()
+                                .map(|s| format!(" with audio from {s}"))
+                                .unwrap_or_default()
+                        ),
                     );
                 }
                 "stop" => {
@@ -3208,7 +3264,7 @@ fn main() {
             for _ in 0..40 {
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 if written(&path) {
-                    println!("{path}");
+                    term::sheet::step("shot", path);
                     return;
                 }
             }
@@ -3450,9 +3506,12 @@ fn main() {
                 "reset" => {
                     let mode = Csync::parse(&cfg.output.csync);
                     dac.reset(mode).unwrap_or_else(|e| die(&e.to_string()));
-                    println!(
-                        "reset done, csync {}",
-                        mode.map(|m| m.label()).unwrap_or("unchanged")
+                    term::sheet::step(
+                        "dac",
+                        format!(
+                            "reset done, csync {}",
+                            mode.map(|m| m.label()).unwrap_or("unchanged")
+                        ),
                     );
                 }
                 "csync" => {
@@ -3496,7 +3555,7 @@ fn main() {
                     .lines()
                     .any(|l| l.split('\t').next() == Some(target.as_str()))
                 {
-                    println!("already in the watch later list");
+                    term::sheet::step("watch", "already in the list for later");
                     return;
                 }
                 // A tab or a newline in the title would become extra rows,
@@ -3505,11 +3564,11 @@ fn main() {
                 text.push_str(&format!("{target}\t{title}\n"));
                 omacrt_shell::store::save_private(&path, text)
                     .unwrap_or_else(|e| die(&e.to_string()));
-                println!("kept for later: {target}");
+                term::sheet::step("later", &target);
             } else {
                 let line = format!("watch {target}");
                 crt::control::send(&[line.as_str()]).unwrap_or_else(|e| die(&e.to_string()));
-                println!("playing on the tube: {target}");
+                term::sheet::step("playing", &target);
             }
         }
         "doctor" => exit(cmd_doctor(&cfg, args)),
@@ -3520,7 +3579,7 @@ fn main() {
                     die("config set needs a key and a value, e.g. config set audio.volume 110")
                 };
                 omacrt_shell::crt::set_value(key, value).unwrap_or_else(|e| die(&e));
-                println!("{key} = {value}");
+                term::sheet::step(key, value);
                 return;
             }
             if let Some(mut sh) = term::sheet::Sheet::open(
