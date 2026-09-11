@@ -3111,7 +3111,7 @@ fn main() {
                 }
                 "stop" => {
                     display::record_stop().unwrap_or_else(|e| die(&e.to_string()));
-                    println!("recording stopped");
+                    term::sheet::step("record", "stopped");
                 }
                 _ => die("record start <file.mp4> | stop"),
             }
@@ -3215,7 +3215,7 @@ fn main() {
                     );
                     launcher::focus();
                 }
-                "stop" => println!("{}", launcher::stop()),
+                "stop" => term::sheet::step("launcher", launcher::stop()),
                 "restart" => {
                     launcher::stop();
                     let conn = connector(&cfg);
@@ -3226,7 +3226,7 @@ fn main() {
                     );
                     launcher::focus();
                 }
-                "focus" => println!("{}", focus_note()),
+                "focus" => term::sheet::step("focus", focus_note()),
                 "key" => {
                     let names: Vec<&str> = positional(args)
                         .iter()
@@ -3278,7 +3278,7 @@ fn main() {
                 }
             }
         }
-        "focus" => println!("{}", focus_note()),
+        "focus" => term::sheet::step("focus", focus_note()),
         "audio" => {
             let conn = connector(&cfg);
             let target =
@@ -3294,7 +3294,7 @@ fn main() {
                         &mut state
                     )
                 ),
-                Some("desktop") => println!("{}", audio::route_back(&mut state)),
+                Some("desktop") => term::sheet::step("audio", audio::route_back(&mut state)),
                 Some("volume") => {
                     // A percent, or a step up or down from where it is, so a
                     // menu row or a key binding can be "louder".
@@ -3327,7 +3327,7 @@ fn main() {
                             &["set-sink-volume", &target.sink, &format!("{v}%")],
                         );
                     }
-                    println!("TV volume {v}%");
+                    term::sheet::step("volume", format!("{v}% on the television"));
                 }
                 Some("all") => {
                     if state.previous_sink.is_empty()
@@ -3337,7 +3337,7 @@ fn main() {
                         state.previous_sink = prev;
                     }
                     omacrt_shell::crt::run("pactl", &["set-default-sink", &target.sink]);
-                    println!("system default: {}", target.sink);
+                    term::sheet::step("default", &target.sink);
                 }
                 Some("apps") => {
                     if !state.previous_sink.is_empty() {
@@ -3345,11 +3345,11 @@ fn main() {
                             "pactl",
                             &["set-default-sink", &state.previous_sink],
                         );
-                        println!("system default: {}", state.previous_sink);
+                        term::sheet::step("default", &state.previous_sink);
                         state.previous_sink.clear();
                     } else if let Some(other) = audio::other_sink(&target.sink) {
                         omacrt_shell::crt::run("pactl", &["set-default-sink", &other]);
-                        println!("system default: {other}");
+                        term::sheet::step("default", other);
                     }
                 }
                 _ => die("audio needs crt, desktop, all or apps"),
@@ -3402,7 +3402,7 @@ fn main() {
                         .and_then(|m| Csync::parse(m))
                         .unwrap_or_else(|| die("csync needs and, xor or separate"));
                     dac.set_csync(mode).unwrap_or_else(|e| die(&e.to_string()));
-                    println!("csync {}", mode.label());
+                    term::sheet::step("dac", format!("csync {}", mode.label()));
                 }
                 "watch" => {
                     let mode = Csync::parse(&cfg.output.csync).unwrap_or(Csync::Xor);
