@@ -195,6 +195,28 @@ Every verb, with its flags, is in [`docs/cli.md`](docs/cli.md). `shell key`,
 `shell type` and `shell screen` drive the launcher over its control pipe,
 which is how every screenshot and video in this repository was made.
 
+### omacrt doctor
+
+<p align="center">
+  <img src="docs/screens/doctor-etch.gif" width="620" alt="The OmaCRT wordmark cut out of the dark by a laser in a terminal, one branch at a time, with a gauge below it counting off the checks">
+</p>
+
+The command to run before buying anything. Its first four answers decide
+whether a machine can drive a television at all: which driver the card is on,
+whether the compositor offers DRM leasing and for which connector, whether
+systemd is there for the boot time override, and whether debugfs is mounted.
+None of them needs a DAC to be plugged in.
+
+In a terminal it is the launcher's own power on self test, cut by the same
+laser as the boot screen and advancing as each check answers, and then the
+report: the modeline drawn rather than listed, the card's outputs and what
+each is for, and the DAC's lock as a lamp. Piped, redirected, under
+`NO_COLOR`, or with `--plain`, it prints the lines it always printed.
+
+<p align="center">
+  <img src="docs/screens/doctor.png" width="760" alt="The report: the wordmark, a BIOS line, checks grouped into machine, television, programs, collection and housekeeping, then the modeline as a diagram, the outputs as a map, and the DAC's lock">
+</p>
+
 ## Repository layout
 
 | Path | What |
@@ -206,7 +228,7 @@ which is how every screenshot and video in this repository was made.
 | `bin/omacrt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
-| `docs/` | The 15 kHz study, what is on the tube screen by screen, what Omarchy lends it, the same without Omarchy, hardware notes, systems and video policy, controllers, CLI, troubleshooting |
+| `docs/` | The 15 kHz study, what is on the tube screen by screen, what Omarchy lends it, [the same without Omarchy](docs/hyprland.md), hardware notes, systems and video policy, controllers, CLI, troubleshooting |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
 | `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
