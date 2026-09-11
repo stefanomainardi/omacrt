@@ -137,6 +137,21 @@ pub struct Crt {
     /// Whether a pacer tick is already on its way, so that the several paths
     /// that can ask for one do not stack up a timer each.
     pacer_armed: bool,
+    /// Whether this frame's frame callbacks are already on their way.
+    callback_armed: bool,
+    /// When the clients were last told they may draw, until the first of
+    /// them commits, and how long that took: a decaying maximum, the same
+    /// shape as `render_cost` and for the same reason.
+    told_at: Option<Instant>,
+    client_cost: Duration,
+    /// Commits that arrived too late for the frame they were meant for.
+    late: u32,
+    /// `FLYBACK_LATE_DRAW=on`: tell clients they may draw just in time
+    /// rather than at the vblank. Off by default; see `arm_callbacks`.
+    late_draw: bool,
+    /// `FLYBACK_SLACK_US`: how much a client is given on top of twice its
+    /// own measured drawing time.
+    client_slack: Duration,
     /// Whether this frame's drawing deadline is already on its way.
     deadline_armed: bool,
     /// How long the last few frames took to draw and queue, decaying, so the
@@ -615,6 +630,18 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         flips_failed: 0,
         dirty: true,
         pacer_armed: false,
+        callback_armed: false,
+        told_at: None,
+        // Assume the worst until a client has shown otherwise: a whole frame
+        // to draw in, which is where every other compositor leaves it.
+        client_cost: Duration::from_millis(16),
+        late: 0,
+        late_draw: std::env::var("FLYBACK_LATE_DRAW").as_deref() == Ok("on"),
+        client_slack: std::env::var("FLYBACK_SLACK_US")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(Duration::from_micros)
+            .unwrap_or(Duration::from_millis(3)),
         deadline_armed: false,
         render_cost: Duration::from_micros(500),
         margin_override: std::env::var("FLYBACK_MARGIN_US")
@@ -1100,9 +1127,10 @@ impl Crt {
     /// without a pacer of its own an idle tube would never let anybody draw
     /// again and would stay idle for ever.
     fn tick(&mut self) {
-        // Unless the vblank has already done it this frame: told twice, a
-        // client draws twice and throws one away.
-        if !self.deadline_armed {
+        // Unless this frame's telling is already in hand: told twice, a
+        // client draws twice and throws one away. The pacer is only for a
+        // tube that has stopped flipping altogether.
+        if !self.deadline_armed && !self.callback_armed && !self.frame_queued {
             self.send_frames();
         }
         self.render();
@@ -1111,8 +1139,7 @@ impl Crt {
         }
     }
 
-    /// Tell every client it may draw. Sent at the vblank, so a client has a
-    /// whole frame in front of it.
+    /// Tell every client it may draw.
     fn send_frames(&mut self) {
         let t = self.start.elapsed();
         let output = self.output.clone();
@@ -1121,6 +1148,57 @@ impl Crt {
                 Some(output.clone())
             });
         }
+        self.told_at = Some(Instant::now());
+    }
+
+    /// Tell the clients they may draw at the moment that leaves their
+    /// picture as new as possible when it is scanned out.
+    ///
+    /// Told at the vblank, a program draws at once and its finished picture
+    /// then sits waiting most of a frame for the deadline. Told twice its
+    /// own drawing time before the deadline instead, it finishes just in
+    /// time and the picture on the tube is that much fresher. This is what
+    /// GroovyMAME calls frame delay, done here for every client at once
+    /// rather than inside one emulator.
+    ///
+    /// The cost of getting it wrong is a frame: a program that is late
+    /// misses the deadline and is shown one frame later than it would have
+    /// been. So the estimate is a decaying maximum with a factor of two and
+    /// three milliseconds on top, and a commit that does arrive late pushes
+    /// it out at once.
+    ///
+    /// It is off by default, and this is why. Measured here over three
+    /// hundred frames of a client that takes a millisecond to draw, it takes
+    /// the commit to the start of scanout from 15.2 ms to 5.7 ms, and one
+    /// frame in nine then slips a vblank and is shown late. More slack does
+    /// not buy the slip back: at five milliseconds it is one frame in seven,
+    /// at 9.2 ms of latency. A frame in nine arriving late is judder, and a
+    /// television that judders is worse than a television that is a frame
+    /// behind, so the trade is the operator's to make and not ours.
+    /// `FLYBACK_LATE_DRAW=on` makes it, `FLYBACK_SLACK_US` tunes it.
+    fn arm_callbacks(&mut self) {
+        if self.callback_armed {
+            return;
+        }
+        let room = self.period().saturating_sub(self.margin());
+        self.client_cost = self.client_cost.min(self.period());
+        let wait = if self.late_draw {
+            room.saturating_sub(self.client_cost * 2 + self.client_slack)
+        } else {
+            Duration::ZERO
+        };
+        if wait.is_zero() {
+            self.send_frames();
+            return;
+        }
+        self.callback_armed = self
+            .handle
+            .insert_source(Timer::from_duration(wait), |_, _, st: &mut Crt| {
+                st.callback_armed = false;
+                st.send_frames();
+                TimeoutAction::Drop
+            })
+            .is_ok();
     }
 
     /// One tick in a frame's time, unless one is already on its way.
@@ -1265,7 +1343,11 @@ impl Crt {
                             .last_commit
                             .map(|t| t.elapsed().as_micros())
                             .unwrap_or(0);
-                        eprintln!("trace: commit to flip queued {since} us");
+                        eprintln!(
+                            "trace: commit to flip queued {since} us, client {} us, render {} us",
+                            self.client_cost.as_micros(),
+                            self.render_cost.as_micros()
+                        );
                     }
                 }
             }
@@ -1361,8 +1443,11 @@ impl Crt {
                     commits.join(" "),
                     if self.commits_blocked > 0 {
                         format!(
-                            ", {} commit(s) waited for a flip already in the air",
-                            std::mem::take(&mut self.commits_blocked)
+                            ", {} commit(s) waited for a flip already in the air, {} of them \
+                             too late for their own frame (a client is given {} us to draw in)",
+                            std::mem::take(&mut self.commits_blocked),
+                            std::mem::take(&mut self.late),
+                            self.client_cost.as_micros()
                         )
                     } else {
                         String::new()
@@ -1376,7 +1461,7 @@ impl Crt {
             );
         }
         if self.frame_delay {
-            self.send_frames();
+            self.arm_callbacks();
             self.arm_deadline();
         } else {
             self.tick();
@@ -1437,7 +1522,22 @@ impl CompositorHandler for Crt {
                 }
             }
         }
-        self.last_commit = Some(Instant::now());
+        let at = Instant::now();
+        // How long this client took between being told it may draw and
+        // committing. Only the first commit after the telling counts: the
+        // rest are a client drawing more than once in a frame.
+        if let Some(told) = self.told_at.take() {
+            let cost = at.saturating_duration_since(told);
+            self.client_cost = cost.max(self.client_cost * 31 / 32);
+        }
+        // Too late for the frame it was meant for: the deadline has gone and
+        // the flip with it. Give this client more room next time rather than
+        // let it miss every frame.
+        if !self.deadline_armed && self.frame_queued {
+            self.late += 1;
+            self.client_cost = (self.client_cost * 5 / 4).min(self.period());
+        }
+        self.last_commit = Some(at);
         self.damaged();
     }
 }

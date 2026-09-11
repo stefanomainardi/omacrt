@@ -224,11 +224,27 @@ fn pump(
     probe: &mut Probe,
     d: Duration,
 ) -> Result<(), String> {
+    pump_until(conn, queue, probe, d, |_| false)
+}
+
+/// The same, but stopping the moment `stop` is true: waiting out the rest of
+/// a timeout after the compositor has already answered would be counted as
+/// the client's own drawing time and would move the deadline for nothing.
+fn pump_until(
+    conn: &Connection,
+    queue: &mut wayland_client::EventQueue<Probe>,
+    probe: &mut Probe,
+    d: Duration,
+    stop: impl Fn(&Probe) -> bool,
+) -> Result<(), String> {
     let until = std::time::Instant::now() + d;
     loop {
         queue
             .dispatch_pending(probe)
             .map_err(|e| format!("dispatch: {e}"))?;
+        if stop(probe) {
+            return Ok(());
+        }
         let now = std::time::Instant::now();
         if now >= until {
             return Ok(());
@@ -393,6 +409,15 @@ fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
         }
     );
 
+    if paced {
+        // The loop below waits for the callback the previous commit asked
+        // for; the first one has to come from somewhere.
+        probe.commit(&qh, 0, true);
+        conn.flush().map_err(|e| format!("flush: {e}"))?;
+        probe.samples.clear();
+        probe.inflight.clear();
+        probe.discarded = 0;
+    }
     let mut rng = Rng::new();
     let frame = probe.refresh;
     for i in 0..n {
@@ -400,12 +425,13 @@ fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
             // What a game does: it is told it may draw, it draws, it commits.
             // Everything after the commit is the compositor's.
             let seen = probe.callbacks;
-            for _ in 0..30 {
-                pump(&conn, &mut queue, &mut probe, Duration::from_millis(4))?;
-                if probe.callbacks > seen {
-                    break;
-                }
-            }
+            pump_until(
+                &conn,
+                &mut queue,
+                &mut probe,
+                Duration::from_millis(200),
+                |p| p.callbacks > seen,
+            )?;
             pump(&conn, &mut queue, &mut probe, draw)?;
         } else {
             // One frame, plus a random fraction of another: the commit lands
@@ -471,8 +497,19 @@ fn report(probe: &Probe) {
     row("mean", mean);
     row("95%", percentile(&us, 0.95));
     row("worst", us[us.len() - 1]);
+    // A frame that took half a frame longer than the quickest twentieth
+    // slipped a vblank: it was shown one flip later than its neighbours,
+    // which on a television is judder rather than latency. It is counted
+    // rather than averaged away, because an average hides exactly this.
+    let late = percentile(&us, 0.05) + frame_us / 2;
+    let slipped = us.iter().filter(|&&v| v > late).count();
     println!(
-        "\n{hw} of {} timestamps came from the display hardware",
+        "\n{slipped} of {} frames slipped a vblank ({:.1}%)",
+        us.len(),
+        slipped as f64 * 100.0 / us.len() as f64
+    );
+    println!(
+        "{hw} of {} timestamps came from the display hardware",
         us.len()
     );
     // The floor a client cannot do anything about: a commit at a uniformly

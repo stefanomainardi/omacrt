@@ -7,7 +7,27 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- Flyback offers `wp_presentation`, so a client is told on `CLOCK_MONOTONIC`
+  when its frame reached the screen instead of guessing. RetroArch and mpv
+  both ask for it.
+
 ### Changed
+
+- Half the delay between a program's picture and the tube is gone. The
+  compositor used to keep a page flip queued frame after frame whether or not
+  anything had changed, so a commit almost always arrived while one was
+  already in the air and waited a whole frame; it also drew at the start of a
+  frame rather than the end, which cost a second one. It now flips only when
+  something has changed and draws shortly before the vblank, with the margin
+  taken from what recent frames cost. Measured on the television over three
+  hundred frames drawn the way a program paces itself, commit to the start of
+  scanout falls from 30.9 ms (1.86 frames) to 16.6 ms (1.00), with no frame
+  slipping a vblank. `FLYBACK_MARGIN_US` sets the margin by hand or turns the
+  second half off; `FLYBACK_LATE_DRAW=on` goes further and tells a program to
+  draw just in time, which reaches 7.1 ms (0.43 frames) at the price of one
+  frame in eight arriving late, so it is off by default.
 
 - The compositor has a name: **Flyback**. It was `omacrt-display`, a
   description of where it sits rather than of what it is, and what it is has
