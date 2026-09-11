@@ -148,6 +148,70 @@ impl Palette {
     }
 }
 
+/// The wordmark at half its size, which is what a terminal has room for.
+///
+/// The drawing in `assets/wordmark.txt` is sixty-eight columns of block
+/// characters, and a block character is two pixels tall: twenty pixel rows by
+/// sixty-eight. Every two by two square of that becomes one pixel here, lit
+/// when at least half of it was, which gives thirty-four columns by ten pixel
+/// rows, or five character rows. It is the same letterforms at half scale
+/// rather than a second drawing to keep in step with the first.
+pub fn wordmark_half() -> Vec<String> {
+    let art: Vec<Vec<char>> = crate::assets::WORDMARK_TXT
+        .lines()
+        .map(|l| l.chars().collect())
+        .collect();
+    let cols = art.iter().map(|l| l.len()).max().unwrap_or(0);
+    // Two pixel rows per character row.
+    let px: Vec<Vec<bool>> = art
+        .iter()
+        .flat_map(|line| {
+            let at = |c: usize| line.get(c).copied().unwrap_or(' ');
+            let top: Vec<bool> = (0..cols)
+                .map(|c| matches!(at(c), '\u{2588}' | '\u{2580}'))
+                .collect();
+            let bottom: Vec<bool> = (0..cols)
+                .map(|c| matches!(at(c), '\u{2588}' | '\u{2584}'))
+                .collect();
+            [top, bottom]
+        })
+        .collect();
+    let half: Vec<Vec<bool>> = (0..px.len() / 2)
+        .map(|y| {
+            (0..cols / 2)
+                .map(|x| {
+                    let n = [
+                        px[y * 2][x * 2],
+                        px[y * 2][x * 2 + 1],
+                        px[y * 2 + 1][x * 2],
+                        px[y * 2 + 1][x * 2 + 1],
+                    ]
+                    .iter()
+                    .filter(|b| **b)
+                    .count();
+                    n >= 2
+                })
+                .collect()
+        })
+        .collect();
+    (0..half.len().div_ceil(2))
+        .map(|r| {
+            (0..cols / 2)
+                .map(|c| {
+                    let top = half[r * 2][c];
+                    let bottom = half.get(r * 2 + 1).map(|row| row[c]).unwrap_or(false);
+                    match (top, bottom) {
+                        (true, true) => '\u{2588}',
+                        (true, false) => '\u{2580}',
+                        (false, true) => '\u{2584}',
+                        (false, false) => ' ',
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
 /// A string with nothing in it that a terminal will act on.
 ///
 /// Some of what a check reports comes from outside: the name a device wrote

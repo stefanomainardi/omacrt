@@ -14,9 +14,6 @@
 
 use crate::colour::{Color, lerp_color, rgb};
 
-/// The wordmark, the same file the launcher compiles in.
-use crate::assets::WORDMARK_TXT as WORDMARK;
-
 /// How many ticks a cut cell takes to cool to its final colour.
 const COOL_TICKS: u32 = 14;
 /// Ticks a freshly cut cell shows white.
@@ -56,7 +53,13 @@ pub struct Etch {
 impl Etch {
     /// `stops` runs bottom to top, the way the launcher's gradient does.
     pub fn new(seed: u32, stops: [Color; 3]) -> Self {
-        let lines: Vec<Vec<char>> = WORDMARK.lines().map(|l| l.chars().collect()).collect();
+        Self::of(&super::wordmark_half(), seed, stops)
+    }
+
+    /// The same, over any block drawing: the self test cuts the wordmark at
+    /// half its size, which is a different grid from the one the tube uses.
+    pub fn of(art: &[String], seed: u32, stops: [Color; 3]) -> Self {
+        let lines: Vec<Vec<char>> = art.iter().map(|l| l.chars().collect()).collect();
         let rows = lines.len() as i32;
         let cols = lines.iter().map(|l| l.len()).max().unwrap_or(0) as i32;
         let mut cells = Vec::new();

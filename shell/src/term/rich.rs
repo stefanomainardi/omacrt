@@ -89,7 +89,7 @@ impl Drop for RawMode {
 }
 
 /// Below this many rows the terminal has no room for the picture.
-const MIN_ROWS: u16 = 24;
+const MIN_ROWS: u16 = 20;
 
 fn conv(c: Color, truecolor: bool) -> TColor {
     let (r, g, b) = ((c >> 16) as u8, (c >> 8) as u8, c as u8);
@@ -524,50 +524,58 @@ fn clear_block(live: usize) {
     let _ = stdout.flush();
 }
 
-/// The head: the wordmark, and under it the mark beside what this is.
+/// The head: the mark and the wordmark side by side, and under them what
+/// this is.
 ///
-/// While the machine is being asked this is the live block, redrawn in
-/// place: the laser cuts the word, the beam runs back across the mark every
-/// time an answer lands, and the line beside it counts them. When the word
-/// is cut and cold the same block is printed once, with the mark at rest and
-/// nothing counting, and the answers start under it.
+/// The two are one thing, drawn at the same height, the way the launcher's
+/// boot screen holds them. While the machine is being asked this is the live
+/// block, redrawn in place: the laser cuts the word, and the beam runs back
+/// across the mark every time an answer lands. When the word is cut and cold
+/// the same block is printed once, with the mark at rest and nothing
+/// counting, and the answers start under it.
 fn head_block(
     paint: &Paint,
     etch: &Etch,
     base: i32,
     asking: Option<(usize, usize)>,
 ) -> Vec<Line<'static>> {
+    let mark = mark::rows(mark::SIZE, base);
+    let word = paint.wordmark(etch);
     let mut out: Vec<Line<'static>> = vec![Line::raw("")];
-    out.extend(paint.wordmark(etch));
-    out.push(Line::raw(""));
-    let mut beside: Vec<Vec<Span<'static>>> = vec![
-        vec![],
-        vec![Span::styled(
-            format!("{} BIOS {} / 15kHz", super::NAME, version()),
-            paint.bold(paint.pal.theme.green),
-        )],
-        vec![Span::styled(
-            "(C) 2026 OmaCRT, self test",
-            paint.style(paint.pal.theme.dim),
-        )],
-        vec![],
-        match asking {
-            Some((n, of)) => vec![Span::styled(
-                format!("asking the machine  {}/{of}", n.min(of)),
-                paint.style(paint.pal.theme.cyan),
-            )],
-            None => vec![],
-        },
-    ];
-    for (i, row) in mark::rows(mark::SIZE, base).iter().enumerate() {
+    for i in 0..mark.len().max(word.len()) {
         let mut spans = vec![Span::raw("  ")];
-        spans.extend(mark_spans(paint, row));
+        match mark.get(i) {
+            Some(row) => spans.extend(mark_spans(paint, row)),
+            None => spans.push(Span::raw(" ".repeat(mark::cols(mark::SIZE)))),
+        }
         spans.push(Span::raw("   "));
-        if let Some(rest) = beside.get_mut(i) {
-            spans.append(rest);
+        if let Some(w) = word.get(i) {
+            spans.extend(w.spans.clone());
         }
         out.push(Line::from(spans));
     }
+    out.push(Line::raw(""));
+    let mut bios = vec![
+        Span::raw("  "),
+        Span::styled(
+            format!("{} BIOS {} / 15kHz", super::NAME, version()),
+            paint.bold(paint.pal.theme.green),
+        ),
+    ];
+    if let Some((n, of)) = asking {
+        bios.push(Span::styled(
+            format!("   asking the machine  {}/{of}", n.min(of)),
+            paint.style(paint.pal.theme.cyan),
+        ));
+    }
+    out.push(Line::from(bios));
+    out.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            "(C) 2026 OmaCRT, self test",
+            paint.style(paint.pal.theme.dim),
+        ),
+    ]));
     out
 }
 

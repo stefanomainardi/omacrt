@@ -11,9 +11,11 @@ caveat for a 0.x project: anything may still move.
 
 - The mark is in the terminal. The four bars and the dark cut of the beam's
   return, the launcher's own mark, drawn from the same geometry in half block
-  characters, under the wordmark at the head of the self test. The beam runs
-  back across it every time one of the machine's answers lands, and it is at
-  rest in the report that stays behind.
+  characters, standing beside the wordmark at the head of the self test. The
+  beam runs back across it every time one of the machine's answers lands, and
+  it is at rest in the report that stays behind. The wordmark is drawn at half
+  its size to stand level with it, from the same letterforms rather than a
+  second drawing.
 
 ### Changed
 

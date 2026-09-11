@@ -207,14 +207,13 @@ whether the compositor offers DRM leasing and for which connector, whether
 systemd is there for the boot time override, and whether debugfs is mounted.
 None of them needs a DAC to be plugged in.
 
-In a terminal it is the launcher's own power on self test. The wordmark is
-cut by the same laser as the boot screen while the machine is being asked,
-which is the slow part, and under it stands the mark: the four bars and the
-dark cut of the beam's return, the same geometry the launcher draws on the
-tube, with the beam running back across it every time one of those answers
-lands. Then the rest of the answers arrive, one line at a time as they come,
-and last the modeline drawn rather than listed, the card's outputs and what
-each is for, and the DAC's lock as a lamp. It is drawn with [ratatui](https://ratatui.rs), inline rather
+In a terminal it is the launcher's own power on self test. The mark and the
+wordmark stand side by side, the way the boot screen holds them: the word is
+cut by the same laser while the machine is being asked, which is the slow
+part, and the beam runs back across the mark's four bars every time one of
+those answers lands. Then the rest of the answers arrive, one line at a time
+as they come, and last the modeline drawn rather than listed, the card's
+outputs and what each is for, and the DAC's lock as a lamp. It is drawn with [ratatui](https://ratatui.rs), inline rather
 than on the alternate screen, so the report stays in the scrollback where it
 can be read again and pasted into an issue. Piped, redirected, under
 `NO_COLOR`, or with `--plain`, it prints the lines it always printed.
