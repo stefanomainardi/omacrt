@@ -19,6 +19,7 @@ use std::io::IsTerminal;
 pub mod etch;
 pub mod mark;
 pub mod rich;
+pub mod sheet;
 
 /// What a check found. `Warn` and `Fail` both count as a failure for the exit
 /// code, exactly as before: the distinction is how it reads, not what it

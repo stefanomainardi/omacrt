@@ -435,6 +435,158 @@ fn print_status(st: &Value) {
     );
 }
 
+/// The same answers, drawn: the mark, one line of what the machine is doing,
+/// and the fields under it. Nothing is printed here that `print_status` does
+/// not print; it is the same report in the self test's vocabulary.
+///
+/// Returns false when there is nobody to look at it, and the plain lines are
+/// printed instead. The overlay and every script read those.
+fn status_sheet(st: &Value, plain: bool) -> bool {
+    let on = st["active"].as_bool().unwrap_or(false);
+    let standard = st["standard"].as_str().unwrap_or("").to_uppercase();
+    let locked = st["dac"]["lock"]
+        .as_str()
+        .map(|l| l.starts_with("locked"))
+        .unwrap_or(false);
+    let running = st["shell"]["running"].as_bool().unwrap_or(false);
+    let summary = if on && locked {
+        format!("the television is on, {standard}, the DAC has lock")
+    } else if on {
+        format!("the television is on, {standard}")
+    } else if running {
+        "the launcher is up, the television is not".into()
+    } else {
+        "the television is off".into()
+    };
+    let Some(mut sh) = term::sheet::Sheet::open(plain, "status", &summary) else {
+        return false;
+    };
+
+    match &st["connector"] {
+        Value::Null => sh.note("no output found: connect the DAC, or name one in output.connector"),
+        c => sh.field_note(
+            "output",
+            format!(
+                "{}  {}",
+                c["name"].as_str().unwrap_or(""),
+                c["edid_name"].as_str().unwrap_or("")
+            ),
+            format!(
+                "{}{}{}",
+                if c["connected"].as_bool().unwrap_or(false) {
+                    "connected"
+                } else {
+                    "disconnected"
+                },
+                if c["edid_audio"].as_bool().unwrap_or(false) {
+                    ", audio"
+                } else {
+                    ""
+                },
+                if c["rgbpi2"].as_bool().unwrap_or(false) {
+                    ", RGB-Pi 2"
+                } else {
+                    ""
+                },
+            ),
+        ),
+    }
+    if let Value::Object(m) = &st["mode"] {
+        let note = if on {
+            format!("{} kHz  {} Hz  {standard}", m["hfreq_khz"], m["vfreq_hz"])
+        } else if m["disabled"].as_bool().unwrap_or(false) {
+            "disabled".into()
+        } else {
+            "not a 15 kHz mode".into()
+        };
+        sh.field_note(
+            "mode",
+            format!(
+                "{}x{} @ {:.3} Hz",
+                m["width"],
+                m["height"],
+                m["refresh_hz"].as_f64().unwrap_or(0.0)
+            ),
+            note,
+        );
+    }
+    let d = &st["dac"];
+    if d["present"].as_bool().unwrap_or(false) {
+        sh.lamp(
+            "dac",
+            locked,
+            format!(
+                "{}  csync {}  {}",
+                d["lock"].as_str().unwrap_or(""),
+                d["csync"].as_str().unwrap_or(""),
+                d["bus"].as_str().unwrap_or("")
+            ),
+        );
+    } else if st["connector"]["rgbpi2"].as_bool().unwrap_or(false) {
+        sh.lamp(
+            "dac",
+            false,
+            format!(
+                "not reachable: {}",
+                d["error"].as_str().unwrap_or("no answer")
+            ),
+        );
+    }
+    if let Value::Object(a) = &st["audio"] {
+        sh.field_note(
+            "audio",
+            if a["routed"].as_bool().unwrap_or(false) {
+                "to the television"
+            } else {
+                "to the desktop"
+            },
+            format!(
+                "{}{}",
+                a["profile"].as_str().unwrap_or(""),
+                if a["default"].as_bool().unwrap_or(false) {
+                    ", default sink"
+                } else {
+                    ""
+                }
+            ),
+        );
+    }
+    let s = &st["shell"];
+    sh.lamp(
+        "launcher",
+        running,
+        if running {
+            format!("running, pid {}", s["pid"])
+        } else if s["binary"].is_null() {
+            "stopped, and the binary is not where it should be".into()
+        } else {
+            "stopped".into()
+        },
+    );
+    if let Some(p) = st["playing"].as_str() {
+        sh.field("playing", p);
+    }
+    sh.blank();
+    let l = &st["library"];
+    sh.field_note(
+        "library",
+        format!("{} games in {} systems", l["games"], l["systems"]),
+        format!("{} videos", l["videos"]),
+    );
+    if let Some(mc) = l["missing_cores"].as_array().filter(|a| !a.is_empty()) {
+        let names: Vec<&str> = mc.iter().filter_map(|v| v.as_str()).collect();
+        sh.field("cores", format!("missing for {}", names.join(", ")));
+    }
+    let b = &st["bios"];
+    sh.field_note(
+        "bios",
+        format!("{} missing of {} required", b["missing"], b["required"]),
+        b["system_dir"].as_str().unwrap_or("").to_string(),
+    );
+    sh.print();
+    true
+}
+
 // ------------------------------------------------------------------ actions
 
 fn apply_mode(
@@ -2057,17 +2209,39 @@ fn cmd_library(args: &[String]) {
             }
             ix.save().unwrap_or_else(|e| die(&e.to_string()));
             let secs = started.elapsed().as_secs_f32();
-            println!(
+            let summary = format!(
                 "{} games in {} systems, {:.1} s",
                 ix.items.len(),
                 ix.systems().len(),
                 secs
             );
-            for (system, n) in ix.systems() {
-                let label = index::catalog(&system)
-                    .map(|(l, _, _)| l)
-                    .unwrap_or("unknown to the catalogue");
-                println!("  {:<12} {:>6}  {}", system, n, label);
+            // `--progress` and `--quiet` belong to a caller reading this
+            // output rather than to somebody looking at it: the overlay
+            // parses these lines.
+            let sheet = if progress || quiet {
+                None
+            } else {
+                term::sheet::Sheet::open(has(args, "--plain"), "library scan", &summary)
+            };
+            match sheet {
+                Some(mut sh) => {
+                    for (system, n) in ix.systems() {
+                        let label = index::catalog(&system)
+                            .map(|(l, _, _)| l)
+                            .unwrap_or("unknown to the catalogue");
+                        sh.field_note(&system, format!("{n:>6}"), label);
+                    }
+                    sh.print();
+                }
+                None => {
+                    println!("{summary}");
+                    for (system, n) in ix.systems() {
+                        let label = index::catalog(&system)
+                            .map(|(l, _, _)| l)
+                            .unwrap_or("unknown to the catalogue");
+                        println!("  {:<12} {:>6}  {}", system, n, label);
+                    }
+                }
             }
             if !ix.unknown.is_empty() {
                 println!(
@@ -2459,13 +2633,20 @@ fn main() {
     match cmd {
         "-h" | "--help" | "help" => println!("{HELP}"),
         "-V" | "--version" | "version" => {
-            println!("omacrt {}", env!("CARGO_PKG_VERSION"));
+            match term::sheet::Sheet::open(
+                has(args, "--plain"),
+                "version",
+                &format!("{} / 15kHz", env!("CARGO_PKG_VERSION")),
+            ) {
+                Some(sh) => sh.print(),
+                None => println!("omacrt {}", env!("CARGO_PKG_VERSION")),
+            }
         }
         "status" => {
             let st = status(&cfg);
             if has(args, "--json") {
                 println!("{st}");
-            } else {
+            } else if !status_sheet(&st, has(args, "--plain")) {
                 print_status(&st);
             }
         }

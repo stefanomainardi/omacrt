@@ -91,7 +91,7 @@ impl Drop for RawMode {
 /// Below this many rows the terminal has no room for the picture.
 const MIN_ROWS: u16 = 20;
 
-fn conv(c: Color, truecolor: bool) -> TColor {
+pub(super) fn conv(c: Color, truecolor: bool) -> TColor {
     let (r, g, b) = ((c >> 16) as u8, (c >> 8) as u8, c as u8);
     if truecolor {
         return TColor::Rgb(r, g, b);
@@ -616,21 +616,37 @@ fn footer_block(
 /// The mark's cells, in the colours the launcher gives them: the bars in
 /// green, and the edge the cut has just left a shade warmer.
 fn mark_spans(paint: &Paint, row: &[mark::Cell]) -> Vec<Span<'static>> {
-    let warm = lerp_color(paint.pal.theme.green, paint.pal.theme.paper, 0.45);
+    mark_spans_with(
+        paint.pal.theme.green,
+        paint.pal.theme.paper,
+        paint.pal.truecolor,
+        row,
+    )
+}
+
+/// The same, for a caller that has colours rather than a painter.
+pub(super) fn mark_spans_with(
+    green: Color,
+    paper: Color,
+    truecolor: bool,
+    row: &[mark::Cell],
+) -> Vec<Span<'static>> {
+    let warm = lerp_color(green, paper, 0.45);
+    let style = |c: Color| Style::default().fg(conv(c, truecolor));
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut run = String::new();
     let mut hot = false;
     for c in row {
         if c.hot != hot && !run.is_empty() {
-            let colour = if hot { warm } else { paint.pal.theme.green };
-            spans.push(Span::styled(std::mem::take(&mut run), paint.style(colour)));
+            let colour = if hot { warm } else { green };
+            spans.push(Span::styled(std::mem::take(&mut run), style(colour)));
         }
         hot = c.hot;
         run.push(c.ch);
     }
     if !run.is_empty() {
-        let colour = if hot { warm } else { paint.pal.theme.green };
-        spans.push(Span::styled(run, paint.style(colour)));
+        let colour = if hot { warm } else { green };
+        spans.push(Span::styled(run, style(colour)));
     }
     spans
 }
@@ -883,7 +899,7 @@ fn output_lines(paint: &Paint, outs: &[Output]) -> Vec<Line<'static>> {
 
 /// Render lines to the scrollback through a one line buffer, so the styling
 /// is ratatui's and the result is ordinary terminal output that scrolls.
-fn print_lines(lines: &[Line<'static>]) {
+pub(super) fn print_lines(lines: &[Line<'static>]) {
     use std::io::Write;
     let mut stdout = stdout().lock();
     for line in lines {
