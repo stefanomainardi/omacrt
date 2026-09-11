@@ -14,10 +14,11 @@
 
 use crate::assets::{RETRACE, Retrace};
 
-/// The mark's size in grid units, which is six character rows by twelve
-/// columns: the smallest that keeps four bars, three gaps and a cut of the
-/// right width apart from each other.
-pub const SIZE: f32 = 12.0;
+/// The mark's size in grid units, which is eight character rows by sixteen
+/// columns. Twelve is the smallest that keeps four bars, three gaps and a
+/// cut of the right width apart from each other; sixteen is the smallest
+/// that survives a picture of the terminal being scaled down for a page.
+pub const SIZE: f32 = 16.0;
 
 /// How long a return takes, in seconds. `Scene::RETRACE_LASTS`.
 pub const LASTS: f32 = 0.46;
@@ -115,11 +116,18 @@ mod tests {
     }
 
     #[test]
-    fn the_mark_is_six_rows_of_twelve_columns() {
+    fn the_mark_is_eight_rows_of_sixteen_columns() {
         let m = rows(SIZE, RETRACE.rest);
+        assert_eq!(m.len(), 8);
+        assert!(m.iter().all(|r| r.len() == 16));
+        assert_eq!(cols(SIZE), 16);
+    }
+
+    #[test]
+    fn it_stays_square_at_the_small_size_too() {
+        let m = rows(12.0, RETRACE.rest);
         assert_eq!(m.len(), 6);
-        assert!(m.iter().all(|r| r.len() == 12));
-        assert_eq!(cols(SIZE), 12);
+        assert_eq!(cols(12.0), 12);
     }
 
     #[test]

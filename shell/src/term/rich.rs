@@ -89,7 +89,7 @@ impl Drop for RawMode {
 }
 
 /// Below this many rows the terminal has no room for the picture.
-const MIN_ROWS: u16 = 20;
+const MIN_ROWS: u16 = 24;
 
 fn conv(c: Color, truecolor: bool) -> TColor {
     let (r, g, b) = ((c >> 16) as u8, (c >> 8) as u8, c as u8);
@@ -360,7 +360,7 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
             // it has to be printed in the colours the word keeps.
             if etch.cold() {
                 cutting = false;
-                perm.extend(head_lines(&paint, &etch));
+                perm.extend(head_block(&paint, &etch, crate::assets::RETRACE.rest, None));
             }
         }
         if !cutting {
@@ -384,11 +384,10 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
         }
 
         let block = if cutting {
-            cutting_frame(&paint, &etch, finished, etch_of)
+            head_block(&paint, &etch, mark_base(retrace), Some((finished, etch_of)))
         } else {
-            working_frame(
+            footer_block(
                 &paint,
-                mark_base(retrace),
                 shown,
                 total,
                 if shown < total {
@@ -525,44 +524,67 @@ fn clear_block(live: usize) {
     let _ = stdout.flush();
 }
 
-/// The wordmark being cut, with the line that says what is being asked.
-fn cutting_frame(paint: &Paint, etch: &Etch, finished: usize, of: usize) -> Vec<Line<'static>> {
-    let mut lines = paint.wordmark(etch);
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled(
-            format!("{} BIOS {} / 15kHz", super::NAME, version()),
-            paint.bold(paint.pal.theme.green),
-        ),
-        Span::styled(
-            format!("   asking the machine  {}/{of}", finished.min(of)),
-            paint.style(paint.pal.theme.dim),
-        ),
-    ]));
-    lines
-}
-
-/// The block at the bottom while the answers land: the mark, the counter,
-/// and the name of the check being asked.
-fn working_frame(
+/// The head: the wordmark, and under it the mark beside what this is.
+///
+/// While the machine is being asked this is the live block, redrawn in
+/// place: the laser cuts the word, the beam runs back across the mark every
+/// time an answer lands, and the line beside it counts them. When the word
+/// is cut and cold the same block is printed once, with the mark at rest and
+/// nothing counting, and the answers start under it.
+fn head_block(
     paint: &Paint,
+    etch: &Etch,
     base: i32,
-    shown: usize,
-    total: usize,
-    current: Option<String>,
+    asking: Option<(usize, usize)>,
 ) -> Vec<Line<'static>> {
-    let rows = mark::rows(mark::SIZE, base);
-    let bar = 16usize;
-    let filled = (shown * bar).checked_div(total).unwrap_or(bar);
+    let mut out: Vec<Line<'static>> = vec![Line::raw("")];
+    out.extend(paint.wordmark(etch));
+    out.push(Line::raw(""));
     let mut beside: Vec<Vec<Span<'static>>> = vec![
         vec![],
         vec![Span::styled(
             format!("{} BIOS {} / 15kHz", super::NAME, version()),
             paint.bold(paint.pal.theme.green),
         )],
+        vec![Span::styled(
+            "(C) 2026 OmaCRT, self test",
+            paint.style(paint.pal.theme.dim),
+        )],
         vec![],
-        vec![
+        match asking {
+            Some((n, of)) => vec![Span::styled(
+                format!("asking the machine  {}/{of}", n.min(of)),
+                paint.style(paint.pal.theme.cyan),
+            )],
+            None => vec![],
+        },
+    ];
+    for (i, row) in mark::rows(mark::SIZE, base).iter().enumerate() {
+        let mut spans = vec![Span::raw("  ")];
+        spans.extend(mark_spans(paint, row));
+        spans.push(Span::raw("   "));
+        if let Some(rest) = beside.get_mut(i) {
+            spans.append(rest);
+        }
+        out.push(Line::from(spans));
+    }
+    out
+}
+
+/// The block at the bottom while the answers land: how many have, and the
+/// name of the one being asked.
+fn footer_block(
+    paint: &Paint,
+    shown: usize,
+    total: usize,
+    current: Option<String>,
+) -> Vec<Line<'static>> {
+    let bar = 16usize;
+    let filled = (shown * bar).checked_div(total).unwrap_or(bar);
+    vec![
+        Line::raw(""),
+        Line::from(vec![
+            Span::raw("  "),
             Span::styled(
                 "█".repeat(filled),
                 paint.style(paint.pal.theme.bright_green),
@@ -579,23 +601,8 @@ fn working_frame(
                 current.unwrap_or_default(),
                 paint.style(paint.pal.theme.cyan),
             ),
-        ],
-        vec![],
-        vec![],
-    ];
-    // A line of air above it, so the block reads as the instrument panel it
-    // is rather than as another row of the report.
-    let mut out = vec![Line::raw("")];
-    for (i, row) in rows.iter().enumerate() {
-        let mut spans = vec![Span::raw("  ")];
-        spans.extend(mark_spans(paint, row));
-        spans.push(Span::raw("   "));
-        if let Some(rest) = beside.get_mut(i) {
-            spans.append(rest);
-        }
-        out.push(Line::from(spans));
-    }
-    out
+        ]),
+    ]
 }
 
 /// The mark's cells, in the colours the launcher gives them: the bars in
@@ -618,29 +625,6 @@ fn mark_spans(paint: &Paint, row: &[mark::Cell]) -> Vec<Span<'static>> {
         spans.push(Span::styled(run, paint.style(colour)));
     }
     spans
-}
-
-/// The head of the report: the wordmark as the laser left it, and the line
-/// that says what this is.
-fn head_lines(paint: &Paint, etch: &Etch) -> Vec<Line<'static>> {
-    let mut out: Vec<Line<'static>> = vec![Line::raw("")];
-    out.extend(paint.wordmark(etch));
-    out.push(Line::raw(""));
-    out.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled(
-            format!("{} BIOS {} / 15kHz", super::NAME, version()),
-            paint.bold(paint.pal.theme.green),
-        ),
-    ]));
-    out.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled(
-            "(C) 2026 OmaCRT, self test",
-            paint.style(paint.pal.theme.dim),
-        ),
-    ]));
-    out
 }
 
 /// One answer.
@@ -724,24 +708,7 @@ fn version() -> &'static str {
 
 /// Write the report into the scrollback, where it stays.
 fn report(paint: &Paint, etch: &Etch, checks: &[Check], extras: &Extras, actions: &[Action]) {
-    let mut out: Vec<Line<'static>> = vec![Line::raw("")];
-    out.extend(paint.wordmark(etch));
-    out.push(Line::raw(""));
-    out.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled(
-            format!("{} BIOS {} / 15kHz", super::NAME, version()),
-            paint.bold(paint.pal.theme.green),
-        ),
-    ]));
-    out.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled(
-            "(C) 2026 OmaCRT, self test",
-            paint.style(paint.pal.theme.dim),
-        ),
-    ]));
-
+    let mut out = head_block(paint, etch, crate::assets::RETRACE.rest, None);
     let width = checks.iter().map(|c| c.label.len()).max().unwrap_or(10);
     let mut section = "";
     for c in checks {

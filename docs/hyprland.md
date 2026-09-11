@@ -59,7 +59,7 @@ you like.
 ## What to check first
 
 <p align="center">
-  <img src="screens/doctor-full.gif" width="620" alt="The whole self test in a terminal: the OmaCRT wordmark cut out of the dark by a laser one letter at a time, a gauge counting the checks, and then the finished report">
+  <img src="screens/doctor-full.gif" width="620" alt="The whole self test in a terminal: the OmaCRT wordmark cut out of the dark by a laser one letter at a time, the mark under it with the beam running back across its four bars, the checks landing one line at a time, and then the finished report">
 </p>
 
 `omacrt doctor`. The first four rows are the ones that decide whether the
@@ -70,10 +70,6 @@ before a DAC is bought.
 
 The row after them says which channel you are on, and everything below it is
 the same on both.
-
-<p align="center">
-  <img src="screens/doctor.png" width="760" alt="The doctor report: the wordmark, a BIOS line, the checks grouped by machine, television, programs, collection and housekeeping, then the modeline drawn as a diagram, the card's outputs and the DAC's lock">
-</p>
 
 The laser is not a loading bar with a costume on. It advances because a check
 answered, and when a probe is slow it waits with you. The diagram under the

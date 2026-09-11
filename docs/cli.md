@@ -279,7 +279,7 @@ prints the same lines it always has, and the exit code is unchanged: zero
 when everything passed.
 
 <p align="center">
-  <img src="screens/doctor.png" width="740" alt="The doctor report: the wordmark, a BIOS line, the checks grouped into machine, television, programs, collection and housekeeping, then the modeline drawn as a diagram, the card's outputs and the DAC's lock">
+  <img src="screens/doctor-full.gif" width="740" alt="The whole self test: the wordmark cut by the laser, the mark under it with the beam running back across it, the checks landing one at a time, and then the modeline drawn as a diagram, the card's outputs and the DAC's lock">
 </p>
 
 The survey looks for three things. An **emulator no launcher owns**: it is

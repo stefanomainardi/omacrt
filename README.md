@@ -198,7 +198,7 @@ which is how every screenshot and video in this repository was made.
 ### omacrt doctor
 
 <p align="center">
-  <img src="docs/screens/doctor-full.gif" width="620" alt="The whole self test in a terminal: the OmaCRT wordmark cut out of the dark by a laser one branch at a time, a gauge counting off the checks, and then the finished report">
+  <img src="docs/screens/doctor-full.gif" width="620" alt="The whole self test in a terminal: the OmaCRT wordmark cut out of the dark by a laser one branch at a time, the mark under it with the beam running back across its four bars, the checks landing one line at a time, and then the finished report">
 </p>
 
 The command to run before buying anything. Its first four answers decide
@@ -209,19 +209,15 @@ None of them needs a DAC to be plugged in.
 
 In a terminal it is the launcher's own power on self test. The wordmark is
 cut by the same laser as the boot screen while the machine is being asked,
-which is the slow part; then the answers land one line at a time as they
-arrive, under a block that carries the mark, the counter and the name of the
-check being asked. The beam runs back across the mark every time a check
-answers. Last comes what the block was standing in for: the modeline drawn
-rather than listed, the card's outputs and what each is for, and the DAC's
-lock as a lamp. It is drawn with [ratatui](https://ratatui.rs), inline rather
+which is the slow part, and under it stands the mark: the four bars and the
+dark cut of the beam's return, the same geometry the launcher draws on the
+tube, with the beam running back across it every time one of those answers
+lands. Then the rest of the answers arrive, one line at a time as they come,
+and last the modeline drawn rather than listed, the card's outputs and what
+each is for, and the DAC's lock as a lamp. It is drawn with [ratatui](https://ratatui.rs), inline rather
 than on the alternate screen, so the report stays in the scrollback where it
 can be read again and pasted into an issue. Piped, redirected, under
 `NO_COLOR`, or with `--plain`, it prints the lines it always printed.
-
-<p align="center">
-  <img src="docs/screens/doctor.png" width="760" alt="The report: the wordmark, a BIOS line, checks grouped into machine, television, programs, collection and housekeeping, then the modeline as a diagram, the outputs as a map, and the DAC's lock">
-</p>
 
 ## Repository layout
 
