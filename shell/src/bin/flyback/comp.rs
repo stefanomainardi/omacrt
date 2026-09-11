@@ -137,6 +137,16 @@ pub struct Crt {
     /// Whether a pacer tick is already on its way, so that the several paths
     /// that can ask for one do not stack up a timer each.
     pacer_armed: bool,
+    /// Whether this frame's drawing deadline is already on its way.
+    deadline_armed: bool,
+    /// How long the last few frames took to draw and queue, decaying, so the
+    /// deadline is set from what this machine and this scene actually cost
+    /// rather than from a guess.
+    render_cost: Duration,
+    /// `FLYBACK_MARGIN_US`: a fixed margin in microseconds, or `off` to draw
+    /// as soon as a client commits instead of waiting for the deadline.
+    margin_override: Option<Duration>,
+    frame_delay: bool,
     /// When a client last committed, and how many commits arrived while a
     /// page flip was already in the air and so could not be drawn at once.
     /// Only kept when `FLYBACK_TRACE` is set: this is a measuring aid.
@@ -605,6 +615,13 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         flips_failed: 0,
         dirty: true,
         pacer_armed: false,
+        deadline_armed: false,
+        render_cost: Duration::from_micros(500),
+        margin_override: std::env::var("FLYBACK_MARGIN_US")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(Duration::from_micros),
+        frame_delay: std::env::var("FLYBACK_MARGIN_US").as_deref() != Ok("off"),
         trace: std::env::var_os("FLYBACK_TRACE").is_some(),
         last_commit: None,
         commits_blocked: 0,
@@ -1019,7 +1036,59 @@ impl Crt {
     /// has changed.
     fn damaged(&mut self) {
         self.dirty = true;
+        // A deadline is already set for this frame: drawing now would only
+        // make the picture older by the time it is shown, and would shut the
+        // door on anything else committed before the deadline.
+        if self.deadline_armed {
+            return;
+        }
         self.render();
+    }
+
+    /// The period of one frame on the tube.
+    fn period(&self) -> Duration {
+        self.output
+            .current_mode()
+            .map(|m| Duration::from_nanos(1_000_000_000_000u64 / (m.refresh.max(1) as u64)))
+            .unwrap_or(Duration::from_nanos(16_666_666))
+    }
+
+    /// How long before the vblank the drawing has to start.
+    ///
+    /// Twice what the last few frames cost, plus a millisecond and a half.
+    /// Too small and the frame misses its flip and arrives a whole frame
+    /// late, which is the thing this is trying to avoid; too large and the
+    /// picture is older than it needs to be by the difference.
+    fn margin(&self) -> Duration {
+        let period = self.period();
+        self.margin_override
+            .unwrap_or(self.render_cost * 2 + Duration::from_micros(1500))
+            .clamp(Duration::from_micros(1500), period / 2)
+    }
+
+    /// Draw at the last safe moment of this frame rather than at its start.
+    ///
+    /// A flip queued anywhere inside a frame is shown at the next vblank, so
+    /// there is nothing to gain by queueing early and a whole frame to lose:
+    /// a client told at the vblank that it may draw commits a millisecond
+    /// later, and if the flip has already gone its picture waits for the
+    /// frame after. Waiting until the deadline catches that commit instead.
+    fn arm_deadline(&mut self) {
+        if self.deadline_armed || !self.frame_delay {
+            return;
+        }
+        let wait = self.period().saturating_sub(self.margin());
+        self.deadline_armed = self
+            .handle
+            .insert_source(Timer::from_duration(wait), |_, _, st: &mut Crt| {
+                st.deadline_armed = false;
+                st.render();
+                if !st.frame_queued {
+                    st.arm_pacer();
+                }
+                TimeoutAction::Drop
+            })
+            .is_ok();
     }
 
     /// A frame's worth of work that does not depend on a flip: tell every
@@ -1031,16 +1100,26 @@ impl Crt {
     /// without a pacer of its own an idle tube would never let anybody draw
     /// again and would stay idle for ever.
     fn tick(&mut self) {
+        // Unless the vblank has already done it this frame: told twice, a
+        // client draws twice and throws one away.
+        if !self.deadline_armed {
+            self.send_frames();
+        }
+        self.render();
+        if !self.frame_queued {
+            self.arm_pacer();
+        }
+    }
+
+    /// Tell every client it may draw. Sent at the vblank, so a client has a
+    /// whole frame in front of it.
+    fn send_frames(&mut self) {
         let t = self.start.elapsed();
         let output = self.output.clone();
         for w in self.space.elements() {
             w.send_frame(&output, t, Some(Duration::from_secs(1)), |_, _| {
                 Some(output.clone())
             });
-        }
-        self.render();
-        if !self.frame_queued {
-            self.arm_pacer();
         }
     }
 
@@ -1087,6 +1166,7 @@ impl Crt {
         let Some(out) = self.drm_output.as_mut() else {
             return;
         };
+        let began = Instant::now();
         self.space.refresh();
         let elements =
             match space_render_elements(&mut self.renderer, [&self.space], &self.output, 1.0) {
@@ -1173,6 +1253,11 @@ impl Crt {
                 } else {
                     self.flips_failed = 0;
                     self.dirty = false;
+                    // What this frame cost, kept as a decaying maximum: the
+                    // deadline has to clear the worst of the last second,
+                    // not the average, or every heavy frame arrives late.
+                    let cost = began.elapsed();
+                    self.render_cost = cost.max(self.render_cost * 15 / 16);
                     self.frame_queued = true;
                     self.queued_at = Some(Instant::now());
                     if self.trace {
@@ -1290,7 +1375,12 @@ impl Crt {
                 omacrt_shell::logfile::CAP_BYTES,
             );
         }
-        self.tick();
+        if self.frame_delay {
+            self.send_frames();
+            self.arm_deadline();
+        } else {
+            self.tick();
+        }
     }
 
     fn window_for(&self, surface: &WlSurface) -> Option<Window> {

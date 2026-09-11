@@ -190,11 +190,16 @@ impl Probe {
         Ok(())
     }
 
-    /// Commit one frame and start its clock.
-    fn commit(&mut self, qh: &QueueHandle<Probe>, i: usize) {
+    /// Commit one frame and start its clock. With `callback`, ask for a
+    /// frame callback in the same commit, which is how a real client paces
+    /// itself.
+    fn commit(&mut self, qh: &QueueHandle<Probe>, i: usize, callback: bool) {
         let (Some(surface), Some(pres)) = (&self.surface, &self.presentation) else {
             return;
         };
+        if callback {
+            surface.frame(qh, ());
+        }
         surface.attach(Some(&self.buffers[i % BUFFERS]), 0, 0);
         surface.damage_buffer(0, 0, 1, 1);
         // The clock starts as late as it can: everything after this line is
@@ -261,7 +266,13 @@ fn percentile(sorted: &[u64], p: f64) -> u64 {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "-h" || a == "--help") {
-        println!("usage: latency [frames] [--display NAME]");
+        println!(
+            "usage: latency [frames] [--display NAME] [--paced [--draw MS]]\n\n  \
+             by default a frame is committed at a random point of every frame,\n  \
+             which measures the whole window a client could commit in.\n  \
+             --paced instead draws on the frame callback like a real client,\n  \
+             taking MS milliseconds over it, which is the number a game sees."
+        );
         return;
     }
     let n: usize = args
@@ -280,13 +291,20 @@ fn main() {
         .unwrap_or_else(|| "wayland-crt".into());
     // SAFETY: single threaded, before the connection reads the environment.
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &display) };
-    if let Err(e) = run(n) {
+    let paced = args.iter().any(|a| a == "--paced");
+    let draw = args
+        .iter()
+        .position(|a| a == "--draw")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(1);
+    if let Err(e) = run(n, paced, Duration::from_millis(draw)) {
         eprintln!("latency: {e}");
         std::process::exit(1);
     }
 }
 
-fn run(n: usize) -> Result<(), String> {
+fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
     let conn = Connection::connect_to_env()
         .map_err(|e| format!("no compositor on {:?}: {e}", std::env::var("WAYLAND_DISPLAY")))?;
     let mut queue = conn.new_event_queue::<Probe>();
@@ -365,18 +383,41 @@ fn run(n: usize) -> Result<(), String> {
         .roundtrip(&mut probe)
         .map_err(|e| format!("first frame: {e}"))?;
     println!(
-        "timing {n} frames on a {}x{} surface",
-        probe.size.0, probe.size.1
+        "timing {n} frames on a {}x{} surface, {}",
+        probe.size.0,
+        probe.size.1,
+        if paced {
+            format!("drawing on the frame callback, {} ms a frame", draw.as_millis())
+        } else {
+            "committing at a random point of the frame".into()
+        }
     );
 
     let mut rng = Rng::new();
     let frame = probe.refresh;
     for i in 0..n {
-        // One frame, plus a random fraction of another: the commit lands at
-        // a different point of every window and the samples cover it.
-        let wait = frame + rng.below(frame);
-        pump(&conn, &mut queue, &mut probe, Duration::from_nanos(wait))?;
-        probe.commit(&qh, i);
+        if paced {
+            // What a game does: it is told it may draw, it draws, it commits.
+            // Everything after the commit is the compositor's.
+            let seen = probe.callbacks;
+            for _ in 0..30 {
+                pump(&conn, &mut queue, &mut probe, Duration::from_millis(4))?;
+                if probe.callbacks > seen {
+                    break;
+                }
+            }
+            pump(&conn, &mut queue, &mut probe, draw)?;
+        } else {
+            // One frame, plus a random fraction of another: the commit lands
+            // at a different point of every window and the samples cover it.
+            pump(
+                &conn,
+                &mut queue,
+                &mut probe,
+                Duration::from_nanos(frame + rng.below(frame)),
+            )?;
+        }
+        probe.commit(&qh, i, paced);
         conn.flush().map_err(|e| format!("flush: {e}"))?;
         if probe.closed {
             return Err("the compositor closed the window".into());
