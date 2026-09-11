@@ -152,6 +152,56 @@ impl Sheet {
         ]));
     }
 
+    /// A verb and what it does, for the help.
+    ///
+    /// The command is the part somebody types the same way every time; what
+    /// follows it is theirs to fill in. They are coloured differently for
+    /// that reason and no other.
+    pub fn verb(&mut self, invocation: &str, what: &str) {
+        let col = 34usize;
+        // The leading words that are the command: plain lowercase letters,
+        // up to the first thing with a bracket or a choice in it.
+        let mut command = String::new();
+        for word in invocation.split(' ') {
+            if word.is_empty() || !word.chars().all(|c| c.is_ascii_lowercase()) {
+                break;
+            }
+            if !command.is_empty() {
+                command.push(' ');
+            }
+            command.push_str(word);
+        }
+        let rest = invocation[command.len()..].trim_start().to_string();
+        let mut spans = vec![
+            Span::raw("  "),
+            Span::styled(command, self.bold(self.pal.theme.paper)),
+        ];
+        if !rest.is_empty() {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(rest, self.style(self.pal.theme.cyan)));
+        }
+        if what.is_empty() {
+            self.lines.push(Line::from(spans));
+            return;
+        }
+        // A long invocation takes the line to itself and the description goes
+        // under it, at the column the others use.
+        if invocation.chars().count() > col - 2 {
+            self.lines.push(Line::from(spans));
+            self.lines.push(Line::from(vec![
+                Span::raw(" ".repeat(col + 2)),
+                Span::styled(what.to_string(), self.style(self.pal.theme.dim)),
+            ]));
+            return;
+        }
+        spans.push(Span::raw(" ".repeat(col - invocation.chars().count())));
+        spans.push(Span::styled(
+            what.to_string(),
+            self.style(self.pal.theme.dim),
+        ));
+        self.lines.push(Line::from(spans));
+    }
+
     /// The name of a group of rows.
     pub fn section(&mut self, name: &str) {
         self.lines.push(Line::raw(""));

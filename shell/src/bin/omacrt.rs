@@ -15,63 +15,234 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
-const HELP: &str = "\
-omacrt: drive a 15 kHz CRT from the Omarchy desktop
+/// What this is, in one line.
+const TAGLINE: &str = "drive a 15 kHz CRT television from a Hyprland desktop";
 
-  setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
-                           first run: find the DAC's connector, write crt.toml
-  status [--json]          output, mode, DAC, audio, launcher, BIOS at a glance
-  version                  which version this is
-  on [ntsc|pal]            15 kHz modeline, DAC csync, audio to the TV, launcher
-  off                      launcher closed, audio back, output disabled
-  boot                     login reset: CRT output off, audio back to the desktop
-  watchdog                 put the display back if it dies; started by `on`, ends with `off`
-  toggle
-  mode [ntsc|pal|film|480i|576i] [--lines N] [--shift-x X] [--shift-y Y]
-                           standard, active lines, picture shift; no args = full frame
-  shell start|stop|restart|focus
-  shell key <input>...           drive the launcher: home menu up down left right fire back fav alt
-                                 search osk del next prev first last
-  shell screen <name>            open a screen: home games videos music favorites recent frame
-                                 monitor settings picture style pads diagnostics about power
-  shell type <text>              type into the launcher's search bar
-  game key <key> [ms]            press a key inside the running game (enter, rshift, or an
-                                 evdev code), held for that many milliseconds
-  watch <file|url> [--later [TITLE]]  play a video or a YouTube link on the tube, or keep it for later
-  game menu|pause|save|load|reset|quit           press the emulator's hotkeys
-  shot <file.png>                what the tube shows right now (leased output)
-  monitor on|off                 desktop window: live preview of the tube, keyboard to the tube when focused
-  record start <file.mp4>|stop   capture the tube, picture and sound, into a video
-  focus                    keyboard focus to the launcher
-  audio crt|desktop|all|apps  games audio to the TV or back; all = whole system
-  audio volume N|+N|-N     TV sink volume in percent (up to 150), or a step from where it is
-  dac status|reset|csync and|xor|separate|watch
-  bios [--json]            BIOS files the cores expect
-  bios import DIR [--all]  copy BIOS files from another collection
-  bios discover [--json]   folders on the roots and disks that hold BIOS files
-  library [--json]         systems, sources, game counts, cores
-  library cores [--json]   the core each system needs, installed or not, and its package
-  library set SYS core=X|dir=D   change a system's core or folder in systems.toml
-  library covers [SYS...] [--limit N] [--force]   fetch box art for the collection, matching titles when names differ
-  library scan [DIR...]    index every game under the roots (any layout)
-  library games [--system S] [--limit N] [--json]   every game the scan has seen
-  play <title|path> [--force]   start a game on the tube, by name or by file;
-                           --force stops whatever is playing first
-  frame check              is the Immich server there and does it take the key
-  frame fill [N]           fetch and prepare N photographs for the frame (default 40)
-  frame clear              throw away the prepared photographs
-  library discover [--json]  mounted places that look like collections
-  library roots add|remove DIR
-  library assign DIR SYS   tell the scan what a folder holds
-  library unknown          files the scan could not place
-  library systems          the systems catalogue
-  library collections [import DIR]  curated lists (RePlayOS _favorites folders import)
-  doctor [--fix]           checks with plain answers; --fix clears what has been
-                           left behind (an emulator no launcher owns, stale files)
-  config                   config file path and contents
-  config set KEY VALUE     change one setting (output.csync, output.standard, audio.volume, shell.autostart, ...)
+/// Where the configuration lives, said once.
+const CONFIG_NOTE: &str = "~/.config/omacrt/crt.toml, written with defaults on first run";
 
-Config: ~/.config/omacrt/crt.toml (written with defaults on first run)";
+/// Every verb, grouped by what somebody is trying to do.
+///
+/// One table, two renderings: the lines a script pipes, and the sheet a
+/// terminal gets. They cannot drift apart because there is only one of them.
+type Verbs = &'static [(&'static str, &'static [(&'static str, &'static str)])];
+const VERBS: Verbs = &[
+    (
+        "the television",
+        &[
+            (
+                "setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]",
+                "first run: find the DAC's connector, write crt.toml",
+            ),
+            (
+                "on [ntsc|pal]",
+                "15 kHz modeline, DAC csync, audio to the TV, launcher",
+            ),
+            ("off", "launcher closed, audio back, output disabled"),
+            ("toggle", ""),
+            (
+                "boot",
+                "login reset: CRT output off, audio back to the desktop",
+            ),
+            (
+                "watchdog",
+                "put the display back if it dies; started by `on`, ends with `off`",
+            ),
+            (
+                "mode [ntsc|pal|film|480i|576i] [--lines N] [--shift-x X] [--shift-y Y]",
+                "standard, active lines, picture shift; no args = full frame",
+            ),
+            ("dac status|reset|csync and|xor|separate|watch", ""),
+            (
+                "audio crt|desktop|all|apps",
+                "games audio to the TV or back; all = whole system",
+            ),
+            (
+                "audio volume N|+N|-N",
+                "TV sink volume in percent (up to 150), or a step from where it is",
+            ),
+        ],
+    ),
+    (
+        "the launcher",
+        &[
+            ("shell start|stop|restart|focus", ""),
+            ("focus", "keyboard focus to the launcher"),
+            (
+                "shell key <input>...",
+                "drive the launcher: home menu up down left right fire back fav alt search osk del next prev first last",
+            ),
+            (
+                "shell screen <name>",
+                "open a screen: home games videos music favorites recent frame monitor settings picture style pads diagnostics about power",
+            ),
+            ("shell type <text>", "type into the launcher's search bar"),
+            (
+                "monitor on|off",
+                "desktop window: live preview of the tube, keyboard to the tube when focused",
+            ),
+        ],
+    ),
+    (
+        "playing",
+        &[
+            (
+                "play <title|path> [--force]",
+                "start a game on the tube, by name or by file; --force stops whatever is playing first",
+            ),
+            (
+                "game menu|pause|save|load|reset|quit",
+                "press the emulator's hotkeys",
+            ),
+            (
+                "game key <key> [ms]",
+                "press a key inside the running game (enter, rshift, or an evdev code), held for that many milliseconds",
+            ),
+            (
+                "watch <file|url> [--later [TITLE]]",
+                "play a video or a YouTube link on the tube, or keep it for later",
+            ),
+        ],
+    ),
+    (
+        "the collection",
+        &[
+            ("library [--json]", "systems, sources, game counts, cores"),
+            (
+                "library scan [DIR...]",
+                "index every game under the roots (any layout)",
+            ),
+            (
+                "library games [--system S] [--limit N] [--json]",
+                "every game the scan has seen",
+            ),
+            (
+                "library cores [--json]",
+                "the core each system needs, installed or not, and its package",
+            ),
+            (
+                "library covers [SYS...] [--limit N] [--force]",
+                "fetch box art for the collection, matching titles when names differ",
+            ),
+            (
+                "library set SYS core=X|dir=D",
+                "change a system's core or folder in systems.toml",
+            ),
+            ("library roots add|remove DIR", ""),
+            (
+                "library assign DIR SYS",
+                "tell the scan what a folder holds",
+            ),
+            ("library unknown", "files the scan could not place"),
+            ("library systems", "the systems catalogue"),
+            (
+                "library discover [--json]",
+                "mounted places that look like collections",
+            ),
+            (
+                "library collections [import DIR]",
+                "curated lists (RePlayOS _favorites folders import)",
+            ),
+        ],
+    ),
+    (
+        "bios",
+        &[
+            ("bios [--json]", "BIOS files the cores expect"),
+            (
+                "bios import DIR [--all]",
+                "copy BIOS files from another collection",
+            ),
+            (
+                "bios discover [--json]",
+                "folders on the roots and disks that hold BIOS files",
+            ),
+        ],
+    ),
+    (
+        "the photo frame",
+        &[
+            (
+                "frame check",
+                "is the Immich server there and does it take the key",
+            ),
+            (
+                "frame fill [N]",
+                "fetch and prepare N photographs for the frame (default 40)",
+            ),
+            ("frame clear", "throw away the prepared photographs"),
+        ],
+    ),
+    (
+        "pictures of the tube",
+        &[
+            (
+                "shot <file.png>",
+                "what the tube shows right now (leased output)",
+            ),
+            (
+                "record start <file.mp4>|stop",
+                "capture the tube, picture and sound, into a video",
+            ),
+        ],
+    ),
+    (
+        "saying how it is",
+        &[
+            (
+                "status [--json]",
+                "output, mode, DAC, audio, launcher, BIOS at a glance",
+            ),
+            (
+                "doctor [--fix]",
+                "checks with plain answers; --fix clears what has been left behind (an emulator no launcher owns, stale files)",
+            ),
+            ("version", "which version this is"),
+            ("config", "config file path and contents"),
+            (
+                "config set KEY VALUE",
+                "change one setting (output.csync, output.standard, audio.volume, shell.autostart, ...)",
+            ),
+        ],
+    ),
+];
+
+/// The help a pipe gets: the same lines this always printed.
+fn help_plain() -> String {
+    let mut out = format!("omacrt: {TAGLINE}\n");
+    for (group, verbs) in VERBS {
+        out.push_str(&format!("\n{group}\n"));
+        for (invocation, what) in *verbs {
+            if what.is_empty() {
+                out.push_str(&format!("  {invocation}\n"));
+            } else if invocation.len() <= 23 {
+                out.push_str(&format!("  {invocation:<23}  {what}\n"));
+            } else {
+                out.push_str(&format!("  {invocation}\n{:27}{what}\n", ""));
+            }
+        }
+    }
+    out.push_str(&format!("\nConfig: {CONFIG_NOTE}\n"));
+    out
+}
+
+/// The help a terminal gets: the mark, and the verbs in the report's
+/// vocabulary, grouped the same way.
+fn help_sheet(plain: bool) -> bool {
+    let Some(mut sh) = term::sheet::Sheet::open(plain, "help", TAGLINE) else {
+        return false;
+    };
+    for (group, verbs) in VERBS {
+        sh.section(group);
+        for (invocation, what) in *verbs {
+            sh.verb(invocation, what);
+        }
+    }
+    sh.blank();
+    sh.note(format!("config: {CONFIG_NOTE}"));
+    sh.print();
+    true
+}
 
 /// Keyboard to the tube. With the connector leased the tube's clients have
 /// no keyboard of their own: the desktop monitor window carries it.
@@ -2660,13 +2831,19 @@ fn main() {
     omacrt_shell::crt::migrate_legacy_dirs();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = argv.first().map(|s| s.as_str()) else {
-        println!("{HELP}");
+        if !help_sheet(false) {
+            print!("{}", help_plain());
+        }
         return;
     };
     let args = &argv[1..];
     let cfg = Config::load();
     match cmd {
-        "-h" | "--help" | "help" => println!("{HELP}"),
+        "-h" | "--help" | "help" => {
+            if !help_sheet(has(args, "--plain")) {
+                print!("{}", help_plain());
+            }
+        }
         "-V" | "--version" | "version" => {
             match term::sheet::Sheet::open(
                 has(args, "--plain"),
@@ -3180,7 +3357,7 @@ fn main() {
                 print!("{t}");
             }
         }
-        other => die(&format!("unknown command {other}\n\n{HELP}")),
+        other => die(&format!("unknown command {other}\n\n{}", help_plain())),
     }
 }
 
