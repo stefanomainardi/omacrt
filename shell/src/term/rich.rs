@@ -257,13 +257,30 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
         // Set once the input has gone away: after that the frames are timed
         // rather than polled, so a recording still gets its animation.
         let mut quiet = false;
+        // Set when the questions stop coming, which is a probe having
+        // panicked. What was answered is still reported.
+        let mut gone = false;
+        // Ctrl+C: the report is skipped and the terminal handed back.
+        let mut interrupted = false;
         loop {
             let mut hurry = false;
-            while let Ok((i, c)) = rx.try_recv() {
-                done[i] = Some(c);
-                finished += 1;
+            loop {
+                match rx.try_recv() {
+                    Ok((i, c)) => {
+                        done[i] = Some(c);
+                        finished += 1;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    // The thread that asks the questions has gone, which
+                    // means a probe panicked. Without this the loop waits at
+                    // thirty frames a second for answers that are not coming.
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        gone = true;
+                        break;
+                    }
+                }
             }
-            let target = if total == 0 {
+            let target = if total == 0 || gone {
                 1.0
             } else {
                 finished as f32 / total as f32
@@ -285,7 +302,7 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
             let lines = probing_frame(&paint, &etch, finished, total, tail.as_deref());
             draw_frame(&lines, first);
             first = false;
-            if finished >= total && etch.done() >= 1.0 {
+            if (finished >= total || gone) && etch.done() >= 1.0 {
                 break;
             }
             // Only a keypress means "get on with it". A terminal with
@@ -295,6 +312,16 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
                 std::thread::sleep(frame);
             } else if event::poll(frame).unwrap_or(false) {
                 match event::read() {
+                    // Ctrl+C in raw mode is a keypress, not a signal: it has
+                    // to be answered here or it does nothing.
+                    Ok(event::Event::Key(k))
+                        if k.kind == KeyEventKind::Press
+                            && k.code == KeyCode::Char('c')
+                            && k.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                    {
+                        interrupted = true;
+                        break;
+                    }
                     Ok(event::Event::Key(k)) if k.kind == KeyEventKind::Press => hurry = true,
                     Ok(_) => {}
                     Err(_) => quiet = true,
@@ -310,6 +337,10 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
         print!("\x1b[{VIEWPORT}A");
         if raw {
             let _ = disable_raw_mode();
+        }
+        if interrupted {
+            println!();
+            return (done.into_iter().flatten().collect(), None);
         }
     }
 
