@@ -211,7 +211,7 @@ impl SysInfo {
         let kernel = read("/proc/sys/kernel/osrelease");
         Self {
             host: if host.is_empty() {
-                "omarchy".into()
+                "linux".into()
             } else {
                 host
             },
@@ -503,10 +503,10 @@ const OSK_ROWS: [&str; 4] = ["1234567890", "QWERTYUIOP", "ASDFGHJKL-", "ZXCVBNM 
 
 /// About page, wrapped for 36 columns.
 const ABOUT: &[&str] = &[
-    "OMARCHY CRT",
+    "OMACRT",
     "",
     "Retro gaming on a real 15 kHz tube,",
-    "from your everyday Omarchy machine.",
+    "from your everyday Hyprland desktop.",
     "",
     "Goals",
     "- native resolutions and refresh",

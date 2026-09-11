@@ -67,6 +67,12 @@ jobs:
         working-directory: shell
         run: cargo test --release
 
+      - name: A machine that is not Omarchy
+        working-directory: .
+        # The runner has no Omarchy, no Arch, no graphics card and no
+        # television, which is the machine the README makes promises about.
+        run: bash scripts/plain-machine.sh
+
       - name: The launcher draws its own frames
         working-directory: shell
         env:

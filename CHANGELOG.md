@@ -9,6 +9,15 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- The claim that this needs Hyprland rather than Omarchy or a distribution is
+  now checked rather than written. Continuous integration installs the whole
+  thing on the runner, which has no Omarchy, no Arch, no graphics card and no
+  television, and asserts what happens there: the binaries land, nothing is
+  written under `~/.config/omarchy`, the installer names the four desktop
+  pieces it skipped, the self test runs and offers no bar plugin row, and the
+  uninstall takes back only what it put there. Beside it, a test reads the
+  source and fails when anything new asks Omarchy for something, or names a
+  package manager outside the table that maps a distribution to its own.
 - `omacrt plugin sync` writes the desktop plugin's files, and `omacrt plugin`
   says whether they are this version's. The bar widget, the panel and the
   library overlay are copies in the user's own configuration, where a package
@@ -23,6 +32,11 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- The launcher's own screens stopped saying Omarchy. The About page was
+  titled OMARCHY CRT, which is not even the name any more, and said the tube
+  is driven "from your everyday Omarchy machine"; the boot screen signed
+  itself "for Omarchy". The credit to Omarchy stays, because that part is
+  true.
 - The launcher's first sound comes out of the television, not the desktop's
   speakers. SDL asks PulseAudio for the default sink by name, and a name beats
   `PULSE_SINK`, so the boot sound played on whatever the desktop was using for

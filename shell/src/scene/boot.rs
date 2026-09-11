@@ -81,11 +81,15 @@ impl Scene {
     fn post_lines(&self) -> Vec<(String, Color, bool)> {
         let th = &self.theme;
         vec![
-            // The BIOS pastiche does not sign itself Omacom. Omarchy is
-            // still on the screen, but as what this runs on and is built
-            // for, which is true, rather than as who wrote it.
+            // The BIOS pastiche does not sign itself Omacom, and no longer
+            // signs itself for Omarchy either: the launcher runs on any
+            // Hyprland desktop, and what it is for is the tube.
             (format!("{NAME} BIOS 4.01 / 15kHz"), th.green, false),
-            (format!("(C) 2026 {NAME}, for Omarchy"), th.dim, false),
+            (
+                format!("(C) 2026 {NAME}, for a real television"),
+                th.dim,
+                false,
+            ),
             (String::new(), th.green, false),
             (format!("CPU  {}", self.info.host), th.paper, false),
             ("MEM  counting...".into(), th.paper, true),
