@@ -198,7 +198,7 @@ which is how every screenshot and video in this repository was made.
 ### omacrt doctor
 
 <p align="center">
-  <img src="docs/screens/doctor-etch.gif" width="620" alt="The OmaCRT wordmark cut out of the dark by a laser in a terminal, one branch at a time, with a gauge below it counting off the checks">
+  <img src="docs/screens/doctor-full.gif" width="620" alt="The whole self test in a terminal: the OmaCRT wordmark cut out of the dark by a laser one branch at a time, a gauge counting off the checks, and then the finished report">
 </p>
 
 The command to run before buying anything. Its first four answers decide

@@ -59,7 +59,7 @@ you like.
 ## What to check first
 
 <p align="center">
-  <img src="screens/doctor-etch.gif" width="620" alt="The OmaCRT wordmark cut out of the dark by a laser in a terminal, one letter growing at a time, with a gauge below it counting the checks">
+  <img src="screens/doctor-full.gif" width="620" alt="The whole self test in a terminal: the OmaCRT wordmark cut out of the dark by a laser one letter at a time, a gauge counting the checks, and then the finished report">
 </p>
 
 `omacrt doctor`. The first four rows are the ones that decide whether the
