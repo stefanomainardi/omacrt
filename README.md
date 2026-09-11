@@ -91,6 +91,15 @@ notification, pointer or stray window can reach the tube, and any timing the
 kernel accepts is one command away, live, including a different line count per
 system (224 lines for a Super Nintendo game, 240 for a NES one).
 
+Owning the scanout is also what lets it answer a question nobody else on the
+machine can: how long a picture takes to arrive. Flyback times every frame
+from the client's own commit to the kernel's vblank timestamp, and on a set
+with no panel and no scaler between the connector and the phosphor that
+second moment is very nearly the picture on the glass. `omacrt status` shows
+the figure while the television is on, and it is **one frame, 16.5 ms** on
+the machine this is written on. It offers `wp_presentation` too, so a client
+that cares about timing is told rather than left guessing.
+
 The bar plugin and the CLI stay on the desktop and talk to the tube over a
 control pipe: the panel is the remote control, the overlay manages the
 collection, the CLI does everything from a terminal.

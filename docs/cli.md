@@ -7,7 +7,7 @@ everything it does can be typed in a terminal.
 ```text
 omacrt setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
                                      first run: the DAC's connector and the standard
-omacrt status [--json]          output, mode, DAC, audio, launcher, library, BIOS
+omacrt status [--json]          output, mode, latency, DAC, audio, launcher, library, BIOS
 omacrt version                  which version this is
 omacrt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
 omacrt off                      launcher closed, audio back, output disabled
@@ -181,6 +181,34 @@ the tube is asked for 29.96 Hz and locks to nothing. The picture is a narrow
 strip. Interlace on this driver needs a patched kernel; what stands in the way
 is in [`15khz.md`](15khz.md). Until then these two modes are worth having only
 to try that patch against.
+
+## Latency
+
+While the television is on, `status` carries a `Latency` row:
+
+```text
+Latency:    16.5 ms  0.99 frames  over the last 300
+```
+
+It is the median time from the commit that drew a frame to the vblank that
+started scanning it out, measured on the tube that is running rather than
+quoted from anywhere. Both ends are real: the commit is the client's own, the
+vblank timestamp is the kernel's, and only the compositor sees both, which is
+why no other tool on the machine reports this. On a set with no panel and no
+scaler between the connector and the phosphor, the start of scanout is very
+nearly the picture on the glass; what it does not include is what happens in
+front of the commit, which is the pad's own polling and whatever the program
+does with the input before it draws.
+
+One frame is the floor for a program that draws as soon as it is told it may:
+its picture is finished at the start of a frame and the tube cannot show it
+until the next one. Two knobs move it, both in the display process's
+environment:
+
+| | |
+| --- | --- |
+| `FLYBACK_MARGIN_US` | how long before the vblank the compositor starts drawing. Auto by default, from what recent frames cost; a number sets it in microseconds, `off` goes back to drawing as soon as a client commits, which costs a frame. |
+| `FLYBACK_LATE_DRAW=on` | tell a program to draw just in time instead of at the vblank. Measured here it takes 16.5 ms down to 7.1, and one frame in eight then arrives a vblank late. Judder is worse than a frame of delay on a television, so it is off unless asked for. |
 
 ## Library and BIOS
 
