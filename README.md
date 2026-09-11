@@ -207,14 +207,17 @@ whether the compositor offers DRM leasing and for which connector, whether
 systemd is there for the boot time override, and whether debugfs is mounted.
 None of them needs a DAC to be plugged in.
 
-In a terminal it is the launcher's own power on self test, cut by the same
-laser as the boot screen and advancing as each check answers, and then the
-report: the modeline drawn rather than listed, the card's outputs and what
-each is for, and the DAC's lock as a lamp. It is drawn with
-[ratatui](https://ratatui.rs), inline rather than on the alternate screen, so
-the report stays in the scrollback where it can be read again and pasted into
-an issue. Piped, redirected, under `NO_COLOR`, or with `--plain`, it prints
-the lines it always printed.
+In a terminal it is the launcher's own power on self test. The wordmark is
+cut by the same laser as the boot screen while the machine is being asked,
+which is the slow part; then the answers land one line at a time as they
+arrive, under a block that carries the mark, the counter and the name of the
+check being asked. The beam runs back across the mark every time a check
+answers. Last comes what the block was standing in for: the modeline drawn
+rather than listed, the card's outputs and what each is for, and the DAC's
+lock as a lamp. It is drawn with [ratatui](https://ratatui.rs), inline rather
+than on the alternate screen, so the report stays in the scrollback where it
+can be read again and pasted into an issue. Piped, redirected, under
+`NO_COLOR`, or with `--plain`, it prints the lines it always printed.
 
 <p align="center">
   <img src="docs/screens/doctor.png" width="760" alt="The report: the wordmark, a BIOS line, checks grouped into machine, television, programs, collection and housekeeping, then the modeline as a diagram, the outputs as a map, and the DAC's lock">

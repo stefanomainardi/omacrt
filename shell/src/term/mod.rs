@@ -17,6 +17,7 @@ use crate::theme::Theme;
 use std::io::IsTerminal;
 
 pub mod etch;
+pub mod mark;
 pub mod rich;
 
 /// What a check found. `Warn` and `Fail` both count as a failure for the exit

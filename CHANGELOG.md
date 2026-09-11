@@ -7,6 +7,21 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- The mark is in the terminal. The four bars and the dark cut of the beam's
+  return, the launcher's own mark, drawn from the same geometry in half block
+  characters, in the block at the bottom of the self test. The beam runs back
+  across it every time a check answers.
+
+### Changed
+
+- The self test reports as it works. The wordmark is cut while the first
+  section is being asked, which is the slow one, and then every answer is
+  printed as it arrives rather than the whole report appearing at the end. A
+  report that lands all at once says nothing about the machine having done
+  anything.
+
 ## [0.5.0] - 2026-09-11
 
 Omarchy is now one of two channels rather than the requirement. The

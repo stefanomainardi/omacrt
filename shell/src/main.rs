@@ -5,7 +5,6 @@
 //! the CRT output. No fake scanlines: the tube provides them.
 
 mod art;
-mod assets;
 mod audio;
 mod bt;
 mod clock;
@@ -23,6 +22,7 @@ mod scene;
 mod sky;
 mod sysmon;
 mod weather_sound;
+use omacrt_shell::assets;
 use omacrt_shell::padmap::Raw;
 use omacrt_shell::{
     covers, index, library, music, padmap, player, profile, settings, states, videofit, yt,

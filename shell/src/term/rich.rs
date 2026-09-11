@@ -10,8 +10,9 @@
 //! The animation is never the artefact. What survives the command is text.
 
 use super::etch::Etch;
+use super::mark;
 use super::{Check, Level, Palette, Probe};
-use crate::colour::Color;
+use crate::colour::{Color, lerp_color};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::crossterm::terminal::{disable_raw_mode, enable_raw_mode};
@@ -87,9 +88,6 @@ impl Drop for RawMode {
     }
 }
 
-/// The height of the animated viewport: the wordmark, air, the BIOS line,
-/// air, and the line that says what is being asked.
-const VIEWPORT: u16 = 15;
 /// Below this many rows the terminal has no room for the picture.
 const MIN_ROWS: u16 = 20;
 
@@ -207,6 +205,21 @@ impl Paint {
 }
 
 /// Run the checks with the picture, then leave the report behind.
+///
+/// Three movements, and every one of them is paced by the machine rather
+/// than by a clock.
+///
+/// The wordmark is cut while the first section is being asked, which is the
+/// part that takes the longest: the compositor, the driver, the lease. When
+/// it is cut it stays where it is, at the top of the report.
+///
+/// Then the answers land, one line at a time as they arrive, under a live
+/// block at the bottom of the terminal: the mark, and the counter. The beam
+/// runs back across the mark every time a check answers, so the one thing
+/// moving is the one thing that means something.
+///
+/// Last, the block is replaced by what it was standing in for: the timings,
+/// the outputs and the DAC's lock.
 pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check>, Option<char>) {
     let pal = Palette::load();
     let stops = [pal.theme.magenta, pal.theme.cyan, pal.theme.paper];
@@ -221,6 +234,17 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
     let total = probes.len();
     let (tx, rx) = mpsc::channel::<(usize, Check)>();
     let labels: Vec<String> = probes.iter().map(|p| p.label.clone()).collect();
+    // The width of the label column, from the labels rather than from the
+    // answers: a report that streams cannot measure what has not arrived.
+    let width = labels.iter().map(|l| l.len()).max().unwrap_or(10);
+    // How many checks the wordmark is cut by: the first section, which is
+    // the machine itself and the slowest thing here to ask.
+    let first_section = probes.first().map(|p| p.section).unwrap_or("");
+    let etch_of = probes
+        .iter()
+        .filter(|p| p.section == first_section)
+        .count()
+        .max(1);
     std::thread::spawn(move || {
         for (i, p) in probes.into_iter().enumerate() {
             let (level, note) = (p.run)();
@@ -265,113 +289,166 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
         etch.tick(1.0, usize::MAX);
     };
 
-    let mut animated = false;
     if short {
         drain(&mut done, &mut finished, &mut etch);
-    } else {
-        // The area at the bottom of the terminal is reserved by printing it
-        // once and then moving back up over it each frame. ratatui's own
-        // inline viewport asks the terminal where its cursor is and waits for
-        // the answer, which a terminal being recorded, or piped through
-        // anything, may never give; the report then came out empty. Moving a
-        // known number of lines needs nobody's permission.
-        animated = true;
-        let raw = RawMode::on();
-        let frame = Duration::from_millis(33);
-        let mut first = true;
-        // Set once the input has gone away: after that the frames are timed
-        // rather than polled, so a recording still gets its animation.
-        let mut quiet = false;
-        // Set when the questions stop coming, which is a probe having
-        // panicked. What was answered is still reported.
-        let mut gone = false;
-        // Ctrl+C: the report is skipped and the terminal handed back.
-        let mut interrupted = false;
+        let checks: Vec<Check> = done.into_iter().flatten().collect();
+        report(&paint, &etch, &checks, &extras, actions);
+        return (checks, None);
+    }
+
+    // The area at the bottom of the terminal is reserved by printing it once
+    // and then moving back up over it each frame. ratatui's own inline
+    // viewport asks the terminal where its cursor is and waits for the
+    // answer, which a terminal being recorded, or piped through anything,
+    // may never give; the report then came out empty. Moving a known number
+    // of lines needs nobody's permission.
+    let raw = RawMode::on();
+    let frame = Duration::from_millis(33);
+    // Set once the input has gone away: after that the frames are timed
+    // rather than polled, so a recording still gets its animation.
+    let mut quiet = false;
+    // Set when the questions stop coming, which is a probe having panicked.
+    // What was answered is still reported.
+    let mut gone = false;
+    // Ctrl+C: the report is skipped and the terminal handed back.
+    let mut interrupted = false;
+    // Somebody pressed a key: the pictures stop and the answers are taken as
+    // fast as they arrive.
+    let mut hurried = false;
+
+    let mut live = 0usize; // rows of the block at the bottom, as last drawn
+    let mut shown = 0usize; // answers already written into the scrollback
+    let mut section = "";
+    let mut retrace: Option<std::time::Instant> = None;
+    let mut cutting = true; // the wordmark is still being cut
+
+    loop {
+        let mut answered = false;
         loop {
-            let mut hurry = false;
-            loop {
-                match rx.try_recv() {
-                    Ok((i, c)) => {
-                        if let Some(slot) = done.get_mut(i) {
-                            *slot = Some(c);
-                            finished += 1;
-                        }
-                    }
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    // The thread that asks the questions has gone, which
-                    // means a probe panicked. Without this the loop waits at
-                    // thirty frames a second for answers that are not coming.
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        gone = true;
-                        break;
+            match rx.try_recv() {
+                Ok((i, c)) => {
+                    if let Some(slot) = done.get_mut(i) {
+                        *slot = Some(c);
+                        finished += 1;
+                        answered = true;
                     }
                 }
-            }
-            let target = if total == 0 || gone {
-                1.0
-            } else {
-                finished as f32 / total as f32
-            };
-            etch.tick(target, 6);
-            // While there are questions left, the line names the one being
-            // asked. When they run out the laser is still catching up, and
-            // the line says what the answers were rather than nothing.
-            let tail = if finished < total {
-                labels.get(finished).cloned()
-            } else {
-                let bad = done.iter().flatten().filter(|c| !c.level.ok()).count();
-                Some(if bad == 0 {
-                    format!("{total} checks, all clear")
-                } else {
-                    format!("{total} checks, {bad} to look at")
-                })
-            };
-            let lines = probing_frame(&paint, &etch, finished, total, tail.as_deref());
-            draw_frame(&lines, first);
-            first = false;
-            if (finished >= total || gone) && etch.done() >= 1.0 {
-                break;
-            }
-            // Only a keypress means "get on with it". A terminal with
-            // nothing on its input reports readable for ever, and reading an
-            // end of file as impatience skipped the picture entirely.
-            if quiet {
-                std::thread::sleep(frame);
-            } else if event::poll(frame).unwrap_or(false) {
-                match event::read() {
-                    // Ctrl+C in raw mode is a keypress, not a signal: it has
-                    // to be answered here or it does nothing.
-                    Ok(event::Event::Key(k))
-                        if k.kind == KeyEventKind::Press
-                            && k.code == KeyCode::Char('c')
-                            && k.modifiers.contains(event::KeyModifiers::CONTROL) =>
-                    {
-                        interrupted = true;
-                        break;
-                    }
-                    Ok(event::Event::Key(k)) if k.kind == KeyEventKind::Press => hurry = true,
-                    Ok(_) => {}
-                    Err(_) => quiet = true,
+                Err(mpsc::TryRecvError::Empty) => break,
+                // The thread that asks the questions has gone, which means a
+                // probe panicked. Without this the loop waits at thirty
+                // frames a second for answers that are not coming.
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    gone = true;
+                    break;
                 }
-            }
-            if hurry {
-                // Somebody pressed a key: stop posing, take the answers as
-                // they arrive and get to the report.
-                drain(&mut done, &mut finished, &mut etch);
             }
         }
-        // Step back over the animation so the report is written where it was.
-        print!("\x1b[{VIEWPORT}A");
-        drop(raw);
-        if interrupted {
-            println!();
-            return (done.into_iter().flatten().collect(), None);
+        // The beam runs back when a check answers, and only then.
+        if answered {
+            retrace = Some(std::time::Instant::now());
+        }
+
+        let mut perm: Vec<Line<'static>> = Vec::new();
+        if cutting {
+            let target = if gone {
+                1.0
+            } else {
+                (finished as f32 / etch_of as f32).min(1.0)
+            };
+            etch.tick(target, 6);
+            // Cut and cooled: the head is printed once and never redrawn, so
+            // it has to be printed in the colours the word keeps.
+            if etch.cold() {
+                cutting = false;
+                perm.extend(head_lines(&paint, &etch));
+            }
+        }
+        if !cutting {
+            // One answer a frame: they arrive faster than an eye reads them,
+            // and a report that appears all at once says nothing about the
+            // machine having done any work.
+            if shown < finished
+                && let Some(c) = done.get(shown).and_then(|c| c.as_ref())
+            {
+                if c.section != section {
+                    section = c.section;
+                    perm.push(Line::raw(""));
+                    perm.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(section.to_string(), paint.bold(paint.pal.theme.accent)),
+                    ]));
+                }
+                perm.push(check_line(&paint, c, width));
+                shown += 1;
+            }
+        }
+
+        let block = if cutting {
+            cutting_frame(&paint, &etch, finished, etch_of)
+        } else {
+            working_frame(
+                &paint,
+                mark_base(retrace),
+                shown,
+                total,
+                if shown < total {
+                    labels.get(shown).cloned()
+                } else {
+                    Some(verdict(&done, total))
+                },
+            )
+        };
+        live = draw_block(&perm, &block, live);
+
+        if !cutting && shown >= total {
+            break;
+        }
+        if gone && shown >= finished && !cutting {
+            break;
+        }
+        if hurried || quiet {
+            std::thread::sleep(if hurried {
+                Duration::from_millis(6)
+            } else {
+                frame
+            });
+        } else if event::poll(frame).unwrap_or(false) {
+            match event::read() {
+                // Ctrl+C in raw mode is a keypress, not a signal: it has to
+                // be answered here or it does nothing.
+                Ok(event::Event::Key(k))
+                    if k.kind == KeyEventKind::Press
+                        && k.code == KeyCode::Char('c')
+                        && k.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                {
+                    interrupted = true;
+                    break;
+                }
+                Ok(event::Event::Key(k)) if k.kind == KeyEventKind::Press => {
+                    // Somebody pressed a key: stop posing. The answers still
+                    // arrive in order, six milliseconds a line rather than
+                    // thirty-three.
+                    hurried = true;
+                    if cutting {
+                        etch.tick(1.0, usize::MAX);
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => quiet = true,
+            }
         }
     }
 
+    // Take the block away: what it was standing in for is printed under it.
+    clear_block(live);
+    drop(raw);
     let checks: Vec<Check> = done.into_iter().flatten().collect();
-    report(&paint, &etch, &checks, &extras, actions);
-    let pressed = if actions.is_empty() || !animated {
+    if interrupted {
+        println!();
+        return (checks, None);
+    }
+    print_lines(&tail_lines(&paint, &extras, actions));
+    let pressed = if actions.is_empty() {
         None
     } else {
         wait_for_key(actions)
@@ -379,36 +456,77 @@ pub fn run(probes: Vec<Probe>, extras: Extras, actions: &[Action]) -> (Vec<Check
     (checks, pressed)
 }
 
-/// Draw one frame of the reserved area, in place.
+/// Where the cut is: travelling if a check has just answered, at rest if not.
+fn mark_base(since: Option<std::time::Instant>) -> i32 {
+    match since {
+        Some(t) => mark::base_at(t.elapsed().as_secs_f32() / mark::LASTS),
+        None => crate::assets::RETRACE.rest,
+    }
+}
+
+/// What the answers came to, in one line.
+fn verdict(done: &[Option<Check>], total: usize) -> String {
+    let bad = done.iter().flatten().filter(|c| !c.level.ok()).count();
+    if bad == 0 {
+        format!("{total} checks, all clear")
+    } else {
+        format!("{total} checks, {bad} to look at")
+    }
+}
+
+/// Print any new permanent lines, then redraw the block at the bottom.
 ///
-/// The first frame prints the lines, which scrolls the terminal to make room.
-/// Every frame after it steps back over what it wrote and writes again.
-fn draw_frame(lines: &[Line<'static>], first: bool) {
+/// The permanent lines go where the block's first row was, which pushes the
+/// block down the terminal exactly as if they had been printed on their own.
+/// Returns the number of rows the block now occupies.
+fn draw_block(perm: &[Line<'static>], block: &[Line<'static>], live: usize) -> usize {
     use std::io::Write;
     let mut out = String::new();
-    if !first {
-        out.push_str(&format!("\x1b[{VIEWPORT}A"));
+    if live > 0 {
+        out.push_str(&format!("\x1b[{live}A"));
     }
-    for i in 0..VIEWPORT as usize {
+    for l in perm {
         out.push_str("\r\x1b[2K");
-        if let Some(l) = lines.get(i) {
-            out.push_str(&line_text(l));
-        }
+        out.push_str(&line_text(l));
         out.push_str("\r\n");
     }
+    for l in block {
+        out.push_str("\r\x1b[2K");
+        out.push_str(&line_text(l));
+        out.push_str("\r\n");
+    }
+    // The block shrank: wipe what it used to cover and step back over it.
+    let extra = live.saturating_sub(block.len());
+    for _ in 0..extra {
+        out.push_str("\r\x1b[2K\r\n");
+    }
+    if extra > 0 {
+        out.push_str(&format!("\x1b[{extra}A"));
+    }
+    let mut stdout = stdout().lock();
+    let _ = stdout.write_all(out.as_bytes());
+    let _ = stdout.flush();
+    block.len()
+}
+
+/// Wipe the block at the bottom and leave the cursor where it started.
+fn clear_block(live: usize) {
+    use std::io::Write;
+    if live == 0 {
+        return;
+    }
+    let mut out = format!("\x1b[{live}A");
+    for _ in 0..live {
+        out.push_str("\r\x1b[2K\r\n");
+    }
+    out.push_str(&format!("\x1b[{live}A"));
     let mut stdout = stdout().lock();
     let _ = stdout.write_all(out.as_bytes());
     let _ = stdout.flush();
 }
 
-/// The viewport while the machine is being asked.
-fn probing_frame(
-    paint: &Paint,
-    etch: &Etch,
-    finished: usize,
-    total: usize,
-    current: Option<&str>,
-) -> Vec<Line<'static>> {
+/// The wordmark being cut, with the line that says what is being asked.
+fn cutting_frame(paint: &Paint, etch: &Etch, finished: usize, of: usize) -> Vec<Line<'static>> {
     let mut lines = paint.wordmark(etch);
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
@@ -417,31 +535,187 @@ fn probing_frame(
             format!("{} BIOS {} / 15kHz", super::NAME, version()),
             paint.bold(paint.pal.theme.green),
         ),
-    ]));
-    lines.push(Line::raw(""));
-    let width = 16usize;
-    let filled = (finished * width).checked_div(total).unwrap_or(width);
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("MEM  ", paint.style(paint.pal.theme.paper)),
         Span::styled(
-            "█".repeat(filled),
-            paint.style(paint.pal.theme.bright_green),
-        ),
-        Span::styled(
-            "░".repeat(width.saturating_sub(filled)),
+            format!("   asking the machine  {}/{of}", finished.min(of)),
             paint.style(paint.pal.theme.dim),
-        ),
-        Span::styled(
-            format!("  {finished:>2}/{total}  "),
-            paint.style(paint.pal.theme.dim),
-        ),
-        Span::styled(
-            current.unwrap_or("").to_string(),
-            paint.style(paint.pal.theme.cyan),
         ),
     ]));
     lines
+}
+
+/// The block at the bottom while the answers land: the mark, the counter,
+/// and the name of the check being asked.
+fn working_frame(
+    paint: &Paint,
+    base: i32,
+    shown: usize,
+    total: usize,
+    current: Option<String>,
+) -> Vec<Line<'static>> {
+    let rows = mark::rows(mark::SIZE, base);
+    let bar = 16usize;
+    let filled = (shown * bar).checked_div(total).unwrap_or(bar);
+    let mut beside: Vec<Vec<Span<'static>>> = vec![
+        vec![],
+        vec![Span::styled(
+            format!("{} BIOS {} / 15kHz", super::NAME, version()),
+            paint.bold(paint.pal.theme.green),
+        )],
+        vec![],
+        vec![
+            Span::styled(
+                "█".repeat(filled),
+                paint.style(paint.pal.theme.bright_green),
+            ),
+            Span::styled(
+                "░".repeat(bar.saturating_sub(filled)),
+                paint.style(paint.pal.theme.dim),
+            ),
+            Span::styled(
+                format!("  {shown:>2}/{total}  "),
+                paint.style(paint.pal.theme.dim),
+            ),
+            Span::styled(
+                current.unwrap_or_default(),
+                paint.style(paint.pal.theme.cyan),
+            ),
+        ],
+        vec![],
+        vec![],
+    ];
+    // A line of air above it, so the block reads as the instrument panel it
+    // is rather than as another row of the report.
+    let mut out = vec![Line::raw("")];
+    for (i, row) in rows.iter().enumerate() {
+        let mut spans = vec![Span::raw("  ")];
+        spans.extend(mark_spans(paint, row));
+        spans.push(Span::raw("   "));
+        if let Some(rest) = beside.get_mut(i) {
+            spans.append(rest);
+        }
+        out.push(Line::from(spans));
+    }
+    out
+}
+
+/// The mark's cells, in the colours the launcher gives them: the bars in
+/// green, and the edge the cut has just left a shade warmer.
+fn mark_spans(paint: &Paint, row: &[mark::Cell]) -> Vec<Span<'static>> {
+    let warm = lerp_color(paint.pal.theme.green, paint.pal.theme.paper, 0.45);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut run = String::new();
+    let mut hot = false;
+    for c in row {
+        if c.hot != hot && !run.is_empty() {
+            let colour = if hot { warm } else { paint.pal.theme.green };
+            spans.push(Span::styled(std::mem::take(&mut run), paint.style(colour)));
+        }
+        hot = c.hot;
+        run.push(c.ch);
+    }
+    if !run.is_empty() {
+        let colour = if hot { warm } else { paint.pal.theme.green };
+        spans.push(Span::styled(run, paint.style(colour)));
+    }
+    spans
+}
+
+/// The head of the report: the wordmark as the laser left it, and the line
+/// that says what this is.
+fn head_lines(paint: &Paint, etch: &Etch) -> Vec<Line<'static>> {
+    let mut out: Vec<Line<'static>> = vec![Line::raw("")];
+    out.extend(paint.wordmark(etch));
+    out.push(Line::raw(""));
+    out.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            format!("{} BIOS {} / 15kHz", super::NAME, version()),
+            paint.bold(paint.pal.theme.green),
+        ),
+    ]));
+    out.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            "(C) 2026 OmaCRT, self test",
+            paint.style(paint.pal.theme.dim),
+        ),
+    ]));
+    out
+}
+
+/// One answer.
+fn check_line(paint: &Paint, c: &Check, width: usize) -> Line<'static> {
+    Line::from(vec![
+        Span::raw("  "),
+        paint.tag(c.level),
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<width$}", c.label),
+            paint.style(paint.pal.theme.paper),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            c.note.clone(),
+            paint.style(if c.level.ok() {
+                paint.pal.theme.dim
+            } else {
+                paint.pal.theme.fg
+            }),
+        ),
+    ])
+}
+
+/// Everything under the answers: the timings drawn, the outputs mapped, the
+/// DAC's lock, and whatever there is to press.
+fn tail_lines(paint: &Paint, extras: &Extras, actions: &[Action]) -> Vec<Line<'static>> {
+    let mut out: Vec<Line<'static>> = Vec::new();
+    if let Some(t) = &extras.timing {
+        out.push(Line::raw(""));
+        out.extend(timing_lines(paint, t));
+    }
+    if !extras.outputs.is_empty() {
+        out.push(Line::raw(""));
+        out.extend(output_lines(paint, &extras.outputs));
+    }
+    if let Some((locked, sync)) = &extras.lock {
+        out.push(Line::raw(""));
+        out.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("DAC     ", paint.bold(paint.pal.theme.accent)),
+            Span::styled(
+                "███",
+                paint.style(if *locked {
+                    paint.pal.theme.bright_green
+                } else {
+                    paint.pal.theme.red
+                }),
+            ),
+            Span::styled(
+                format!(
+                    "  {}  csync {sync}",
+                    if *locked { "locked" } else { "lost" }
+                ),
+                paint.style(paint.pal.theme.paper),
+            ),
+        ]));
+    }
+    if !actions.is_empty() {
+        out.push(Line::raw(""));
+        let mut spans = vec![Span::raw("  ")];
+        for a in actions {
+            spans.push(Span::styled(
+                format!("[{}]", a.key),
+                paint.bold(paint.pal.theme.accent),
+            ));
+            spans.push(Span::styled(
+                format!(" {}   ", a.what),
+                paint.style(paint.pal.theme.paper),
+            ));
+        }
+        out.push(Line::from(spans));
+    }
+    out.push(Line::raw(""));
+    out
 }
 
 fn version() -> &'static str {

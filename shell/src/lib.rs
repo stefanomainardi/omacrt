@@ -3,6 +3,7 @@
 //! by both the launcher (`omacrt-shell`) and the CLI (`omacrt`).
 
 pub mod ambient;
+pub mod assets;
 pub mod colour;
 pub mod config;
 pub mod coredata;

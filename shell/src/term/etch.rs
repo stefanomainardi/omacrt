@@ -15,7 +15,7 @@
 use crate::colour::{Color, lerp_color, rgb};
 
 /// The wordmark, the same file the launcher compiles in.
-const WORDMARK: &str = include_str!("../../assets/wordmark.txt");
+use crate::assets::WORDMARK_TXT as WORDMARK;
 
 /// How many ticks a cut cell takes to cool to its final colour.
 const COOL_TICKS: u32 = 14;
@@ -154,6 +154,17 @@ impl Etch {
             return 1.0;
         }
         self.cut as f32 / self.order.len() as f32
+    }
+
+    /// Cut, and cooled: no cell is still on its way from white to the colour
+    /// it keeps. What is printed once and never redrawn has to be printed
+    /// cold, or the word stays orange for ever.
+    pub fn cold(&self) -> bool {
+        self.cut >= self.order.len()
+            && self.cells.iter().all(|c| match c.cut_at {
+                Some(at) => self.tick.saturating_sub(at) >= FLASH_TICKS + COOL_TICKS,
+                None => false,
+            })
     }
 
     pub fn finished(&self) -> bool {
