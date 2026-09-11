@@ -7,6 +7,14 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Fixed
+
+- The launcher's first sound comes out of the television, not the desktop's
+  speakers. SDL asks PulseAudio for the default sink by name, and a name beats
+  `PULSE_SINK`, so the boot sound played on whatever the desktop was using for
+  the second and a half it took the session manager to move the stream. The
+  launcher is now told which device to open rather than which sink to prefer.
+
 ### Added
 
 - The mark is in the terminal. The four bars and the dark cut of the beam's

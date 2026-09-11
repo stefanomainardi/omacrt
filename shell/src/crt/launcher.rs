@@ -95,6 +95,15 @@ pub fn start(cfg: &Config, output_name: &str, sink: Option<&str>) -> Result<Stri
     let mut cmd = Command::new(bin);
     if let Some(s) = sink {
         cmd.env("PULSE_SINK", s).env("PIPEWIRE_NODE", s);
+        // And the name SDL knows it by. `PULSE_SINK` is only consulted when
+        // the client asks for no device in particular, and SDL always asks
+        // for one: it looks the default sink up and names it. So the boot
+        // sound came out of the desktop's speakers for the second and a half
+        // it took the session manager to move the stream. The launcher opens
+        // this device instead of the default one.
+        if let Some(d) = super::audio::description(s) {
+            cmd.env("OMACRT_AUDIO_DEVICE", d);
+        }
     }
     // With the display process up the launcher (and everything it starts)
     // is a client of our own compositor on the tube.

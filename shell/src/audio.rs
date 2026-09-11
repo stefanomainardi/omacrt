@@ -114,7 +114,22 @@ impl Audio {
             samples: Some(512),
         };
         let cb_voices = voices.clone();
-        let device = subsystem.open_playback(None, &spec, move |_| Mixer { voices: cb_voices })?;
+        // The device the CLI picked, by the name SDL knows it by. Without it
+        // SDL opens whatever the desktop's default sink is and the first
+        // sound of the boot comes out of the wrong speakers.
+        let wanted = std::env::var("OMACRT_AUDIO_DEVICE").ok();
+        let device = match &wanted {
+            Some(name) => subsystem
+                .open_playback(Some(name.as_str()), &spec, {
+                    let voices = voices.clone();
+                    move |_| Mixer { voices }
+                })
+                .or_else(|e| {
+                    eprintln!("audio: {name}: {e}; falling back to the default device");
+                    subsystem.open_playback(None, &spec, move |_| Mixer { voices: cb_voices })
+                })?,
+            None => subsystem.open_playback(None, &spec, move |_| Mixer { voices: cb_voices })?,
+        };
         device.resume();
         let bank = render_bank()
             .into_iter()

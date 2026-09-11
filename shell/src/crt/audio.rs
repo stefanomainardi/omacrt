@@ -65,6 +65,33 @@ pub fn target(conn: &Connector) -> Option<Target> {
     })
 }
 
+/// The name PulseAudio shows for a sink, which is the only name SDL knows.
+///
+/// SDL's PulseAudio backend enumerates sinks by their description and asks
+/// the server for the default sink by name when it is told to open "the
+/// default device". That explicit name beats `PULSE_SINK`, so the launcher
+/// has to be told which device to open rather than which sink to prefer,
+/// and the description is what it has to be told.
+pub fn description(sink: &str) -> Option<String> {
+    description_in(&run("pactl", &["list", "sinks"])?, sink)
+}
+
+/// The parsing on its own, so it can be tested without a sound server.
+fn description_in(text: &str, sink: &str) -> Option<String> {
+    let mut current = "";
+    for line in text.lines() {
+        let s = line.trim();
+        if let Some(n) = s.strip_prefix("Name:") {
+            current = n.trim();
+        } else if let Some(d) = s.strip_prefix("Description:")
+            && current == sink
+        {
+            return Some(d.trim().to_string());
+        }
+    }
+    None
+}
+
 pub fn active_profile(card: &str) -> Option<String> {
     let text = run("pactl", &["list", "cards"])?;
     let mut current = "";
@@ -234,4 +261,24 @@ pub fn route_back(state: &mut State) -> String {
     state.previous_sink.clear();
     state.audio_card.clear();
     note
+}
+
+#[cfg(test)]
+mod description_tests {
+    #[test]
+    fn the_description_is_the_one_of_the_named_sink() {
+        let text = "Sink #73\n\tName: alsa_output.usb-Focusrite\n\tDescription: Scarlett 2i2\n\
+                    Sink #335655\n\tName: alsa_output.pci-0000_03_00.1.hdmi-stereo-extra3\n\
+                    \tDescription: Navi 31 HDMI/DP Audio Digital Stereo (HDMI 4)\n";
+        assert_eq!(
+            super::description_in(text, "alsa_output.pci-0000_03_00.1.hdmi-stereo-extra3")
+                .as_deref(),
+            Some("Navi 31 HDMI/DP Audio Digital Stereo (HDMI 4)")
+        );
+        assert_eq!(
+            super::description_in(text, "alsa_output.usb-Focusrite").as_deref(),
+            Some("Scarlett 2i2")
+        );
+        assert_eq!(super::description_in(text, "nothing.like.this"), None);
+    }
 }
