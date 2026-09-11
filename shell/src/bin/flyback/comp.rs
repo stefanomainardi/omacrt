@@ -26,10 +26,11 @@ use omacrt_shell::crt::{Config, dac, display, output};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
-use smithay::backend::drm::compositor::FrameFlags;
+use smithay::backend::drm::compositor::{FrameFlags, PrimaryPlaneElement};
 use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::{DrmOutput, DrmOutputManager, DrmOutputRenderElements};
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmEvent};
+use smithay::backend::drm::{DrmEventMetadata, DrmEventTime};
 use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::input::KeyState;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -70,11 +71,17 @@ use smithay::wayland::shell::xdg::{
     XdgToplevelSurfaceData,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::desktop::utils::{
+    OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
+    surface_primary_scanout_output,
+};
+use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::wayland::socket::ListeningSocketSource;
+use smithay::wayland::presentation::{PresentationState, Refresh};
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::{
-    delegate_compositor, delegate_dmabuf, delegate_output, delegate_seat, delegate_shm,
-    delegate_viewporter, delegate_xdg_shell,
+    delegate_compositor, delegate_dmabuf, delegate_output, delegate_presentation, delegate_seat,
+    delegate_shm, delegate_viewporter, delegate_xdg_shell,
 };
 use std::ffi::OsString;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
@@ -86,6 +93,12 @@ pub const SOCKET: &str = "wayland-crt";
 type Allocator = GbmAllocator<DrmDeviceFd>;
 type Exporter = GbmFramebufferExporter<DrmDeviceFd>;
 type Element = SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>;
+
+/// What a queued frame carries until the flip completes: the promise made to
+/// every client whose surface is in it. On vblank the promise is kept with
+/// the time the flip actually happened, which is the only way a client can
+/// know when its picture reached the screen rather than guess.
+type Frame = Option<OutputPresentationFeedback>;
 
 pub struct Crt {
     start: Instant,
@@ -103,8 +116,8 @@ pub struct Crt {
     dmabuf_state: DmabufState,
     _dmabuf_global: DmabufGlobal,
     renderer: GlesRenderer,
-    _drm: DrmOutputManager<Allocator, Exporter, (), DrmDeviceFd>,
-    drm_output: Option<DrmOutput<Allocator, Exporter, (), DrmDeviceFd>>,
+    _drm: DrmOutputManager<Allocator, Exporter, Frame, DrmDeviceFd>,
+    drm_output: Option<DrmOutput<Allocator, Exporter, Frame, DrmDeviceFd>>,
     frame_queued: bool,
     /// When the frame now in flight was queued. A page flip that is accepted
     /// is always followed by a vblank, so one that is not means the device
@@ -117,6 +130,10 @@ pub struct Crt {
     /// Page flips refused in a row. A driver that will not take a frame
     /// takes none of them, so the count only ever runs away.
     flips_failed: u32,
+    /// Whether the last frame reached the plane as the client's own buffer,
+    /// or `None` before the first one. Kept only so the log says it once
+    /// rather than sixty times a second.
+    scanout_direct: Option<bool>,
     lease: Lease,
     running: bool,
     frames: u64,
@@ -395,6 +412,12 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     // itself. smithay's surface elements read the viewport, so this is the
     // whole of it.
     let _viewporter_state = ViewporterState::new::<Crt>(&dh);
+    // wp_presentation: the compositor tells a client the exact time its frame
+    // reached the screen, on the same clock the kernel gives us the vblank
+    // on. Without it a client that cares about timing - a player, an
+    // emulator - can only guess, and both RetroArch and mpv ask for it.
+    let _presentation_state =
+        PresentationState::new::<Crt>(&dh, libc::CLOCK_MONOTONIC as u32);
     let output_manager_state = OutputManagerState::new_with_xdg_output::<Crt>(&dh);
     let mut seat_state = SeatState::new();
     let mut seat: Seat<Crt> = seat_state.new_wl_seat(&dh, "crt");
@@ -464,7 +487,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     handle
         .insert_source(notifier, |event, meta, st: &mut Crt| match event {
-            DrmEvent::VBlank(_) => st.vblank(meta.as_ref().map(|m| m.sequence).unwrap_or(0)),
+            DrmEvent::VBlank(_) => st.vblank(meta.take()),
             DrmEvent::Error(e) => eprintln!("drm: {e}"),
         })
         .map_err(|e| e.to_string())?;
@@ -567,6 +590,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         capture_target: None,
         capture_size: None,
         flips_failed: 0,
+        scanout_direct: None,
         lease,
         running: true,
         frames: 0,
@@ -604,6 +628,21 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     let _ = std::fs::remove_file(display::monitor_path());
     let _ = std::fs::remove_file(display::ctl_path());
     Ok(())
+}
+
+/// CLOCK_MONOTONIC, the clock wp_presentation was told about.
+///
+/// `SystemTime` is the wrong clock: it is the wall clock, and it steps when
+/// the machine is corrected. A client comparing a presentation time with an
+/// input event's timestamp is comparing two readings of *this* one.
+fn monotonic() -> Duration {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: the kernel writes the two fields of a struct we own.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+    Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
 }
 
 impl Crt {
@@ -978,7 +1017,10 @@ impl Crt {
         ) {
             Ok(res) => {
                 if res.is_empty {
-                    // Nothing changed: look again in a frame's time.
+                    // Nothing changed: look again in a frame's time. No
+                    // feedback is taken off the surfaces here, because taking
+                    // it would owe a client an answer that this frame is
+                    // never going to give.
                     let _ = self.handle.insert_source(
                         Timer::from_duration(Duration::from_millis(16)),
                         |_, _, st: &mut Crt| {
@@ -986,7 +1028,39 @@ impl Crt {
                             TimeoutAction::Drop
                         },
                     );
-                } else if let Err(e) = out.queue_frame(()) {
+                    return;
+                }
+                // Whether the client's own buffer went straight to the plane
+                // or had to be drawn into ours. On this television the
+                // difference is a whole copy of the frame, so it is worth a
+                // line in the log the first time it changes.
+                let direct = matches!(res.primary_element, PrimaryPlaneElement::Element(_));
+                if self.scanout_direct != Some(direct) {
+                    self.scanout_direct = Some(direct);
+                    eprintln!(
+                        "primary plane: {}",
+                        if direct {
+                            "the client's own buffer, scanned out directly"
+                        } else {
+                            "composited into ours"
+                        }
+                    );
+                }
+                // Who to tell, and when. Collected before the flip is queued
+                // because the states belong to this frame's render, and kept
+                // with the frame until the vblank that shows it.
+                let mut feedback = OutputPresentationFeedback::new(&self.output);
+                for window in self.space.elements() {
+                    window.take_presentation_feedback(
+                        &mut feedback,
+                        surface_primary_scanout_output,
+                        |surface, _| {
+                            surface_presentation_feedback_flags_from_states(surface, &res.states)
+                        },
+                    );
+                }
+                let feedback = Some(feedback);
+                if let Err(e) = out.queue_frame(feedback) {
                     // The flip was refused, so no vblank is coming and
                     // `frame_queued` stays false: every client commit tries
                     // again. That is a picture that never arrives and a log
@@ -1013,9 +1087,42 @@ impl Crt {
         }
     }
 
-    fn vblank(&mut self, _seq: u32) {
-        if let Some(out) = self.drm_output.as_mut() {
-            let _ = out.frame_submitted();
+    fn vblank(&mut self, meta: Option<DrmEventMetadata>) {
+        // The flip has happened, and the kernel says when. Every client whose
+        // surface was in that frame is told, on CLOCK_MONOTONIC, which is
+        // what wp_presentation promised at bind time.
+        let seq = meta.as_ref().map(|m| m.sequence).unwrap_or(0);
+        let when = meta.as_ref().and_then(|m| match m.time {
+            DrmEventTime::Monotonic(t) => Some(t),
+            // A driver that timestamps on the realtime clock cannot be
+            // compared with a monotonic one; our own reading of the same
+            // clock is closer to the truth than a conversion would be.
+            DrmEventTime::Realtime(_) => None,
+        });
+        // Only the driver's own stamp earns the hardware flags: saying a time
+        // came from the display hardware when it came from a call to the
+        // clock a moment later is worse than admitting the estimate, because
+        // a client uses those flags to decide how much to trust the number.
+        let mut flags = wp_presentation_feedback::Kind::Vsync;
+        if when.is_some() {
+            flags |= wp_presentation_feedback::Kind::HwClock
+                | wp_presentation_feedback::Kind::HwCompletion;
+        }
+        let now = when.unwrap_or_else(monotonic);
+        let refresh = self
+            .output
+            .current_mode()
+            .map(|m| Duration::from_nanos(1_000_000_000_000u64 / (m.refresh.max(1) as u64)))
+            .unwrap_or(Duration::from_nanos(16_666_666));
+        if let Some(out) = self.drm_output.as_mut()
+            && let Ok(Some(Some(mut feedback))) = out.frame_submitted()
+        {
+            feedback.presented::<Duration, smithay::utils::Monotonic>(
+                now,
+                Refresh::fixed(refresh),
+                seq as u64,
+                flags,
+            );
         }
         self.frame_queued = false;
         self.queued_at = None;
@@ -1234,3 +1341,4 @@ delegate_seat!(Crt);
 delegate_output!(Crt);
 delegate_dmabuf!(Crt);
 delegate_viewporter!(Crt);
+delegate_presentation!(Crt);
