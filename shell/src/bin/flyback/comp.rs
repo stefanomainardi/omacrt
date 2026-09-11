@@ -34,6 +34,7 @@ use smithay::backend::drm::{DrmEventMetadata, DrmEventTime};
 use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::input::KeyState;
 use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::renderer::element::default_primary_scanout_output_compare;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderbuffer;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -42,6 +43,10 @@ use smithay::backend::renderer::{
     Bind, ExportMem, ImportDma, ImportEgl, Offscreen, TextureMapping,
 };
 use smithay::desktop::space::{SpaceRenderElements, space_render_elements};
+use smithay::desktop::utils::{
+    OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
+    surface_primary_scanout_output, update_surface_primary_scanout_output,
+};
 use smithay::desktop::{Space, Window};
 use smithay::input::keyboard::{FilterResult, Keycode};
 use smithay::input::{Seat, SeatHandler, SeatState};
@@ -51,6 +56,7 @@ use smithay::reexports::calloop::{
     EventLoop, Interest, LoopHandle, Mode, PostAction, generic::Generic,
 };
 use smithay::reexports::drm::control::Device as _;
+use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use smithay::reexports::wayland_server::protocol::{wl_buffer, wl_seat, wl_surface::WlSurface};
@@ -66,19 +72,13 @@ use smithay::wayland::dmabuf::{
     DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
 };
 use smithay::wayland::output::{OutputHandler, OutputManagerState};
+use smithay::wayland::presentation::{PresentationState, Refresh};
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
     XdgToplevelSurfaceData,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
-use smithay::desktop::utils::{
-    OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
-    surface_primary_scanout_output, update_surface_primary_scanout_output,
-};
-use smithay::backend::renderer::element::default_primary_scanout_output_compare;
-use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::wayland::socket::ListeningSocketSource;
-use smithay::wayland::presentation::{PresentationState, Refresh};
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::{
     delegate_compositor, delegate_dmabuf, delegate_output, delegate_presentation, delegate_seat,
@@ -461,8 +461,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     // reached the screen, on the same clock the kernel gives us the vblank
     // on. Without it a client that cares about timing - a player, an
     // emulator - can only guess, and both RetroArch and mpv ask for it.
-    let _presentation_state =
-        PresentationState::new::<Crt>(&dh, libc::CLOCK_MONOTONIC as u32);
+    let _presentation_state = PresentationState::new::<Crt>(&dh, libc::CLOCK_MONOTONIC as u32);
     let output_manager_state = OutputManagerState::new_with_xdg_output::<Crt>(&dh);
     let mut seat_state = SeatState::new();
     let mut seat: Seat<Crt> = seat_state.new_wl_seat(&dh, "crt");
@@ -1511,8 +1510,13 @@ impl Crt {
                 self.latencies.pop_front();
             }
         }
-        if self.trace && let Some(t) = self.queued_at {
-            eprintln!("trace: flip queued to vblank {} us", t.elapsed().as_micros());
+        if self.trace
+            && let Some(t) = self.queued_at
+        {
+            eprintln!(
+                "trace: flip queued to vblank {} us",
+                t.elapsed().as_micros()
+            );
         }
         self.frame_queued = false;
         self.queued_at = None;

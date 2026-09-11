@@ -321,8 +321,12 @@ fn main() {
 }
 
 fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
-    let conn = Connection::connect_to_env()
-        .map_err(|e| format!("no compositor on {:?}: {e}", std::env::var("WAYLAND_DISPLAY")))?;
+    let conn = Connection::connect_to_env().map_err(|e| {
+        format!(
+            "no compositor on {:?}: {e}",
+            std::env::var("WAYLAND_DISPLAY")
+        )
+    })?;
     let mut queue = conn.new_event_queue::<Probe>();
     let qh = queue.handle();
     let _registry = conn.display().get_registry(&qh, ());
@@ -403,7 +407,10 @@ fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
         probe.size.0,
         probe.size.1,
         if paced {
-            format!("drawing on the frame callback, {} ms a frame", draw.as_millis())
+            format!(
+                "drawing on the frame callback, {} ms a frame",
+                draw.as_millis()
+            )
         } else {
             "committing at a random point of the frame".into()
         }
@@ -476,7 +483,11 @@ fn report(probe: &Probe) {
     let mean = us.iter().sum::<u64>() / us.len() as u64;
     // Whether the numbers are the display hardware's or an estimate.
     // wp_presentation_feedback: 1 = vsync, 2 = hw clock, 4 = hw completion.
-    let hw = probe.samples.iter().filter(|s| s.flags & 0b110 == 0b110).count();
+    let hw = probe
+        .samples
+        .iter()
+        .filter(|s| s.flags & 0b110 == 0b110)
+        .count();
     let row = |name: &str, v: u64| {
         println!(
             "  {name:<10} {:>7.2} ms   {:>5.2} frames",
