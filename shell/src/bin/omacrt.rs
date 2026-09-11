@@ -367,9 +367,13 @@ fn status(cfg: &Config) -> Value {
         "audio": Value::Null,
         "shell": Value::Null,
         "playing": launcher::playing(),
+        "latency": Value::Null,
         "bios": Value::Null,
         "library": Value::Null,
     });
+    if let Some((ms, frames, samples)) = display::latency() {
+        st["latency"] = json!({ "ms": ms, "frames": frames, "samples": samples });
+    }
     if let Some(c) = &conn {
         let leased = display::leaseable(&c.name);
         st["connector"] = json!({
@@ -541,6 +545,14 @@ fn print_status(st: &Value) {
             m["refresh_hz"].as_f64().unwrap_or(0.0)
         );
     }
+    if let Value::Object(l) = &st["latency"] {
+        println!(
+            "Latency:    {:.1} ms  {:.2} frames  over the last {}",
+            l["ms"].as_f64().unwrap_or(0.0),
+            l["frames"].as_f64().unwrap_or(0.0),
+            l["samples"].as_u64().unwrap_or(0)
+        );
+    }
     let d = &st["dac"];
     if d["present"].as_bool().unwrap_or(false) {
         println!(
@@ -679,6 +691,21 @@ fn status_sheet(st: &Value, plain: bool) -> bool {
                 m["refresh_hz"].as_f64().unwrap_or(0.0)
             ),
             note,
+        );
+    }
+    if let Value::Object(l) = &st["latency"] {
+        // Measured, not claimed: the display process times every frame from
+        // the commit that drew it to the vblank that started its scanout,
+        // and on a set with no panel and no scaler that is very nearly the
+        // moment the picture is on the glass.
+        sh.field_note(
+            "latency",
+            format!("{:.1} ms", l["ms"].as_f64().unwrap_or(0.0)),
+            format!(
+                "{:.2} frames, over the last {}",
+                l["frames"].as_f64().unwrap_or(0.0),
+                l["samples"].as_u64().unwrap_or(0)
+            ),
         );
     }
     let d = &st["dac"];

@@ -13,6 +13,13 @@ caveat for a 0.x project: anything may still move.
   when its frame reached the screen instead of guessing. RetroArch and mpv
   both ask for it.
 
+- `omacrt status` has a **latency** row while the tube is up: how long a
+  program's picture takes from the commit that drew it to the start of its
+  scanout, in milliseconds and in frames. It is measured rather than
+  claimed, on the television that is running, from the client's own commit
+  and the kernel's vblank timestamp; on a set with no panel and no scaler
+  those are very nearly the picture arriving on the glass.
+
 ### Changed
 
 - Half the delay between a program's picture and the tube is gone. The

@@ -146,6 +146,13 @@ pub struct Crt {
     client_cost: Duration,
     /// Commits that arrived too late for the frame they were meant for.
     late: u32,
+    /// The commit this frame is showing, from the moment it was queued until
+    /// the vblank tells us the picture is on the glass.
+    showing: Option<Instant>,
+    /// How long the last few hundred frames took from a client's commit to
+    /// the start of their scanout. Written out every few seconds so that
+    /// `omacrt status` can say it.
+    latencies: std::collections::VecDeque<Duration>,
     /// `FLYBACK_LATE_DRAW=on`: tell clients they may draw just in time
     /// rather than at the vblank. Off by default; see `arm_callbacks`.
     late_draw: bool,
@@ -636,6 +643,8 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         // to draw in, which is where every other compositor leaves it.
         client_cost: Duration::from_millis(16),
         late: 0,
+        showing: None,
+        latencies: Default::default(),
         late_draw: std::env::var("FLYBACK_LATE_DRAW").as_deref() == Ok("on"),
         client_slack: std::env::var("FLYBACK_SLACK_US")
             .ok()
@@ -690,6 +699,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     let _ = std::fs::remove_file(display::pid_path());
     let _ = std::fs::remove_file(display::monitor_path());
     let _ = std::fs::remove_file(display::ctl_path());
+    let _ = std::fs::remove_file(display::latency_path());
     Ok(())
 }
 
@@ -1072,6 +1082,31 @@ impl Crt {
         self.render();
     }
 
+    /// Put the measured latency where the rest of the program can read it:
+    /// the median of the last few hundred frames, in milliseconds and in
+    /// frames, and how many frames that was.
+    ///
+    /// The median rather than the mean, because one frame that waited for a
+    /// mode change or a game starting is not what the tube feels like.
+    fn write_latency(&self) {
+        if self.latencies.is_empty() {
+            return;
+        }
+        let mut us: Vec<u128> = self.latencies.iter().map(|d| d.as_micros()).collect();
+        us.sort_unstable();
+        let median = us[us.len() / 2] as f64 / 1000.0;
+        let frame = self.period().as_micros() as f64 / 1000.0;
+        // Written beside and renamed: a reader that arrives in the middle
+        // of a plain write finds half a line, and half a measurement is
+        // worse than none.
+        let path = display::latency_path();
+        let tmp = path.with_extension("latency.new");
+        let line = format!("{median:.2} {:.2} {}\n", median / frame, us.len());
+        if std::fs::write(&tmp, line).is_ok() && std::fs::rename(&tmp, &path).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+
     /// The period of one frame on the tube.
     fn period(&self) -> Duration {
         self.output
@@ -1258,6 +1293,13 @@ impl Crt {
             &mut self.renderer,
             &elements,
             [0.02, 0.03, 0.06, 1.0],
+            // Scanning a client's own buffer straight out to the plane is
+            // allowed here and never happens, which was worth finding out:
+            // every program on the tube draws at its own size, 320x240 for
+            // the launcher and the core's own geometry for an emulator, and
+            // a plane cannot scale that up to a 3520 sample line. So each
+            // frame costs one composite pass, measured at two to five tenths
+            // of a millisecond, and it is that pass which does the widening.
             FrameFlags::DEFAULT,
         ) {
             Ok(res) => {
@@ -1336,6 +1378,7 @@ impl Crt {
                     // not the average, or every heavy frame arrives late.
                     let cost = began.elapsed();
                     self.render_cost = cost.max(self.render_cost * 15 / 16);
+                    self.showing = self.last_commit;
                     self.frame_queued = true;
                     self.queued_at = Some(Instant::now());
                     if self.trace {
@@ -1394,6 +1437,12 @@ impl Crt {
                 seq as u64,
                 flags,
             );
+        }
+        if let Some(t) = self.showing.take() {
+            self.latencies.push_back(t.elapsed());
+            if self.latencies.len() > 300 {
+                self.latencies.pop_front();
+            }
         }
         if self.trace && let Some(t) = self.queued_at {
             eprintln!("trace: flip queued to vblank {} us", t.elapsed().as_micros());
@@ -1454,6 +1503,7 @@ impl Crt {
                     }
                 );
             }
+            self.write_latency();
             // While it runs, keep the file from growing without end.
             omacrt_shell::logfile::rotate_if_big(
                 &display::log_path(),

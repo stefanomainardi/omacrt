@@ -38,6 +38,34 @@ pub fn monitor_open() -> bool {
     monitor_path().exists()
 }
 
+/// Written by the display process every few seconds while the tube is up:
+/// how long a program's picture takes to get from its commit to the start of
+/// scanout, which is very nearly to the phosphor on a set with no panel and
+/// no scaler. Nothing else on the machine can know it: the two ends are a
+/// client's commit and the kernel's own vblank timestamp, and only the
+/// compositor sees both.
+pub fn latency_path() -> PathBuf {
+    super::state_dir().join("display.latency")
+}
+
+/// The last figure the display process wrote: milliseconds, frames, and how
+/// many frames it was measured over. `None` when the tube is not up, or has
+/// not shown anything yet.
+pub fn latency() -> Option<(f64, f64, usize)> {
+    latency_in(&std::fs::read_to_string(latency_path()).ok()?)
+}
+
+/// Half a line of three numbers, and nothing shown unless all three are
+/// there: a truncated file is what a reader finds while the writer is part
+/// way through, and half a measurement is not a measurement.
+fn latency_in(text: &str) -> Option<(f64, f64, usize)> {
+    let mut parts = text.split_whitespace();
+    let ms = parts.next()?.parse().ok()?;
+    let frames = parts.next()?.parse().ok()?;
+    let samples = parts.next()?.parse().ok()?;
+    Some((ms, frames, samples))
+}
+
 pub fn log_path() -> PathBuf {
     super::state_dir().join("display.log")
 }
@@ -256,4 +284,21 @@ pub fn record_start(path: &str, sink: Option<&str>) -> std::io::Result<()> {
 
 pub fn record_stop() -> std::io::Result<()> {
     send("record stop")
+}
+
+#[cfg(test)]
+mod latency_tests {
+    use super::latency_in;
+
+    #[test]
+    fn the_three_numbers_the_display_writes_come_back() {
+        assert_eq!(latency_in("16.52 0.99 300\n"), Some((16.52, 0.99, 300)));
+    }
+
+    #[test]
+    fn a_half_written_file_is_no_measurement() {
+        for half in ["", "16.52", "16.52 0.99", "16.52 0.99 \n", "x y z"] {
+            assert_eq!(latency_in(half), None, "{half:?}");
+        }
+    }
 }
