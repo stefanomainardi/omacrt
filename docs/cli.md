@@ -488,9 +488,9 @@ Every one of them runs a command from this page.
 ## The display process
 
 ```
-omacrt-display run [connector]       # lease the connector, hold the mode, host clients
-omacrt-display probe [connector] [s] # take the lease, show a test card, release
-omacrt-display props [connector]     # the kernel's view: state, modes, non-desktop
+flyback run [connector]       # lease the connector, hold the mode, host clients
+flyback probe [connector] [s] # take the lease, show a test card, release
+flyback props [connector]     # the kernel's view: state, modes, non-desktop
 ```
 
 `omacrt on` starts `run` itself when the connector is leaseable. Its

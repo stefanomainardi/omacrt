@@ -13,7 +13,7 @@ flowchart LR
   end
 
   subgraph tube["The tube (leased DRM connector)"]
-    display["omacrt-display<br/>own Wayland compositor (smithay)<br/>sets 15 kHz modelines through DRM"]
+    display["flyback<br/>own Wayland compositor (smithay)<br/>sets 15 kHz modelines through DRM"]
     shell["omacrt-shell<br/>launcher, 320x240"]
     ra["RetroArch"]
     mpv["mpv"]

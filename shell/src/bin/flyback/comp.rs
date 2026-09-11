@@ -1,4 +1,13 @@
-//! A Wayland compositor for the tube.
+//! Flyback: a Wayland compositor for a television.
+//!
+//! Named after what a tube does between two lines, which is also what the
+//! project's mark draws: the beam running back with the gun switched off.
+//!
+//! What makes it unlike every other compositor is the output it takes. It
+//! does not ask for a screen the desktop is using; it takes the one the
+//! desktop has been told to leave alone, through `wp_drm_lease_v1`, and
+//! programs a fifteen kilohertz modeline on it. A kiosk compositor puts one
+//! window on a monitor. This one owns the scanout of a television.
 //!
 //! One leased DRM output, a handful of clients (the launcher, RetroArch,
 //! mpv), every toplevel fullscreen at the output's size. The stacking order

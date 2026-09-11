@@ -11,7 +11,7 @@ landed. This file is about the work.
 ## What this is
 
 An Omarchy edition for retro gaming on 15 kHz CRT televisions. The desktop
-hands one connector over with DRM leasing; `omacrt-display` takes it,
+hands one connector over with DRM leasing; `flyback` takes it,
 programs a modeline no desktop would accept (15.731 kHz, 240 active lines) and
 becomes the compositor for that output alone. The launcher, RetroArch, mpv and
 cliamp are its clients. Everything else in the repository serves that.

@@ -134,7 +134,11 @@ retire() {  # $1 = what to move, $2 = subfolder of $legacy_retired
 
 # The binaries: nothing watches ~/.local/bin, so this is safe at any time.
 legacy_retire_bin() {
-  for b in omarchy-crt omarchy-crt-shell omarchy-crt-display omarchy-crt-pick; do
+  # The last two names the display process had: the project was called
+  # omarchy-crt, and the compositor was called omacrt-display before it was
+  # called flyback. An upgrade that leaves one of those on the PATH leaves a
+  # version of the program that nothing starts and nobody notices.
+  for b in omarchy-crt omarchy-crt-shell omarchy-crt-display omarchy-crt-pick omacrt-display; do
     retire "${bin_dir}/${b}" bin
   done
 }
@@ -200,7 +204,7 @@ for arg in "$@"; do
         step "the binaries belong to the package; remove it with pacman"
       else
         step "removing the binaries from $bin_dir"
-        for b in omacrt omacrt-shell omacrt-display omacrt-pick; do
+        for b in omacrt omacrt-shell flyback omacrt-pick; do
           rm -f "$bin_dir/$b"
         done
       fi
@@ -265,7 +269,7 @@ else
   picker="$repo/bin/omacrt-pick"
 fi
 
-for b in omacrt omacrt-shell omacrt-display; do
+for b in omacrt omacrt-shell flyback; do
   [ -x "$built_dir/$b" ] || { echo "missing $built_dir/$b" >&2; exit 1; }
 done
 [ -f "$picker" ] || { echo "missing $picker" >&2; exit 1; }
@@ -283,7 +287,7 @@ else
   mkdir -p "$bin_dir"
   install -m 755 "$built_dir/omacrt" "$bin_dir/omacrt"
   install -m 755 "$built_dir/omacrt-shell" "$bin_dir/omacrt-shell"
-  install -m 755 "$built_dir/omacrt-display" "$bin_dir/omacrt-display"
+  install -m 755 "$built_dir/flyback" "$bin_dir/flyback"
   # The desktop picker: a script, not a binary, but it belongs beside them.
   install -m 755 "$picker" "$bin_dir/omacrt-pick"
 fi

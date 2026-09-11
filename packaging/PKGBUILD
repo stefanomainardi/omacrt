@@ -62,7 +62,7 @@ check() {
 
 package() {
   cd "$pkgname-$pkgver"
-  for b in omacrt omacrt-shell omacrt-display; do
+  for b in omacrt omacrt-shell flyback; do
     install -Dm755 "shell/target/release/$b" "$pkgdir/usr/bin/$b"
   done
 

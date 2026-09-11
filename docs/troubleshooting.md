@@ -65,7 +65,7 @@ RetroArch 1.22.2 dies with SIGSEGV inside its input poll the moment it
 processes a network command (`network_cmd_enable`); an unknown command is
 logged and survives, a known one kills the process. The launcher does not
 use that interface any more: on the leased tube it presses the emulator's
-own hotkeys through the compositor (`omacrt-display` control pipe,
+own hotkeys through the compositor (`flyback` control pipe,
 `key pause|save|load|reset|quit`), and RetroArch runs with
 `network_cmd_enable = false`.
 
@@ -78,7 +78,7 @@ emulator on this display.
 ## Is the tube ours?
 
 ```
-omacrt-display props HDMI      # non-desktop = 1 means Hyprland leaves it alone
+flyback props HDMI      # non-desktop = 1 means Hyprland leaves it alone
 omacrt status --json | jq .connector
 systemctl status omacrt-lease.service
 tail ~/.local/state/omacrt/display.log
@@ -89,7 +89,7 @@ override is not in place: `sudo bin/omacrt-install --system` installs it for
 every boot, and `sudo scripts/crt-lease-setup.sh on` applies it now. `off`
 gives the connector back to the desktop.
 
-**First look for a monitor rule.** If `omacrt-display props HDMI` says
+**First look for a monitor rule.** If `flyback props HDMI` says
 `non-desktop = 1` and `hyprctl monitors all` still lists the connector, the
 kernel has done its part and something in `~/.config/hypr` is claiming it. A
 connector Hyprland has an `hl.monitor` rule for is a monitor to Hyprland, and
@@ -107,7 +107,7 @@ added, and keeps the answer.
 Applying it now is not the same as having it at boot. Hyprland decides which
 connectors it offers for leasing when it starts, so an override that arrives
 afterwards sets the flag but wins nothing: `non-desktop = 1` while
-`omacrt-display` still reports `connector HDMI-A-1 is not offered for lease
+`flyback` still reports `connector HDMI-A-1 is not offered for lease
 (offered: none)`, and the picture only comes back at the next boot. Nothing
 else needs doing in the meantime.
 

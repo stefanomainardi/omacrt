@@ -79,7 +79,7 @@ took it. So:
 1. A systemd oneshot marks the DAC's connector *non-desktop* by overriding its
    EDID at boot. Hyprland sees that flag and stops configuring the output,
    offering it for leasing instead.
-2. `omacrt-display` takes the lease, becomes DRM master for that
+2. `flyback` takes the lease, becomes DRM master for that
    connector alone, programs the modeline through DRM, and runs a small
    Wayland compositor of its own on it.
 3. The launcher, RetroArch and mpv are its clients, forced fullscreen at the

@@ -7,6 +7,17 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Changed
+
+- The compositor has a name: **Flyback**. It was `omacrt-display`, a
+  description of where it sits rather than of what it is, and what it is has
+  no precedent: a Wayland compositor that does not ask for a screen the
+  desktop is using, but takes the one the desktop has been told to leave
+  alone and programs a fifteen kilohertz modeline on it. It is named after
+  what a tube does between two lines, which is what the project's mark draws.
+  The binary is `flyback`; an install that carried the old name has it
+  retired on the next run of the installer.
+
 ## [0.6.0] - 2026-09-11
 
 The whole command line speaks with one voice, and the two things that could

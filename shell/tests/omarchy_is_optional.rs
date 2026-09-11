@@ -95,7 +95,7 @@ const ALLOWED: &[(&str, usize, &str)] = &[
         "the credit on the About screen: what this is built on",
     ),
     (
-        "bin/omacrt-display/comp.rs",
+        "bin/flyback/comp.rs",
         1,
         "the make in the EDID the leased output advertises to its own clients",
     ),

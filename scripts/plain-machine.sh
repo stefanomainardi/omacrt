@@ -61,7 +61,7 @@ fi
 
 [ -x "$scratch/.local/bin/omacrt" ] || fail "no omacrt in ~/.local/bin"
 [ -x "$scratch/.local/bin/omacrt-shell" ] || fail "no omacrt-shell in ~/.local/bin"
-[ -x "$scratch/.local/bin/omacrt-display" ] || fail "no omacrt-display in ~/.local/bin"
+[ -x "$scratch/.local/bin/flyback" ] || fail "no flyback in ~/.local/bin"
 say "the binaries are in ~/.local/bin"
 
 if [ -e "$scratch/.config/omarchy" ]; then

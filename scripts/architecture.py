@@ -178,7 +178,7 @@ def draw() -> Image.Image:
     c.text(24, 152, "radio, Spotify, spectrum", DIM)
 
     # ---------------------------------------------------------- display
-    c.box(272, 32, 216, 152, "omacrt-display", ORANGE)
+    c.box(272, 32, 216, 152, "flyback", ORANGE)
     c.text(280, 50, "Smithay compositor", DIM)
     c.box(280, 64, 200, 26, "", FG, fill=PANEL2)
     c.text(288, 72, "DRM modeset by hand", FG)
@@ -207,7 +207,7 @@ def draw() -> Image.Image:
     lines = [
         (MAGENTA, "1", "an EDID override at boot marks the DAC connector non-desktop,"),
         (MAGENTA, "", "so Hyprland drops it from its monitors and offers it for lease"),
-        (ORANGE, "2", "omacrt-display takes that lease, programs 15.7 kHz through"),
+        (ORANGE, "2", "flyback takes that lease, programs 15.7 kHz through"),
         (ORANGE, "", "DRM and runs its own Wayland show: nothing else can land there"),
         (CYAN, "3", "the CLI drives the launcher over a control pipe, the bar plugin"),
         (CYAN, "", "drives the CLI, and the launcher draws every pixel by hand"),

@@ -1529,10 +1529,10 @@ fn card_driver(conn: &Connector) -> Option<String> {
 fn leasing_offered() -> Result<Option<Vec<String>>, String> {
     let bin = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.join("omacrt-display")))
+        .and_then(|p| p.parent().map(|d| d.join("flyback")))
         .filter(|p| p.is_file())
-        .or_else(|| which("omacrt-display"))
-        .ok_or("omacrt-display not found")?;
+        .or_else(|| which("flyback"))
+        .ok_or("flyback not found")?;
     let out = std::process::Command::new(bin)
         .arg("globals")
         .output()

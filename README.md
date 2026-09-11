@@ -82,9 +82,10 @@ invites the experiments the big frontends never bothered with.
 
 The desktop never touches the television. At boot a systemd unit installs an
 EDID override that marks the DAC's connector *non-desktop*, so Hyprland leaves
-it alone and offers it through the DRM lease protocol. `omacrt-display` takes
-the lease, programs the 15 kHz timing straight into the kernel and runs a
-small Wayland compositor of its own on that output. The launcher, RetroArch
+it alone and offers it through the DRM lease protocol. **Flyback**, this
+project's own Wayland compositor, takes the lease, programs the 15 kHz timing
+straight into the kernel and owns the scanout of that output. It is named
+after what a tube does between two lines. The launcher, RetroArch
 and mpv are its clients, forced fullscreen at the output's size. No bar,
 notification, pointer or stray window can reach the tube, and any timing the
 kernel accepts is one command away, live, including a different line count per
@@ -222,7 +223,7 @@ can be read again and pasted into an issue. Piped, redirected, under
 
 | Path | What |
 | --- | --- |
-| `shell/` | The Rust workspace: `omacrt-shell` (launcher), `omacrt` (CLI), `omacrt-display` (lease and compositor), shared library |
+| `shell/` | The Rust workspace: `omacrt-shell` (launcher), `omacrt` (CLI), `flyback` (the compositor that owns the tube), shared library |
 | `plugin/` | The bar widget and panel; `plugin/library/` the library overlay |
 | `menu/` | The Television rows the installer writes into Omarchy's menu extension file |
 | `bin/omacrt-install` | Build and install everything, `--system` for the boot time lease |

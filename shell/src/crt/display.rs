@@ -1,4 +1,5 @@
-//! The display process that owns the tube (`omacrt-display`).
+//! Flyback, the compositor that owns the tube, as the rest of the program
+//! talks to it: start it, stop it, ask whether it is up, send it a line.
 //!
 //! When the DAC's connector is marked non-desktop, the desktop compositor
 //! leaves it alone and our process leases it: modeline, page flips and a
@@ -105,11 +106,11 @@ pub fn running() -> bool {
     };
     // Alive is not enough: the number in the file can have been handed to
     // something else entirely since it was written.
-    super::pid_runs(pid, "omacrt-display")
+    super::pid_runs(pid, "flyback")
 }
 
 fn binary() -> PathBuf {
-    let name = "omacrt-display";
+    let name = "flyback";
     std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join(name)))
@@ -187,7 +188,7 @@ pub fn stop() -> String {
             return "stopped".into();
         }
     }
-    if pid > 0 && super::pid_runs(pid, "omacrt-display") {
+    if pid > 0 && super::pid_runs(pid, "flyback") {
         unsafe { libc::kill(pid, libc::SIGTERM) };
     }
     std::thread::sleep(Duration::from_millis(300));

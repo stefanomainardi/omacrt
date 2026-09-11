@@ -1,5 +1,5 @@
-//! Drive the tube directly: lease its DRM connector from the desktop
-//! compositor and set the mode ourselves.
+//! Flyback: drive the tube directly, by leasing its DRM connector from the
+//! desktop compositor and setting the mode ourselves.
 //!
 //! With the connector marked non-desktop (see scripts/crt-lease-setup.sh),
 //! Hyprland stops configuring it and offers it through wp_drm_lease_v1. The
@@ -8,7 +8,7 @@
 //! pointer, no window rules. This is the probe stage: take the lease, set the
 //! configured timing and show a test card for a while.
 //!
-//!   omacrt-display probe [connector] [seconds]
+//!   flyback probe [connector] [seconds]
 
 use drm::Device;
 use drm::control::{Device as ControlDevice, Mode, framebuffer};
@@ -64,7 +64,7 @@ fn main() {
         return;
     }
     if args.first().map(|s| s.as_str()) != Some("probe") {
-        eprintln!("usage: omacrt-display run|probe|props|globals [connector] [seconds]");
+        eprintln!("usage: flyback run|probe|props|globals [connector] [seconds]");
         std::process::exit(2);
     }
     let cfg = Config::load();
@@ -268,6 +268,6 @@ fn test_card(px: &mut [u8], w: usize, h: usize) {
 }
 
 pub fn die(msg: &str) -> ! {
-    eprintln!("omacrt-display: {msg}");
+    eprintln!("flyback: {msg}");
     std::process::exit(1);
 }
