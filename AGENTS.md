@@ -365,6 +365,35 @@ that changes belongs behind a picker on the desktop, which is what
 subprocess, with `--proto =http,https`, a timeout, a size cap, and a cache on
 disk with an age. Nothing in the frame loop is allowed to block on a socket.
 
+## Measuring the latency
+
+There is an instrument in the crate for the one number the tube can be judged
+on: how long a picture takes from the commit that drew it to the start of its
+scanout. It is behind a feature, so nothing anybody installs carries it.
+
+```
+flyback run &
+cargo run --release --features latency --bin latency -- 500
+cargo run --release --features latency --bin latency -- 500 --paced
+```
+
+Without `--paced` it commits at a random point of every frame, which measures
+the whole window a program could commit in; with it, it draws on the frame
+callback the way a real program paces itself, which is the number a game
+sees. It reports the distribution and how many frames slipped a vblank, and
+it checks at the end that an idle tube still answers frame callbacks, which
+is the thing the flip scheduling can break.
+
+`FLYBACK_TRACE=1` on the display process prints, for every frame, how long
+the commit waited to be queued and the queue waited for the vblank. Those two
+add up to what the probe measures from outside, and they say which half a
+change moved.
+
+Anything touched in `render`, `vblank`, `damaged`, `tick`, `arm_deadline` or
+`arm_callbacks` needs this run before and after: it is a handful of timers
+that quietly cost a frame each when they are wrong, and nothing else in the
+repository notices.
+
 ## The television, in the few facts that matter
 
 - 15.731 kHz, 240 active lines at 60 Hz for NTSC; 288 at 50 Hz for PAL. The
