@@ -329,25 +329,16 @@ fi
 
 legacy_retire_plugins
 
-step "installing plugin into $plugin_dir"
-# Overwrite in place: removing the folder makes the shell drop the plugin
-# for a moment and the bar widget vanishes; changed files hot reload instead.
-mkdir -p "$plugin_dir/bin"
-for f in "$repo/plugin/manifest.json" "$repo/plugin/"*.qml "$repo/plugin/README.md"; do
-  [ -f "$f" ] && install -m 644 "$f" "$plugin_dir/$(basename "$f")"
-done
-# A copy, not a link: Omarchy's plugin validator refuses symlinks inside a
-# plugin folder. A copy goes stale the moment the CLI is rebuilt, which is
-# why `omacrt doctor` checks it against the running version and offers to
-# put it right.
-install -m 755 "$built_dir/omacrt" "$plugin_dir/bin/omacrt"
-
-# The library overlay is a second plugin (kind overlay) the panel summons.
-step "installing the library overlay into $library_dir"
-mkdir -p "$library_dir"
-for f in "$repo/plugin/library/manifest.json" "$repo/plugin/library/"*.qml; do
-  [ -f "$f" ] && install -m 644 "$f" "$library_dir/$(basename "$f")"
-done
+step "installing the plugins into $plugin_dir and $library_dir"
+# The binary carries the plugin files and writes the ones that differ:
+# `omacrt plugin sync`. One implementation rather than two, and the same
+# command puts them right after an upgrade, which this script cannot be
+# there for. Overwrite in place: removing a folder makes the shell drop the
+# plugin for a moment and the bar widget vanishes; changed files hot reload.
+#
+# A copy, not a link, because Omarchy's plugin validator refuses a symlink
+# inside a plugin folder.
+"$built_dir/omacrt" plugin sync --install
 
 # Hot reloading plugin code while the session is locked makes the shell's
 # lock plugin re-create its surfaces without an active lock, which Quickshell

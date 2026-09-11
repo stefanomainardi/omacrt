@@ -9,14 +9,17 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
-- The self test says when the bar widget is running an older copy of the
-  command line than the one that answered. The widget runs a copy of `omacrt`
-  from its own folder, because Omarchy's plugin validator refuses a symlink
-  inside a plugin folder, so a rebuild leaves it behind: this machine ran a
-  release-old copy for a week. `omacrt doctor --fix`, or the `f` key on the
-  report, puts the running binary in its place, and refuses to while the
+- `omacrt plugin sync` writes the desktop plugin's files, and `omacrt plugin`
+  says whether they are this version's. The bar widget, the panel and the
+  library overlay are copies in the user's own configuration, where a package
+  upgrade cannot reach them, and Omarchy's plugin validator refuses a symlink
+  inside a plugin folder: an upgraded program was answering a bar a release
+  behind, which is how a fixed bug came back. The binary now carries those
+  files and writes the ones that differ. The self test says when they differ
+  and its `--fix` does the same thing, and neither will touch them while the
   session is locked, because a plugin reload under the lock screen takes the
-  shell down.
+  shell down. The package says it after an upgrade, and the installer no
+  longer has its own copy of the same work.
 
 ### Fixed
 

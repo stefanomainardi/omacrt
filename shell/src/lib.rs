@@ -18,6 +18,7 @@ pub mod music;
 pub mod net;
 pub mod padmap;
 pub mod player;
+pub mod plugin;
 pub mod profile;
 pub mod rumble;
 pub mod scumm;

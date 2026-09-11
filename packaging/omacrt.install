@@ -24,8 +24,14 @@ MSG
 post_upgrade() {
   cat <<'MSG'
 
-omacrt upgraded. On Omarchy, if the bar plugin looks stale, refresh it with:
-  /usr/share/omacrt/omacrt-install --no-build
+omacrt upgraded. The bar plugin lives in your own configuration, where a
+package cannot reach it, so it is still the last version's:
+
+  omacrt plugin sync
+
+`omacrt doctor` says so too, and its --fix does the same thing. Neither will
+touch it while the session is locked: reloading a plugin under the lock
+screen takes the shell down.
 
 MSG
 }

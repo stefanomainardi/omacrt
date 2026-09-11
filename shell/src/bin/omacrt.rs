@@ -1983,30 +1983,23 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                 },
             )
         }));
-        // The widget runs the binary in its own folder, and a copy of a
-        // binary is a version that stopped moving: this one ran a release
-        // behind for a week without anybody noticing. Byte for byte, because
-        // two builds of one version are still two different programs.
-        probes.push(Probe::new(HOUSEKEEPING, "bar plugin helper", || {
-            let helper = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
-                .join(".config/omarchy/plugins/io.github.stefanomainardi.omacrt/bin/omacrt");
-            if !helper.is_file() {
-                return (Level::Fail, "not installed: bin/omacrt-install".into());
+        // The widget, the panel and the overlay are copies in the user's own
+        // configuration, and a package upgrade cannot reach them: it does not
+        // write into anybody's home. So an upgraded program can be answering
+        // a bar that is a release behind, which is how a fixed bug came back.
+        probes.push(Probe::new(HOUSEKEEPING, "plugin up to date", || {
+            let drift = omacrt_shell::plugin::drift();
+            if drift.is_empty() {
+                return (Level::Ok, "the files this version carries".into());
             }
-            let Ok(mine) = std::env::current_exe() else {
-                return (
-                    Level::Warn,
-                    "cannot find the running binary to compare".into(),
-                );
-            };
-            if std::fs::read(&helper).ok() == std::fs::read(&mine).ok() {
-                (Level::Ok, "the same binary this is".into())
-            } else {
-                (
-                    Level::Fail,
-                    "an older copy: omacrt doctor --fix, or bin/omacrt-install".into(),
-                )
-            }
+            let names: Vec<String> = drift
+                .iter()
+                .filter_map(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()))
+                .collect();
+            (
+                Level::Fail,
+                format!("{} behind: omacrt plugin sync", names.join(", ")),
+            )
         }));
     }
     probes.push(Probe::yes_no(HOUSEKEEPING, "nothing left behind", || {
@@ -3553,6 +3546,39 @@ fn main() {
                         .unwrap_or_else(|e| die(&e.to_string()));
                 }
                 other => die(&format!("unknown dac command {other}")),
+            }
+        }
+        "plugin" => {
+            let pos = positional(args);
+            match pos.first().map(|s| s.as_str()) {
+                // `--install` is the first install: it makes the folders.
+                // Without it an absent plugin stays absent, because a machine
+                // with no Omarchy has nowhere to put one.
+                Some("sync") => match omacrt_shell::plugin::sync(has(args, "--install")) {
+                    Ok(wrote) if wrote.is_empty() => {
+                        term::sheet::step("plugin", "already this version")
+                    }
+                    Ok(wrote) => {
+                        for w in &wrote {
+                            term::sheet::step("written", w);
+                        }
+                    }
+                    Err(e) => die(&e),
+                },
+                Some(other) => die(&format!("plugin takes sync, not {other}")),
+                None => {
+                    let drift = omacrt_shell::plugin::drift();
+                    if !omacrt_shell::plugin::installed() {
+                        term::sheet::step("plugin", "not installed");
+                    } else if drift.is_empty() {
+                        term::sheet::step("plugin", "this version");
+                    } else {
+                        for d in &drift {
+                            term::sheet::step("behind", d.display().to_string());
+                        }
+                        term::sheet::step("next", "omacrt plugin sync");
+                    }
+                }
             }
         }
         "bios" => cmd_bios(args),
