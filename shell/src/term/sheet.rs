@@ -211,6 +211,36 @@ impl Sheet {
         ]));
     }
 
+    /// A line of a file, shown as it is: a comment quiet, a key set apart
+    /// from its value, a section head in the accent colour.
+    pub fn raw(&mut self, line: &str) {
+        let t = line.trim_start();
+        let spans = if t.starts_with('#') {
+            vec![
+                Span::raw("  "),
+                Span::styled(line.to_string(), self.style(self.pal.theme.dim)),
+            ]
+        } else if t.starts_with('[') {
+            vec![
+                Span::raw("  "),
+                Span::styled(line.to_string(), self.bold(self.pal.theme.accent)),
+            ]
+        } else if let Some((key, value)) = line.split_once('=') {
+            vec![
+                Span::raw("  "),
+                Span::styled(key.to_string(), self.style(self.pal.theme.paper)),
+                Span::raw("="),
+                Span::styled(value.to_string(), self.style(self.pal.theme.cyan)),
+            ]
+        } else {
+            vec![
+                Span::raw("  "),
+                Span::styled(line.to_string(), self.style(self.pal.theme.paper)),
+            ]
+        };
+        self.lines.push(Line::from(spans));
+    }
+
     /// A line of nothing, to separate one group of fields from the next.
     pub fn blank(&mut self) {
         self.lines.push(Line::raw(""));

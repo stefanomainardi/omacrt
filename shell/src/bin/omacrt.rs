@@ -2474,6 +2474,24 @@ fn cmd_library(args: &[String]) {
                 println!("{}", Value::Array(rows));
                 return;
             }
+            let summary = format!("{} place(s) that look like a collection", found.len());
+            if let Some(mut sh) =
+                term::sheet::Sheet::open(has(args, "--plain"), "library discover", &summary)
+            {
+                for f in &found {
+                    sh.field_note(
+                        "found",
+                        f.display().to_string(),
+                        if roots.contains(f) {
+                            "a root already"
+                        } else {
+                            ""
+                        },
+                    );
+                }
+                sh.print();
+                return;
+            }
             for f in found {
                 let note = if roots.contains(&f) {
                     "  (a root already)"
@@ -2590,6 +2608,45 @@ fn cmd_library(args: &[String]) {
             }
             if has(args, "--json") {
                 println!("{}", json!({ "systems": rows, "available": available }));
+                return;
+            }
+            let missing = rows
+                .iter()
+                .filter(|r| !r["installed"].as_bool().unwrap_or(false))
+                .count();
+            let summary = if missing == 0 {
+                "every system has its core".to_string()
+            } else {
+                format!("{missing} of {} systems have no core installed", rows.len())
+            };
+            if let Some(mut sh) =
+                term::sheet::Sheet::open(has(args, "--plain"), "library cores", &summary)
+            {
+                for r in &rows {
+                    let installed = r["installed"].as_bool().unwrap_or(false);
+                    sh.check(
+                        if installed {
+                            term::Level::Ok
+                        } else {
+                            term::Level::Fail
+                        },
+                        &format!(
+                            "{:<12} {:<20}",
+                            r["system"].as_str().unwrap_or(""),
+                            r["core"].as_str().unwrap_or("")
+                        ),
+                        format!(
+                            "{}{}",
+                            r["package"].as_str().unwrap_or(""),
+                            if r["aur"].as_bool().unwrap_or(false) {
+                                "  (AUR)"
+                            } else {
+                                ""
+                            }
+                        ),
+                    );
+                }
+                sh.print();
                 return;
             }
             for r in &rows {
@@ -2764,6 +2821,16 @@ fn cmd_library(args: &[String]) {
             }
         }
         Some("systems") => {
+            let summary = format!("{} systems in the catalogue", index::CATALOG.len());
+            if let Some(mut sh) =
+                term::sheet::Sheet::open(has(args, "--plain"), "library systems", &summary)
+            {
+                for (s, label, core, exts) in index::CATALOG {
+                    sh.field_note(s, format!("{label:<28} {core:<20}"), exts.join(", "));
+                }
+                sh.print();
+                return;
+            }
             for (s, label, core, exts) in index::CATALOG {
                 println!("{:<12} {:<28} {:<20} {}", s, label, core, exts.join(","));
             }
@@ -2799,6 +2866,40 @@ fn cmd_library(args: &[String]) {
                 return;
             }
             let ix = Index::load();
+            let summary = match &ix {
+                Some(ix) => format!("{} games indexed, {} systems", ix.items.len(), scan.len()),
+                None => "no index yet".to_string(),
+            };
+            let note = |s: &roms::Scan| {
+                if !s.exists {
+                    "folder missing".to_string()
+                } else if !s.core_present {
+                    "core not installed".to_string()
+                } else if s.unknown > 0 {
+                    format!("{} file(s) with unknown extension", s.unknown)
+                } else {
+                    String::new()
+                }
+            };
+            if let Some(mut sh) =
+                term::sheet::Sheet::open(has(args, "--plain"), "library", &summary)
+            {
+                match &ix {
+                    Some(ix) => {
+                        sh.field("scanned", ix.scanned_at.clone());
+                        for r in &ix.roots {
+                            sh.field("root", r.display().to_string());
+                        }
+                    }
+                    None => sh.note("run `omacrt library scan <folder>`"),
+                }
+                sh.section("systems");
+                for s in &scan {
+                    sh.field_note(&s.name, format!("{:>6}  {}", s.games, s.dir), note(s));
+                }
+                sh.print();
+                return;
+            }
             if let Some(ix) = &ix {
                 println!("index: {} games, scanned {}", ix.items.len(), ix.scanned_at);
                 for r in &ix.roots {
@@ -2808,16 +2909,7 @@ fn cmd_library(args: &[String]) {
                 println!("no index: run `omacrt library scan <folder>`");
             }
             for s in &scan {
-                let note = if !s.exists {
-                    "folder missing".to_string()
-                } else if !s.core_present {
-                    "core not installed".to_string()
-                } else if s.unknown > 0 {
-                    format!("{} file(s) with unknown extension", s.unknown)
-                } else {
-                    String::new()
-                };
-                println!("{:<14} {:>6}  {}  {}", s.name, s.games, s.dir, note);
+                println!("{:<14} {:>6}  {}  {}", s.name, s.games, s.dir, note(s));
             }
         }
     }
@@ -3266,15 +3358,29 @@ fn main() {
                 "status" => {
                     let lock = dac.lock().unwrap_or(Lock::Other(0));
                     let cs = dac.csync().unwrap_or(0);
-                    println!(
-                        "{} {}: {}, csync {}",
-                        conn.name,
-                        dac.bus,
-                        lock.label(),
-                        Csync::from_value(cs)
-                            .map(|c| c.label().to_string())
-                            .unwrap_or(format!("0x{cs:02X}"))
-                    );
+                    let sync = Csync::from_value(cs)
+                        .map(|c| c.label().to_string())
+                        .unwrap_or(format!("0x{cs:02X}"));
+                    let locked = lock.label().starts_with("locked");
+                    match term::sheet::Sheet::open(
+                        has(args, "--plain"),
+                        "dac status",
+                        if locked {
+                            "the converter has lock on the signal"
+                        } else {
+                            "the converter has no lock: is anything being sent?"
+                        },
+                    ) {
+                        Some(mut sh) => {
+                            sh.lamp("lock", locked, lock.label().to_string());
+                            sh.field("csync", sync);
+                            sh.field_note("bus", dac.bus.clone(), conn.name.clone());
+                            sh.print();
+                        }
+                        None => {
+                            println!("{} {}: {}, csync {sync}", conn.name, dac.bus, lock.label(),)
+                        }
+                    }
                 }
                 "reset" => {
                     let mode = Csync::parse(&cfg.output.csync);
@@ -3350,6 +3456,21 @@ fn main() {
                 };
                 omacrt_shell::crt::set_value(key, value).unwrap_or_else(|e| die(&e));
                 println!("{key} = {value}");
+                return;
+            }
+            if let Some(mut sh) = term::sheet::Sheet::open(
+                has(args, "--plain"),
+                "config",
+                "every key is optional; what is not here is the default",
+            ) {
+                sh.field("file", Config::path().display().to_string());
+                sh.blank();
+                if let Ok(t) = std::fs::read_to_string(Config::path()) {
+                    for line in t.lines() {
+                        sh.raw(line);
+                    }
+                }
+                sh.print();
                 return;
             }
             println!("{}", Config::path().display());
