@@ -1193,7 +1193,12 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
         return 1;
     }
 
-    println!("outputs");
+    // The list is what a pipe gets. In a terminal the picker draws the same
+    // outputs as a map, and the sheet at the end says which one was taken.
+    let listing = !term::interactive(has(args, "--plain"));
+    if listing {
+        println!("outputs");
+    }
     for c in &all {
         if !c.connected && c.edid_name.is_empty() {
             continue;
@@ -1204,6 +1209,9 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
         let desktop = output::hypr_monitor(&c.name)
             .map(|m| !m["disabled"].as_bool().unwrap_or(true))
             .unwrap_or(false);
+        if !listing {
+            continue;
+        }
         println!(
             "  {:<16} {:<10} {:<16}{}{}{}",
             c.name,
@@ -1293,50 +1301,78 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
         return 1;
     }
 
-    println!("\nchosen");
-    println!("  connector   {} ({})", chosen.name, chosen.drm);
-    match dac {
-        Some((label, true)) => println!("  DAC         {label}, sync selected over I2C"),
+    let dac_line = match &dac {
+        Some((label, true)) => format!("{label}, sync selected over I2C"),
         Some((label, false)) => {
-            println!("  DAC         {label}: sync is set on the device itself, not from here")
+            format!("{label}: sync is set on the device itself, not from here")
         }
-        None => println!(
-            "  DAC         unknown ({}): the timings still apply, the sync mode does not",
+        None => format!(
+            "unknown ({}): the timings still apply, the sync mode does not",
             if chosen.edid_name.is_empty() {
                 "no EDID name"
             } else {
                 &chosen.edid_name
             }
         ),
-    }
-    println!("  standard    {} ({})", standard.to_uppercase(), {
-        if want_standard.is_some() {
-            "asked for"
-        } else if cfg.output.standard.trim().is_empty() {
-            "from the locale"
-        } else {
-            "already configured"
-        }
-    });
-    println!(
-        "  audio       {}",
-        if chosen.edid_audio {
-            "advertised by the EDID, routed to the tube while it is on"
-        } else {
-            "not advertised by this EDID: keep the sound on the desktop"
-        }
+    };
+    let standard_why = if want_standard.is_some() {
+        "asked for"
+    } else if cfg.output.standard.trim().is_empty() {
+        "from the locale"
+    } else {
+        "already configured"
+    };
+    let audio_line = if chosen.edid_audio {
+        "advertised by the EDID, routed to the tube while it is on"
+    } else {
+        "not advertised by this EDID: keep the sound on the desktop"
+    };
+    let mut sh = term::sheet::Sheet::open(
+        has(args, "--plain"),
+        "setup",
+        &format!("{} is the television", chosen.name),
     );
+    match &mut sh {
+        Some(sh) => {
+            sh.field_note("connector", chosen.name.clone(), chosen.drm.clone());
+            sh.field("dac", dac_line);
+            sh.field_note("standard", standard.to_uppercase(), standard_why);
+            sh.field("audio", audio_line);
+        }
+        None => {
+            println!("\nchosen");
+            println!("  connector   {} ({})", chosen.name, chosen.drm);
+            println!("  DAC         {dac_line}");
+            println!("  standard    {} ({standard_why})", standard.to_uppercase());
+            println!("  audio       {audio_line}");
+        }
+    }
 
     let configured = cfg.output.connector.trim();
     if !configured.is_empty() && configured != chosen.name && configured != chosen.drm && !force {
-        println!(
-            "\n{} already names {configured}. Run with --force to change it.",
+        let note = format!(
+            "{} already names {configured}. Run with --force to change it.",
             Config::path().display()
         );
+        match sh {
+            Some(mut sh) => {
+                sh.blank();
+                sh.note(note);
+                sh.print();
+            }
+            None => println!("\n{note}"),
+        }
         return 1;
     }
     if dry {
-        println!("\nnothing written (--dry-run)");
+        match sh {
+            Some(mut sh) => {
+                sh.blank();
+                sh.note("nothing written (--dry-run)");
+                sh.print();
+            }
+            None => println!("\nnothing written (--dry-run)"),
+        }
         return 0;
     }
 
@@ -1348,7 +1384,10 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
         match crt::set_value(key, val) {
             Ok(()) => wrote.push(format!("{key} = {val}")),
             Err(e) => {
-                println!("\n{key}: {e}");
+                if let Some(sh) = sh {
+                    sh.print();
+                }
+                eprintln!("omacrt: {key}: {e}");
                 return 1;
             }
         }
@@ -1356,23 +1395,43 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
     if !chosen.edid_audio && cfg.audio.route {
         match crt::set_value("audio.route", "false") {
             Ok(()) => wrote.push("audio.route = false".into()),
-            Err(e) => println!("audio.route: {e}"),
+            Err(e) => eprintln!("omacrt: audio.route: {e}"),
         }
     }
-    println!("\nwritten to {}", Config::path().display());
-    for line in &wrote {
-        println!("  {line}");
+    let boot_step = !display::leaseable(&chosen.drm);
+    match sh {
+        Some(mut sh) => {
+            sh.section("written");
+            sh.field("file", Config::path().display().to_string());
+            for line in &wrote {
+                sh.raw(line);
+            }
+            sh.section("next");
+            if boot_step {
+                sh.verb(
+                    "sudo bin/omacrt-install --system",
+                    "hand the connector over at boot",
+                );
+            }
+            sh.verb("omacrt doctor", "what is still missing");
+            sh.verb("omacrt library scan ~/Games", "index the collection");
+            sh.verb("omacrt on", "tube on");
+            sh.print();
+        }
+        None => {
+            println!("\nwritten to {}", Config::path().display());
+            for line in &wrote {
+                println!("  {line}");
+            }
+            println!("\nnext");
+            if boot_step {
+                println!("  sudo bin/omacrt-install --system   hand the connector over at boot");
+            }
+            println!("  omacrt doctor                     what is still missing");
+            println!("  omacrt library scan ~/Games       index the collection");
+            println!("  omacrt on                         tube on");
+        }
     }
-
-    // What is left is the same for everyone, and doctor is the one that
-    // knows whether it has been done.
-    println!("\nnext");
-    if !display::leaseable(&chosen.drm) {
-        println!("  sudo bin/omacrt-install --system   hand the connector over at boot");
-    }
-    println!("  omacrt doctor                     what is still missing");
-    println!("  omacrt library scan ~/Games       index the collection");
-    println!("  omacrt on                         tube on");
     0
 }
 
