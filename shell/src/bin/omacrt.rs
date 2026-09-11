@@ -1636,10 +1636,15 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                 what: "list the missing BIOS files",
             });
         }
-        actions.push(term::rich::Action {
-            key: 'q',
-            what: "quit",
-        });
+        // Only hold the reader at the report when there is something to
+        // press. A machine with nothing to fix gets its report and its
+        // prompt back.
+        if !actions.is_empty() {
+            actions.push(term::rich::Action {
+                key: 'q',
+                what: "quit",
+            });
+        }
         let (checks, pressed) = term::rich::run(probes, extras, &actions);
         match pressed {
             Some('f') => {
