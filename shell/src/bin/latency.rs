@@ -463,12 +463,12 @@ fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
         }
         pump(&conn, &mut queue, &mut probe, Duration::from_millis(20))?;
     }
-    report(&probe);
+    report(&probe, paced);
     pacer(&conn, &mut queue, &mut probe, &qh)?;
     Ok(())
 }
 
-fn report(probe: &Probe) {
+fn report(probe: &Probe, paced: bool) {
     let mut us: Vec<u64> = probe
         .samples
         .iter()
@@ -512,27 +512,36 @@ fn report(probe: &Probe) {
     // slipped a vblank: it was shown one flip later than its neighbours,
     // which on a television is judder rather than latency. It is counted
     // rather than averaged away, because an average hides exactly this.
-    let late = percentile(&us, 0.05) + frame_us / 2;
-    let slipped = us.iter().filter(|&&v| v > late).count();
+    //
+    // Only when the frames were paced. Committing at a random point of the
+    // frame is meant to spread the samples over a whole frame, so counting
+    // the spread as judder there would flag half of them.
+    if paced {
+        let late = percentile(&us, 0.05) + frame_us / 2;
+        let slipped = us.iter().filter(|&&v| v > late).count();
+        println!(
+            "\n{slipped} of {} frames slipped a vblank ({:.1}%)",
+            us.len(),
+            slipped as f64 * 100.0 / us.len() as f64
+        );
+    }
     println!(
-        "\n{slipped} of {} frames slipped a vblank ({:.1}%)",
-        us.len(),
-        slipped as f64 * 100.0 / us.len() as f64
-    );
-    println!(
-        "{hw} of {} timestamps came from the display hardware",
+        "\n{hw} of {} timestamps came from the display hardware",
         us.len()
     );
     // The floor a client cannot do anything about: a commit at a uniformly
     // random phase waits on average half a frame for the next vblank. What
-    // the median has on top of that is the compositor's own.
-    let over = percentile(&us, 0.50) as f64 - frame_us as f64 / 2.0;
-    println!(
-        "the median is {:+.2} ms either side of half a frame, which is what a \
-         commit at a random phase\nhas to wait for the next vblank no matter \
-         who is compositing",
-        over / 1000.0
-    );
+    // the median has on top of that is the compositor's own. It says nothing
+    // about a paced run, where the phase is the compositor's choice.
+    if !paced {
+        let over = percentile(&us, 0.50) as f64 - frame_us as f64 / 2.0;
+        println!(
+            "the median is {:+.2} ms either side of half a frame, which is what a \
+             commit at a random phase\nhas to wait for the next vblank no matter \
+             who is compositing",
+            over / 1000.0
+        );
+    }
 }
 
 /// A client that asks for a frame callback and then commits nothing new must

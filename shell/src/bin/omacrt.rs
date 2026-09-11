@@ -371,7 +371,12 @@ fn status(cfg: &Config) -> Value {
         "bios": Value::Null,
         "library": Value::Null,
     });
-    if let Some((ms, frames, samples)) = display::latency() {
+    // Only while the display process is up. The figure it leaves behind is
+    // removed when it stops on purpose and not when it is killed, and a
+    // latency for a television that is off is a lie either way.
+    if display::running()
+        && let Some((ms, frames, samples)) = display::latency()
+    {
         st["latency"] = json!({ "ms": ms, "frames": frames, "samples": samples });
     }
     if let Some(c) = &conn {
