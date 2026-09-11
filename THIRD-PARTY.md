@@ -40,6 +40,10 @@ piece means carrying their notice with it.
   reconstruction of the IBM PC BIOS face, from
   [font8x8](https://github.com/dhepper/font8x8) (public domain / CC0). The
   table lives in `shell/src/font8x8.rs`.
+- **ratatui** and **crossterm**, which draw the terminal side of the project:
+  the self test's report, its diagrams and the output picker.
+  [ratatui](https://ratatui.rs) (MIT) and
+  [crossterm](https://github.com/crossterm-rs/crossterm) (MIT).
 - The Rust crates listed in `shell/Cargo.toml`, each under its own licence,
   MIT or Apache 2.0 in every case. `cargo tree` and `cargo license` print the
   current set.

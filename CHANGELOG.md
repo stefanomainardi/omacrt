@@ -7,14 +7,21 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-11
+
+Omarchy is now one of two channels rather than the requirement. The
+television, the launcher, the timings and the whole command line never needed
+it; what needed it was the bar widget, the library overlay and the Television
+menu entry, which are its plugins. The other half of the release is the self
+test: the command to run before buying a DAC, drawn as the launcher's own
+power on self test.
+
 ### Added
 
-- A second channel: OmaCRT runs on plain Hyprland. The television, the
-  launcher, the timings and the whole command line never needed Omarchy;
-  what needed it was the bar widget, the library overlay and the Television
-  menu entry, which are its plugins. Without it the installer writes none of
-  them, says so, and points at `docs/hyprland.md`, which carries the
-  keybindings that replace them.
+- A second channel: OmaCRT runs on plain Hyprland. Without Omarchy the
+  installer writes nothing under `~/.config/omarchy`, says which four things
+  it skipped, and points at `docs/hyprland.md`, which carries the keybindings
+  that replace the bar widget.
 - Four palettes compiled into the launcher, so the Style screen offers a
   choice on a machine with no desktop themes to read: Tokyo Night, a green
   phosphor monitor, an amber one, and a television.
@@ -28,36 +35,24 @@ caveat for a 0.x project: anything may still move.
   wordmark cut out of the dark by the same laser the boot screen uses, in
   characters, advancing as each check answers. Under it the report: the
   timings drawn as a diagram with the real numbers, the card's outputs and
-  what each is for, and the DAC's lock as a lamp. Piped, redirected,
-  `NO_COLOR`, `TERM=dumb` or `--plain`, it prints the lines it always did,
-  and the exit code is unchanged.
+  what each is for, and the DAC's lock as a lamp. It is drawn with ratatui,
+  inline rather than on the alternate screen, so the report stays in the
+  scrollback. Piped, redirected, `NO_COLOR`, `TERM=dumb` or `--plain`, it
+  prints the lines it always did, and the exit code is unchanged.
 - `omacrt setup` shows that same map and lets the arrow keys choose the
   output, instead of printing a list and guessing.
 - `omacrt-display globals` reports what the compositor offers for leasing
   without taking a lease, so it is safe with the television running.
 
-### Fixed
+### Security
 
-- `doctor` no longer reports `connector handed over` as a failure on a
-  machine where the tube is working. A non-desktop connector still appears in
-  `hyprctl monitors all`, marked disabled, and being listed was read as the
-  compositor still holding it.
-- `doctor` no longer reports debugfs as missing. It looked inside a directory
-  that only root can open.
-- The launcher no longer installs five Hyprland window rules in a leased
-  session, where no window they describe can exist.
-- `off` no longer writes `misc:on_focus_under_fullscreen = 1` into a session
-  that never had it. Only a value this project saved is put back.
-- The one time cleanup of what versions up to 0.2.0 left on the compositor
-  runs once and is remembered, instead of on every `off` and every login.
-
-### Changed
-
-- The package declares what the binaries link. `libinput` and `seatd` were
-  listed and are used by nothing here; `libdrm` and `wayland` were missing.
-- cliamp is not Omarchy's music player. It is `bjarneo/cliamp`, found on
-  `PATH`, and four places said otherwise, including the message the Music
-  screen shows when it is missing.
+- A device cannot write escape sequences into the terminal. An EDID's product
+  name is thirteen bytes chosen by whatever is plugged in, and every one of
+  them was turned into a character and printed by `status`, `setup` and
+  `doctor`. An escape sequence there repaints the line it is on, and painting
+  `OK` over a failure on the report somebody runs to decide whether to trust
+  their setup is worth more to an attacker than it sounds. Everything that is
+  not printable is dropped where the EDID is read.
 
 ### Changed
 
@@ -69,6 +64,37 @@ caveat for a 0.x project: anything may still move.
   and never takes an output the compositor is drawing on. A name in the EDID
   still wins first, so a known DAC is recognised before the override is
   installed.
+- The package declares what the binaries link. `libinput` and `seatd` were
+  listed and are used by nothing here; `libdrm` and `wayland` were missing.
+- cliamp is not Omarchy's music player. It is `bjarneo/cliamp`, found on
+  `PATH`, and four places said otherwise, including the message the Music
+  screen shows when it is missing.
+
+### Fixed
+
+- `doctor` no longer reports `connector handed over` as a failure on a
+  machine where the tube is working. A non-desktop connector still appears in
+  `hyprctl monitors all`, marked disabled, and being listed was read as the
+  compositor still holding it.
+- `doctor` no longer reports debugfs as missing. It looked inside a directory
+  that only root can open.
+- A probe that panics no longer leaves the animation running at thirty frames
+  a second for ever, and Ctrl+C during it ends the run instead of being
+  swallowed by raw mode.
+- The report holds nobody at a machine with nothing to fix: the keys are
+  offered only when a remedy exists.
+- The timing diagram's bars are bounded by the width of the bar, rather than
+  by whatever the modeline in the configuration file says.
+- A built in palette survives a restart. The startup path looked the name up
+  among the theme files, where a palette with no file is not, so the desktop's
+  theme came back. A palette the desktop already has by that name is no longer
+  offered twice.
+- The launcher no longer installs five Hyprland window rules in a leased
+  session, where no window they describe can exist.
+- `off` no longer writes `misc:on_focus_under_fullscreen = 1` into a session
+  that never had it. Only a value this project saved is put back.
+- The one time cleanup of what versions up to 0.2.0 left on the compositor
+  runs once and is remembered, instead of on every `off` and every login.
 
 ## [0.4.2] - 2026-09-10
 
@@ -790,7 +816,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.5.0
 [0.4.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.2
 [0.4.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.1
 [0.4.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.0
