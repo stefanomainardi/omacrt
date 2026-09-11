@@ -163,12 +163,19 @@ impl Theme {
             .collect();
         // The built in palettes come last, and they are always there: a
         // machine with no Omarchy themes installed still has something to
-        // choose between.
-        out.extend(Self::built_in().into_iter().map(|t| Installed {
-            name: t.name.clone(),
-            path: PathBuf::new(),
-            swatch: Some((t.accent, t.green)),
-        }));
+        // choose between. One whose name the desktop already has is left
+        // out: two rows called tokyo-night is a puzzle, not a choice.
+        let installed: Vec<String> = out.iter().map(|i| i.name.clone()).collect();
+        out.extend(
+            Self::built_in()
+                .into_iter()
+                .filter(|t| !installed.contains(&t.name))
+                .map(|t| Installed {
+                    name: t.name.clone(),
+                    path: PathBuf::new(),
+                    swatch: Some((t.accent, t.green)),
+                }),
+        );
         out
     }
 
@@ -298,7 +305,12 @@ mod tests {
     fn every_built_in_palette_carries_its_swatch() {
         let listed = Theme::installed_with_swatches();
         let built: Vec<&Installed> = listed.iter().filter(|i| i.built_in()).collect();
-        assert_eq!(built.len(), Theme::built_in().len());
+        // A name the desktop already has is not offered twice.
+        let names: Vec<&String> = listed.iter().map(|i| &i.name).collect();
+        let mut unique = names.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), names.len(), "a palette is listed twice");
         for i in built {
             assert!(i.swatch.is_some(), "{} has no swatch", i.name);
             assert!(i.path.as_os_str().is_empty());

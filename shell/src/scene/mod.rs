@@ -711,10 +711,17 @@ impl Scene {
         // A theme chosen in Settings overrides the system theme.
         let settings = Settings::load(&library.config_dir);
         let theme = if settings.theme != "system" {
-            Theme::installed()
-                .into_iter()
-                .find(|(n, _)| *n == settings.theme)
-                .and_then(|(n, p)| Theme::load_named(&p, &n))
+            // A palette compiled in has no file to read, so it is looked for
+            // by name first: without this a machine set to one of them fell
+            // back to the desktop's theme at every start, and the choice
+            // only held until the launcher was restarted.
+            Theme::by_name(&settings.theme)
+                .or_else(|| {
+                    Theme::installed()
+                        .into_iter()
+                        .find(|(n, _)| *n == settings.theme)
+                        .and_then(|(n, p)| Theme::load_named(&p, &n))
+                })
                 .unwrap_or(theme)
         } else {
             theme
