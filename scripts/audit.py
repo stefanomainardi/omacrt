@@ -129,6 +129,21 @@ def main() -> int:
 
     if not found:
         print("no advisory against any version in the tree")
+
+    # An exception that has outlived its reason is how an audit rots: the
+    # dependency moves on, the advisory no longer applies, and the line
+    # stays in this file saying a version is acceptable when nothing asks.
+    seen = {advisory for advisory, _, _ in found}
+    stale = sorted(set(ACCEPTED) - seen)
+    if stale:
+        print(
+            f"\n{len(stale)} accepted advisory(ies) no longer in the tree: "
+            + ", ".join(stale)
+            + "\nDelete them from ACCEPTED in this file; the dependency has moved on.",
+            file=sys.stderr,
+        )
+        return 1
+
     if unexpected:
         print(
             f"\n{len(unexpected)} advisory(ies) with nowhere to go. Fix them, or "
