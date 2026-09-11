@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="OmaCRT" width="504">
+  <img src="docs/logo.png" alt="The OmaCRT mark, four bars crossed by the dark cut of a beam returning, beside the word OMACRT in block letters" width="560">
 </p>
 
 <h1 align="center">OmaCRT</h1>
