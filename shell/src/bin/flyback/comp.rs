@@ -718,6 +718,76 @@ fn monotonic() -> Duration {
     Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
 }
 
+/// How long before the vblank the drawing has to start, given a frame period
+/// and what recent frames cost to draw.
+///
+/// Never less than a millisecond and a half, which is what it takes to reach
+/// the kernel and back on an idle machine, and never more than half a frame,
+/// because past that the picture is older than the frame it saves.
+fn margin_for(period: Duration, cost: Duration, forced: Option<Duration>) -> Duration {
+    forced
+        .unwrap_or(cost * 2 + Duration::from_micros(1500))
+        .clamp(Duration::from_micros(1500), period / 2)
+}
+
+/// How long after the vblank to tell a client it may draw, given the room
+/// there is before the drawing deadline and what the client costs.
+///
+/// Zero when there is not enough room to be clever, which is the safe answer
+/// and the one every other compositor gives.
+fn callback_wait(room: Duration, client: Duration, slack: Duration) -> Duration {
+    room.saturating_sub(client * 2 + slack)
+}
+
+#[cfg(test)]
+mod timing {
+    use super::{callback_wait, margin_for};
+    use std::time::Duration;
+
+    const FRAME: Duration = Duration::from_micros(16_655);
+
+    #[test]
+    fn a_cheap_frame_still_leaves_the_kernel_time_to_answer() {
+        // A tenth of a millisecond to draw would put the deadline 1.7 ms
+        // out, and the floor holds it at 1.5.
+        let m = margin_for(FRAME, Duration::from_micros(10), None);
+        assert!(m >= Duration::from_micros(1500), "{m:?}");
+    }
+
+    #[test]
+    fn an_expensive_frame_moves_the_deadline_earlier() {
+        let cheap = margin_for(FRAME, Duration::from_micros(200), None);
+        let dear = margin_for(FRAME, Duration::from_micros(3000), None);
+        assert!(dear > cheap, "{dear:?} should be later than {cheap:?}");
+    }
+
+    #[test]
+    fn nothing_takes_more_than_half_the_frame() {
+        // A frame that costs more than the frame it is drawn in cannot be
+        // helped by starting even earlier, and holding half the period back
+        // would make every picture older for nothing.
+        let m = margin_for(FRAME, Duration::from_millis(30), None);
+        assert_eq!(m, FRAME / 2);
+        assert_eq!(margin_for(FRAME, Duration::ZERO, Some(FRAME)), FRAME / 2);
+    }
+
+    #[test]
+    fn a_client_is_told_early_enough_to_be_late_once() {
+        // Twice its own drawing time plus the slack: a client that takes a
+        // millisecond is told 4.5 ms before the deadline.
+        let room = FRAME - Duration::from_micros(1900);
+        let wait = callback_wait(room, Duration::from_millis(1), Duration::from_millis(3));
+        assert_eq!(room - wait, Duration::from_millis(5));
+    }
+
+    #[test]
+    fn a_client_slower_than_the_frame_is_told_at_the_vblank() {
+        let room = FRAME - Duration::from_micros(1900);
+        let wait = callback_wait(room, FRAME, Duration::from_millis(3));
+        assert_eq!(wait, Duration::ZERO);
+    }
+}
+
 impl Crt {
     /// One control line from the pipe.
     fn control(&mut self, line: &str) {
@@ -1122,10 +1192,7 @@ impl Crt {
     /// late, which is the thing this is trying to avoid; too large and the
     /// picture is older than it needs to be by the difference.
     fn margin(&self) -> Duration {
-        let period = self.period();
-        self.margin_override
-            .unwrap_or(self.render_cost * 2 + Duration::from_micros(1500))
-            .clamp(Duration::from_micros(1500), period / 2)
+        margin_for(self.period(), self.render_cost, self.margin_override)
     }
 
     /// Draw at the last safe moment of this frame rather than at its start.
@@ -1218,7 +1285,7 @@ impl Crt {
         let room = self.period().saturating_sub(self.margin());
         self.client_cost = self.client_cost.min(self.period());
         let wait = if self.late_draw {
-            room.saturating_sub(self.client_cost * 2 + self.client_slack)
+            callback_wait(room, self.client_cost, self.client_slack)
         } else {
             Duration::ZERO
         };
