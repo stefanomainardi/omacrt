@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="44" height="44" shape-rendering="crispEdges" role="img" aria-label="The Flyback mark: four bars stepping out beside the full-height stroke of the beam flying back">
+  <title>Flyback</title>
+  <!--
+    The horizontal deflection sawtooth, on the same 44 unit grid as the
+    Retrace mark: bars eight thick with four between them, and the return
+    stroke is one of those bars stood on end, because it is the same beam.
+    Whole units only. No hairline, no diagonal, no gradient: this has to be
+    drawable by a beam whose spot is about one scan line wide.
+  -->
+  <g fill="currentColor">
+    <rect x="0" y="0" width="8" height="44"/>
+    <rect x="12" y="0" width="8" height="8"/>
+    <rect x="12" y="12" width="16" height="8"/>
+    <rect x="12" y="24" width="24" height="8"/>
+    <rect x="12" y="36" width="32" height="8"/>
+  </g>
+</svg>

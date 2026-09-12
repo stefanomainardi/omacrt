@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1446" height="448" viewBox="0 0 1446 448">
+  <!--
+    The source of docs/flyback-logo.png, rendered with
+    `rsvg-convert -w 1446 -h 448 docs/flyback-logo.svg -o docs/flyback-logo.png`.
+
+    The wordmark is live text, so this file needs JetBrains Mono installed to
+    look right; without it a monospace fallback stands in. The portable assets
+    are docs/flyback-mark.svg and docs/flyback-mark-mono.svg, which are rects
+    and nothing else.
+
+    Geometry: the mark is the 44 unit grid scaled by 336/44, so a bar is 61 px
+    and the gap 30.5. The wordmark's cap height is half the mark's height and
+    it stands the mark's own gap away from it.
+  -->
+  <rect width="1446" height="448" fill="#0b0d14"/>
+  <g fill="#9ece6a" shape-rendering="crispEdges" transform="translate(56 56) scale(7.636364)">
+    <rect x="0" y="0" width="8" height="44"/>
+    <rect x="12" y="0" width="8" height="8"/>
+    <rect x="12" y="12" width="16" height="8"/>
+    <rect x="12" y="24" width="24" height="8"/>
+    <rect x="12" y="36" width="32" height="8"/>
+  </g>
+  <text x="424" y="276" font-family="JetBrainsMono Nerd Font, JetBrains Mono, monospace" font-weight="700" font-size="230" fill="#c0caf5" letter-spacing="-4">Flyback</text>
+  <text x="426" y="340" font-family="JetBrainsMono Nerd Font, JetBrains Mono, monospace" font-weight="400" font-size="52" fill="#565f89" letter-spacing="11">WAYLAND COMPOSITOR</text>
+</svg>
