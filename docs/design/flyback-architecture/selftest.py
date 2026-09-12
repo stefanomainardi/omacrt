@@ -80,8 +80,14 @@ def main():
         r = run(real)
         if r.returncode:
             failed.append(f"{real.name} does not pass: {r.stderr.strip()}")
+        elif real.name not in r.stdout or not r.stdout.startswith("ok:"):
+            # A declined drawing also exits zero. Requiring the pass to be a
+            # judgement rather than an absence of complaint is the same rule
+            # as everywhere else here: an instrument that says nothing and an
+            # instrument that says fine are not the same answer.
+            failed.append(f"{real.name} was not judged: {r.stdout.strip()}")
         else:
-            print(f"ok   {real.name} passes")
+            print(f"ok   {real.name} judged and passes")
 
     for name, (break_it, expect) in CASES.items():
         broken = break_it(good)
