@@ -96,7 +96,7 @@ shows it on the television.
 | --- | --- |
 | commit to start of scanout, client drawing 1 ms | **3.79 ms** |
 | the launcher end to end, in `omacrt status` | **2.0 ms** |
-| kernel timestamp of a button press to start of scanout, 300 presses at random phase | best 7.4 ms, **median 20.4 ms** (1.23 frames), worst 32.1 ms |
+| kernel timestamp of a button press to start of scanout, 300 presses at random phase | best 1.46 ms, **median 10.19 ms** (0.61 frames), worst 18.21 ms |
 
 Measured on a BeoCenter 1 through an RGB-Pi 2 at 3520x240 @ 60.04 Hz, over a
 leased HDMI connector on Navi 32, with the launcher mapped underneath — which
@@ -116,9 +116,14 @@ horizontal rate must never move; its vertical rate can, because the vertical
 oscillator re-triggers on sync. So every refresh an emulation asks for is
 reachable by stretching the vertical blanking alone, which is exactly what
 adaptive sync does in hardware. Asked for five rates in turn, this chain
-delivers 59.922, 57.499, 55.000 and 49.999 Hz, with six to sixty microseconds
-between one frame and the next, and no mode change — where a mode change costs
-166 to 190 ms with the screen dark.
+follows, asked for by name and measured as the median of the last 300 vblank
+intervals, with fifteen seconds of settling at each step: **60.041 asked
+gives 60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**, and 50
+is held at 55 because that is where this set stops following. The instrument
+is a median over a five second window, and the numbers are reported to the
+precision it has. And no mode change, where a mode change costs
+**182 to 229 ms** with the screen dark, whether it moves the whole standard or
+only the vertical total.
 
 Everybody else changes the mode. That is not a criticism: before this, nobody
 had established that a consumer television would follow a stretched blanking
@@ -141,8 +146,7 @@ An honest list, because the one above is short.
 - **No 25 or 31 kHz, no arcade monitor presets.** The guard can be widened for
   a multisync display, and nothing has been tested on one.
 - **One GPU vendor.** Measured on AMD Navi 32. The variable refresh rate in
-  particular needs amdgpu, an injected FreeSync range in the EDID, and
-  `amdgpu.freesync_video=1`.
+  particular needs amdgpu and an injected FreeSync range in the EDID.
 - **One television.** Every calibration in `crt.toml` is a property of a
   BeoCenter 1 in one room. The numbers will differ on your set; the method is
   the transferable part.

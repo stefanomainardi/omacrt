@@ -211,10 +211,14 @@ set so that the tube is as quick as it has been measured to be safely:
 
 The whole chain, from the kernel's timestamp for a button press to the start
 of scanout, measured over three hundred presses at random points of the
-frame: **best 7.4 ms, median 20.4 ms (1.23 frames), worst 32.1 ms**. About
-half a frame of that is the program's own input sampling, which is where
-RetroArch's run-ahead works; a real pad adds its own polling in front of it,
-one to eight milliseconds by its rate.
+frame: **best 1.46 ms, median 10.19 ms (0.61 frames), 95th 17.52 ms, worst
+18.21 ms**, every sample kept in
+[`data/press-to-picture.txt`](data/press-to-picture.txt). Of that median,
+**8.33 ms is half a frame** - what any commit at a random phase waits for the
+next vblank, whoever is compositing - so the compositor's own contribution is
+the 1.9 ms above it. The instrument measures its own overhead at 0.01 ms.
+This is a virtual pad; a real one adds its own polling in front, one to eight
+milliseconds by its rate, which belongs to the pad.
 
 ## The refresh a program wants
 
@@ -227,8 +231,17 @@ whatever pace the program is keeping.
 It needs the variable refresh rate, which needs the FreeSync range in the
 EDID (`OMACRT_FREESYNC=48:62` when the lease is set up). Asked for five rates
 in turn and measured from the compositor's own vblank timestamps, the tube
-delivers 59.922, 57.499, 55.000 and 49.999 Hz, with six to sixty
-microseconds between one frame and the next.
+Measured as the median of the last 300 vblank
+intervals, with fifteen seconds of settling at each step: **60.041 asked
+gives 60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**, and 50
+is held at 55 because that is where this set stops following. The instrument
+is a median over a five second window, and the numbers are reported to the
+precision it has.
+
+An earlier version of this page quoted four rates to three decimal places.
+No instrument here produces that precision, and one of the four was below
+`output.vrr_min_hz` and would have been held at it; see
+[`audit-2026-09-12.md`](audit-2026-09-12.md).
 
 How slow it may go is `output.vrr_min_hz` in `crt.toml`, which is a
 calibration of the set in the room: past it a television stops following and

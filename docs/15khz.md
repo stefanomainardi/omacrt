@@ -131,7 +131,8 @@ picture on DCN 3.2.
 4. DML1, which is what DCN 3.2 validates through (`using_dml2 = false` in
    `dcn32_resource.c`), doubles `VRatio` for an interlaced timing when the
    ASIC does not claim `ptoi_supported`, and `dcn3_2_ip` sets that to false.
-   The doubling then fails the scaler taps validation.
+   What the doubled ratio then fails has not been traced, and is stated
+   here as unknown rather than guessed at.
 5. `interleave_en` on the scaler's line buffer is never set from the timing,
    in `dcn10_hwseq.c` and `dcn20_hwseq.c`.
 
@@ -242,9 +243,23 @@ what adaptive sync does in hardware: it stretches the vertical blanking and
 touches nothing else.
 
 Today a change of refresh costs a mode change. Measured through the leased
-connector on Navi 32, an atomic commit that carries a new modeline blocks for
-**166 to 190 ms**, whether it moves the whole standard or only the vertical
-total, and the television is dark for it. Adaptive sync would cost nothing.
+connector on Navi 32, from the moment the modeline is asked for to the first
+vblank after it, with the television dark for all of it:
+
+| what moved | first vblank after the request |
+| --- | --- |
+| nothing: the same timing re-applied | 4.4, 8.8, 9.7, 15.5 ms |
+| the vertical total alone | 196.5, 196.8, 206.8, 212.2 ms |
+| the whole standard, NTSC to PAL and back | 182.4, 192.9, 216.7, 226.1 ms |
+
+So **182 to 229 ms**, and it does not matter how little of the timing moves.
+The first row is what says the cost is the modeset itself: re-applying a
+timing that has not changed costs a hundredth of that, because nothing is
+reprogrammed. Adaptive sync would cost nothing at all.
+
+This project published 166 to 190 ms before, from a measurement that could
+not be reproduced from any log, because the clock meant to take it was
+declared and never assigned. See [`audit-2026-09-12.md`](audit-2026-09-12.md).
 
 **The analogue chain takes it.** Switching between vertical totals of 262,
 274, 288 and 312 lines at a constant 15.731 kHz - 60.04 Hz down to 50.4 Hz -
@@ -264,15 +279,40 @@ says some sets change vertical size in proportion to the blanking interval.
    declared maximum at the mode's own nominal rate and then wants
    `refresh_range >= MIN_REFRESH_RANGE`, which is 10 Hz, so at a nominal
    60.04 Hz the minimum has to be 50 or below. A range of 55 to 66 collapses
-   to five and is refused in silence.
-2. `amdgpu.freesync_video=1` on the kernel command line. Without it the
-   config computed for the CRTC is overwritten a few lines further on and
-   the state falls back to `VRR_STATE_INACTIVE`.
+   to five and is refused in silence. Two different checks are involved and
+   they are not the same: capability wants the declared range to be strictly
+   greater than 10, and the active state wants the capped range to be 10 or
+   more, so a declared range of exactly 10 fails the first and never reaches
+   the second.
 
-With both, the timing generator is programmed with room: `amdgpu_dm_dtn_log`
-reports `vmin 261 vmax 327` for the tube's OTG, which is 60.04 Hz down to
-48 Hz of vertical blanking at an unchanged 15.731 kHz, and the driver logs
-`VRR packet update: enabled=1 state=3`, which is `VRR_STATE_ACTIVE_VARIABLE`.
+   Nothing in the kernel parses those nine bytes. The CEA block is handed to
+   the display microcontroller and the firmware hands back a version and the
+   two rates, which is why the layout above had to be found by trying it
+   rather than read out of the tree. The last byte is flags, and it is left
+   at zero deliberately: a block that declares an MCCS control code makes the
+   driver require the display to support FreeSync over MCCS, and revoke the
+   capability when it does not. A television does not.
+2. That is the whole of it. **`amdgpu.freesync_video=1` is not needed for
+   this**, whatever this project said before. The state used here,
+   `VRR_STATE_ACTIVE_VARIABLE`, is set from the connector being
+   `freesync_capable` with the mode's refresh inside the declared range, and
+   from the CRTC's `VRR_ENABLED` property. The module parameter gates a
+   different mechanism, a seamless change of the front porch that skips the
+   modeset; tested here with a timing shaped exactly as that condition
+   requires, it still cost 222.8 and 229.1 ms, so the seamless path does not
+   trigger on this chain. The parameter is on this machine's command line and
+   has not been shown to do anything; a boot without it is the test that
+   settles it.
+
+With the range declared, the timing generator is programmed with room:
+`amdgpu_dm_dtn_log` reported `vmin 261 vmax 327` for the tube's OTG, which is
+60.04 Hz down to 48 Hz of vertical blanking at an unchanged 15.731 kHz, and
+the driver logged `VRR packet update: enabled=1 state=3`, which is
+`VRR_STATE_ACTIVE_VARIABLE`. Both of those need root and were read on
+2026-09-11 rather than re-read for the audit. The first is at least
+self-consistent: those registers hold the total minus one, so 261 is the 262
+line mode and 327 is 328 lines, which at 15730.8 Hz is 47.96 Hz - the 48 Hz
+the EDID declares.
 
 The scanout then follows the program, frame by frame. A client committing at
 a fixed rate, and the interval between two vblanks measured from the

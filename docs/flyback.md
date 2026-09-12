@@ -129,8 +129,12 @@ vmax 327` on the tube's timing generator, at an unchanged 15.731 kHz.
 Flyback turns it on by itself when the kernel says the connector is capable,
 because there is nothing else a television leased to this compositor would
 want it for. `rate 59.92` on the control pipe then asks for a refresh by
-name, and the closed loop holds it: 59.922, 57.499, 55.000 and 49.999 Hz
-delivered, with six to sixty microseconds between one frame and the next.
+name, and the closed loop holds it. asked for by name and measured as the median of the last 300 vblank
+intervals, with fifteen seconds of settling at each step: **60.041 asked
+gives 60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**, and 50
+is held at 55 because that is where this set stops following. The instrument
+is a median over a five second window, and the numbers are reported to the
+precision it has.
 
 Where a set stops following is a calibration of the room, not a constant:
 `output.vrr_min_hz`, 55 Hz on the BeoCenter 1, below which the picture starts
@@ -206,7 +210,10 @@ If any of these is false, most of the above stops being true.
 5. **The GPU is an AMD one with atomic modesetting and a driver that will
    take a 15 kHz mode over a lease.** Measured on Navi 32 (RX 7700/7800 XT).
    The variable refresh rate additionally needs a FreeSync range in the
-   injected EDID and `amdgpu.freesync_video=1` on the kernel command line.
+   injected EDID. It does **not** need `amdgpu.freesync_video=1`, whatever
+   this document said before: that parameter gates a different mechanism, and
+   reading the driver plus testing that mechanism directly says it does
+   nothing here. See [`audit-2026-09-12.md`](audit-2026-09-12.md).
 6. **The desktop compositor offers `wp_drm_lease_v1`.** Hyprland does.
 
 ---
@@ -241,7 +248,10 @@ argued with without a television in the room: `margin_for`, `callback_wait`,
 ## The numbers
 
 All measured on a BeoCenter 1 through an RGB-Pi 2, at 3520x240 @ 60.04 Hz,
-over a leased HDMI connector on Navi 32.
+over a leased HDMI connector on Navi 32, and all re-taken on 2026-09-12 when
+every published claim in this project was checked again. Four did not
+survive; what changed and why is in
+[`audit-2026-09-12.md`](audit-2026-09-12.md).
 
 **Commit to the start of scanout**, for a client that draws on the frame
 callback the way a program paces itself:
@@ -256,7 +266,14 @@ Measured with the launcher mapped underneath, which is how the television
 actually runs: a program is never the only client on it.
 
 The launcher end to end reports **2.0 ms** in `omacrt status`, and 4.5 ms
-with every core on the machine busy. Before any of this work it was 30.9 ms.
+with every core on the machine busy.
+
+**The starting point is reproducible rather than remembered.** Turn the three
+switches off - `FLYBACK_LATE_DRAW=off`, `FLYBACK_MARGIN_US=off`, and the
+variable rate off, which together are what every other compositor does - and
+the same client measures **33.36 ms, two frames exactly**, with the launcher's
+own figure at 33.1 ms. That is the comparison, and anybody with this hardware
+can run it.
 
 **That second sentence cost a day.** The same measurement with the launcher
 stopped read 3.56 ms, and with it running read 18.70 ms, with one frame in
@@ -272,14 +289,20 @@ alone.
 
 **The whole chain**, from the kernel's timestamp for a button press to the
 start of scanout, over three hundred presses at random points of the frame:
-**best 7.4 ms, median 20.4 ms (1.23 frames), worst 32.1 ms**. About half a
-frame of that is the program's own input sampling, which is what RetroArch's
-run-ahead exists to hide; a real pad adds its own polling in front of it, one
-to eight milliseconds by its rate.
+**best 1.46 ms, median 10.19 ms (0.61 frames), 95th 17.52 ms, worst
+18.21 ms**, every sample kept in
+[`data/press-to-picture.txt`](data/press-to-picture.txt). Of that median,
+**8.33 ms is half a frame** - what any commit at a random phase waits for the
+next vblank, whoever is compositing - so the compositor's own contribution is
+the 1.9 ms above it. The instrument measures its own overhead at 0.01 ms.
+This is a virtual pad; a real one adds its own polling in front, one to eight
+milliseconds by its rate, which belongs to the pad.
 
-**A mode change**, for comparison, blocks for 166 to 190 ms and the
-television is dark for it, whether it moves the whole standard or only the
-vertical total. That is the cost the variable refresh rate avoids.
+**A mode change**, for comparison, takes **182 to 229 ms** to its first
+vblank and the television is dark for it, whether it moves the whole standard
+or only the vertical total. Re-applying a timing that has not changed costs
+4 to 16 ms, which is what says the cost is the modeset itself. That is what
+the variable refresh rate avoids.
 
 ### Reproducing them
 
