@@ -379,9 +379,9 @@ fn status(cfg: &Config) -> Value {
     // removed when it stops on purpose and not when it is killed, and a
     // latency for a television that is off is a lie either way.
     if display::running()
-        && let Some((ms, frames, samples)) = display::latency()
+        && let Some(l) = display::latency()
     {
-        st["latency"] = json!({ "ms": ms, "frames": frames, "samples": samples });
+        st["latency"] = json!({ "ms": l.ms, "frames": l.frames, "samples": l.samples, "hz": l.hz });
     }
     if let Some(c) = &conn {
         let leased = display::leaseable(&c.name);
@@ -556,9 +556,10 @@ fn print_status(st: &Value) {
     }
     if let Value::Object(l) = &st["latency"] {
         println!(
-            "Latency:    {:.1} ms  {:.2} frames  over the last {}",
+            "Latency:    {:.1} ms  {:.2} frames  at {:.2} Hz  over the last {}",
             l["ms"].as_f64().unwrap_or(0.0),
             l["frames"].as_f64().unwrap_or(0.0),
+            l["hz"].as_f64().unwrap_or(0.0),
             l["samples"].as_u64().unwrap_or(0)
         );
     }
@@ -711,8 +712,9 @@ fn status_sheet(st: &Value, plain: bool) -> bool {
             "latency",
             format!("{:.1} ms", l["ms"].as_f64().unwrap_or(0.0)),
             format!(
-                "{:.2} frames, over the last {}",
+                "{:.2} frames at {:.2} Hz, over the last {}",
                 l["frames"].as_f64().unwrap_or(0.0),
+                l["hz"].as_f64().unwrap_or(0.0),
                 l["samples"].as_u64().unwrap_or(0)
             ),
         );

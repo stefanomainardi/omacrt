@@ -211,9 +211,12 @@ pub struct Crt {
     /// the vblank tells us the picture is on the glass.
     showing: Option<Instant>,
     /// How long the last few hundred frames took from a client's commit to
-    /// the start of their scanout. Written out every few seconds so that
-    /// `omacrt status` can say it.
+    /// the start of their scanout, and how long the frames themselves were.
+    /// Written out every few seconds so the rest of the program can say both:
+    /// with a variable refresh rate the second is no longer the mode's own
+    /// and is the more interesting of the two.
     latencies: std::collections::VecDeque<Duration>,
+    intervals: std::collections::VecDeque<Duration>,
     /// `FLYBACK_LATE_DRAW=off`: tell clients they may draw at the vblank,
     /// the way every other compositor does, rather than just in time.
     /// See `arm_callbacks`.
@@ -796,6 +799,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         late: 0,
         showing: None,
         latencies: Default::default(),
+        intervals: Default::default(),
         late_draw: std::env::var("FLYBACK_LATE_DRAW").as_deref() != Ok("off"),
         client_slack: std::env::var("FLYBACK_SLACK_US")
             .ok()
@@ -1490,16 +1494,32 @@ impl Crt {
         if self.latencies.is_empty() {
             return;
         }
-        let mut us: Vec<u128> = self.latencies.iter().map(|d| d.as_micros()).collect();
-        us.sort_unstable();
-        let median = us[us.len() / 2] as f64 / 1000.0;
-        let frame = self.period().as_micros() as f64 / 1000.0;
+        let median = |q: &std::collections::VecDeque<Duration>| -> Option<f64> {
+            if q.is_empty() {
+                return None;
+            }
+            let mut v: Vec<u128> = q.iter().map(|d| d.as_micros()).collect();
+            v.sort_unstable();
+            Some(v[v.len() / 2] as f64 / 1000.0)
+        };
+        let Some(commit_to_scanout) = median(&self.latencies) else {
+            return;
+        };
+        // What the television is actually being given, which under a variable
+        // refresh rate is not the mode's own rate and is the number worth
+        // showing. Falling back to the mode's when nothing has been measured.
+        let frame = median(&self.intervals).unwrap_or(self.period().as_micros() as f64 / 1000.0);
         // Written beside and renamed: a reader that arrives in the middle
         // of a plain write finds half a line, and half a measurement is
         // worse than none.
         let path = display::latency_path();
         let tmp = path.with_extension("latency.new");
-        let line = format!("{median:.2} {:.2} {}\n", median / frame, us.len());
+        let line = format!(
+            "{commit_to_scanout:.2} {:.2} {} {:.3}\n",
+            commit_to_scanout / frame,
+            self.latencies.len(),
+            1000.0 / frame
+        );
         if std::fs::write(&tmp, line).is_ok() && std::fs::rename(&tmp, &path).is_err() {
             let _ = std::fs::remove_file(&tmp);
         }
@@ -1896,6 +1916,14 @@ impl Crt {
             let interval = t.elapsed();
             if self.trace {
                 eprintln!("trace: vblank interval {} us", interval.as_micros());
+            }
+            // A frame of a plausible length: the first one after an idle tube
+            // is seconds long and is not a refresh rate.
+            if interval < self.period() * 3 {
+                self.intervals.push_back(interval);
+                if self.intervals.len() > 300 {
+                    self.intervals.pop_front();
+                }
             }
             // Close the loop on the frame length that was asked for. Only on
             // frames of a plausible length: the first one after an idle tube

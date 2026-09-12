@@ -196,6 +196,14 @@ impl Scene {
             .unwrap_or("")
             .to_string();
         out.push(("gpu".into(), format!("{driver} {pci}").trim().to_string()));
+        // What the compositor measures about itself. The values are filled in
+        // when the page is drawn rather than here: everything else on this
+        // page is fixed for as long as the machine is up, and these two are
+        // not - the scanout rate moves the moment a program asks for another
+        // one. A row that says a measurement and then stops measuring is
+        // worse than no row.
+        out.push((LATENCY_ROW.into(), String::new()));
+        out.push((SCANOUT_ROW.into(), String::new()));
         // Connectors and their status.
         if let Ok(rd) = std::fs::read_dir("/sys/class/drm") {
             let mut conns: Vec<String> = rd
@@ -376,7 +384,8 @@ impl Scene {
         let y0 = self.draw_header(fb, "Diagnostics");
         let row_h = 12;
         let max_cols = (width / 8) as usize;
-        let rows = self.diag.clone();
+        let mut rows = self.diag.clone();
+        live_diagnostics(&mut rows);
         // As many rows as fit above the count and the hint, keeping a row of
         // air: the twelve a television shows, four more on a PAL set.
         let page = (((h - 28 - y0) / row_h - 1).max(1)) as usize;
@@ -706,6 +715,39 @@ impl Scene {
         );
         let hint = self.hint(&[("Enter", "skip"), ("Esc", "cancel")]);
         fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+    }
+}
+
+/// The two rows on the diagnostics page that are read again every time it is
+/// drawn. See `gather_diagnostics`.
+const LATENCY_ROW: &str = "latency";
+const SCANOUT_ROW: &str = "scanout";
+
+/// Fill in what the display process last measured: how long a picture takes
+/// from the commit that drew it to the start of its scanout, and the rate the
+/// television is actually being given, which under a variable refresh rate is
+/// not the mode's own.
+///
+/// Reading the file costs a few dozen bytes out of the page cache, which is
+/// cheaper than being wrong.
+fn live_diagnostics(rows: &mut [(String, String)]) {
+    let now = omacrt_shell::crt::display::latency();
+    for (key, value) in rows.iter_mut() {
+        match key.as_str() {
+            LATENCY_ROW => {
+                *value = match now {
+                    Some(l) => format!("{:.1} ms  {:.2} frames", l.ms, l.frames),
+                    None => "not measured".into(),
+                }
+            }
+            SCANOUT_ROW => {
+                *value = match now {
+                    Some(l) => format!("{:.2} Hz", l.hz),
+                    None => "-".into(),
+                }
+            }
+            _ => {}
+        }
     }
 }
 

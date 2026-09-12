@@ -48,22 +48,37 @@ pub fn latency_path() -> PathBuf {
     super::state_dir().join("display.latency")
 }
 
-/// The last figure the display process wrote: milliseconds, frames, and how
-/// many frames it was measured over. `None` when the tube is not up, or has
-/// not shown anything yet.
-pub fn latency() -> Option<(f64, f64, usize)> {
+/// What the display process last measured about itself.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Latency {
+    /// From the commit that drew a frame to the start of its scanout.
+    pub ms: f64,
+    /// The same, as a fraction of the frame the television is being given.
+    pub frames: f64,
+    /// How many frames it was measured over.
+    pub samples: usize,
+    /// What the television is actually being given, which under a variable
+    /// refresh rate is not the mode's own rate.
+    pub hz: f64,
+}
+
+/// The last figure the display process wrote. `None` when the tube is not up,
+/// or has not shown anything yet.
+pub fn latency() -> Option<Latency> {
     latency_in(&std::fs::read_to_string(latency_path()).ok()?)
 }
 
-/// Half a line of three numbers, and nothing shown unless all three are
-/// there: a truncated file is what a reader finds while the writer is part
-/// way through, and half a measurement is not a measurement.
-fn latency_in(text: &str) -> Option<(f64, f64, usize)> {
+/// Half a line of four numbers, and nothing shown unless all four are there:
+/// a truncated file is what a reader finds while the writer is part way
+/// through, and half a measurement is not a measurement.
+fn latency_in(text: &str) -> Option<Latency> {
     let mut parts = text.split_whitespace();
-    let ms = parts.next()?.parse().ok()?;
-    let frames = parts.next()?.parse().ok()?;
-    let samples = parts.next()?.parse().ok()?;
-    Some((ms, frames, samples))
+    Some(Latency {
+        ms: parts.next()?.parse().ok()?,
+        frames: parts.next()?.parse().ok()?,
+        samples: parts.next()?.parse().ok()?,
+        hz: parts.next()?.parse().ok()?,
+    })
 }
 
 pub fn log_path() -> PathBuf {
@@ -291,13 +306,24 @@ mod latency_tests {
     use super::latency_in;
 
     #[test]
-    fn the_three_numbers_the_display_writes_come_back() {
-        assert_eq!(latency_in("16.52 0.99 300\n"), Some((16.52, 0.99, 300)));
+    fn the_numbers_the_display_writes_come_back() {
+        let l = latency_in("16.52 0.99 300 60.041\n").expect("a measurement");
+        assert_eq!(
+            (l.ms, l.frames, l.samples, l.hz),
+            (16.52, 0.99, 300, 60.041)
+        );
     }
 
     #[test]
     fn a_half_written_file_is_no_measurement() {
-        for half in ["", "16.52", "16.52 0.99", "16.52 0.99 \n", "x y z"] {
+        for half in [
+            "",
+            "16.52",
+            "16.52 0.99",
+            "16.52 0.99 300",
+            "16.52 0.99 300 \n",
+            "w x y z",
+        ] {
             assert_eq!(latency_in(half), None, "{half:?}");
         }
     }
