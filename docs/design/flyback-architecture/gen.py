@@ -346,3 +346,16 @@ sheet("Frame.dc.html",
       "4069 / 4144 / 13905 fixed. <b>Flip queued to vblank</b>: 2238 / 2423 / 2487 variable, "
       "1531 / 1643 / 1894 fixed. <b>Vblank interval</b>: 16655 in both. "
       "The callback and commit marks are arithmetic from the estimates rather than measurements, and are drawn lighter for that reason.")
+
+
+# The budget above models the drawing; check.py reads the drawing back. Both
+# exist because both kinds of mistake have been made here, and the second one
+# caught what the first could not.
+if __name__ != "__check__":
+    import subprocess
+    import sys
+    r = subprocess.run([sys.executable, str(Path(__file__).with_name("check.py")),
+                        "Main.dc.html", "Frame.dc.html"],
+                       cwd=Path(__file__).parent)
+    if r.returncode:
+        sys.exit("the drawing was written and does not pass check.py")
