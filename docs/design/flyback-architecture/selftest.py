@@ -24,6 +24,12 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 GOOD = HERE / "Main.dc.html"
+# The exported figure, which carries a ground rectangle covering the whole
+# page. It is here because a ground counted as a container silently switches
+# the clearance test off: every free-standing label finds it, is measured
+# against the edges of the page, and fits. The same breakage has to be caught
+# on a drawing with a ground as on one without.
+EXPORTED = HERE / "../../media/architecture.svg"
 
 
 def push_baseline_down(svg):
@@ -89,6 +95,22 @@ def main():
         else:
             print(f"ok   {real.name} judged and passes")
 
+    if EXPORTED.exists():
+        exported = EXPORTED.read_text()
+        broken = label_eats_its_clearance(exported)
+        if broken == exported:
+            failed.append("the exported figure: the clearance breakage did not apply")
+        else:
+            with tempfile.NamedTemporaryFile("w", suffix=".svg", delete=False) as f:
+                f.write(broken)
+                path = f.name
+            r = run(path)
+            if not r.returncode or "clear on the" not in r.stderr:
+                failed.append("a drawing with a ground rectangle no longer has its "
+                              "label clearances checked")
+            else:
+                print("ok   clearance is still checked on a drawing with a ground")
+
     for name, (break_it, expect) in CASES.items():
         broken = break_it(good)
         if broken == good:
@@ -113,8 +135,8 @@ def main():
     if failed:
         for f in failed:
             print(f"FAIL {f}", file=sys.stderr)
-        sys.exit(f"{len(failed)} of {len(CASES) + 2} checks failed")
-    print(f"\nall {len(CASES) + 2} pass")
+        sys.exit(f"{len(failed)} of {len(CASES) + 3} checks failed")
+    print(f"\nall {len(CASES) + 3} pass")
 
 
 if __name__ == "__main__":

@@ -48,6 +48,18 @@ TEXT = re.compile(r"<text\b([^>]*)>([^<]*)</text>")
 ATTR = re.compile(r'([\w-]+)="([^"]*)"')
 
 
+def _viewport(svg):
+    """The drawing's own width and height, for recognising its ground."""
+    m = re.search(r'viewBox="[\d.-]+ [\d.-]+ ([\d.]+) ([\d.]+)"', svg)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    at = dict(ATTR.findall(re.search(r"<svg\b([^>]*)>", svg).group(1)))
+    try:
+        return float(at["width"]), float(at["height"])
+    except (KeyError, ValueError):
+        return None, None
+
+
 def faults(svg, name):
     """Fault lines for one drawing, or None when it cannot be judged."""
     # Coordinates inside a transformed group are not coordinates on the page,
@@ -61,11 +73,27 @@ def faults(svg, name):
     rects = []
     for m in RECT.finditer(svg):
         at = dict(ATTR.findall(m.group(1)))
-        if not {"x", "y", "width", "height"} <= at.keys():
+        if not {"width", "height"} <= at.keys():
             continue
-        r = (float(at["x"]), float(at["y"]), float(at["width"]), float(at["height"]))
+        # x and y default to zero in SVG. Requiring them dropped any rectangle
+        # drawn at the origin, which is what a ground rectangle usually is: a
+        # reader that requires what the format makes optional.
+        r = (float(at.get("x", 0)), float(at.get("y", 0)),
+             float(at["width"]), float(at["height"]))
         if r[2] >= MIN_BOX_W and r[3] >= MIN_BOX_H:
             rects.append(r)
+
+    # The ground is a rectangle that holds the whole drawing, and counting it
+    # as a container is worse than dropping it was: every free-standing label
+    # would find it, be measured against the edges of the page, fit trivially,
+    # and the clearance test would stop running without saying so. So it is
+    # recognised and set aside.
+    page = max((r for r in rects), key=lambda r: r[2] * r[3], default=None)
+    ground = None
+    if page:
+        w, h = _viewport(svg)
+        if w and page[2] >= w * 0.98 and page[3] >= h * 0.98:
+            ground = page
     for m in TEXT.finditer(svg):
         at = dict(ATTR.findall(m.group(1)))
         body = m.group(2)
@@ -82,7 +110,8 @@ def faults(svg, name):
         # the smallest box containing the whole line would leave it with no
         # holder and report it as lying across a panel: true, and not what is
         # wrong with it.
-        inner = [r for r in rects if r[0] <= x <= r[0] + r[2] and r[1] <= y <= r[1] + r[3]]
+        inner = [r for r in rects if r is not ground
+                 and r[0] <= x <= r[0] + r[2] and r[1] <= y <= r[1] + r[3]]
         if inner:
             bx, by, bw, bh = min(inner, key=lambda r: r[2] * r[3])
             if bottom - (by + bh) > 0.5:
@@ -95,7 +124,8 @@ def faults(svg, name):
             # skips a panel the label is sitting on top of, so a label long
             # enough to cross one entirely was reported as having four hundred
             # units of room. Test intersection first, then distance.
-            wide = [r for r in rects if r[2] > 150 and r[1] <= y <= r[1] + r[3]]
+            wide = [r for r in rects if r is not ground and r[2] > 150
+                    and r[1] <= y <= r[1] + r[3]]
             over = [r for r in wide if r[0] < right and left < r[0] + r[2]]
             if over:
                 r = over[0]
