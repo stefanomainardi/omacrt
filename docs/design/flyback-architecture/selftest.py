@@ -15,6 +15,13 @@ same trap one layer up.
 
     python3 selftest.py
     python3 selftest.py --write /tmp/broken
+
+To check the suite itself, break the checker rather than the drawing: set the
+ground-recognising condition in check.py to False, which is the state before
+the fix that occasioned it, and run this. Six cases stay green and one goes
+red, "a drawing with a ground rectangle no longer has its label clearances
+checked", and the run exits one. A suite that cannot be made to fail by
+removing the thing it guards is not testing that thing.
 """
 import re
 import subprocess
