@@ -274,8 +274,11 @@ says some sets change vertical size in proportion to the blanking interval.
 1. `vrr_capable` on an HDMI connector comes from an AMD vendor block in the
    EDID, which the display microcontroller parses. Nine bytes,
    `68 1a 00 00 01 01 <min> <max> 00`, and since this project writes the
-   connector's EDID anyway, `OMACRT_FREESYNC=48:62 crt-lease-setup.sh on`
-   adds it. The range matters: `mod_freesync_build_vrr_params` caps the
+   connector's EDID anyway, it adds it. `omacrt-install --system` writes the
+   range into the boot unit, so it is there on every boot without anybody
+   remembering a command; `OMACRT_FREESYNC=` empty at install time leaves the
+   variable rate off, and the same variable in front of `crt-lease-setup.sh
+   on` changes it for one run. The range matters: `mod_freesync_build_vrr_params` caps the
    declared maximum at the mode's own nominal rate and then wants
    `refresh_range >= MIN_REFRESH_RANGE`, which is 10 Hz, so at a nominal
    60.04 Hz the minimum has to be 50 or below. A range of 55 to 66 collapses
@@ -300,9 +303,21 @@ says some sets change vertical size in proportion to the blanking interval.
    different mechanism, a seamless change of the front porch that skips the
    modeset; tested here with a timing shaped exactly as that condition
    requires, it still cost 222.8 and 229.1 ms, so the seamless path does not
-   trigger on this chain. The parameter is on this machine's command line and
-   has not been shown to do anything; a boot without it is the test that
-   settles it.
+   trigger on this chain.
+
+   That test has since been done the other way round. With the parameter
+   taken off the kernel command line and the machine rebooted, so that
+   `/proc/cmdline` carries no amdgpu option at all, the connector is still
+   reported capable and the scanout still follows: asked for 58, 57, 56 and
+   55 Hz the television was given 58.06, 57.19, 55.99 and 55.01, and at 55 Hz
+   sustained every one of three hundred frames fell between 17.59 and 19.15
+   ms with none at the mode's own 16.66. Every frame stretched, nothing
+   dropped to make an average. The kernel's own description of the parameter
+   says what it is for and it is not this: *adds additional modes via VRR for
+   refresh changes without a full modeset*, which `modinfo -p amdgpu` prints
+   on any machine. Changing the refresh by a modeset is the thing this does
+   not do. **This project has never installed that parameter and does not
+   ask anyone to.**
 
 With the range declared, the timing generator is programmed with room:
 `amdgpu_dm_dtn_log` reported `vmin 261 vmax 327` for the tube's OTG, which is

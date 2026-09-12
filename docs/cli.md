@@ -229,7 +229,8 @@ lock and without going dark. `omacrt rate off` gives the tube back to
 whatever pace the program is keeping.
 
 It needs the variable refresh rate, which needs the FreeSync range in the
-EDID (`OMACRT_FREESYNC=48:62` when the lease is set up). Asked for five rates
+EDID. `omacrt-install --system` puts it there on every boot; it needs no
+kernel parameter. Asked for five rates
 in turn and measured from the compositor's own vblank timestamps, the tube
 Measured as the median of the last 300 vblank
 intervals, with fifteen seconds of settling at each step: **60.041 asked
