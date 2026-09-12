@@ -12,6 +12,13 @@
     and the gap 30.5. The wordmark's cap height is half the mark's height and
     it stands the mark's own gap away from it.
 
+    Vertically, the second line's baseline sits on the bottom edge of the
+    mark's last bar, so the lockup bottoms out on one line. It used to cross
+    that bar's band at an arbitrary height, which is the kind of near miss
+    that reads as disorder rather than as a decision. The wordmark's cap
+    height stays half the mark's height, and the descender of the y clears
+    the second line by 26 px.
+
     The two lines are aligned on their ink, not on their origins. In JetBrains
     Mono every glyph sits in the same advance, so a capital F at 230 px carries
     18 px of left bearing and a capital W at 52 px carries 1 px: set to the
@@ -26,6 +33,6 @@
     <rect x="12" y="24" width="24" height="8"/>
     <rect x="12" y="36" width="32" height="8"/>
   </g>
-  <text x="424" y="260" font-family="JetBrainsMono Nerd Font, JetBrains Mono, monospace" font-weight="700" font-size="230" fill="#c0caf5" letter-spacing="-4">Flyback</text>
-  <text x="441" y="356" font-family="JetBrainsMono Nerd Font, JetBrains Mono, monospace" font-weight="500" font-size="52" fill="#a9b1d6" letter-spacing="10">WAYLAND COMPOSITOR</text>
+  <text x="424" y="276" font-family="JetBrainsMono Nerd Font, JetBrains Mono, monospace" font-weight="700" font-size="230" fill="#c0caf5" letter-spacing="-4">Flyback</text>
+  <text x="441" y="391" font-family="JetBrainsMono Nerd Font, JetBrains Mono, monospace" font-weight="500" font-size="52" fill="#a9b1d6" letter-spacing="10">WAYLAND COMPOSITOR</text>
 </svg>

@@ -17,7 +17,12 @@
     .cell { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
     .cap { font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase; color: #565f89; }
     .plate { border: 1px solid #1f2335; padding: 20px; display: flex; align-items: center; justify-content: center; background: #0b0d14; }
-    .lock { display: flex; align-items: center; gap: 18px; }
+    /* The second line's baseline sits on the bottom edge of the mark's last
+       bar, so the lockup bottoms out on one line. Before this it crossed
+       that bar's band at an arbitrary height: a near miss reads as disorder,
+       an exact coincidence reads as a decision. */
+    .lock { display: flex; align-items: stretch; gap: 18px; }
+    .lock .word { display: flex; flex-direction: column; justify-content: space-between; }
     .stack { display: flex; flex-direction: column; align-items: center; gap: 14px; }
     .word { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; color: #c0caf5; line-height: 1; }
     /* The two lines are aligned on their ink, not on their origins. Every
@@ -25,7 +30,7 @@
        40px carries about 3px of left bearing and a capital W at 10px carries
        a fifth of one: set flush they read as misaligned by the difference.
        The margin puts the two stems on one edge. */
-    .word small { display: block; font-size: 10px; font-weight: 500; letter-spacing: 0.22em; color: #a9b1d6; margin: 9px 0 0 3px; }
+    .word small { display: block; font-size: 10px; font-weight: 500; letter-spacing: 0.22em; color: #a9b1d6; margin: 0 0 0 3px; }
     .word.mid { font-size: 26px; }
     .word.mid small { font-size: 8px; letter-spacing: 0.2em; margin: 7px 0 0 2px; }
     .note { font-size: 12px; line-height: 1.6; color: #565f89; border-top: 1px solid #1f2335; padding-top: 14px; max-width: 68ch; }
@@ -95,7 +100,7 @@
 
   <div class="note"><b>Retrace is the dark cut of the beam coming back between two lines</b> — four bars standing still, the return moving down and to the left. <b>Flyback is the same beam seen as its waveform</b> — the ramp stepping down and to the right, and the stroke where it collapses. Four bars, eight thick, four apart, a 44 unit grid: one alphabet, two words. The compositor is drawn in the phosphor green it reports its own latency in; the product keeps paper.</div>
 
-  <div class="note" style="border:0;padding-top:0"><b>Rules.</b> The mark's height sets the wordmark's cap height. The space between them is the mark's own gap, 4 units, scaled. Never set the word in anything but JetBrains Mono 800, and never letterspace it apart. Where the name has to appear without the mark, the word alone is fine; the mark alone is fine everywhere.</div>
+  <div class="note" style="border:0;padding-top:0"><b>Rules.</b> The mark's height is twice the wordmark's cap height, and the second line's baseline sits on the bottom edge of the mark's last bar, so the two blocks bottom out together. The space between them is the mark's own gap, 4 units, scaled. Never set the word in anything but JetBrains Mono 800, and never letterspace it apart. Where the name has to appear without the mark, the word alone is fine; the mark alone is fine everywhere.</div>
 </div>
 </x-dc>
 </body>
