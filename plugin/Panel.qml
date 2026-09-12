@@ -51,8 +51,10 @@ Panel {
   readonly property bool shellRunning: shell.running === true
   readonly property bool displayRunning: display.running === true
   // `/proc/<pid>/exe` says `(deleted)` once the file the process was started
-  // from has been replaced. The compositor on the air is then not the one an
-  // upgrade just installed, and only a restart of the tube changes that.
+  // from has been replaced, which is all it proves: the file on disk is a
+  // different one, not necessarily a newer one. Either way the compositor on
+  // the air is not the file an install just wrote, and nothing but taking the
+  // tube off and on changes that.
   readonly property bool displayStale: root.displayRunning
     && String(root.display.binary || "").indexOf(" (deleted)") >= 0
   // A number of one decimal, the way the command line prints it.
@@ -472,7 +474,7 @@ Panel {
           Row2 {
             visible: root.displayStale
             label: "Restart"
-            value: "a newer " + String(root.display.name || "flyback") + " is installed"
+            value: "its binary has been replaced"
             valueColor: root.urgent
           }
           // Commit to the start of scanout, which on a set with no panel and
