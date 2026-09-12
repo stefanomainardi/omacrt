@@ -1231,8 +1231,16 @@ impl Crt {
             "enter" | "return" => 28,
             "slot+" | "f7" => 65,
             "slot-" | "f6" => 64,
+            // A raw evdev code, for a key with no name here. KEY_MAX is
+            // 0x2ff, and anything above it is not a key: refusing it keeps
+            // the `+ 8` below from overflowing on a typo, which would take
+            // the compositor down and the television with it.
             other => match other.parse::<u32>() {
-                Ok(code) => code,
+                Ok(code) if code <= 0x2ff => code,
+                Ok(code) => {
+                    eprintln!("key: {code} is not an evdev key code");
+                    return;
+                }
                 Err(_) => {
                     eprintln!("key: unknown key {other:?}");
                     return;

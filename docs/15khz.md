@@ -309,6 +309,9 @@ refresh emulation asks for on this side of the world - 60.0988 for a NES,
 
 ## What the compositor does with it
 
+Flyback, the compositor itself, has a document of its own:
+[`flyback.md`](flyback.md).
+
 A variable refresh rate turns the scheduling problem inside out. With a fixed
 one, a frame that misses the deadline is shown a whole frame late, so the
 compositor draws at the last safe moment and no later. With a variable one

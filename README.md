@@ -106,7 +106,10 @@ collection, the CLI does everything from a terminal.
 
 The same thing with every process and channel named is a flowchart in
 [`docs/architecture.md`](docs/architecture.md); the study behind the timings
-is [`docs/15khz.md`](docs/15khz.md).
+is [`docs/15khz.md`](docs/15khz.md). The compositor has a document of its own,
+[`docs/flyback.md`](docs/flyback.md): what it does, what it deliberately does
+not, the assumptions it starts from, the measured latency and how to
+reproduce it.
 
 ## What is on the television
 
@@ -239,7 +242,7 @@ can be read again and pasted into an issue. Piped, redirected, under
 | `bin/omacrt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
-| `docs/` | The 15 kHz study, what is on the tube screen by screen, what Omarchy lends it, [the same without Omarchy](docs/hyprland.md), hardware notes, systems and video policy, controllers, CLI, troubleshooting |
+| `docs/` | The 15 kHz study, [the compositor](docs/flyback.md), what is on the tube screen by screen, what Omarchy lends it, [the same without Omarchy](docs/hyprland.md), hardware notes, systems and video policy, controllers, CLI, troubleshooting |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
 | `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
