@@ -212,6 +212,9 @@ pub struct Crt {
     /// `damaged_by`.
     dirty_top: bool,
     last_top_commit: Option<Instant>,
+    /// The timing currently on the connector, so that asking for the one
+    /// that is already set can be answered with nothing. See `switch_mode`.
+    modeline: Option<Modeline>,
     /// Which telling `told_at` belongs to, so each window counts a telling
     /// once. See `ClientCost`.
     telling: u64,
@@ -847,6 +850,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         last_vblank: None,
         callback_armed: false,
         told_at: None,
+        modeline: Some(ml.clone()),
         dirty_top: false,
         last_top_commit: None,
         telling: 0,
@@ -1552,6 +1556,18 @@ impl Crt {
             eprintln!("mode: refused, it asks the television for {why}");
             return;
         }
+        // Asking for the timing that is already on the connector is not a
+        // free request: the commit goes through, the connector relocks, and
+        // the first vblank after it is 4 to 16 ms away with the television
+        // dark for it. The launcher asks on every game start, every game
+        // end, every pause and every time it follows the core's line count,
+        // and most of those resolve to the mode that is already set: 41 of
+        // them in one recent stretch of the log, every one to the same
+        // vtotal. Each is a small hitch of the whole picture for nothing.
+        if self.modeline.as_ref() == Some(ml) {
+            println!("mode: already set, nothing done");
+            return;
+        }
         let Some(out) = self.drm_output.as_mut() else {
             return;
         };
@@ -1604,6 +1620,7 @@ impl Crt {
             ml.v[3],
             took.as_secs_f64() * 1000.0
         );
+        self.modeline = Some(ml.clone());
         self.frame_queued = false;
         self.queued_at = None;
         self.damaged();
