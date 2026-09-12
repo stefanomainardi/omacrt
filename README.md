@@ -91,25 +91,65 @@ notification, pointer or stray window can reach the tube, and any timing the
 kernel accepts is one command away, live, including a different line count per
 system (224 lines for a Super Nintendo game, 240 for a NES one).
 
-Owning the scanout is also what lets it answer a question nobody else on the
-machine can: how long a picture takes to arrive. Flyback times every frame
-from the client's own commit to the kernel's vblank timestamp, and on a set
-with no panel and no scaler between the connector and the phosphor that
-second moment is very nearly the picture on the glass. `omacrt status` shows
-the figure while the television is on, and it is **one frame, 16.5 ms** on
-the machine this is written on. It offers `wp_presentation` too, so a client
-that cares about timing is told rather than left guessing.
-
 The bar plugin and the CLI stay on the desktop and talk to the tube over a
 control pipe: the panel is the remote control, the overlay manages the
 collection, the CLI does everything from a terminal.
 
 The same thing with every process and channel named is a flowchart in
 [`docs/architecture.md`](docs/architecture.md); the study behind the timings
-is [`docs/15khz.md`](docs/15khz.md). The compositor has a document of its own,
-[`docs/flyback.md`](docs/flyback.md): what it does, what it deliberately does
-not, the assumptions it starts from, the measured latency and how to
-reproduce it.
+is [`docs/15khz.md`](docs/15khz.md).
+
+## Flyback
+
+<p align="center">
+  <img src="docs/flyback-logo.png" width="460" alt="The Flyback mark, four bars stepping out beside the full-height stroke of the beam flying back, beside the word Flyback">
+</p>
+
+A Wayland compositor that owns the scanout of a fifteen kilohertz television.
+One process, one thread, one event loop, 3616 lines on smithay. It is named
+after what a tube does between two lines, and it is the piece of this project
+that touches hardware.
+
+It is not a desktop and it is not a kiosk shell. A kiosk compositor puts one
+window on a monitor the system already knows how to drive. This one takes a
+connector the desktop has been told to leave alone, programs a timing no
+desktop would set, and then schedules every frame against what a cathode ray
+tube does with it. **The desktop keeps running** on its other outputs, which
+is the thing none of the established ways of driving a CRT from Linux can do:
+they all take the machine.
+
+Owning the scanout is also what lets it answer a question nobody else here
+can. Flyback times every frame from the client's own commit to the kernel's
+vblank timestamp, and on a set with no panel and no scaler between the
+connector and the phosphor that second moment is very nearly the picture on
+the glass. Measured on a BeoCenter 1 through an RGB-Pi 2, with the launcher
+mapped underneath, which is how the television actually runs:
+
+| | |
+| --- | --- |
+| commit to the start of scanout, client drawing 1 ms | **3.79 ms** |
+| the launcher end to end, in `omacrt status` | **2.0 ms** |
+| the same with every scheduling decision turned off, which is what every other compositor does | **33.4 ms**, two frames exactly |
+| a button press to the start of scanout, 300 presses at random points of the frame | median **10.19 ms**, 0.61 of a frame |
+
+It offers `wp_presentation`, so a client that cares about timing is told
+rather than left guessing, and it runs the television at a **variable refresh
+rate**: every refresh an emulation asks for is reachable by stretching the
+vertical blanking alone, with the line rate never moving, so a program gets
+its own rate without the fifth of a second of darkness a mode change costs.
+How far a set follows that is a property of the set, measured from film and
+written down as one number in `crt.toml`.
+
+**It is experimental**, and it drives hardware that a wrong signal destroys:
+a television's horizontal deflection is a tuned circuit built for one
+frequency. No timing reaches the kernel without passing a guard that refuses
+a line rate outside the configured band.
+
+| | |
+| --- | --- |
+| [`docs/flyback.md`](docs/flyback.md) | what it is: the lease, the EDID, the scheduler, the variable rate, what it costs, what it deliberately does not do, and where it sits beside GroovyArcade, Batocera and a MiSTer |
+| [`docs/flyback-manual.md`](docs/flyback-manual.md) | how to drive it: every line the control pipe answers to, the configuration it reads, the switches that turn each decision off, and what to do when it will not come up |
+| [`docs/comparison.md`](docs/comparison.md) | the same comparison on its own |
 
 ## What is on the television
 
@@ -242,7 +282,7 @@ can be read again and pasted into an issue. Piped, redirected, under
 | `bin/omacrt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
-| `docs/` | The 15 kHz study, [the compositor](docs/flyback.md), [how it sits beside the others](docs/comparison.md) and [what re-checking every published number found](docs/audit-2026-09-12.md), [how the mark was drawn](docs/identity.md), what is on the tube screen by screen, what Omarchy lends it, [the same without Omarchy](docs/hyprland.md), hardware notes, systems and video policy, controllers, CLI, troubleshooting |
+| `docs/` | The 15 kHz study, [the compositor](docs/flyback.md) and [how to drive it](docs/flyback-manual.md), [how it sits beside the others](docs/comparison.md) and [what re-checking every published number found](docs/audit-2026-09-12.md), [how the mark was drawn](docs/identity.md), what is on the tube screen by screen, what Omarchy lends it, [the same without Omarchy](docs/hyprland.md), hardware notes, systems and video policy, controllers, CLI, troubleshooting |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
 | `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
