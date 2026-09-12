@@ -403,7 +403,7 @@ pub fn record_stop() -> std::io::Result<()> {
 
 #[cfg(test)]
 mod resolve_tests {
-    use super::{resolve, BINARY};
+    use super::{BINARY, resolve};
     use std::path::{Path, PathBuf};
 
     /// A directory holding an executable file of the given name.
@@ -426,7 +426,11 @@ mod resolve_tests {
         let root = tmp("beside");
         let here = with_binary(&root, "install");
         let elsewhere = with_binary(&root, "onpath");
-        let got = resolve(BINARY, Some(&here.join("omacrt")), Some(elsewhere.as_os_str()));
+        let got = resolve(
+            BINARY,
+            Some(&here.join("omacrt")),
+            Some(elsewhere.as_os_str()),
+        );
         assert_eq!(got, here.join(BINARY));
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -439,7 +443,11 @@ mod resolve_tests {
         let plugin = root.join("plugin/bin");
         std::fs::create_dir_all(&plugin).unwrap();
         let installed = with_binary(&root, "local-bin");
-        let got = resolve(BINARY, Some(&plugin.join("omacrt")), Some(installed.as_os_str()));
+        let got = resolve(
+            BINARY,
+            Some(&plugin.join("omacrt")),
+            Some(installed.as_os_str()),
+        );
         assert_eq!(got, installed.join(BINARY));
         let _ = std::fs::remove_dir_all(&root);
     }

@@ -264,12 +264,7 @@ mod tests {
     fn the_launcher_passes_its_arguments_on_and_stays_small() {
         let root = tmp("runs");
         let target = root.join("omacrt");
-        write_file(
-            &target,
-            b"#!/bin/sh\nprintf '%s|' \"$@\"\n",
-            0o755,
-        )
-        .unwrap();
+        write_file(&target, b"#!/bin/sh\nprintf '%s|' \"$@\"\n", 0o755).unwrap();
         let helper = root.join("bin/omacrt");
         std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
         write_file(&helper, launcher_text(&target).as_bytes(), 0o755).unwrap();
