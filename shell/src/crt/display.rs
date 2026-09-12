@@ -183,13 +183,51 @@ pub fn running() -> bool {
     super::pid_runs(pid, "flyback")
 }
 
+/// Where the compositor's binary is.
+///
+/// Beside this program first, because a build run out of a checkout must use
+/// its own compositor and not an older installed one. Then along PATH, which
+/// is the case this order exists for: the bar plugin runs its own copy of
+/// this program from the plugin folder, where nothing else of the install
+/// sits. Then the workspace's release directory, for a run straight out of
+/// `cargo build`.
 fn binary() -> PathBuf {
-    let name = "flyback";
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join(name)))
-        .filter(|p| p.is_file())
-        .unwrap_or_else(|| PathBuf::from(name))
+    let exe = std::env::current_exe().ok();
+    resolve(BINARY, exe.as_deref(), std::env::var_os("PATH").as_deref())
+}
+
+/// The compositor's process and file name.
+const BINARY: &str = "flyback";
+
+/// The search, with its two inputs passed in so it can be tested: `exe` is
+/// this program's own path and `path` the PATH to walk.
+///
+/// Returns the bare name when nothing is found, so that the caller's error
+/// still says which binary was missing rather than only that something was.
+fn resolve(name: &str, exe: Option<&std::path::Path>, path: Option<&std::ffi::OsStr>) -> PathBuf {
+    let here = exe.and_then(|p| p.parent());
+    if let Some(d) = here {
+        let beside = d.join(name);
+        if beside.is_file() {
+            return beside;
+        }
+    }
+    if let Some(path) = path {
+        for dir in std::env::split_paths(path) {
+            let p = dir.join(name);
+            if p.is_file() {
+                return p;
+            }
+        }
+    }
+    // A checkout: `shell/target/release` beside the binary's own directory.
+    if let Some(d) = here {
+        let built = d.join("../shell/target/release").join(name);
+        if built.is_file() {
+            return built;
+        }
+    }
+    PathBuf::from(name)
 }
 
 /// Start the display process on `connector` and wait for its socket.
@@ -206,7 +244,8 @@ pub fn start_with_sink(connector: &str, sink: Option<&str>) -> Result<String, St
     let _ = std::fs::create_dir_all(super::state_dir());
     let log = crate::logfile::open(&log_path()).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
-    let mut cmd = Command::new(binary());
+    let bin = binary();
+    let mut cmd = Command::new(&bin);
     if let Some(s) = sink {
         cmd.env("OMACRT_SINK", s);
     }
@@ -222,7 +261,20 @@ pub fn start_with_sink(connector: &str, sink: Option<&str>) -> Result<String, St
             Ok(())
         });
     }
-    let child = cmd.spawn().map_err(|e| e.to_string())?;
+    // Named, because the bare error says only that something was not there.
+    // The case that produced it: the bar plugin runs its own copy of this
+    // program, and an old copy there looks for a compositor under the name
+    // it had when that copy was built.
+    let child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            let whose = std::env::current_exe()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "this program".into());
+            format!("{BINARY}: not found beside {whose} nor on PATH")
+        } else {
+            format!("{}: {e}", bin.display())
+        }
+    })?;
     let _ = std::fs::write(pid_path(), child.id().to_string());
     let socket = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -330,6 +382,61 @@ pub fn record_start(path: &str, sink: Option<&str>) -> std::io::Result<()> {
 
 pub fn record_stop() -> std::io::Result<()> {
     send("record stop")
+}
+
+#[cfg(test)]
+mod resolve_tests {
+    use super::{resolve, BINARY};
+    use std::path::{Path, PathBuf};
+
+    /// A directory holding an executable file of the given name.
+    fn with_binary(root: &Path, sub: &str) -> PathBuf {
+        let dir = root.join(sub);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(BINARY), b"#!/bin/true\n").unwrap();
+        dir
+    }
+
+    fn tmp(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("omacrt-resolve-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn the_one_beside_this_program_wins() {
+        let root = tmp("beside");
+        let here = with_binary(&root, "install");
+        let elsewhere = with_binary(&root, "onpath");
+        let got = resolve(BINARY, Some(&here.join("omacrt")), Some(elsewhere.as_os_str()));
+        assert_eq!(got, here.join(BINARY));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The bar plugin: its folder holds the helper and nothing else, so the
+    /// compositor has to be found along PATH.
+    #[test]
+    fn a_lone_helper_finds_it_on_path() {
+        let root = tmp("path");
+        let plugin = root.join("plugin/bin");
+        std::fs::create_dir_all(&plugin).unwrap();
+        let installed = with_binary(&root, "local-bin");
+        let got = resolve(BINARY, Some(&plugin.join("omacrt")), Some(installed.as_os_str()));
+        assert_eq!(got, installed.join(BINARY));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Nothing found is the bare name, so the caller can say what was missing.
+    #[test]
+    fn nothing_found_still_names_it() {
+        let root = tmp("none");
+        let empty = root.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let got = resolve(BINARY, Some(&empty.join("omacrt")), Some(empty.as_os_str()));
+        assert_eq!(got, PathBuf::from(BINARY));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 #[cfg(test)]
