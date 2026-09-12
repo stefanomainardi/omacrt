@@ -2165,9 +2165,20 @@ impl Crt {
             if self.trace {
                 eprintln!("trace: vblank interval {} us", interval.as_micros());
             }
-            // A frame of a plausible length: the first one after an idle tube
-            // is seconds long and is not a refresh rate.
-            if interval < self.period() * 3 {
+            // A vblank event only arrives for a flip, so this is the time
+            // between two flips and not the length of a frame. They are the
+            // same thing only while the compositor is flipping every frame.
+            // A still picture flips for nothing, and the gap then reads as a
+            // frame of two or ten or a thousand, which is how this made a
+            // fixed refresh rate look like a tube being asked for frames of
+            // different lengths: two frames exactly, on a menu nobody was
+            // touching.
+            //
+            // Half a frame of slack over the mode's own period is enough to
+            // keep every frame a variable rate can legally stretch to, since
+            // nothing is ever asked for a rate below output.vrr_min_hz, and
+            // to drop anything that skipped a flip.
+            if interval * 2 < self.period() * 3 {
                 self.intervals.push_back(interval);
                 if self.intervals.len() > 300 {
                     self.intervals.pop_front();
