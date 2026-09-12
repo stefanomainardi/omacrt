@@ -35,9 +35,14 @@ if [ "${1:-}" = "--selftest" ]; then
   if "$0" "$work/Broken.qml" >"$work/out" 2>&1; then
     echo "selftest: a file that does not parse was passed" >&2
     cat "$work/out" >&2
+    # What this check reads is qmllint's output, and its shape has changed
+    # between Qt versions, so when the check is wrong the raw output is the
+    # thing to look at and not the check's summary of it.
+    echo "selftest: what qmllint actually said, verbatim:" >&2
+    "$("$0" --which-lint)" "$work/Broken.qml" 2>&1 | head -40 >&2 || true
     exit 1
   fi
-  grep -q '\[syntax\]' "$work/out" || {
+  grep -qiE '\[syntax\]|Syntax error' "$work/out" || {
     echo "selftest: it failed, but not for the syntax error" >&2
     cat "$work/out" >&2
     exit 1
@@ -65,6 +70,11 @@ if [ -z "$lint" ]; then
   exit 1
 fi
 
+if [ "${1:-}" = "--which-lint" ]; then
+  echo "$lint"
+  exit 0
+fi
+
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "$#" -gt 0 ]; then
   files=("$@")
@@ -83,11 +93,14 @@ out="$("$lint" "${files[@]}" 2>&1 || true)"
 # A finding carries a position. The source excerpt, the carets and the hints
 # qmllint attaches underneath ("Did you mean", "parent is a member of a parent
 # element") do not, and counting those would bury the line that matters.
-found="$(printf '%s\n' "$out" | grep -cE '^(Error|Warning|Info): .*:[0-9]+:[0-9]+: ' || true)"
+found="$(printf '%s\n' "$out" | grep -cE '[^ ]+\.qml:[0-9]+:[0-9]+: ' || true)"
 # A file that does not parse is the one thing that means the same with or
 # without the modules. qmllint reports it at warning severity, so the category
 # is what to match on, not the word in front of it.
-bad="$(printf '%s\n' "$out" | grep -E '^Error: |\[syntax\]$' || true)"
+# The bracketed category is the modern spelling and the plain words are the
+# older one, so both are matched: this has to say the same thing on whatever
+# Qt the runner's distribution ships, not only on the one it was written on.
+bad="$(printf '%s\n' "$out" | grep -E '^Error: |\[syntax\]|Syntax error' || true)"
 
 if [ -n "$bad" ]; then
   printf '%s\n' "$bad"
@@ -95,4 +108,5 @@ if [ -n "$bad" ]; then
   echo "QML that does not parse. The other $found findings are not checked here." >&2
   exit 1
 fi
-echo "qmllint: ${#files[@]} files parse; $found findings about types it cannot resolve, not checked here"
+version="$("$lint" --version 2>&1 | head -1)"
+echo "$version: ${#files[@]} files parse; $found findings about types it cannot resolve, not checked here"
