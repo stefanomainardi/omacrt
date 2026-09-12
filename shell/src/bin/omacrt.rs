@@ -2077,6 +2077,34 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             )
         }));
     }
+    // The system side of the lease: three files outside any home, which only
+    // root writes and which an upgrade of this program therefore cannot. The
+    // failure they produce arrives late and looks like something else, so it
+    // is worth a line of its own rather than being found by reading a journal
+    // after a machine has failed to boot twice.
+    probes.push(Probe::new(HOUSEKEEPING, "lease files up to date", || {
+        if !omacrt_shell::leasefiles::installed() {
+            return (
+                Level::Ok,
+                "not installed: the tube is handed over by hand".into(),
+            );
+        }
+        let drift = omacrt_shell::leasefiles::drift();
+        if drift.is_empty() {
+            return (Level::Ok, "the files this version carries".into());
+        }
+        let names: Vec<String> = drift
+            .iter()
+            .filter_map(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()))
+            .collect();
+        (
+            Level::Fail,
+            format!(
+                "{} behind: sudo bin/omacrt-install --system",
+                names.join(", ")
+            ),
+        )
+    }));
     // Nobody reads a log in a state directory. The crash this was written
     // for sat in one for a morning before anybody looked, so the report
     // looks for them: a launcher that stopped, and a line repeated often

@@ -595,14 +595,34 @@ fn run(args: &Args) -> Result<(), String> {
                             && following != Some(h)
                         {
                             following = Some(h);
-                            eprintln!("the core is drawing {h} lines, following");
-                            crt_mode_async(Some(Geometry {
-                                lines: Some(h),
-                                shift_x: 0,
-                                shift_y: 0,
-                                follow: true,
-                            }));
-                            lines_changed = true;
+                            // "following" was a claim rather than a report,
+                            // and for a core that says more lines than the
+                            // standard has it was false: `omacrt mode
+                            // --lines` caps the request at the frame the
+                            // television is being given, so a GameCube
+                            // reporting 528 for its 480 line picture was
+                            // told the tube was following it into a mode
+                            // that never changed. A core reporting the frame
+                            // it was handed is not asking for anything
+                            // either, and that case is now not asked for at
+                            // all.
+                            let have = canvas.output_size().map(|(_, h)| h).unwrap_or(0);
+                            if h == have {
+                                eprintln!(
+                                    "the core is drawing {h} lines, which is what the tube has"
+                                );
+                            } else {
+                                eprintln!(
+                                    "the core is drawing {h} lines, asking the tube for them"
+                                );
+                                crt_mode_async(Some(Geometry {
+                                    lines: Some(h),
+                                    shift_x: 0,
+                                    shift_y: 0,
+                                    follow: true,
+                                }));
+                                lines_changed = true;
+                            }
                         }
                     }
                 }

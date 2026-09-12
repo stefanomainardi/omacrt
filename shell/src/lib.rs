@@ -12,6 +12,7 @@ pub mod crt;
 pub mod game;
 pub mod immich;
 pub mod index;
+pub mod leasefiles;
 pub mod library;
 pub mod logfile;
 pub mod music;
