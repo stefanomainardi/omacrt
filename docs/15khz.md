@@ -309,6 +309,29 @@ draws on the frame callback the way a program paces itself:
 The launcher itself, end to end through `omacrt on`, reports **2.0 ms** in
 `omacrt status`, and 4.5 ms with every core on the machine busy.
 
+A program that runs at a rate of its own is where this stops being simple.
+A television whose frame length is the one thing that varies will pulse if
+that length keeps changing, because the brightness of a phosphor depends on
+how long it is left between refreshes. Put an emulator on the tube whose
+content rate is not the compositor's cadence and the two beat: half the
+frames end at the hardware's minimum vertical total and half run all the way
+to its maximum, four milliseconds apart, and the picture flickers visibly.
+Pacing the frame callbacks to the client's own commit interval rather than to
+the mode's period removes it - measured on a Mega Drive core, the step
+between one frame and the next falls from 4283 microseconds to 24, and the
+tube runs at the core's own 59.95 Hz.
+
+What that does not do is let a program choose a rate. A client paced by frame
+callbacks runs at the cadence it is given, and the cadence is taken from the
+cadence it runs at, so whatever it settles on is where it stays. Taking the
+brake off - `video_vsync=false` with `vrr_runloop_enable=true` - lets the
+core set the rate, and on an NTSC title it does exactly that; on a PAL one
+RetroArch then had nothing holding it at all and ran at 80 Hz, faster than
+the hardware's shortest frame, and the pacing collapsed again. The rate has
+to be asked for rather than discovered: the launcher knows which system is
+running and what that system's refresh is, and telling the compositor is one
+line on the control pipe it already has.
+
 Asking for the range in the EDID is the switch. There is nothing else a
 television leased to this compositor would want a variable refresh rate for,
 so when the kernel says the connector is capable, Flyback turns it on.

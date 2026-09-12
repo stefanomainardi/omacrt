@@ -188,6 +188,14 @@ pub struct Crt {
     /// as soon as a client commits instead of waiting for the deadline.
     margin_override: Option<Duration>,
     frame_delay: bool,
+    /// How long a client leaves between its own commits, and the recent
+    /// ones it is taken from. Under a variable refresh rate that interval is
+    /// the length of the frame the television should be given: the mode's
+    /// own period is only the shortest frame the hardware will make, and
+    /// pacing a program to it when it wants a longer one makes the two beat
+    /// against each other, which on a tube is a picture that pulses.
+    client_period: Duration,
+    periods: std::collections::VecDeque<Duration>,
     /// When a client last committed, and how many commits arrived while a
     /// page flip was already in the air and so could not be drawn at once.
     /// Only kept when `FLYBACK_TRACE` is set: this is a measuring aid.
@@ -694,6 +702,8 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         // Assume the worst until a client has shown otherwise: a whole frame
         // to draw in, which is where every other compositor leaves it.
         client_cost: Duration::from_millis(16),
+        client_period: Duration::from_millis(16),
+        periods: Default::default(),
         late: 0,
         showing: None,
         latencies: Default::default(),
@@ -1379,7 +1389,11 @@ impl Crt {
         // and a client is given as much of it as its own drawing time
         // allows, which is what puts its picture on the glass at once.
         let room = if self.vrr_on {
-            self.period()
+            // The client's own frame, not the mode's. Never shorter than the
+            // mode's, because the hardware cannot make a frame shorter than
+            // that, and never more than twice it, because past the range the
+            // television was told about the hardware repeats a frame anyway.
+            self.client_period.clamp(self.period(), self.period() * 2)
         } else {
             self.period().saturating_sub(self.margin())
         };
@@ -1571,8 +1585,9 @@ impl Crt {
                             .map(|t| t.elapsed().as_micros())
                             .unwrap_or(0);
                         eprintln!(
-                            "trace: commit to flip queued {since} us, client {} us, render {} us",
+                            "trace: commit to flip queued {since} us, client {} us, period {} us, render {} us",
                             self.client_cost.as_micros(),
+                            self.client_period.as_micros(),
                             self.render_cost.as_micros()
                         );
                     }
@@ -1831,7 +1846,20 @@ impl CompositorHandler for Crt {
             self.late += 1;
             self.client_cost = (self.client_cost * 5 / 4).min(self.period());
         }
-        self.last_commit = Some(at);
+        // The median of the last sixteen, so one long gap - a game loading,
+        // a menu opening - does not move the estimate.
+        if let Some(prev) = self.last_commit.replace(at) {
+            let d = at.saturating_duration_since(prev);
+            if d > Duration::from_millis(4) && d < Duration::from_millis(100) {
+                self.periods.push_back(d);
+                if self.periods.len() > 16 {
+                    self.periods.pop_front();
+                }
+                let mut v: Vec<Duration> = self.periods.iter().copied().collect();
+                v.sort_unstable();
+                self.client_period = v[v.len() / 2];
+            }
+        }
         self.damaged();
     }
 }
