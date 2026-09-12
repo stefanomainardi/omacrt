@@ -35,8 +35,17 @@ CLEAR = 16        # units a free-standing label wants on each side
 # A rectangle too small to hold a line of text is content, not a container:
 # a scan line, a bar of a chart, a stroke of a mark. Treating every rectangle
 # as a box makes a label overflow the bar it happens to sit above.
+# Two line heights of the largest type in the drawing, with a floor, rather
+# than two fixed numbers: 22 by 40 assumes text at nine or ten, and a figure
+# set larger would have its own lines mistaken for content.
 MIN_BOX_H = 22
 MIN_BOX_W = 40
+
+
+def _min_box(svg):
+    sizes = [float(m.group(1)) for m in re.finditer(r'font-size="([\d.]+)"', svg)]
+    biggest = max(sizes, default=10)
+    return max(MIN_BOX_H, biggest * 1.6), max(MIN_BOX_W, biggest * 3)
 
 RECT = re.compile(r"<rect\b([^>]*)/?>")
 # Parse a tag's attributes rather than matching them in order. The first
@@ -70,6 +79,7 @@ def faults(svg, name):
     if re.search(r'\btransform\s*[:=]', svg):
         return None
     out = []
+    min_h, min_w = _min_box(svg)
     rects = []
     for m in RECT.finditer(svg):
         at = dict(ATTR.findall(m.group(1)))
@@ -80,7 +90,7 @@ def faults(svg, name):
         # reader that requires what the format makes optional.
         r = (float(at.get("x", 0)), float(at.get("y", 0)),
              float(at["width"]), float(at["height"]))
-        if r[2] >= MIN_BOX_W and r[3] >= MIN_BOX_H:
+        if r[2] >= min_w and r[3] >= min_h:
             rects.append(r)
 
     # The ground is a rectangle that holds the whole drawing, and counting it
