@@ -188,6 +188,29 @@ pub struct Crt {
     /// as soon as a client commits instead of waiting for the deadline.
     margin_override: Option<Duration>,
     frame_delay: bool,
+    /// A frame length asked for by name rather than guessed from what a
+    /// client happens to be doing. A program paced by frame callbacks runs
+    /// at the cadence it is given and the cadence is taken from the cadence
+    /// it runs at, so it can never choose one by itself: whatever rate it
+    /// settles on is where it stays. Whoever started it knows better - an
+    /// emulator's refresh is a property of the machine it is imitating - and
+    /// this is where that is said.
+    target_period: Option<Duration>,
+    /// The longest frame this television keeps its picture at, from
+    /// `output.vrr_min_hz`. Nothing here asks the tube for a slower rate
+    /// than that, however slowly a program runs: past it the vertical
+    /// deflection stops following and the picture loses height.
+    slowest: Duration,
+    /// Microseconds added to or taken off the moment a client is told to
+    /// draw, so the frame comes out the length that was asked for.
+    ///
+    /// Aiming the commit at the target and hoping is not enough: between the
+    /// telling and the scanout sit the client's wake-up, our own drawing,
+    /// the flip and the hardware's latch, each a few hundred microseconds no
+    /// estimate here would get right. So the error is measured instead - the
+    /// frame that came out against the frame that was wanted - and a quarter
+    /// of it corrected each time.
+    rate_trim: i64,
     /// How long a client leaves between its own commits, and the recent
     /// ones it is taken from. Under a variable refresh rate that interval is
     /// the length of the frame the television should be given: the mode's
@@ -702,6 +725,9 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         // Assume the worst until a client has shown otherwise: a whole frame
         // to draw in, which is where every other compositor leaves it.
         client_cost: Duration::from_millis(16),
+        slowest: Duration::from_secs_f64(1.0 / cfg.output.vrr_min_hz.clamp(20.0, 200.0)),
+        target_period: None,
+        rate_trim: 0,
         client_period: Duration::from_millis(16),
         periods: Default::default(),
         late: 0,
@@ -950,6 +976,38 @@ impl Crt {
                         self.damaged();
                     }
                     Err(e) => eprintln!("vrr: {e}"),
+                }
+            }
+            // `rate 59.92` or `rate off`: the refresh the program on the tube
+            // wants, which the television follows without a mode change for
+            // as long as it stays inside the range the EDID declared.
+            "rate" => {
+                let arg = arg.trim();
+                if arg.is_empty() || arg == "off" || arg == "0" {
+                    self.target_period = None;
+                    println!("rate: back to following the program's own pace");
+                } else if let Ok(hz) = arg.parse::<f64>() {
+                    let period = self.period();
+                    let want = Duration::from_secs_f64(1.0 / hz.clamp(1.0, 1000.0));
+                    let held = want.clamp(period, self.slowest.max(period));
+                    self.target_period = Some(held);
+                    self.rate_trim = 0;
+                    println!(
+                        "rate: {hz:.3} Hz asked for, {:.3} Hz given{}",
+                        1.0 / held.as_secs_f64(),
+                        if !self.vrr_on {
+                            " (the television is not following: no variable refresh rate)"
+                        } else if want > held {
+                            " (the mode itself is no faster than that)"
+                        } else if want < held {
+                            " (held at output.vrr_min_hz, where this set stops following)"
+                        } else {
+                            ""
+                        }
+                    );
+                    self.damaged();
+                } else {
+                    eprintln!("rate: not a number of hertz: {arg:?}");
                 }
             }
             "mode" => match Modeline::parse(arg) {
@@ -1389,11 +1447,14 @@ impl Crt {
         // and a client is given as much of it as its own drawing time
         // allows, which is what puts its picture on the glass at once.
         let room = if self.vrr_on {
-            // The client's own frame, not the mode's. Never shorter than the
-            // mode's, because the hardware cannot make a frame shorter than
-            // that, and never more than twice it, because past the range the
+            // The frame that was asked for, or failing that the one the
+            // client has settled into. Never shorter than the mode's,
+            // because the hardware cannot make a frame shorter than that,
+            // and never more than twice it, because past the range the
             // television was told about the hardware repeats a frame anyway.
-            self.client_period.clamp(self.period(), self.period() * 2)
+            self.target_period
+                .unwrap_or(self.client_period)
+                .clamp(self.period(), self.slowest.max(self.period()))
         } else {
             self.period().saturating_sub(self.margin())
         };
@@ -1403,7 +1464,16 @@ impl Crt {
         } else {
             self.client_slack
         };
-        let wait = if self.late_draw || self.vrr_on {
+        let wait = if self.target_period.is_some() && self.vrr_on {
+            // A rate was asked for, so the commit is aimed at it rather than
+            // held clear of a deadline: told its own drawing time before the
+            // frame should end, a program commits as that frame ends and the
+            // television is given exactly the length that was asked for.
+            // Early would make the frame short, and short is the one thing
+            // the hardware cannot do.
+            let aim = room.saturating_sub(self.client_cost).as_micros() as i64;
+            Duration::from_micros((aim + self.rate_trim).max(0) as u64)
+        } else if self.late_draw || self.vrr_on {
             callback_wait(room, self.client_cost, slack)
         } else {
             Duration::ZERO
@@ -1647,12 +1717,23 @@ impl Crt {
         // actually being given, whatever the mode says it is. With a
         // stretched vertical blanking they stop being equal, and that is the
         // only way to see from here that it worked.
-        if self.trace
-            && let Some(t) = self.last_vblank.replace(Instant::now())
-        {
-            eprintln!("trace: vblank interval {} us", t.elapsed().as_micros());
-        } else {
-            self.last_vblank = Some(Instant::now());
+        if let Some(t) = self.last_vblank.replace(Instant::now()) {
+            let interval = t.elapsed();
+            if self.trace {
+                eprintln!("trace: vblank interval {} us", interval.as_micros());
+            }
+            // Close the loop on the frame length that was asked for. Only on
+            // frames of a plausible length: the first one after an idle tube
+            // is seconds long and would throw the correction across its
+            // whole range.
+            if let Some(target) = self.target_period
+                && self.vrr_on
+                && interval < self.period() * 3
+            {
+                let err = interval.as_micros() as i64 - target.as_micros() as i64;
+                let limit = self.period().as_micros() as i64;
+                self.rate_trim = (self.rate_trim - err / 4).clamp(-limit, limit);
+            }
         }
         // The estimate comes down on its own, so a client that was slow once
         // is not given the whole frame for ever. A floor, because nothing is

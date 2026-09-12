@@ -195,6 +195,26 @@ pub struct Output {
     /// 240 progressive, which is soft but right.
     #[serde(default)]
     pub interlace: bool,
+    /// The slowest refresh this television keeps its picture at, in hertz.
+    ///
+    /// A variable refresh rate stretches the vertical blanking, and a set's
+    /// vertical deflection follows that only so far. Measured on a
+    /// BeoCenter 1: at 55 Hz, a frame nine per cent longer than the mode's,
+    /// the picture does not move; at 50 Hz, twenty per cent longer, it loses
+    /// an eighth of its height and keeps it for as long as the rate does.
+    /// The number is a calibration of the set in the room, like the picture
+    /// shift, and nothing asks the tube to go below it.
+    ///
+    /// The EDID has to declare a wider range than this, because amdgpu
+    /// refuses a variable refresh rate spanning less than ten hertz and caps
+    /// the top at the mode's own. What is declared is what turns the feature
+    /// on; this is what is used.
+    #[serde(default = "default_vrr_min_hz")]
+    pub vrr_min_hz: f64,
+}
+
+fn default_vrr_min_hz() -> f64 {
+    55.0
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -254,6 +274,7 @@ impl Default for Output {
             csync: "xor".into(),
             standard: "ntsc".into(),
             interlace: false,
+            vrr_min_hz: default_vrr_min_hz(),
         }
     }
 }
@@ -309,6 +330,11 @@ position = "auto"
 csync = "xor"
 # Standard used by `omacrt on` without an argument: "ntsc" or "pal".
 standard = "ntsc"
+# The slowest refresh this television holds its picture at. A variable
+# refresh rate stretches the vertical blanking, and a set follows that only
+# so far: on a BeoCenter 1 the picture does not move at 55 Hz and loses an
+# eighth of its height at 50. Find it by eye once, like the picture shift.
+vrr_min_hz = 55.0
 
 [modelines]
 # Hyprland modelines. Clocks must be whole MHz, Hyprland truncates them.

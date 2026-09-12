@@ -309,6 +309,39 @@ draws on the frame callback the way a program paces itself:
 The launcher itself, end to end through `omacrt on`, reports **2.0 ms** in
 `omacrt status`, and 4.5 ms with every core on the machine busy.
 
+**How far it can be stretched is a property of the set.** A television's
+vertical deflection follows a longer frame only so far, and past that the
+picture loses height and keeps it for as long as the rate does. Filmed and
+measured on the BeoCenter 1, with the refresh held at each step for eight
+seconds and the height taken against the picture's own width:
+
+| refresh | frame longer by | height | brightness |
+| --- | --- | --- | --- |
+| 59.92 Hz | +0.2% | reference | 170.4 ±1.7 |
+| 57.5 Hz | +4.4% | -0.4% | 169.4 ±1.4 |
+| 55 Hz | +9.2% | -0.6% | 169.6 ±3.2 |
+| 50 Hz | +20.1% | **-11.5%** | 162.8 ±4.3 |
+| back to 60.04 Hz | +0.0% | -0.1% | 170.7 ±0.8 |
+
+So the useful range on this set is 60.04 Hz down to about 55, and the whole
+NTSC family is four times inside it: 60.0988 for a NES, 59.92 for a Mega
+Drive, 59.6 to 61.7 for the arcade boards. PAL at 49.70 is outside, and does
+not need to be inside: a PAL frame is 288 active lines and wants its own
+modeline for that anyway.
+
+Where the set gives up is a calibration, like the picture shift, and
+`output.vrr_min_hz` in `crt.toml` is where it goes. Nothing asks the tube for
+a slower rate than that, however slowly a program runs. The EDID has to
+declare a wider range - amdgpu refuses one narrower than ten hertz and caps
+the top at the mode's own, so the declared minimum has to be 50 or below -
+but what is declared only turns the feature on. What is used is the
+calibration.
+
+The brightness in that table is the other half of the answer: steady to
+within two parts in a hundred at every step. A television whose frame length
+keeps changing *will* pulse, and this is what that looks like when it is not
+happening.
+
 A program that runs at a rate of its own is where this stops being simple.
 A television whose frame length is the one thing that varies will pulse if
 that length keeps changing, because the brightness of a phosphor depends on

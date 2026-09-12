@@ -52,6 +52,10 @@ const VERBS: Verbs = &[
                 "mode [ntsc|pal|film|480i|576i] [--lines N] [--shift-x X] [--shift-y Y]",
                 "standard, active lines, picture shift; no args = full frame",
             ),
+            (
+                "rate [HZ|off]",
+                "the refresh a program wants, followed without a mode change",
+            ),
             ("dac status|reset|csync and|xor|separate|watch", ""),
             (
                 "audio crt|desktop|all|apps",
@@ -3162,6 +3166,29 @@ fn main() {
             } else {
                 cmd_on(&cfg, None)
             }
+        }
+        // The refresh a program on the tube wants. Where a mode change moves
+        // the whole timing and blanks the television for a fifth of a second,
+        // this moves only the vertical blanking, which the set follows
+        // without losing lock and without going dark. It needs the variable
+        // refresh rate, which needs the FreeSync range in the EDID.
+        "rate" => {
+            let pos = positional(args);
+            let arg = pos.first().map(|s| s.as_str()).unwrap_or("off");
+            if arg != "off" && arg.parse::<f64>().is_err() {
+                die("rate needs a number of hertz, or off");
+            }
+            if display::send(&format!("rate {arg}")).is_err() {
+                die("the display process is not running");
+            }
+            term::sheet::step(
+                "rate",
+                if arg == "off" {
+                    "the program's own pace"
+                } else {
+                    arg
+                },
+            );
         }
         "mode" => {
             let pos = positional(args);

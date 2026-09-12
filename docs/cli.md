@@ -216,6 +216,25 @@ half a frame of that is the program's own input sampling, which is where
 RetroArch's run-ahead works; a real pad adds its own polling in front of it,
 one to eight milliseconds by its rate.
 
+## The refresh a program wants
+
+`omacrt rate 59.92` asks the television to run at that refresh. Where a mode
+change moves the whole timing and blanks the set for a fifth of a second,
+this moves only the vertical blanking, which the tube follows without losing
+lock and without going dark. `omacrt rate off` gives the tube back to
+whatever pace the program is keeping.
+
+It needs the variable refresh rate, which needs the FreeSync range in the
+EDID (`OMACRT_FREESYNC=48:62` when the lease is set up). Asked for five rates
+in turn and measured from the compositor's own vblank timestamps, the tube
+delivers 59.922, 57.499, 55.000 and 49.999 Hz, with six to sixty
+microseconds between one frame and the next.
+
+How slow it may go is `output.vrr_min_hz` in `crt.toml`, which is a
+calibration of the set in the room: past it a television stops following and
+the picture loses height. 55 Hz by default, measured on a BeoCenter 1. A rate
+below it is held there and `rate` says so.
+
 ## Library and BIOS
 
 `library scan DIR...` indexes every game under the given folders, whatever
