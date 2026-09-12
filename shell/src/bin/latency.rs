@@ -319,7 +319,15 @@ fn pump_until(
 /// Only upwards from the mode's own 262 lines: a variable refresh rate can
 /// stretch the vertical blanking but never shorten it, so the base mode has
 /// to be the fastest rate wanted.
-const STEPS: &[u32] = &[262, 264, 266, 270, 276, 286, 262];
+/// Where this set gives up, which the first film only bracketed. It held
+/// its height at 286 lines, 55.00 Hz, and had lost an eighth of it by 315,
+/// 49.94 Hz. Everything between those two is guesswork until it is filmed,
+/// and `output.vrr_min_hz` is set from it.
+///
+/// The last step repeats the first, so a take carries its own control: if
+/// the picture comes back to the height it started at, the camera did not
+/// move and the loss in the middle was the television.
+const STEPS: &[u32] = &[262, 286, 291, 297, 303, 308, 315, 262];
 
 /// Draw a frame at the exact edges of the picture and walk the vertical
 /// total, so a camera pointed at the television can be measured afterwards
