@@ -15,8 +15,40 @@
 # is a guess without them, and a guess is not something to fail a build on:
 # run this locally, where Quickshell at least is installed, to see the rest.
 #
-# Usage: scripts/qml-check.sh [files...]   (default: every QML in plugin/)
+# Usage: scripts/qml-check.sh [files...]      (default: every QML in plugin/)
+#        scripts/qml-check.sh --selftest      break a file on purpose and
+#                                             require this to notice
 set -euo pipefail
+
+# A check nobody has seen fail is the thing this replaced: the step it grew
+# out of returned success whatever qmllint said, for a week, and nothing in
+# the build could tell. So the suite breaks a real plugin file on purpose and
+# requires a non-zero exit, the way the architecture drawing's checker is
+# verified by breaking the drawing.
+if [ "${1:-}" = "--selftest" ]; then
+  here="$(cd "$(dirname "$0")" && pwd)"
+  work="$(mktemp -d)"
+  trap 'rm -rf "$work"' EXIT
+  subject="$(cd "$here/.." && pwd)/plugin/BarWidget.qml"
+  cp "$subject" "$work/Broken.qml"
+  printf '\n  property int wrong: {{{\n' >> "$work/Broken.qml"
+  if "$0" "$work/Broken.qml" >"$work/out" 2>&1; then
+    echo "selftest: a file that does not parse was passed" >&2
+    cat "$work/out" >&2
+    exit 1
+  fi
+  grep -q '\[syntax\]' "$work/out" || {
+    echo "selftest: it failed, but not for the syntax error" >&2
+    cat "$work/out" >&2
+    exit 1
+  }
+  if ! "$0" "$subject" >/dev/null 2>&1; then
+    echo "selftest: a file that does parse was refused" >&2
+    exit 1
+  fi
+  echo "selftest: a broken file fails, an intact one passes"
+  exit 0
+fi
 
 lint=""
 for candidate in /usr/lib/qt6/bin/qmllint qmllint6 qmllint; do

@@ -150,6 +150,9 @@ jobs:
           # install: the file does not parse. It says how many findings about
           # unresolvable types it set aside, and it fails rather than being
           # advisory, which is what `|| true` here used to make it.
+          # The check is verified before it is trusted: it breaks a real
+          # plugin file on purpose and requires itself to notice.
+          scripts/qml-check.sh --selftest
           scripts/qml-check.sh
 
   python:
