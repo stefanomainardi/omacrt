@@ -463,10 +463,17 @@ Panel {
             label: "Compositor"
             value: root.displayRunning
               ? (String(root.display.name || "flyback") + ", pid " + root.display.pid
-                 + " on " + String(root.display.socket || "")
-                 + (root.displayStale ? ", from a binary since replaced: off and on to pick it up" : ""))
+                 + " on " + String(root.display.socket || ""))
               : (String(root.display.name || "flyback") + " not running")
             valueColor: root.displayStale ? root.urgent : (root.displayRunning ? root.fg : root.muted)
+          }
+          // Its own row rather than a clause on the one above, which the
+          // panel is not wide enough to show the end of.
+          Row2 {
+            visible: root.displayStale
+            label: "Restart"
+            value: "a newer " + String(root.display.name || "flyback") + " is installed"
+            valueColor: root.urgent
           }
           // Commit to the start of scanout, which on a set with no panel and
           // no scaler is very nearly to the phosphor. Nothing else on the
@@ -486,14 +493,22 @@ Panel {
             visible: root.displayRunning && !!root.latency && root.latency.p95 !== undefined
             label: "Worst"
             value: root.latency && root.latency.p95 !== undefined
-              ? ("95th " + root.ms(root.latency.p95) + " ms, worst " + root.ms(root.latency.worst)
-                 + " ms, over " + Number(root.latency.samples) + " frames"
-                 + (root.framesVary
-                    ? ("; the tube was given " + root.ms(root.latency.frame_min) + " to "
-                       + root.ms(root.latency.frame_max) + " ms frames")
-                    : ""))
+              ? ("95th " + root.ms(root.latency.p95) + ", worst " + root.ms(root.latency.worst)
+                 + " ms, " + Number(root.latency.samples) + " frames")
               : ""
-            valueColor: root.framesVary ? root.urgent : root.muted
+            valueColor: root.muted
+          }
+          // The two ends of the frames the tube was given, which is what a
+          // set reacts to under a variable refresh rate and nothing at all
+          // at a fixed one, so the row appears only when they are apart.
+          Row2 {
+            visible: root.displayRunning && root.framesVary
+            label: "Frames"
+            value: root.latency
+              ? ("given " + root.ms(root.latency.frame_min) + " to "
+                 + root.ms(root.latency.frame_max) + " ms")
+              : ""
+            valueColor: root.urgent
           }
           Row2 {
             label: "Launcher"
