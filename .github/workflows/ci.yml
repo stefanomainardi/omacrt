@@ -145,14 +145,12 @@ jobs:
             sleep 15
           done
           sudo apt-get install -y --no-install-recommends qt6-declarative-dev-tools
-          # Advisory, and it says so rather than pretending: the QML here
-          # is written against Quickshell and Omarchy's own modules, which
-          # cannot be installed on a runner, so every unresolved type
-          # produces a warning and qmllint exits non-zero for reasons that
-          # have nothing to do with this code. What it still catches, and
-          # what this step is for, is a syntax error, which shows up in the
-          # output above whatever else it says.
-          qmllint plugin/*.qml plugin/library/*.qml || true
+          # The script keeps the finding that means the same thing with or
+          # without Quickshell and Omarchy's modules, which a runner cannot
+          # install: the file does not parse. It says how many findings about
+          # unresolvable types it set aside, and it fails rather than being
+          # advisory, which is what `|| true` here used to make it.
+          scripts/qml-check.sh
 
   python:
     name: python scripts compile
