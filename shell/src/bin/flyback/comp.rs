@@ -46,9 +46,12 @@
 //! wake-up, a draw, a flip and a hardware latch that no constant would get
 //! right. `render_cost` is what this compositor takes to draw and queue, a
 //! decaying maximum so a heavy scene moves the deadline earlier by itself.
-//! `client_cost` is what a client takes between being told and committing.
-//! When a rate has been asked for by name, a third one closes the loop:
-//! `rate_trim` is measured error, a quarter of it corrected each frame.
+//! `client_cost` is what a client takes between being told and committing,
+//! kept per window and read from the one on top: the callbacks all go out
+//! together, so a single estimate would be the slowest client on the tube,
+//! and with the launcher mapped under a game that is the launcher. When a
+//! rate has been asked for by name, a third one closes the loop: `rate_trim`
+//! is measured error, a quarter of it corrected each frame.
 //!
 //! A client cannot choose its own rate, which is worth knowing before reading
 //! the rest: paced by frame callbacks it runs at the cadence it is given, and
@@ -204,7 +207,14 @@ pub struct Crt {
     /// them commits, and how long that took: a decaying maximum, the same
     /// shape as `render_cost` and for the same reason.
     told_at: Option<Instant>,
-    client_cost: Duration,
+    /// The window on top has committed since the last flip, and the last
+    /// time it did. While it is answering, it owns the flip cadence: see
+    /// `damaged_by`.
+    dirty_top: bool,
+    last_top_commit: Option<Instant>,
+    /// Which telling `told_at` belongs to, so each window counts a telling
+    /// once. See `ClientCost`.
+    telling: u64,
     /// Commits that arrived too late for the frame they were meant for.
     late: u32,
     /// The commit this frame is showing, from the moment it was queued until
@@ -300,6 +310,56 @@ struct Recorder {
     thread: Option<std::thread::JoinHandle<()>>,
     frames: u64,
     path: String,
+}
+
+/// What one client takes between being told it may draw and committing.
+///
+/// Kept per window rather than once for the compositor, and it matters which.
+/// The frame callbacks all go out together, so a single estimate is really
+/// the slowest client on the tube; with the launcher still mapped underneath
+/// a game, that is the launcher, and it is not the one being watched. A
+/// window nobody can see answering late costs nothing. The window on top
+/// answering late costs a frame. So the pacing follows the top window, and
+/// the rest keep up as they can.
+///
+/// Measured: with the launcher mapped under it, a client that draws in a
+/// millisecond saw 18.7 ms from commit to scanout, and 3.6 ms with the
+/// launcher gone. Both numbers are the same compositor.
+struct ClientCost {
+    /// A decaying maximum, the same shape as `render_cost`: the deadline has
+    /// to clear the worst of the last second rather than the average.
+    cost: std::cell::Cell<Duration>,
+    /// The telling this window has already been counted for. A client that
+    /// commits twice after one callback is drawing more than once in a
+    /// frame, not drawing slowly.
+    counted: std::cell::Cell<u64>,
+    /// Whether this window has ever been measured. Until it has, the first
+    /// reading replaces the assumption rather than losing to it: a decaying
+    /// maximum starting at a whole frame takes about fifty frames to come
+    /// down to a millisecond, and for that half second a client that draws
+    /// in a millisecond is told at the vblank and shown a frame late. It is
+    /// the only half second of a program's life that anybody watches.
+    measured: std::cell::Cell<bool>,
+}
+
+impl ClientCost {
+    /// Assume the worst until a client has shown otherwise: a whole frame to
+    /// draw in, which is where every other compositor leaves it.
+    fn new() -> Self {
+        ClientCost {
+            cost: std::cell::Cell::new(Duration::from_millis(16)),
+            counted: std::cell::Cell::new(0),
+            measured: std::cell::Cell::new(false),
+        }
+    }
+}
+
+/// This window's estimate, made on first sight.
+fn cost_of(window: &Window) -> &ClientCost {
+    let data = window.user_data();
+    data.insert_if_missing(ClientCost::new);
+    // Just inserted if it was missing, so it is there.
+    data.get::<ClientCost>().unwrap()
 }
 
 /// Page flips the connector may refuse in a row before the display process
@@ -787,9 +847,9 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         last_vblank: None,
         callback_armed: false,
         told_at: None,
-        // Assume the worst until a client has shown otherwise: a whole frame
-        // to draw in, which is where every other compositor leaves it.
-        client_cost: Duration::from_millis(16),
+        dirty_top: false,
+        last_top_commit: None,
+        telling: 0,
         hfreq_band: cfg.output.hfreq_khz,
         slowest: Duration::from_secs_f64(1.0 / cfg.output.vrr_min_hz.clamp(20.0, 200.0)),
         target_period: None,
@@ -922,6 +982,60 @@ fn margin_for(period: Duration, cost: Duration, forced: Option<Duration>) -> Dur
 /// and the one every other compositor gives.
 fn callback_wait(room: Duration, client: Duration, slack: Duration) -> Duration {
     room.saturating_sub(client * 2 + slack)
+}
+
+#[cfg(test)]
+mod cost {
+    use super::ClientCost;
+    use std::time::Duration;
+
+    const FRAME: Duration = Duration::from_micros(16_655);
+
+    /// A window starts out assumed to want the whole frame, so that a client
+    /// nobody has measured yet is never squeezed.
+    #[test]
+    fn a_window_nobody_has_measured_is_given_the_frame() {
+        assert_eq!(ClientCost::new().cost.get(), Duration::from_millis(16));
+    }
+
+    /// The first reading replaces that assumption instead of losing to it.
+    /// A decaying maximum starting at a frame takes about fifty frames to
+    /// come down to a millisecond, and for that half second a client that
+    /// draws in a millisecond is told at the vblank and shown a frame late.
+    /// Measured before this: 34 of the first frames of every run two frames
+    /// late, and none after.
+    #[test]
+    fn the_first_reading_replaces_the_assumption() {
+        let c = ClientCost::new();
+        let ms = Duration::from_millis(1);
+        if c.measured.replace(true) {
+            c.cost.set(c.cost.get().max(ms));
+        } else {
+            c.cost.set(ms);
+        }
+        assert_eq!(c.cost.get(), ms);
+    }
+
+    /// After that it is a maximum again: one slow frame moves the deadline
+    /// for the frames that follow it, which is the whole point of holding a
+    /// worst case rather than an average.
+    #[test]
+    fn after_that_it_holds_the_worst() {
+        let c = ClientCost::new();
+        c.measured.set(true);
+        c.cost.set(Duration::from_millis(1));
+        for reading in [Duration::from_micros(900), Duration::from_millis(4)] {
+            if c.measured.replace(true) {
+                c.cost.set(c.cost.get().max(reading));
+            }
+        }
+        assert_eq!(c.cost.get(), Duration::from_millis(4));
+        // And it comes down on its own, a thirty-second of itself a frame.
+        c.cost.set(c.cost.get() * 31 / 32);
+        assert!(c.cost.get() < Duration::from_millis(4));
+        assert!(c.cost.get() > Duration::from_millis(3));
+        let _ = FRAME;
+    }
 }
 
 #[cfg(test)]
@@ -1481,7 +1595,30 @@ impl Crt {
     /// making, and what keeps it from holding one in the air when nothing
     /// has changed.
     fn damaged(&mut self) {
+        self.damaged_by(true);
+    }
+
+    /// The same, for a commit that can say whether it came from the window
+    /// on top.
+    ///
+    /// Under a variable refresh rate a commit draws at once, which is the
+    /// whole point of it - but only for the window being looked at. A window
+    /// underneath committing on its own pace would otherwise put a flip in
+    /// the air between the top window's callback and its commit, and the
+    /// fresh picture then waits behind a frame nobody can see. Measured with
+    /// the launcher mapped under a client that draws in a millisecond: 20.5
+    /// ms from commit to scanout, one frame in six missing its vblank
+    /// altogether. The hidden window is not ignored - the frame is marked
+    /// dirty and the pacer draws it within the frame - it simply does not
+    /// get to decide when the flip goes out.
+    fn damaged_by(&mut self, top: bool) {
         self.dirty = true;
+        if top {
+            self.dirty_top = true;
+            self.last_top_commit = Some(Instant::now());
+        } else if self.vrr_on {
+            return;
+        }
         // With a variable refresh rate the flip is what starts the next
         // scanout, so there is nothing to wait for: draw now and the picture
         // is on the glass at once. Waiting for a deadline would be the one
@@ -1490,6 +1627,14 @@ impl Crt {
             return;
         }
         self.render();
+    }
+
+    /// Is this surface's window the one on top, the one being looked at?
+    fn is_top(&self, surface: &WlSurface) -> bool {
+        let Some(top) = self.space.elements().next_back() else {
+            return true;
+        };
+        self.window_for(surface).as_ref() == Some(top)
     }
 
     /// Put the measured latency where the rest of the program can read it:
@@ -1607,6 +1752,19 @@ impl Crt {
             });
         }
         self.told_at = Some(Instant::now());
+        self.telling = self.telling.wrapping_add(1);
+    }
+
+    /// The drawing time the callbacks are paced by: the top window's, which
+    /// is the one being looked at. A window with no reading yet is assumed
+    /// to want a whole frame, and so is a tube with nothing mapped on it.
+    fn client_cost(&self) -> Duration {
+        self.space
+            .elements()
+            .next_back()
+            .map(|w| cost_of(w).cost.get())
+            .unwrap_or(Duration::from_millis(16))
+            .min(self.period())
     }
 
     /// Tell the clients they may draw at the moment that leaves their
@@ -1661,7 +1819,7 @@ impl Crt {
         } else {
             self.period().saturating_sub(self.margin())
         };
-        self.client_cost = self.client_cost.min(self.period());
+        let client_cost = self.client_cost();
         let slack = if self.vrr_on {
             self.client_slack / 2
         } else {
@@ -1674,10 +1832,10 @@ impl Crt {
             // television is given exactly the length that was asked for.
             // Early would make the frame short, and short is the one thing
             // the hardware cannot do.
-            let aim = room.saturating_sub(self.client_cost).as_micros() as i64;
+            let aim = room.saturating_sub(client_cost).as_micros() as i64;
             Duration::from_micros((aim + self.rate_trim).max(0) as u64)
         } else if self.late_draw || self.vrr_on {
-            callback_wait(room, self.client_cost, slack)
+            callback_wait(room, client_cost, slack)
         } else {
             Duration::ZERO
         };
@@ -1727,12 +1885,54 @@ impl Crt {
             self.arm_pacer();
             return;
         }
+        // Only a window underneath has changed, and the window on top is
+        // still answering its callbacks. Flipping for the one nobody can see
+        // would take the slot the top window's next commit needs: its
+        // picture would then wait for this flip to land and be scanned out a
+        // frame late. Measured, that happened to one frame in eight and cost
+        // it two frames. So leave the damage marked and let it go out with
+        // the top window's next frame - which is at most one frame away,
+        // because that is what "still answering" means. When the top window
+        // falls quiet for two frames it stops owning the cadence and
+        // everything else is drawn again.
+        if self.vrr_on
+            && !self.dirty_top
+            && self.recorder.is_none()
+            && self
+                .last_top_commit
+                .is_some_and(|t| t.elapsed() < self.period() * 2)
+        {
+            self.arm_pacer();
+            return;
+        }
         if self.frame_queued {
             // A flip is already in the air. Whatever was just committed
             // cannot be drawn until it lands, which costs the client a whole
             // frame; how often that happens is the one number that says
             // whether the compositor is in the way.
             self.commits_blocked += 1;
+            if self.trace {
+                let top = self
+                    .space
+                    .elements()
+                    .next_back()
+                    .and_then(|w| w.toplevel().cloned())
+                    .and_then(|t| {
+                        with_states(t.wl_surface(), |s| {
+                            s.data_map
+                                .get::<XdgToplevelSurfaceData>()
+                                .and_then(|d| d.lock().unwrap().app_id.clone())
+                        })
+                    })
+                    .unwrap_or_default();
+                eprintln!(
+                    "trace: blocked, {} us since the vblank, {} us since the flip was queued, top {top}",
+                    self.last_vblank
+                        .map(|t| t.elapsed().as_micros())
+                        .unwrap_or(0),
+                    self.queued_at.map(|t| t.elapsed().as_micros()).unwrap_or(0),
+                );
+            }
             return;
         }
         let Some(out) = self.drm_output.as_mut() else {
@@ -1844,6 +2044,7 @@ impl Crt {
                 } else {
                     self.flips_failed = 0;
                     self.dirty = false;
+                    self.dirty_top = false;
                     // What this frame cost, kept as a decaying maximum: the
                     // deadline has to clear the worst of the last second,
                     // not the average, or every heavy frame arrives late.
@@ -1859,7 +2060,7 @@ impl Crt {
                             .unwrap_or(0);
                         eprintln!(
                             "trace: commit to flip queued {since} us, client {} us, period {} us, render {} us",
-                            self.client_cost.as_micros(),
+                            self.client_cost().as_micros(),
                             self.client_period.as_micros(),
                             self.render_cost.as_micros()
                         );
@@ -1944,10 +2145,14 @@ impl Crt {
                 self.rate_trim = trim_step(self.rate_trim, interval, target, self.period());
             }
         }
-        // The estimate comes down on its own, so a client that was slow once
-        // is not given the whole frame for ever. A floor, because nothing is
-        // woken and drawn in less than that.
-        self.client_cost = (self.client_cost * 31 / 32).max(Duration::from_micros(300));
+        // The estimates come down on their own, so a client that was slow
+        // once is not given the whole frame for ever. A floor, because
+        // nothing is woken and drawn in less than that.
+        for w in self.space.elements() {
+            let c = cost_of(w);
+            c.cost
+                .set((c.cost.get() * 31 / 32).max(Duration::from_micros(300)));
+        }
         if let Some(t) = self.showing.take() {
             self.latencies.push_back(t.elapsed());
             if self.latencies.len() > 300 {
@@ -2011,7 +2216,7 @@ impl Crt {
                              too late for their own frame (a client is given {} us to draw in)",
                             std::mem::take(&mut self.commits_blocked),
                             std::mem::take(&mut self.late),
-                            self.client_cost.as_micros()
+                            self.client_cost().as_micros()
                         )
                     } else {
                         String::new()
@@ -2032,14 +2237,23 @@ impl Crt {
             // client is about to commit would find a flip already in the air
             // and wait a whole frame for the next one.
             self.arm_callbacks();
-            // Anything committed while the last flip was in flight is about
-            // to be superseded by the frame the client is drawing now, so
-            // flipping it here would only put a stale picture in the air and
-            // make the fresh one wait for the frame after. Drawn only when
-            // the telling has already gone out and nothing newer is coming.
-            if !self.callback_armed {
-                self.render();
-            }
+            // And nothing else. Anything committed while the last flip was
+            // in flight is about to be superseded by the frame the client is
+            // drawing now, so flipping it here would only put a stale
+            // picture in the air and make the fresh one wait for the frame
+            // after.
+            //
+            // This used to draw when no telling was pending, on the reasoning
+            // that nothing newer was coming. It is not so: a telling that has
+            // just gone out - which is what a client asking for the whole
+            // frame produces - means a commit is on its way in a millisecond
+            // or two, and the flip queued here takes the slot it needed. That
+            // commit is then blocked for the whole frame, its own estimate
+            // rises because it looks slow, the next telling goes out at the
+            // vblank too, and the thing latches: measured, one frame in five
+            // arriving two frames late, for ever. The pacer draws whatever is
+            // still dirty a frame later, which is where damage that no client
+            // is about to supersede belongs.
             if !self.frame_queued {
                 self.arm_pacer();
             }
@@ -2107,18 +2321,30 @@ impl CompositorHandler for Crt {
         }
         let at = Instant::now();
         // How long this client took between being told it may draw and
-        // committing. Only the first commit after the telling counts: the
-        // rest are a client drawing more than once in a frame.
-        if let Some(told) = self.told_at.take() {
-            let cost = at.saturating_duration_since(told);
-            // A client that answers a whole frame later was not waiting on
-            // this telling: the callback went out when it had not asked for
-            // one, and the wait that follows is the next frame's, not its
-            // drawing time. Taken as a reading it pegs the estimate at a
-            // frame for ever, and a client given no room draws at the vblank
-            // again, which is the thing this is trying to avoid.
-            if cost * 2 < self.period() {
-                self.client_cost = self.client_cost.max(cost);
+        // committing, charged to the window that committed. Only the first
+        // commit after a telling counts: the rest are a client drawing more
+        // than once in a frame.
+        if let Some(told) = self.told_at
+            && let Some(w) = self.window_for(surface)
+        {
+            let c = cost_of(&w);
+            if c.counted.get() != self.telling {
+                c.counted.set(self.telling);
+                let cost = at.saturating_duration_since(told);
+                // A client that answers a whole frame later was not waiting
+                // on this telling: the callback went out when it had not
+                // asked for one, and the wait that follows is the next
+                // frame's, not its drawing time. Taken as a reading it pegs
+                // the estimate at a frame for ever, and a client given no
+                // room draws at the vblank again, which is the thing this is
+                // trying to avoid.
+                if cost * 2 < self.period() {
+                    if c.measured.replace(true) {
+                        c.cost.set(c.cost.get().max(cost));
+                    } else {
+                        c.cost.set(cost);
+                    }
+                }
             }
         }
         // Too late for the frame it was meant for: the deadline has gone and
@@ -2134,11 +2360,23 @@ impl CompositorHandler for Crt {
         // variable rate is there to avoid.
         if !self.vrr_on && !self.deadline_armed && self.frame_queued {
             self.late += 1;
-            self.client_cost = (self.client_cost * 5 / 4).min(self.period());
+            if let Some(w) = self.window_for(surface) {
+                let c = cost_of(&w);
+                c.cost.set((c.cost.get() * 5 / 4).min(self.period()));
+            }
         }
+        // The pace the tube is asked to keep, and the commit the next frame
+        // will be showing: both are the top window's alone. With a second
+        // client mapped underneath, the interval between any two commits is
+        // not any client's own period - measured with the launcher under a
+        // client running at 60 Hz, it read 15.6 ms for a 16.65 ms frame, and
+        // a frame of room that is a millisecond short is a millisecond of
+        // the client's picture thrown away.
+        //
         // The median of the last sixteen, so one long gap - a game loading,
         // a menu opening - does not move the estimate.
-        if let Some(prev) = self.last_commit.replace(at) {
+        let top = self.is_top(surface);
+        if top && let Some(prev) = self.last_commit.replace(at) {
             let d = at.saturating_duration_since(prev);
             if d > Duration::from_millis(4) && d < Duration::from_millis(100) {
                 self.periods.push_back(d);
@@ -2150,7 +2388,7 @@ impl CompositorHandler for Crt {
                 self.client_period = v[v.len() / 2];
             }
         }
-        self.damaged();
+        self.damaged_by(top);
     }
 }
 
