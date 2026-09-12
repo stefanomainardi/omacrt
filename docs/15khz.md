@@ -403,6 +403,33 @@ Drive, 59.6 to 61.7 for the arcade boards. PAL at 49.70 is outside, and does
 not need to be inside: a PAL frame is 288 active lines and wants its own
 modeline for that anyway.
 
+**And it is a cliff rather than a slope.** The four-step table above brackets
+where the set gives up; a later film walked the gap between 55 and 50 at
+roughly one hertz a step, and found the loss arrives all at once:
+
+| refresh | vtotal | picture height |
+| --- | --- | --- |
+| 60.041 Hz | 262 | reference |
+| 55.003 Hz | 286 | -0.2% |
+| 54.058 Hz | 291 | **-15.0%** |
+| 52.966 Hz | 297 | -14.6% |
+| 51.917 Hz | 303 | -15.0% |
+| 51.074 Hz | 308 | -14.7% |
+| 49.939 Hz | 315 | -14.3% |
+
+The loss does not deepen as the frame lengthens: it is a regulation dropping
+out, not an amplitude following a period. So `output.vrr_min_hz` at 55 is
+exactly right and there is nothing to be gained by lowering it.
+
+The step that returns to 60.041 is the one worth knowing about. It reads 3.7%
+short after a full six seconds and is still climbing, so the picture does not
+snap back when the rate does. A dip below the floor leaves the set small for
+seconds after it has ended, which is why the floor is a hard clamp and not a
+warning. Every reading is the distance between two rules three quarters of
+the picture apart, over their own width, taken from the last two seconds of
+each step; the numbers are in
+[`data/rate-walk-2026-09-12.txt`](data/rate-walk-2026-09-12.txt).
+
 Where the set gives up is a calibration, like the picture shift, and
 `output.vrr_min_hz` in `crt.toml` is where it goes. Nothing asks the tube for
 a slower rate than that, however slowly a program runs. The EDID has to
