@@ -96,9 +96,13 @@ SHEET = """<!doctype html>
 """
 
 def sheet(path, eyebrow, name, why, svg, foot):
-    Path(path).write_text(SHEET.format(eyebrow=eyebrow, name=name, why=why,
+    # Beside this file, not in whatever directory the script was run from.
+    # Running it from the repository root once left two artboards in the root
+    # and they were committed before anybody noticed.
+    path = Path(__file__).parent / path
+    path.write_text(SHEET.format(eyebrow=eyebrow, name=name, why=why,
                                        svg=svg, foot=foot))
-    print("wrote", path)
+    print("wrote", path.name)
 
 # ---------------------------------------------------------------- diagram 1
 
