@@ -117,51 +117,65 @@ def label(x, y, s, fill=DIM):
 # is a true resize and nothing collides, but it takes the smallest type from
 # 9.5 px to 8.3, and that would be the smallest type on the page. So the
 # geometry is narrower and the type is unchanged, which is a re-layout rather
-# than a scale. Every column below is sized from the longest string in it:
-# the check at the foot of this file fails the build if one stops fitting.
+# than a scale.
+#
+# Every column is sized from the longest string in it and every box from the
+# number of lines in it, and `fits` below fails the build rather than emitting
+# a drawing that is wrong in either direction. Both checks exist because both
+# were got wrong: first the width, which put an arrow label under a panel's
+# border, and then the height, when rewrapping a line to fix the width added a
+# line that three boxes had never been told about and their last rows ended
+# below their own bottom rule.
 W = 976
-COL_L = (0, 190)          # the desktop and the clients
-GAP_L = 106               # holds "wp_drm_lease_v1" and "frame callbacks"
-COL_M = (296, 316)        # the compositor
-GAP_R = 94                # holds "atomic commit"
-COL_R = (706, 264)        # kernel, converter, tube
+COL_L = (0, 178)          # the desktop and the clients
+GAP_L = 122               # "wp_drm_lease_v1" is 90 wide: 16 clear each side
+COL_M = (300, 316)        # the compositor
+GAP_R = 110               # "atomic commit" is 78 wide: 16 clear each side
+COL_R = (726, 240)        # kernel, converter, tube
 BOX_M = (COL_M[0] + 18, COL_M[1] - 36)   # the inner boxes
 
+LEAD = 14                 # between two lines of body text
+FIRST = 35                # from a box's top to its first baseline
+TAIL = 12                 # below the last baseline: descenders, then padding
+
+
+def box_height(lines):
+    """What a box has to be to hold its own text."""
+    return FIRST + (len(lines) - 1) * LEAD + TAIL
+
+
 ROWS = [
-    (74, 52, "lease.rs", ["takes the lease: a DRM fd that is",
-                          "master for one connector and its",
-                          "CRTC, and nothing else"]),
-    (140, 68, "the Wayland side",
-     ["wl_compositor  wl_subcompositor",
-      "xdg_shell  wl_shm  wp_viewporter",
-      "zwp_linux_dmabuf  wp_presentation",
-      "wl_seat, keyboard only: no libinput"]),
-    (226, 90, "the scheduler",
-     ["when to tell the clients, when to",
-      "draw, when to flip. fixed rate: draw",
-      "at the deadline less render_cost.",
-      "variable rate: no deadline, draw the",
+    ("lease.rs", ["takes the lease: a DRM fd that is master for",
+                  "one connector and its CRTC, and nothing else"]),
+    ("the Wayland side",
+     ["wl_compositor  wl_subcompositor  xdg_shell",
+      "wl_shm  zwp_linux_dmabuf  wp_viewporter",
+      "wp_presentation  wl_seat: keyboard only"]),
+    ("the scheduler",
+     ["when to tell the clients, when to draw, when",
+      "to flip. fixed: draw at the deadline less",
+      "render_cost. variable: no deadline, draw the",
       "moment a client commits"]),
-    (334, 58, "the DRM output",
-     ["atomic commit, and no timing",
-      "reaches it without Modeline::fault"]),
-    (406, 58, "the control pipe",
-     ["0600 in the user's own state folder",
-      "top key mode vrr rate shot record"]),
+    ("the DRM output", ["atomic commit, and no timing reaches it",
+                        "without passing Modeline::fault"]),
+    ("the control pipe", ["0600 in the user's own state folder",
+                          "top key mode vrr rate shot record"]),
 ]
+ROW_GAP = 8
+ROW_TOP = 74
 
 RIGHT = [
-    (20, 120, "amdgpu / DRM", BLUE,
+    (20, "amdgpu / DRM", BLUE,
      ["atomic modeset on the leased fd",
-      "page flip, and a vblank timestamp",
-      "on CLOCK_MONOTONIC",
+      "page flip, and a vblank",
+      "timestamp on CLOCK_MONOTONIC",
       "adaptive sync on the CRTC"]),
-    (200, 95, "RGB-Pi 2", CYAN,
+    (200, "RGB-Pi 2", CYAN,
      ["HDMI in, RGB SCART out",
-      "composite sync selected over I2C"]),
-    (355, 115, "CRT television", PAPER,
+      "composite sync over I2C"]),
+    (355, "CRT television", PAPER,
      ["15.731 kHz, 240 lines, 60.04 Hz",
-      "no panel, no scaler, no frame store:",
+      "no panel, no scaler, no buffer:",
       "the photon leaves when it arrives"]),
 ]
 
@@ -170,15 +184,24 @@ CLIENTS = [("omacrt-shell", "the launcher, 320x240"),
            ("mpv", "films and YouTube")]
 
 
-def fits(lines, size, room, where):
+def fits(lines, size, room, where, height=None):
     """Refuse to emit a drawing whose text does not fit the box it is in.
 
-    0.6 em per glyph is JetBrains Mono's advance, so this is exact for the
-    monospaced faces these sheets use rather than an estimate."""
+    Width: 0.6 em per glyph is JetBrains Mono's advance, so this is exact for
+    the monospaced faces these sheets use rather than an estimate.
+
+    Height, when a box height is given: the lines have to end above the box's
+    own bottom rule. Counting glyphs per line and not lines per box is how
+    three boxes came to have their last row sitting under their own border.
+    """
     for ln in lines:
         w = len(ln) * size * 0.6
         if w > room:
             raise SystemExit(f"{where}: {w:.0f} units of text in {room} units of box: {ln!r}")
+    if height is not None:
+        need = box_height(lines)
+        if need > height:
+            raise SystemExit(f"{where}: {len(lines)} lines need {need} units, the box is {height}")
 
 
 def architecture():
@@ -206,17 +229,23 @@ def architecture():
     s.append(text(mx + 20, 32, "Flyback", size=21, fill=GREEN, weight=800))
     s.append(text(mx + 20, 51, "one process, one thread, one calloop loop", size=10, fill=DIM))
     bx, bw = BOX_M
-    for y, h, title, lines in ROWS:
-        fits(lines, 9.5, bw - 24, title)
+    y = ROW_TOP
+    for title, lines in ROWS:
+        h = box_height(lines)
+        fits(lines, 9.5, bw - 24, title, height=h)
         s.append(box(bx, y, bw, h, stroke=LINE, fill=BG))
         s.append(text(bx + 12, y + 19, title, size=11.5, fill=PAPER, weight=700))
         for i, ln in enumerate(lines):
-            s.append(text(bx + 12, y + 35 + i * 14, ln, size=9.5, fill=DIM))
+            s.append(text(bx + 12, y + FIRST + i * LEAD, ln, size=9.5, fill=DIM))
+        y += h + ROW_GAP
+    if y > 480:
+        raise SystemExit(f"the compositor's rows end at {y}, past its panel at 480")
 
     rx, rw = COL_R
-    for y, h, title, accent, lines in RIGHT:
-        fits(lines, 10.5, rw - 28, title)
-        s.append(titled(rx, y, rw, h, title, lines, accent=accent))
+    for ry, title, accent, lines in RIGHT:
+        h = box_height(lines) + 8
+        fits(lines, 10.5, rw - 28, title, height=h)
+        s.append(titled(rx, ry, rw, h, title, lines, accent=accent))
 
     # connections. The labels live in the gaps between the columns, so the
     # gaps are sized from the labels rather than the other way round: this is
