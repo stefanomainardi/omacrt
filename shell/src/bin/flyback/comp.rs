@@ -15,6 +15,49 @@
 //! callbacks, so a program under the pause overlay keeps running and keeps
 //! answering. Clients reach us through `WAYLAND_DISPLAY=wayland-crt`.
 //!
+//! # Frame scheduling
+//!
+//! Three questions, once a frame: when to tell the clients they may draw,
+//! when to draw, and when to put the result in the air. What the television
+//! will accept decides the answers, and there are two regimes.
+//!
+//! **At a fixed refresh** a flip has to be queued before the vblank or the
+//! picture waits a whole frame, so there is a deadline and everything is
+//! arranged around not missing it. The compositor draws at the last safe
+//! moment - one frame less a margin taken from what recent frames cost - and
+//! tells the clients early enough that their commit arrives before that.
+//! Drawing at the start of the frame instead, which is what it used to do,
+//! throws away almost all of a frame: the flip goes out before the client has
+//! committed, and the client's picture then waits for the one after.
+//!
+//! **At a variable refresh** there is no deadline at all. A flip that arrives
+//! after the frame's minimum length simply makes that frame longer, and
+//! nothing is dropped. So nothing is held back: the compositor draws the
+//! moment a client commits, and tells the clients as late as it dares.
+//!
+//! The one thing it must not do with a variable rate is draw at the vblank.
+//! Anything committed while the last flip was in flight is about to be
+//! superseded by the frame the client is drawing now, and flipping it puts a
+//! stale picture in the air that the fresh one then waits behind. That single
+//! mistake cost a frame and a half.
+//!
+//! Two estimates feed all of this, both measured rather than assumed, because
+//! between telling a client to draw and seeing its picture scanned out sit a
+//! wake-up, a draw, a flip and a hardware latch that no constant would get
+//! right. `render_cost` is what this compositor takes to draw and queue, a
+//! decaying maximum so a heavy scene moves the deadline earlier by itself.
+//! `client_cost` is what a client takes between being told and committing.
+//! When a rate has been asked for by name, a third one closes the loop:
+//! `rate_trim` is measured error, a quarter of it corrected each frame.
+//!
+//! A client cannot choose its own rate, which is worth knowing before reading
+//! the rest: paced by frame callbacks it runs at the cadence it is given, and
+//! the cadence is taken from the cadence it runs at. Whatever it settles on
+//! is where it stays. That is why the rate is asked for - `rate 59.92` on the
+//! control pipe - rather than discovered.
+//!
+//! # Notes
+//!
 //! The `lock().unwrap()` on smithay's own surface data, which appears a few
 //! times below, panics only on a poisoned mutex: another thread panicked
 //! while holding it. There is no compositor left to run at that point.
@@ -826,6 +869,36 @@ fn monotonic() -> Duration {
     Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
 }
 
+/// The frame length to aim at under a variable refresh rate.
+///
+/// The one asked for by name, or failing that the one the client has settled
+/// into. Never shorter than the mode's own frame, because no hardware makes
+/// a frame shorter than its timing; never longer than `slowest`, which is
+/// where this television stops following a stretched blanking and the
+/// picture starts losing height.
+fn frame_room(
+    target: Option<Duration>,
+    client: Duration,
+    shortest: Duration,
+    slowest: Duration,
+) -> Duration {
+    target
+        .unwrap_or(client)
+        .clamp(shortest, slowest.max(shortest))
+}
+
+/// The correction to carry into the next frame, from the error in the last.
+///
+/// A quarter of the error, which settles in a handful of frames without
+/// ringing, and never further out than one whole frame in either direction:
+/// past that something else is wrong and winding the correction up would
+/// only make it worse.
+fn trim_step(trim: i64, interval: Duration, target: Duration, period: Duration) -> i64 {
+    let err = interval.as_micros() as i64 - target.as_micros() as i64;
+    let limit = period.as_micros() as i64;
+    (trim - err / 4).clamp(-limit, limit)
+}
+
 /// How long before the vblank the drawing has to start, given a frame period
 /// and what recent frames cost to draw.
 ///
@@ -853,6 +926,80 @@ mod timing {
     use std::time::Duration;
 
     const FRAME: Duration = Duration::from_micros(16_655);
+
+    #[test]
+    fn a_rate_asked_for_wins_over_the_one_the_client_settled_into() {
+        let asked = Duration::from_micros(18_000);
+        let settled = Duration::from_micros(16_700);
+        assert_eq!(
+            super::frame_room(Some(asked), settled, FRAME, Duration::from_micros(20_000)),
+            asked
+        );
+        assert_eq!(
+            super::frame_room(None, settled, FRAME, Duration::from_micros(20_000)),
+            settled
+        );
+    }
+
+    #[test]
+    fn nothing_asks_the_tube_for_a_frame_it_cannot_make() {
+        // Shorter than the mode: the hardware has no such frame.
+        assert_eq!(
+            super::frame_room(
+                Some(Duration::from_micros(10_000)),
+                FRAME,
+                FRAME,
+                Duration::from_micros(20_000)
+            ),
+            FRAME
+        );
+        // Longer than this set follows: held where the picture still holds.
+        let slowest = Duration::from_micros(18_180);
+        assert_eq!(
+            super::frame_room(Some(Duration::from_micros(25_000)), FRAME, FRAME, slowest),
+            slowest
+        );
+    }
+
+    #[test]
+    fn a_frame_that_came_out_long_pulls_the_telling_earlier() {
+        let target = Duration::from_micros(18_000);
+        let late = super::trim_step(0, Duration::from_micros(18_400), target, FRAME);
+        assert_eq!(late, -100, "a quarter of 400 us, the other way");
+        let early = super::trim_step(0, Duration::from_micros(17_600), target, FRAME);
+        assert_eq!(early, 100);
+    }
+
+    #[test]
+    fn the_correction_never_runs_away() {
+        let target = Duration::from_micros(18_000);
+        let mut t = 0;
+        for _ in 0..200 {
+            t = super::trim_step(t, Duration::from_secs(1), target, FRAME);
+        }
+        assert_eq!(t, -(FRAME.as_micros() as i64));
+    }
+
+    #[test]
+    fn it_settles_on_the_frame_that_was_asked_for() {
+        // A tube whose frame comes out a millisecond longer than the telling
+        // implies. Later telling, longer frame, so the frame that comes out
+        // is the target plus the correction plus that millisecond; the loop
+        // should find the millisecond and settle on cancelling it.
+        let target = Duration::from_micros(18_000);
+        let overhead = 1_000i64;
+        let mut t = 0;
+        let mut interval = 0;
+        for _ in 0..40 {
+            interval = (target.as_micros() as i64 + t + overhead).max(0);
+            t = super::trim_step(t, Duration::from_micros(interval as u64), target, FRAME);
+        }
+        let err = (interval - target.as_micros() as i64).abs();
+        assert!(
+            err < 20,
+            "settled {interval} us against {target:?}, off by {err}"
+        );
+    }
 
     #[test]
     fn a_cheap_frame_still_leaves_the_kernel_time_to_answer() {
@@ -1477,14 +1624,12 @@ impl Crt {
         // and a client is given as much of it as its own drawing time
         // allows, which is what puts its picture on the glass at once.
         let room = if self.vrr_on {
-            // The frame that was asked for, or failing that the one the
-            // client has settled into. Never shorter than the mode's,
-            // because the hardware cannot make a frame shorter than that,
-            // and never more than twice it, because past the range the
-            // television was told about the hardware repeats a frame anyway.
-            self.target_period
-                .unwrap_or(self.client_period)
-                .clamp(self.period(), self.slowest.max(self.period()))
+            frame_room(
+                self.target_period,
+                self.client_period,
+                self.period(),
+                self.slowest,
+            )
         } else {
             self.period().saturating_sub(self.margin())
         };
@@ -1760,9 +1905,7 @@ impl Crt {
                 && self.vrr_on
                 && interval < self.period() * 3
             {
-                let err = interval.as_micros() as i64 - target.as_micros() as i64;
-                let limit = self.period().as_micros() as i64;
-                self.rate_trim = (self.rate_trim - err / 4).clamp(-limit, limit);
+                self.rate_trim = trim_step(self.rate_trim, interval, target, self.period());
             }
         }
         // The estimate comes down on its own, so a client that was slow once
