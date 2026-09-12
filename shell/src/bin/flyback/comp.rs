@@ -1280,12 +1280,21 @@ impl Crt {
                     println!(
                         "rate: {hz:.3} Hz asked for, {:.3} Hz given{}",
                         1.0 / held.as_secs_f64(),
+                        // These are periods, not frequencies, so the
+                        // comparisons read backwards: a longer period is a
+                        // slower rate. Asking for something slower than the
+                        // floor gives a period longer than the one held, and
+                        // asking for something faster than the mode gives a
+                        // shorter one. They were the wrong way round, so
+                        // `rate 50` on a set calibrated to stop at 55 said
+                        // the mode was not fast enough, which is the
+                        // opposite of what had happened.
                         if !self.vrr_on {
                             " (the television is not following: no variable refresh rate)"
                         } else if want > held {
-                            " (the mode itself is no faster than that)"
-                        } else if want < held {
                             " (held at output.vrr_min_hz, where this set stops following)"
+                        } else if want < held {
+                            " (the mode itself is no faster than that)"
                         } else {
                             ""
                         }
@@ -1547,11 +1556,22 @@ impl Crt {
             return;
         };
         let mode = drm_mode(ml);
-        // How long the kernel takes to accept the new timing. A television
-        // is dark for all of it, so it is worth knowing which changes are
-        // expensive and which are not: a change that only moves the vertical
-        // blanking can in principle be applied without a modeset at all.
+        // Two clocks, because they measure different things and only the
+        // second one is what a person sees.
+        //
+        // `use_mode` below is a TEST_ONLY atomic commit plus the bookkeeping
+        // that follows it: it asks the kernel whether the timing is
+        // acceptable and costs a millisecond or two. The modeset itself
+        // happens on the next real commit, and the television is dark from
+        // here until the first vblank after that. `mode_at` is that second
+        // clock, read in the vblank handler.
+        //
+        // It used to be declared and never set, so the line it feeds was
+        // never printed and the figure that was published for the cost of a
+        // mode change could not be reproduced from any log. Do not remove it
+        // without removing that number too.
         let began = Instant::now();
+        self.mode_at = Some(began);
         if let Err(e) = out.use_mode(
             mode,
             &mut self.renderer,
