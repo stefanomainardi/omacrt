@@ -382,6 +382,12 @@ fn status(cfg: &Config) -> Value {
         && let Some(l) = display::latency()
     {
         st["latency"] = json!({ "ms": l.ms, "frames": l.frames, "samples": l.samples, "hz": l.hz });
+        if let Some(t) = l.tail {
+            st["latency"]["p95"] = json!(t.p95);
+            st["latency"]["worst"] = json!(t.worst);
+            st["latency"]["frame_min"] = json!(t.frame_min);
+            st["latency"]["frame_max"] = json!(t.frame_max);
+        }
     }
     if let Some(c) = &conn {
         let leased = display::leaseable(&c.name);
@@ -562,6 +568,25 @@ fn print_status(st: &Value) {
             l["hz"].as_f64().unwrap_or(0.0),
             l["samples"].as_u64().unwrap_or(0)
         );
+        // The tail on its own line, because it is a different question: the
+        // row above says what the tube is usually given and this one says
+        // what it was given at its worst. A frame length that wanders is
+        // what a television answers with a twitch of the whole picture.
+        if let (Some(p95), Some(worst), Some(lo), Some(hi)) = (
+            l["p95"].as_f64(),
+            l["worst"].as_f64(),
+            l["frame_min"].as_f64(),
+            l["frame_max"].as_f64(),
+        ) {
+            println!(
+                "            95th {p95:.1} ms, worst {worst:.1}; frame {lo:.2} to {hi:.2} ms{}",
+                if hi - lo > 1.0 {
+                    "  <- the tube is being asked for frames of different lengths"
+                } else {
+                    ""
+                }
+            );
+        }
     }
     let d = &st["dac"];
     if d["present"].as_bool().unwrap_or(false) {

@@ -60,6 +60,24 @@ pub struct Latency {
     /// What the television is actually being given, which under a variable
     /// refresh rate is not the mode's own rate.
     pub hz: f64,
+    /// The tail, written since the median on its own turned out to hide the
+    /// thing people actually see. `None` when reading an older file.
+    ///
+    /// A frame that arrives late once every few seconds is three samples in
+    /// three hundred: it does not move a median at all, and it is exactly
+    /// what somebody watching calls a glitch.
+    pub tail: Option<Tail>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Tail {
+    /// Commit to scanout at the 95th percentile, and at its worst.
+    pub p95: f64,
+    pub worst: f64,
+    /// The shortest and longest frame the tube was actually given. Under a
+    /// variable refresh rate these two apart is what a television reacts to.
+    pub frame_min: f64,
+    pub frame_max: f64,
 }
 
 /// The last figure the display process wrote. `None` when the tube is not up,
@@ -73,12 +91,25 @@ pub fn latency() -> Option<Latency> {
 /// through, and half a measurement is not a measurement.
 fn latency_in(text: &str) -> Option<Latency> {
     let mut parts = text.split_whitespace();
-    Some(Latency {
+    let mut out = Latency {
         ms: parts.next()?.parse().ok()?,
         frames: parts.next()?.parse().ok()?,
         samples: parts.next()?.parse().ok()?,
         hz: parts.next()?.parse().ok()?,
-    })
+        tail: None,
+    };
+    // The tail is all four or none of it: a file caught part way through a
+    // write is the case this whole function exists for.
+    let rest: Vec<f64> = parts.filter_map(|p| p.parse().ok()).collect();
+    if let [p95, worst, frame_min, frame_max] = rest[..] {
+        out.tail = Some(Tail {
+            p95,
+            worst,
+            frame_min,
+            frame_max,
+        });
+    }
+    Some(out)
 }
 
 pub fn log_path() -> PathBuf {

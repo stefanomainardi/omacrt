@@ -1667,14 +1667,23 @@ impl Crt {
         if self.latencies.is_empty() {
             return;
         }
-        let median = |q: &std::collections::VecDeque<Duration>| -> Option<f64> {
+        // A median and two points of the tail. The median alone was the
+        // whole of this file for a day, and it cannot show what a viewer
+        // actually complains about: a frame that arrives late once every few
+        // seconds is three or four samples in three hundred and does not move
+        // the middle at all. What is reported here is the same mistake this
+        // project spent a day finding in its other instruments, which is an
+        // instrument that answers a question nobody asked.
+        let at = |q: &std::collections::VecDeque<Duration>, p: f64| -> Option<f64> {
             if q.is_empty() {
                 return None;
             }
             let mut v: Vec<u128> = q.iter().map(|d| d.as_micros()).collect();
             v.sort_unstable();
-            Some(v[v.len() / 2] as f64 / 1000.0)
+            let i = ((v.len() - 1) as f64 * p).round() as usize;
+            Some(v[i] as f64 / 1000.0)
         };
+        let median = |q: &std::collections::VecDeque<Duration>| at(q, 0.5);
         let Some(commit_to_scanout) = median(&self.latencies) else {
             return;
         };
@@ -1687,11 +1696,21 @@ impl Crt {
         // worse than none.
         let path = display::latency_path();
         let tmp = path.with_extension("latency.new");
+        // Four numbers as before, so every reader that only wants those
+        // keeps working, and then the tail: the 95th and the worst of the
+        // commit to scanout, and the shortest and longest frame the tube was
+        // actually given. The last two are the pair that says whether the
+        // frame length is steady, which under a variable refresh rate is the
+        // thing a television reacts to.
         let line = format!(
-            "{commit_to_scanout:.2} {:.2} {} {:.3}\n",
+            "{commit_to_scanout:.2} {:.2} {} {:.3} {:.2} {:.2} {:.3} {:.3}\n",
             commit_to_scanout / frame,
             self.latencies.len(),
-            1000.0 / frame
+            1000.0 / frame,
+            at(&self.latencies, 0.95).unwrap_or(commit_to_scanout),
+            at(&self.latencies, 1.0).unwrap_or(commit_to_scanout),
+            at(&self.intervals, 0.0).unwrap_or(frame),
+            at(&self.intervals, 1.0).unwrap_or(frame),
         );
         if std::fs::write(&tmp, line).is_ok() && std::fs::rename(&tmp, &path).is_err() {
             let _ = std::fs::remove_file(&tmp);
