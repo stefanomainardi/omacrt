@@ -14,6 +14,12 @@ SVG, so a figure cannot drift away from its measurement.
 from pathlib import Path
 
 BG, PANEL, LINE, DIM, FG = "#0b0d14", "#11141f", "#1f2335", "#565f89", "#9aa5ce"
+# DIM is for strokes and rules, never for text. On these figures' own ground it
+# measures 3.1 to one at 10 px, which is under the bar for small type. Captions
+# take CAP (8.0 to one) and secondary numbers take SUB (5.6 to one). The figures
+# carry their own dark ground on purpose, so these two are fixed rather than
+# inherited from whatever page they land on.
+CAP, SUB = "#9aa5ce", "#7f88ad"
 PAPER, GREEN, BLUE, ORANGE, RED = "#c0caf5", "#9ece6a", "#7aa2f7", "#ff9e64", "#f7768e"
 MONO = "JetBrains Mono, JetBrainsMono Nerd Font, ui-monospace, monospace"
 
@@ -91,7 +97,7 @@ def blanking():
                 f'fill="{fill}" text-anchor="{anchor}">{t}</text>')
 
     s.append(txt(40, 34, "ONE LINE RATE, MANY FRAME LENGTHS", 12, PAPER, 700))
-    s.append(txt(40, 52, f"{LINE_RATE:.1f} Hz horizontal, never moved. Only the vertical blanking changes.", 10.5, DIM))
+    s.append(txt(40, 52, f"{LINE_RATE:.1f} Hz horizontal, never moved. Only the vertical blanking changes.", 10.5, CAP))
 
     # the screen, with the picture inside it
     s.append(f'<rect x="{SX-8}" y="{SY-8}" width="{SW+16}" height="{SH+16}" rx="14" fill="{PANEL}" stroke="{LINE}"/>')
@@ -102,14 +108,14 @@ def blanking():
     for y in range(SY, SY + SH, 4):
         s.append(f'<rect x="{SX}" y="{y}" width="{SW}" height="1.6"/>')
     s.append("</g></g>")
-    s.append(txt(SX + SW / 2, SY + SH + 40, "what the tube shows", 10, DIM, anchor="middle"))
+    s.append(txt(SX + SW / 2, SY + SH + 40, "what the tube shows", 10, SUB, anchor="middle"))
 
     # the frame as a bar: active lines fixed, blanking growing
     s.append(txt(BX, 110, "ONE FRAME, TO SCALE", 10.5, PAPER, 700))
     s.append(f'<rect id="bar" x="{BX}" y="{BY}" width="{STEPS[0][0] * px_per_line:.2f}" height="{BH}" fill="{PANEL}" stroke="{LINE}"/>')
     s.append(f'<rect x="{BX}" y="{BY}" width="{240 * px_per_line:.2f}" height="{BH}" fill="{BLUE}" opacity="0.55"/>')
     s.append(txt(BX + 240 * px_per_line / 2, BY + BH / 2 + 4, "240 active lines", 10, BG, 700, "middle"))
-    s.append(txt(BX, BY + BH + 22, "the blue block never changes. everything to the right of it is blanking.", 10, DIM))
+    s.append(txt(BX, BY + BH + 22, "the blue block never changes. everything to the right of it is blanking.", 10, CAP))
 
     # the per-step readouts
     for i, (vt, hz, dh, lab) in enumerate(STEPS):
@@ -121,11 +127,11 @@ def blanking():
                      FG if dh > -5 else RED, 500 if dh > -5 else 700))
         if dh < -5:
             g.append(txt(BX, 322, "past where this set follows.", 11, RED, 700))
-            g.append(txt(BX, 340, "output.vrr_min_hz stops it before here.", 11, DIM))
+            g.append(txt(BX, 340, "output.vrr_min_hz stops it before here.", 11, CAP))
         g.append("</g>")
         s.append("".join(g))
 
-    s.append(txt(40, H - 22, "Filmed on a BeoCenter 1, eight seconds a step, height measured against the picture's own width.", 10, DIM))
+    s.append(txt(40, H - 22, "Filmed on a BeoCenter 1, eight seconds a step, height measured against the picture's own width.", 10, CAP))
     s.append("</svg>")
     return "".join(s)
 
@@ -135,13 +141,13 @@ def blanking():
 REGIMES = [
     ("variable rate", GREEN, 16655, [
         (0, "vblank", PAPER, True),
-        (13100, "callbacks", DIM, False),
+        (13100, "callbacks", SUB, False),
         (14150, "commit", ORANGE, False),
         (16655, "scanout", PAPER, True),
     ], (14150, 16655)),
     ("fixed rate", BLUE, 16655, [
         (0, "vblank", PAPER, True),
-        (8400, "callbacks", DIM, False),
+        (8400, "callbacks", SUB, False),
         (9500, "commit", ORANGE, False),
         (13644, "queued", BLUE, True),
         (16655, "scanout", PAPER, True),
@@ -180,12 +186,12 @@ def frame_sweep():
 
     s.append(f'<rect width="{W}" height="{H}" fill="{BG}"/>')
     s.append(txt(40, 34, "ONE FRAME, 16.655 ms, SWEPT TWICE", 12, PAPER, 700))
-    s.append(txt(40, 52, "same client, drawing one millisecond, launcher mapped underneath", 10.5, DIM))
+    s.append(txt(40, 52, "same client, drawing one millisecond, launcher mapped underneath", 10.5, CAP))
 
     for row, (name, colour, frame_us, marks, span) in enumerate(REGIMES):
         y = 84 + row * 130
         s.append(txt(40, y + 30, name, 12, colour, 700))
-        s.append(txt(40, y + 46, "no deadline" if row == 0 else "a deadline", 10, DIM))
+        s.append(txt(40, y + 46, "no deadline" if row == 0 else "a deadline", 10, SUB))
         s.append(f'<rect x="{X0}" y="{y}" width="{XW}" height="56" fill="{PANEL}" stroke="{LINE}"/>')
         s.append(f'<rect id="span{row}" x="{x(span[0]):.2f}" y="{y + 40}" width="{x(span[1]) - x(span[0]):.2f}" height="8" fill="{ORANGE}" opacity="0.85"/>')
         s.append(txt(x(span[1]) - 6, y + 34, f"{(span[1]-span[0])/1000:.2f} ms to scanout", 10.5, ORANGE, 700, "end"))
@@ -199,7 +205,10 @@ def frame_sweep():
                      + "</g>")
         s.append(f'<g class="head"><path d="M{X0} {y - 10} V{y + 66}" stroke="{RED}" stroke-width="1.6" opacity="0.9"/></g>')
 
-    s.append(txt(40, H - 20, "Solid marks are measured; the dashed ones are arithmetic from the scheduler's own estimates. Under a variable rate the flip is queued 75 microseconds after the commit, which is three pixels here.", 10, DIM))
+    # Two lines. One was 195 characters at font-size 10 from x 40 in a 920
+    # wide box, and ran off the end of its own viewBox.
+    s.append(txt(40, H - 32, "Solid marks are measured. The dashed ones are arithmetic from the scheduler's own estimates.", 10, CAP))
+    s.append(txt(40, H - 18, "Under a variable rate the flip is queued 75 microseconds after the commit, which is three pixels at this scale.", 10, SUB))
     s.append(f'<style>{chr(10).join(css)}</style>')
     s.append("</svg>")
     return "".join(s)
