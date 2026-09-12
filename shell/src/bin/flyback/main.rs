@@ -121,6 +121,16 @@ fn main() {
         .modeline("ntsc")
         .unwrap_or_else(|| die("no ntsc modeline in crt.toml"));
     let ml = Modeline::parse(text).unwrap_or_else(|| die("bad modeline"));
+    // The same guard `run` passes, because this reaches the same connector.
+    // `probe` puts a test card on the tube with the timing from crt.toml and
+    // it used to do it unchecked, so a line rate outside the band that the
+    // compositor refuses could be programmed by asking for the test card
+    // instead. A television's horizontal deflection is tuned for one rate.
+    if let Some(why) = ml.fault(cfg.output.hfreq_khz) {
+        die(&format!(
+            "refusing this modeline: it asks the television for {why}"
+        ));
+    }
     let mode = drm_mode(&ml);
     let (w, h) = (ml.width(), ml.height());
     println!(
