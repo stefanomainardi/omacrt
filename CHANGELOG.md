@@ -7,6 +7,8 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-13
+
 ### Added
 
 - **A variable refresh rate on the television.** A television's horizontal
@@ -40,6 +42,30 @@ caveat for a 0.x project: anything may still move.
   and the kernel's vblank timestamp; on a set with no panel and no scaler
   those are very nearly the picture arriving on the glass.
 
+- `omacrt status` and its JSON say **which compositor is driving the tube**:
+  the name, whether it is running, its pid, its socket, and the file the
+  running process was started from, read from `/proc/<pid>/exe` rather than
+  from the search path, because while the tube is on those two are not
+  always the same file. The bar plugin's panel gets three rows from it and
+  the bar's tooltip gets the name and the figure. The kernel writes
+  `(deleted)` after that path once the file has been replaced, which is the
+  state an install leaves behind, and the panel says so and says that taking
+  the tube off and on is what clears it.
+
+- The **tail** of the latency, since a median hides the thing people
+  actually see: the 95th percentile, the worst sample, and the shortest and
+  longest frame the television was given. A frame that arrives late once
+  every few seconds is three samples in three hundred, which moves a median
+  not at all and is exactly what somebody watching calls a glitch.
+
+- **Documentation for Flyback**: the README presents it with the measured
+  figures, `docs/flyback.md` is the dossier (what it is, what it does not do,
+  the assumptions it makes, the safety and security of it, and the prior art
+  it stands on), and `docs/flyback-manual.md` is the manual: every run mode,
+  every line the control pipe accepts, the five `crt.toml` keys with the one
+  that can damage a television flagged, the `FLYBACK_*` switches, how to read
+  the latency rows, and an order to diagnose in.
+
 ### Changed
 
 - Two thirds of the delay between a program's picture and the tube is gone.
@@ -69,6 +95,63 @@ caveat for a 0.x project: anything may still move.
   what a tube does between two lines, which is what the project's mark draws.
   The binary is `flyback`; an install that carried the old name has it
   retired on the next run of the installer.
+
+- The helper the bar plugin runs is a **launcher for the installed program,
+  not a copy of it**. A copy is a snapshot: no package upgrade writes into
+  anybody's home, so the bar went on running the build that was current when
+  the plugin was last installed, two versions of one program sharing one
+  state directory, and every rename on the program's side became a failure
+  that appeared only through the bar. `omacrt doctor` reports a helper that
+  is not the launcher for this install.
+
+- A window nobody can see no longer costs the visible one a frame: under a
+  variable refresh rate a commit from a window that is not on top marks the
+  scene dirty but does not decide when the flip goes out, and what a client
+  is told about its own drawing cost is now kept per window.
+
+- The frame callbacks are paced to a client's own rate, which is the frame
+  delay that emulator front ends offer, applied to every client at once
+  rather than configured per core.
+
+- A timing that would damage a television is refused: `output.hfreq_khz` is
+  the one key in `crt.toml` that can, and a modeline whose line rate leaves
+  the set's band no longer reaches the connector.
+
+### Fixed
+
+- **A stick held at its stop killed the launcher.** `i16::MIN.abs()`
+  overflows, and the release profile deliberately turns an overflow into a
+  panic rather than a wrong number, so a GameCube stick pushed fully left or
+  fully down took the program down with it. The comparison is now on
+  unsigned magnitudes, and the four stops and both diagonal corners are
+  tested, including the corner where a stick is not symmetric.
+
+- Asking for the timing that is already set does nothing, instead of taking
+  the picture down and bringing it back. A mode change costs 182 to 229 ms
+  of relock; re-applying an identical timing measured 4 to 16 ms, and 41
+  of them happened in a single session for no reason.
+
+- A skipped flip is no longer reported as a stretched frame. The tail
+  instrument's first reading called a fixed refresh rate "frames of 16.58 to
+  33.36 ms", which is one frame with a flip missing, not a frame that took
+  twice as long.
+
+- The clock that measures a mode change was declared, zeroed and read but
+  never set, so every mode change was reported as instant. Two messages that
+  explain a rate change were also the wrong way round: they compare periods,
+  not frequencies.
+
+- The compositor is looked for beside the program, then along PATH, then in
+  the workspace's release directory, and an install that cannot find it says
+  which binary was missing. The bar showed `display: No such file or
+  directory (os error 2)` while the same `omacrt on` worked from a terminal,
+  and the message named nothing at all.
+
+- Emulator cores may share a GL context, which several need to start at all.
+
+- No latency row while the display process is not up: the figure it leaves
+  behind is removed when it stops on purpose and not when it is killed, and
+  a latency for a television that is off is a lie either way.
 
 ## [0.6.0] - 2026-09-11
 
@@ -955,7 +1038,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.7.0
 [0.6.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.6.0
 [0.5.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.5.0
 [0.4.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.4.2
