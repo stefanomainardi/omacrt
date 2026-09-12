@@ -80,7 +80,15 @@ case "${1:-}" in
       exit 0
     fi
     out="/run/omacrt-$conn.edid"
-    python3 "$here/edid-non-desktop.py" "$edid" "$out"
+    # OMACRT_FREESYNC=min:max also writes an AMD FreeSync range into the
+    # override, which is what makes amdgpu call the connector vrr_capable.
+    # The refresh can then be changed by stretching the vertical blanking
+    # instead of by a mode change, and the horizontal rate never moves.
+    if [ -n "${OMACRT_FREESYNC:-}" ]; then
+      python3 "$here/edid-non-desktop.py" "$edid" "$out" --freesync "$OMACRT_FREESYNC"
+    else
+      python3 "$here/edid-non-desktop.py" "$edid" "$out"
+    fi
     cat "$out" > "$dbg/edid_override"
     echo detect > "$status"
     settle connected 2 || true

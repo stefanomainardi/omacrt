@@ -168,6 +168,21 @@ fn props(want: &str) {
         let Ok(res) = dev.resource_handles() else {
             continue;
         };
+        if std::env::var_os("FLYBACK_ALL_PROPS").is_some() {
+            for c in res.crtcs() {
+                let Ok(props) = dev.get_properties(*c) else {
+                    continue;
+                };
+                let mut line = Vec::new();
+                for (pid, val) in props.iter() {
+                    if let Ok(pi) = dev.get_property(*pid) {
+                        line.push(format!("{}={val}", pi.name().to_str().unwrap_or("")));
+                    }
+                }
+                line.sort();
+                println!("{card} crtc {:?}: {}", c, line.join(" "));
+            }
+        }
         for h in res.connectors() {
             let Ok(info) = dev.get_connector(*h, false) else {
                 continue;
@@ -184,18 +199,43 @@ fn props(want: &str) {
                 continue;
             };
             let mut nd = String::from("?");
+            // Every property the kernel puts on the connector, so that what
+            // the driver believes about this television can be read rather
+            // than guessed: non-desktop, and whether it thinks the sink can
+            // take a variable refresh rate.
+            let mut all: Vec<String> = Vec::new();
             for (pid, val) in props.iter() {
-                if let Ok(pi) = dev.get_property(*pid)
-                    && pi.name().to_str().unwrap_or("") == "non-desktop"
-                {
+                let Ok(pi) = dev.get_property(*pid) else {
+                    continue;
+                };
+                let n = pi.name().to_str().unwrap_or("").to_string();
+                if n == "non-desktop" {
                     nd = val.to_string();
                 }
+                all.push(format!("{n}={val}"));
             }
             println!(
                 "{card} {name}: state {:?}, {} modes, non-desktop = {nd}",
                 info.state(),
                 info.modes().len()
             );
+            if std::env::var_os("FLYBACK_ALL_PROPS").is_some() {
+                all.sort();
+                for a in all {
+                    println!("    {a}");
+                }
+                for m in info.modes() {
+                    println!(
+                        "    mode {}x{}@{} vtotal {} htotal {} clock {}",
+                        m.size().0,
+                        m.size().1,
+                        m.vrefresh(),
+                        m.vsync().2,
+                        m.hsync().2,
+                        m.clock()
+                    );
+                }
+            }
         }
     }
 }

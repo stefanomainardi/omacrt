@@ -331,6 +331,13 @@ fn main() {
     // SAFETY: single threaded, before the connection reads the environment.
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &display) };
     let paced = args.iter().any(|a| a == "--paced");
+    // A fixed commit rate, for asking whether the television follows a
+    // client that is not running at the mode's own refresh.
+    let hz = args
+        .iter()
+        .position(|a| a == "--hz")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|s| s.parse::<f64>().ok());
     let pad = args.iter().any(|a| a == "--pad");
     let draw = args
         .iter()
@@ -338,13 +345,13 @@ fn main() {
         .and_then(|i| args.get(i + 1))
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(1);
-    if let Err(e) = run(n, paced, pad, Duration::from_millis(draw)) {
+    if let Err(e) = run(n, paced, pad, Duration::from_millis(draw), hz) {
         eprintln!("latency: {e}");
         std::process::exit(1);
     }
 }
 
-fn run(n: usize, paced: bool, pad: bool, draw: Duration) -> Result<(), String> {
+fn run(n: usize, paced: bool, pad: bool, draw: Duration, hz: Option<f64>) -> Result<(), String> {
     let conn = Connection::connect_to_env().map_err(|e| {
         format!(
             "no compositor on {:?}: {e}",
@@ -489,6 +496,16 @@ fn run(n: usize, paced: bool, pad: bool, draw: Duration) -> Result<(), String> {
                 |p| p.callbacks > seen,
             )?;
             pump(&conn, &mut queue, &mut probe, draw)?;
+        } else if let Some(hz) = hz {
+            // A steady rate of our own, whatever the mode says. If the
+            // television is following, the time between two vblanks becomes
+            // this and not the mode's.
+            pump(
+                &conn,
+                &mut queue,
+                &mut probe,
+                Duration::from_nanos((1e9 / hz) as u64),
+            )?;
         } else {
             // One frame, plus a random fraction of another: the commit lands
             // at a different point of every window and the samples cover it.

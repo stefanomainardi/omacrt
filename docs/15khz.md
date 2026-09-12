@@ -202,6 +202,65 @@ follows stable within days. Building one is a package that coexists with the
 stock kernel, its own UKI and its own boot entry, and the default entry stays
 the stock one.
 
+## A variable refresh rate, and where it stops
+
+A television's horizontal rate must not move: the flyback transformer and the
+deflection circuit are tuned for one. The vertical rate is another matter,
+because the vertical oscillator re-triggers on sync. So every refresh
+emulation asks for - 49.70 for PAL, 59.92 for a Mega Drive, 60.0988 for a
+NES, 57.5 for one arcade board or another - is reachable by changing the
+vertical total alone and leaving the line rate at 15.731 kHz. That is exactly
+what adaptive sync does in hardware: it stretches the vertical blanking and
+touches nothing else.
+
+Today a change of refresh costs a mode change. Measured through the leased
+connector on Navi 32, an atomic commit that carries a new modeline blocks for
+**166 to 190 ms**, whether it moves the whole standard or only the vertical
+total, and the television is dark for it. Adaptive sync would cost nothing.
+
+**The analogue chain takes it.** Switching between vertical totals of 262,
+274, 288 and 312 lines at a constant 15.731 kHz - 60.04 Hz down to 50.4 Hz -
+the RGB-Pi 2 keeps its lock at every step. A stretched vertical blanking
+reaches the set intact. What the tube itself does about picture height across
+that range is a question for a camera, not for software: the one report of
+adaptive sync on a CRT, on multisync PC monitors rather than televisions,
+says some sets change vertical size in proportion to the blanking interval.
+
+**The driver does not.** The pieces are all reachable:
+
+1. `vrr_capable` on an HDMI connector comes from an AMD vendor block in the
+   EDID, which the display microcontroller parses. Nine bytes,
+   `68 1a 00 00 01 01 <min> <max> 00`, and since this project writes the
+   connector's EDID anyway, `OMACRT_FREESYNC=50:62 crt-lease-setup.sh on`
+   adds it and `vrr_capable` becomes 1.
+2. `VRR_ENABLED` on the leased CRTC is accepted, and the driver logs the
+   `VRR off->on` transition.
+3. And the timing generator stays pinned. `amdgpu_dm_dtn_log` reports
+   `vmax 261 vmin 261` for the tube's OTG throughout, which is one frame with
+   no room either side.
+
+Two gates in the current tree explain it, and the second is the one that
+bites. `mod_freesync_build_vrr_params` in `modules/freesync/freesync.c` caps
+the declared maximum at the mode's own nominal rate and then requires
+`refresh_range >= MIN_REFRESH_RANGE`, which is 10 Hz: at a nominal 60.04 Hz a
+declared range of 55 to 66 collapses to 5 and is refused, so the minimum has
+to be 50 or below to be worth declaring at all. Past that gate,
+`dc_stream_adjust_vmin_vmax` - the call that actually programs the two
+registers - is reached from only two places: the per-flip path in
+`amdgpu_dm_freesync.c`, which is inside `if (adev->family < AMDGPU_FAMILY_AI)`
+and so never runs on anything since Vega, and `amdgpu_dm.c` under
+`amdgpu_dm_is_dc_timing_adjust_needed`, which for a variable rate is true only
+on the transition itself. At that transition the driver logged
+`VRR packet update: enabled=0 state=2`, which is `VRR_STATE_INACTIVE`: the
+range written was the nominal one, and nothing writes it again.
+
+So the television is not the obstacle and neither is the DAC. Whatever the
+missing step is, it is above them, and finding it needs either a kernel built
+with the per-flip path open or `amdgpu.freesync_video=1`, which routes the
+whole thing through `VRR_STATE_ACTIVE_FIXED` instead - a state that does
+program the registers on every commit. That parameter is read-only at
+runtime; it takes a reboot.
+
 ## Modelines and interlace in Hyprland
 
 Two things are true of Hyprland 0.56 and its aquamarine backend, and both are

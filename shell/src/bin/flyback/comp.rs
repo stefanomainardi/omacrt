@@ -137,6 +137,23 @@ pub struct Crt {
     /// Whether a pacer tick is already on its way, so that the several paths
     /// that can ask for one do not stack up a timer each.
     pacer_armed: bool,
+    /// Whether the television is following our flips rather than its own
+    /// clock. With a variable refresh rate there is nothing to be late for:
+    /// the picture is scanned out when it is given, so the compositor stops
+    /// pacing itself and draws the moment a client commits.
+    vrr_on: bool,
+    /// The connector the lease gave us, kept so the refresh behaviour can be
+    /// asked about after start-up.
+    conn_handle: smithay::reexports::drm::control::connector::Handle,
+    /// When a modeline was last asked for, until the first vblank in it.
+    /// `use_mode` only tests the timing and stores it; the modeset itself
+    /// happens on the next commit, so the time the television is dark is the
+    /// distance from there to that vblank.
+    mode_at: Option<Instant>,
+    /// When the last vblank arrived, so the interval between two of them can
+    /// be reported: that interval is the refresh rate the television is
+    /// actually being given, whatever the mode says.
+    last_vblank: Option<Instant>,
     /// Whether this frame's frame callbacks are already on their way.
     callback_armed: bool,
     /// When the clients were last told they may draw, until the first of
@@ -491,6 +508,15 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         )
         .map_err(|e| format!("output: {e}"))?;
 
+    // What the kernel thinks this television can do about its refresh rate.
+    // `Supported` means the vertical blanking can be stretched frame by
+    // frame without a mode change, which is the only way to follow a
+    // program's own rate on a set whose horizontal rate must not move.
+    match drm_output.with_compositor(|c| c.vrr_supported(conn_handle)) {
+        Ok(v) => println!("vrr: {v:?}"),
+        Err(e) => println!("vrr: cannot tell ({e})"),
+    }
+
     // The DAC wants composite sync once the signal is up.
     if let Some(conn) = output::connectors()
         .into_iter()
@@ -637,6 +663,10 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         flips_failed: 0,
         dirty: true,
         pacer_armed: false,
+        vrr_on: false,
+        conn_handle,
+        mode_at: None,
+        last_vblank: None,
         callback_armed: false,
         told_at: None,
         // Assume the worst until a client has shown otherwise: a whole frame
@@ -866,6 +896,28 @@ impl Crt {
             "shot" => {
                 if let Err(e) = self.screenshot(arg.trim()) {
                     eprintln!("shot: {e}");
+                }
+            }
+            // `vrr on|off`: ask the kernel to stretch the vertical blanking
+            // frame by frame instead of holding the mode's own rate. It only
+            // does anything when the connector is vrr_capable, which on this
+            // chain means the EDID we inject carries a FreeSync range.
+            "vrr" => {
+                let want = arg.trim() != "off";
+                let conn = self.conn_handle;
+                let Some(out) = self.drm_output.as_mut() else {
+                    eprintln!("vrr: no output");
+                    return;
+                };
+                let sup = out.with_compositor(|c| c.vrr_supported(conn));
+                match out.with_compositor(|c| c.use_vrr(want)) {
+                    Ok(()) => {
+                        let on = out.with_compositor(|c| c.vrr_enabled());
+                        println!("vrr: asked for {want}, now {on}, support {sup:?}");
+                        self.vrr_on = on;
+                        self.damaged();
+                    }
+                    Err(e) => eprintln!("vrr: {e}"),
                 }
             }
             "mode" => match Modeline::parse(arg) {
@@ -1102,6 +1154,11 @@ impl Crt {
             return;
         };
         let mode = drm_mode(ml);
+        // How long the kernel takes to accept the new timing. A television
+        // is dark for all of it, so it is worth knowing which changes are
+        // expensive and which are not: a change that only moves the vertical
+        // blanking can in principle be applied without a modeset at all.
+        let began = Instant::now();
         if let Err(e) = out.use_mode(
             mode,
             &mut self.renderer,
@@ -1110,6 +1167,7 @@ impl Crt {
             eprintln!("mode: {e}");
             return;
         }
+        let took = began.elapsed();
         let (w, h) = (ml.width() as i32, ml.height() as i32);
         let wl_mode = WlMode {
             size: (w, h).into(),
@@ -1125,11 +1183,13 @@ impl Crt {
             }
         }
         println!(
-            "mode: {}x{} {:.3} kHz {:.3} Hz",
+            "mode: {}x{} {:.3} kHz {:.3} Hz, vtotal {}, set in {:.1} ms",
             w,
             h,
             ml.hfreq_khz(),
-            ml.vfreq_hz()
+            ml.vfreq_hz(),
+            ml.v[3],
+            took.as_secs_f64() * 1000.0
         );
         self.frame_queued = false;
         self.queued_at = None;
@@ -1143,10 +1203,11 @@ impl Crt {
     /// has changed.
     fn damaged(&mut self) {
         self.dirty = true;
-        // A deadline is already set for this frame: drawing now would only
-        // make the picture older by the time it is shown, and would shut the
-        // door on anything else committed before the deadline.
-        if self.deadline_armed {
+        // With a variable refresh rate the flip is what starts the next
+        // scanout, so there is nothing to wait for: draw now and the picture
+        // is on the glass at once. Waiting for a deadline would be the one
+        // thing that puts the delay back.
+        if self.deadline_armed && !self.vrr_on {
             return;
         }
         self.render();
@@ -1429,7 +1490,19 @@ impl Crt {
                     );
                 }
                 let feedback = Some(feedback);
-                if let Err(e) = out.queue_frame(feedback) {
+                let queued = {
+                    let q = Instant::now();
+                    let r = out.queue_frame(feedback);
+                    let spent = q.elapsed();
+                    // A flip is a register write and takes microseconds. One
+                    // that takes milliseconds is carrying a modeset, which is
+                    // the only thing here that makes the television dark.
+                    if spent > Duration::from_millis(2) {
+                        println!("queue_frame: {:.1} ms", spent.as_secs_f64() * 1000.0);
+                    }
+                    r
+                };
+                if let Err(e) = queued {
                     // The flip was refused, so no vblank is coming and
                     // `frame_queued` stays false: every client commit tries
                     // again. That is a picture that never arrives and a log
@@ -1511,6 +1584,23 @@ impl Crt {
                 flags,
             );
         }
+        if let Some(t) = self.mode_at.take() {
+            println!(
+                "mode: first vblank {:.1} ms after the modeline was asked for",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+        // The interval between two vblanks is the refresh the television is
+        // actually being given, whatever the mode says it is. With a
+        // stretched vertical blanking they stop being equal, and that is the
+        // only way to see from here that it worked.
+        if self.trace
+            && let Some(t) = self.last_vblank.replace(Instant::now())
+        {
+            eprintln!("trace: vblank interval {} us", t.elapsed().as_micros());
+        } else {
+            self.last_vblank = Some(Instant::now());
+        }
         if let Some(t) = self.showing.take() {
             self.latencies.push_back(t.elapsed());
             if self.latencies.len() > 300 {
@@ -1588,7 +1678,16 @@ impl Crt {
                 omacrt_shell::logfile::CAP_BYTES,
             );
         }
-        if self.frame_delay {
+        if self.vrr_on {
+            // Tell everyone at once: the next flip decides when the next
+            // frame is scanned out, so the sooner a client draws the sooner
+            // the television shows it.
+            self.send_frames();
+            self.render();
+            if !self.frame_queued {
+                self.arm_pacer();
+            }
+        } else if self.frame_delay {
             self.arm_callbacks();
             self.arm_deadline();
         } else {
