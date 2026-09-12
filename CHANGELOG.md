@@ -22,19 +22,24 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
-- Half the delay between a program's picture and the tube is gone. The
-  compositor used to keep a page flip queued frame after frame whether or not
-  anything had changed, so a commit almost always arrived while one was
-  already in the air and waited a whole frame; it also drew at the start of a
-  frame rather than the end, which cost a second one. It now flips only when
-  something has changed and draws shortly before the vblank, with the margin
-  taken from what recent frames cost. Measured on the television over three
-  hundred frames drawn the way a program paces itself, commit to the start of
-  scanout falls from 30.9 ms (1.86 frames) to 16.6 ms (1.00), with no frame
-  slipping a vblank. `FLYBACK_MARGIN_US` sets the margin by hand or turns the
-  second half off; `FLYBACK_LATE_DRAW=on` goes further and tells a program to
-  draw just in time, which reaches 7.1 ms (0.43 frames) at the price of one
-  frame in eight arriving late, so it is off by default.
+- Two thirds of the delay between a program's picture and the tube is gone.
+  Three things were costing a frame each. The compositor kept a page flip
+  queued frame after frame whether or not anything had changed, so a commit
+  almost always arrived while one was already in the air; it drew at the start
+  of a frame rather than the end, although a flip queued anywhere inside a
+  frame is shown at the same vblank; and it told a program it could draw at
+  the vblank, so the finished picture then waited most of a frame for the
+  flip. It now flips only when something has changed, draws shortly before
+  the vblank with a margin taken from what recent frames cost, and tells a
+  program to draw twice its own measured drawing time before that.
+
+  Measured on the television, a button press on a virtual pad to the start of
+  scanout is **20.4 ms, 1.23 frames**, of which half a frame is the program's
+  own input sampling. For the launcher, the commit to the start of scanout
+  falls from 30.9 ms (1.86 frames) to 5.3 ms (0.32), and neither the launcher
+  nor RetroArch was late for a single frame in thirty seconds, quiet or with
+  every core on the machine busy. `FLYBACK_MARGIN_US` and
+  `FLYBACK_LATE_DRAW=off` put each half back the way it was.
 
 - The compositor has a name: **Flyback**. It was `omacrt-display`, a
   description of where it sits rather than of what it is, and what it is has

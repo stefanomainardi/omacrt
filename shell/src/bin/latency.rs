@@ -107,6 +107,9 @@ impl Rng {
 struct Sample {
     /// Commit to the start of scanout.
     latency: Duration,
+    /// The button press this frame answered, to the start of scanout. Only
+    /// in `--pad` runs.
+    total: Option<Duration>,
     /// What the compositor said about the timestamp. Without
     /// `HwClock | HwCompletion` the number is an estimate and says so.
     flags: u32,
@@ -124,8 +127,11 @@ struct Probe {
     size: (i32, i32),
     configured: bool,
     /// Commits that have been timed but not yet answered, by the feedback
-    /// object that will answer them.
-    inflight: HashMap<ObjectId, Duration>,
+    /// object that will answer them: when the frame was committed, and when
+    /// the button it answers was pressed.
+    inflight: HashMap<ObjectId, (Duration, Option<Duration>)>,
+    /// The kernel's timestamp for the press the next commit answers.
+    pressed: Option<Duration>,
     samples: Vec<Sample>,
     /// The refresh the compositor reports with each frame, in nanoseconds.
     refresh: u64,
@@ -207,8 +213,23 @@ impl Probe {
         let t = now();
         let feedback = pres.feedback(surface, qh, ());
         surface.commit();
-        self.inflight.insert(feedback.id(), t);
+        self.inflight
+            .insert(feedback.id(), (t, self.pressed.take()));
     }
+}
+
+/// Press the virtual button and read the kernel's timestamp for it back.
+///
+/// The read is what a game does with a real pad, and it is on the same clock
+/// as the vblank because the device was asked for CLOCK_MONOTONIC.
+fn press(pad: &pad::Pad, probe: &mut Probe) -> Result<(), String> {
+    pad.release()?;
+    pad.press()?;
+    probe.pressed = pad.wait_press(Duration::from_millis(200));
+    if probe.pressed.is_none() {
+        return Err("the virtual pad was pressed and nothing came back".into());
+    }
+    Ok(())
 }
 
 /// Wait for `d`, reading and answering the compositor the whole time.
@@ -283,11 +304,13 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "-h" || a == "--help") {
         println!(
-            "usage: latency [frames] [--display NAME] [--paced [--draw MS]]\n\n  \
+            "usage: latency [frames] [--display NAME] [--paced [--draw MS]] [--pad]\n\n  \
              by default a frame is committed at a random point of every frame,\n  \
              which measures the whole window a client could commit in.\n  \
              --paced instead draws on the frame callback like a real client,\n  \
-             taking MS milliseconds over it, which is the number a game sees."
+             taking MS milliseconds over it, which is the number a game sees.\n  \
+             --pad presses a virtual pad and times from the kernel's own\n  \
+             timestamp for the press, which needs the `input` group."
         );
         return;
     }
@@ -308,19 +331,20 @@ fn main() {
     // SAFETY: single threaded, before the connection reads the environment.
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &display) };
     let paced = args.iter().any(|a| a == "--paced");
+    let pad = args.iter().any(|a| a == "--pad");
     let draw = args
         .iter()
         .position(|a| a == "--draw")
         .and_then(|i| args.get(i + 1))
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(1);
-    if let Err(e) = run(n, paced, Duration::from_millis(draw)) {
+    if let Err(e) = run(n, paced, pad, Duration::from_millis(draw)) {
         eprintln!("latency: {e}");
         std::process::exit(1);
     }
 }
 
-fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
+fn run(n: usize, paced: bool, pad: bool, draw: Duration) -> Result<(), String> {
     let conn = Connection::connect_to_env().map_err(|e| {
         format!(
             "no compositor on {:?}: {e}",
@@ -343,6 +367,7 @@ fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
         size: (0, 0),
         configured: false,
         inflight: HashMap::new(),
+        pressed: None,
         samples: Vec::new(),
         refresh: 16_666_666,
         discarded: 0,
@@ -425,13 +450,37 @@ fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
         probe.inflight.clear();
         probe.discarded = 0;
     }
+    let pad = if pad {
+        let p = pad::Pad::open()?;
+        println!("pressing a virtual pad on {}", p.node);
+        Some(p)
+    } else {
+        None
+    };
     let mut rng = Rng::new();
     let frame = probe.refresh;
     for i in 0..n {
         if paced {
             // What a game does: it is told it may draw, it draws, it commits.
             // Everything after the commit is the compositor's.
+            // Counted before the wait below and before the press, or a
+            // callback that arrives while the button is being pressed is
+            // taken for one already spent and the loop waits out its whole
+            // timeout for a second one that nothing asked for.
             let seen = probe.callbacks;
+            // The button goes down at a random point of the frame, before
+            // the program is told it may draw: a press does not wait for a
+            // game's convenience, and where it falls inside the frame is
+            // most of the difference between the best case and the worst.
+            if let Some(pad) = &pad {
+                pump(
+                    &conn,
+                    &mut queue,
+                    &mut probe,
+                    Duration::from_nanos(rng.below(frame)),
+                )?;
+                press(pad, &mut probe)?;
+            }
             pump_until(
                 &conn,
                 &mut queue,
@@ -449,6 +498,9 @@ fn run(n: usize, paced: bool, draw: Duration) -> Result<(), String> {
                 &mut probe,
                 Duration::from_nanos(frame + rng.below(frame)),
             )?;
+            if let Some(pad) = &pad {
+                press(pad, &mut probe)?;
+            }
         }
         probe.commit(&qh, i, paced);
         conn.flush().map_err(|e| format!("flush: {e}"))?;
@@ -523,6 +575,35 @@ fn report(probe: &Probe, paced: bool) {
             "\n{slipped} of {} frames slipped a vblank ({:.1}%)",
             us.len(),
             slipped as f64 * 100.0 / us.len() as f64
+        );
+    }
+    let mut total: Vec<u64> = probe
+        .samples
+        .iter()
+        .filter_map(|s| s.total)
+        .map(|d| d.as_nanos() as u64 / 1000)
+        .collect();
+    if !total.is_empty() {
+        total.sort_unstable();
+        println!("\nthe press to the start of scanout:");
+        let row = |name: &str, v: u64| {
+            println!(
+                "  {name:<10} {:>7.2} ms   {:>5.2} frames",
+                v as f64 / 1000.0,
+                v as f64 / frame_us as f64
+            );
+        };
+        row("best", total[0]);
+        row("median", percentile(&total, 0.50));
+        row("95%", percentile(&total, 0.95));
+        row("worst", total[total.len() - 1]);
+        println!(
+            "  of which {:.2} ms is this program reading the pad and drawing",
+            (percentile(&total, 0.50) - percentile(&us, 0.50)) as f64 / 1000.0
+        );
+        println!(
+            "\nA real pad adds its own polling in front of this, one to eight \n\
+             milliseconds by its rate, which belongs to the pad and not to here."
         );
     }
     println!(
@@ -699,7 +780,7 @@ impl Dispatch<wp_presentation_feedback::WpPresentationFeedback, ()> for Probe {
                 flags,
                 ..
             } => {
-                let Some(commit) = st.inflight.remove(&obj.id()) else {
+                let Some((commit, press)) = st.inflight.remove(&obj.id()) else {
                     return;
                 };
                 let secs = ((tv_sec_hi as u64) << 32) | tv_sec_lo as u64;
@@ -713,6 +794,7 @@ impl Dispatch<wp_presentation_feedback::WpPresentationFeedback, ()> for Probe {
                 if let Some(latency) = shown.checked_sub(commit) {
                     st.samples.push(Sample {
                         latency,
+                        total: press.and_then(|p| shown.checked_sub(p)),
                         flags: flags.into(),
                     });
                 }
@@ -766,3 +848,265 @@ ignore!(
     wp_viewporter::WpViewporter,
     wp_viewport::WpViewport
 );
+
+/// A pad nobody has to hold.
+///
+/// The half of the delay in front of the commit belongs to the kernel: a
+/// button closes, the driver timestamps the event, and a program reading
+/// `/dev/input/eventN` sees it. To measure that without a hand at the pad,
+/// this makes a virtual one with `uinput` and presses it. The press is then
+/// read back through evdev exactly as a game reads a real pad, and the
+/// timestamp is the kernel's own.
+///
+/// What it leaves out is a physical pad's own polling, one to eight
+/// milliseconds depending on its rate, which is a property of the pad and
+/// not of this project.
+///
+/// It needs membership of the `input` group: `/dev/uinput` is usually
+/// reachable through a seat's access list, but the event node the kernel
+/// then creates is not.
+mod pad {
+    use std::io;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::time::Duration;
+
+    const UI: u64 = b'U' as u64;
+    const EV: u64 = b'E' as u64;
+
+    const fn iow(base: u64, nr: u64, size: u64) -> u64 {
+        (1 << 30) | (size << 16) | (base << 8) | nr
+    }
+    const fn ior(base: u64, nr: u64, size: u64) -> u64 {
+        (2 << 30) | (size << 16) | (base << 8) | nr
+    }
+    const fn io(base: u64, nr: u64) -> u64 {
+        (base << 8) | nr
+    }
+
+    const UI_DEV_CREATE: u64 = io(UI, 1);
+    const UI_DEV_DESTROY: u64 = io(UI, 2);
+    const UI_DEV_SETUP: u64 = iow(UI, 3, 92);
+    const UI_SET_EVBIT: u64 = iow(UI, 100, 4);
+    const UI_SET_KEYBIT: u64 = iow(UI, 101, 4);
+    const UI_GET_SYSNAME: u64 = ior(UI, 44, 64);
+    const EVIOCSCLOCKID: u64 = iow(EV, 0xa0, 4);
+
+    const EV_SYN: u16 = 0x00;
+    const EV_KEY: u16 = 0x01;
+    /// The south face button of a pad: A on an Xbox one, cross on a
+    /// PlayStation one. The button a game is played with.
+    const BTN_SOUTH: u16 = 0x130;
+
+    /// `struct input_event` as the kernel writes it on a 64 bit machine.
+    #[repr(C)]
+    #[derive(Default, Clone, Copy)]
+    struct Event {
+        sec: i64,
+        usec: i64,
+        kind: u16,
+        code: u16,
+        value: i32,
+    }
+
+    pub struct Pad {
+        ui: OwnedFd,
+        ev: OwnedFd,
+        pub node: String,
+    }
+
+    fn last_error(what: &str) -> String {
+        format!("{what}: {}", io::Error::last_os_error())
+    }
+
+    impl Pad {
+        pub fn open() -> Result<Pad, String> {
+            // SAFETY: a path we own, and the fd is wrapped straight away.
+            let fd = unsafe {
+                libc::open(
+                    c"/dev/uinput".as_ptr(),
+                    libc::O_WRONLY | libc::O_NONBLOCK | libc::O_CLOEXEC,
+                )
+            };
+            if fd < 0 {
+                return Err(format!(
+                    "{}. A virtual pad needs /dev/uinput; on most machines that \
+                     means being in the `input` group",
+                    last_error("/dev/uinput")
+                ));
+            }
+            let ui = unsafe { OwnedFd::from_raw_fd(fd) };
+
+            // The two bits say what this device can do: key events, and one
+            // key. A device that claims nothing is created and then ignored.
+            for (req, arg) in [
+                (UI_SET_EVBIT, EV_KEY as libc::c_ulong),
+                (UI_SET_KEYBIT, BTN_SOUTH as libc::c_ulong),
+            ] {
+                // SAFETY: the UI_SET_* calls take the bit by value.
+                if unsafe { libc::ioctl(fd, req, arg) } < 0 {
+                    return Err(last_error("uinput: declaring the button"));
+                }
+            }
+
+            let mut setup = [0u8; 92];
+            // struct uinput_setup: bustype, vendor, product, version, then
+            // the name and the number of force feedback effects.
+            setup[0..2].copy_from_slice(&3u16.to_ne_bytes()); // BUS_USB
+            setup[2..4].copy_from_slice(&0x1209u16.to_ne_bytes());
+            setup[4..6].copy_from_slice(&0xc47au16.to_ne_bytes());
+            setup[6..8].copy_from_slice(&1u16.to_ne_bytes());
+            let name = b"OmaCRT latency probe";
+            setup[8..8 + name.len()].copy_from_slice(name);
+            // SAFETY: a 92 byte buffer, the size the request encodes.
+            if unsafe { libc::ioctl(fd, UI_DEV_SETUP, setup.as_ptr()) } < 0 {
+                return Err(last_error("uinput: setup"));
+            }
+            // SAFETY: no argument.
+            if unsafe { libc::ioctl(fd, UI_DEV_CREATE) } < 0 {
+                return Err(last_error("uinput: create"));
+            }
+
+            let mut sys = [0u8; 64];
+            // SAFETY: a 64 byte buffer, the size the request encodes.
+            if unsafe { libc::ioctl(fd, UI_GET_SYSNAME, sys.as_mut_ptr()) } < 0 {
+                return Err(last_error("uinput: sysname"));
+            }
+            let sys = String::from_utf8_lossy(&sys)
+                .trim_end_matches('\0')
+                .trim()
+                .to_string();
+
+            // The kernel creates the device and udev names the node; both
+            // take a moment, and there is nothing to wait on but the folder.
+            let dir = format!("/sys/devices/virtual/input/{sys}");
+            let mut node = None;
+            for _ in 0..200 {
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    node = entries
+                        .flatten()
+                        .map(|e| e.file_name().to_string_lossy().to_string())
+                        .find(|n| n.starts_with("event"));
+                }
+                if node.is_some() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let node = node.ok_or_else(|| format!("no event node appeared under {dir}"))?;
+            let path = format!("/dev/input/{node}");
+            let c = std::ffi::CString::new(path.clone()).unwrap();
+            // The node is created by the kernel and owned by the `input`
+            // group, and unlike /dev/uinput no access list is put on it. It
+            // is also root's alone for the moment between the kernel making
+            // it and udev handing it to that group, so the first open is
+            // refused and the tenth is not.
+            let mut efd = -1;
+            for _ in 0..200 {
+                // SAFETY: a path we own, wrapped straight away.
+                efd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC) };
+                if efd >= 0 || io::Error::last_os_error().raw_os_error() != Some(libc::EACCES) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            if efd < 0 {
+                return Err(format!(
+                    "{}. Reading it needs the `input` group: \
+                     `sudo usermod -aG input $USER`, then log out and in again",
+                    last_error(&path)
+                ));
+            }
+            let ev = unsafe { OwnedFd::from_raw_fd(efd) };
+            // The whole measurement rests on this: by default evdev stamps
+            // events on the real time clock, which cannot be compared with
+            // the vblank. This asks for the same clock wp_presentation
+            // advertises.
+            let clock: libc::c_int = libc::CLOCK_MONOTONIC;
+            // SAFETY: a pointer to an int, which is what the request encodes.
+            if unsafe { libc::ioctl(efd, EVIOCSCLOCKID, &clock) } < 0 {
+                return Err(last_error("evdev: asking for CLOCK_MONOTONIC"));
+            }
+            Ok(Pad { ui, ev, node: path })
+        }
+
+        fn write(&self, kind: u16, code: u16, value: i32) -> Result<(), String> {
+            let e = Event {
+                kind,
+                code,
+                value,
+                ..Default::default()
+            };
+            let n = std::mem::size_of::<Event>();
+            // SAFETY: writing the bytes of a struct the kernel defines.
+            let wrote = unsafe {
+                libc::write(
+                    self.ui.as_raw_fd(),
+                    (&raw const e).cast::<libc::c_void>(),
+                    n,
+                )
+            };
+            if wrote != n as isize {
+                return Err(last_error("uinput: write"));
+            }
+            Ok(())
+        }
+
+        pub fn press(&self) -> Result<(), String> {
+            self.write(EV_KEY, BTN_SOUTH, 1)?;
+            self.write(EV_SYN, 0, 0)
+        }
+
+        pub fn release(&self) -> Result<(), String> {
+            self.write(EV_KEY, BTN_SOUTH, 0)?;
+            self.write(EV_SYN, 0, 0)
+        }
+
+        /// Read events until the button goes down, and hand back the moment
+        /// the kernel says it did. `None` if nothing comes in time.
+        pub fn wait_press(&self, timeout: Duration) -> Option<Duration> {
+            let until = std::time::Instant::now() + timeout;
+            loop {
+                let left = until.checked_duration_since(std::time::Instant::now())?;
+                let ts = libc::timespec {
+                    tv_sec: left.as_secs() as libc::time_t,
+                    tv_nsec: left.subsec_nanos() as i64,
+                };
+                let mut pfd = libc::pollfd {
+                    fd: self.ev.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                // SAFETY: one descriptor we own and a timeout we own.
+                if unsafe { libc::ppoll(&mut pfd, 1, &ts, std::ptr::null()) } <= 0 {
+                    return None;
+                }
+                let mut buf = [Event::default(); 16];
+                let n = std::mem::size_of_val(&buf);
+                // SAFETY: reading whole events into a buffer sized for them.
+                let got = unsafe {
+                    libc::read(
+                        self.ev.as_raw_fd(),
+                        buf.as_mut_ptr().cast::<libc::c_void>(),
+                        n,
+                    )
+                };
+                if got <= 0 {
+                    return None;
+                }
+                let count = got as usize / std::mem::size_of::<Event>();
+                for e in &buf[..count] {
+                    if e.kind == EV_KEY && e.code == BTN_SOUTH && e.value == 1 {
+                        return Some(Duration::new(e.sec as u64, (e.usec * 1000) as u32));
+                    }
+                }
+            }
+        }
+    }
+
+    impl Drop for Pad {
+        fn drop(&mut self) {
+            // SAFETY: no argument, and the fd is still ours.
+            unsafe { libc::ioctl(self.ui.as_raw_fd(), UI_DEV_DESTROY) };
+        }
+    }
+}

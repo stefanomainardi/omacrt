@@ -200,15 +200,21 @@ nearly the picture on the glass; what it does not include is what happens in
 front of the commit, which is the pad's own polling and whatever the program
 does with the input before it draws.
 
-One frame is the floor for a program that draws as soon as it is told it may:
-its picture is finished at the start of a frame and the tube cannot show it
-until the next one. Two knobs move it, both in the display process's
-environment:
+Two knobs move it, both in the display process's environment, and both are
+set so that the tube is as quick as it has been measured to be safely:
 
 | | |
 | --- | --- |
 | `FLYBACK_MARGIN_US` | how long before the vblank the compositor starts drawing. Auto by default, from what recent frames cost; a number sets it in microseconds, `off` goes back to drawing as soon as a client commits, which costs a frame. |
-| `FLYBACK_LATE_DRAW=on` | tell a program to draw just in time instead of at the vblank. Measured here it takes 16.5 ms down to 7.1, and one frame in eight then arrives a vblank late. Judder is worse than a frame of delay on a television, so it is off unless asked for. |
+| `FLYBACK_LATE_DRAW=off` | go back to telling a program it may draw at the vblank, the way every other compositor does. By default it is told twice its own measured drawing time before the deadline instead, so its picture is finished just in time rather than waiting most of a frame. |
+| `FLYBACK_SLACK_US` | how much room a program is given on top of twice its drawing time. Three milliseconds by default. |
+
+The whole chain, from the kernel's timestamp for a button press to the start
+of scanout, measured over three hundred presses at random points of the
+frame: **best 7.4 ms, median 20.4 ms (1.23 frames), worst 32.1 ms**. About
+half a frame of that is the program's own input sampling, which is where
+RetroArch's run-ahead works; a real pad adds its own polling in front of it,
+one to eight milliseconds by its rate.
 
 ## Library and BIOS
 

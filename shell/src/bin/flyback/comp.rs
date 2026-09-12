@@ -153,8 +153,9 @@ pub struct Crt {
     /// the start of their scanout. Written out every few seconds so that
     /// `omacrt status` can say it.
     latencies: std::collections::VecDeque<Duration>,
-    /// `FLYBACK_LATE_DRAW=on`: tell clients they may draw just in time
-    /// rather than at the vblank. Off by default; see `arm_callbacks`.
+    /// `FLYBACK_LATE_DRAW=off`: tell clients they may draw at the vblank,
+    /// the way every other compositor does, rather than just in time.
+    /// See `arm_callbacks`.
     late_draw: bool,
     /// `FLYBACK_SLACK_US`: how much a client is given on top of twice its
     /// own measured drawing time.
@@ -644,7 +645,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         late: 0,
         showing: None,
         latencies: Default::default(),
-        late_draw: std::env::var("FLYBACK_LATE_DRAW").as_deref() == Ok("on"),
+        late_draw: std::env::var("FLYBACK_LATE_DRAW").as_deref() != Ok("off"),
         client_slack: std::env::var("FLYBACK_SLACK_US")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -1266,17 +1267,23 @@ impl Crt {
     /// misses the deadline and is shown one frame later than it would have
     /// been. So the estimate is a decaying maximum with a factor of two and
     /// three milliseconds on top, and a commit that does arrive late pushes
-    /// it out at once.
+    /// it out at once. It starts at a whole frame, which is where every
+    /// other compositor leaves it, and comes down over about a second.
     ///
-    /// It is off by default, and this is why. Measured here over three
-    /// hundred frames of a client that takes a millisecond to draw, it takes
-    /// the commit to the start of scanout from 15.2 ms to 5.7 ms, and one
-    /// frame in nine then slips a vblank and is shown late. More slack does
-    /// not buy the slip back: at five milliseconds it is one frame in seven,
-    /// at 9.2 ms of latency. A frame in nine arriving late is judder, and a
-    /// television that judders is worse than a television that is a frame
-    /// behind, so the trade is the operator's to make and not ours.
-    /// `FLYBACK_LATE_DRAW=on` makes it, `FLYBACK_SLACK_US` tunes it.
+    /// It is on, and this is what says it is safe. The launcher commits
+    /// 0.23 ms after being told, RetroArch about the same, and neither was
+    /// late for a single frame in thirty seconds, quiet or with every core
+    /// on the machine busy; the launcher's own frame rate under that load
+    /// fell from 60.2 to 59 either way. What it buys the launcher is the
+    /// commit to the start of scanout falling from 16.6 ms to 5.3.
+    ///
+    /// The one client measured slipping is an artificial one that sleeps a
+    /// millisecond in `ppoll` and commits: one frame in eight arrives late,
+    /// and more slack does not buy it back, because what it is losing to is
+    /// the jitter of its own wakeup rather than a want of room. A real
+    /// program drawing a real frame does not behave that way.
+    /// `FLYBACK_LATE_DRAW=off` goes back to telling clients at the vblank,
+    /// `FLYBACK_SLACK_US` tunes the room they are given.
     fn arm_callbacks(&mut self) {
         if self.callback_armed {
             return;
