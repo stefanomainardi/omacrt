@@ -1,0 +1,16 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1200, "h": 700, "title": "The architecture" },
+    { "file": "Frame.dc.html", "x": 1290, "y": 0, "w": 1200, "h": 700, "title": "The frame, both regimes" }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -150,
+      "w": 700,
+      "text": "Flyback: a Wayland compositor that takes one connector from the desktop and drives a 15 kHz television.\nEverything on these two sheets is either a real component in the source or a measured number from the compositor's own trace.\nThe two marks on the frame sheet that are arithmetic rather than measurement are drawn lighter and said so in the footnote."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
