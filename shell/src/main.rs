@@ -1358,6 +1358,16 @@ fn teach_retroarch(
 }
 
 fn main() {
+    // A launcher that dies takes the television with it: the compositor is
+    // left with no client and the tube holds the last frame it was given,
+    // which from the sofa is indistinguishable from the machine hanging. So
+    // when it panics it says where, into the same log everything else goes
+    // to, whether or not anybody remembered to set RUST_BACKTRACE.
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        previous(info);
+        eprintln!("{}", std::backtrace::Backtrace::force_capture());
+    }));
     // Anything the user had under the project's old name comes across first,
     // before a single configuration file is read.
     omacrt_shell::crt::migrate_legacy_dirs();

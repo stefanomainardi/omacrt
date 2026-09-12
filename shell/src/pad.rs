@@ -160,7 +160,15 @@ impl Stick {
         if let Some(nav) = self.pressed {
             return Some(nav);
         }
-        if self.y.abs() >= self.x.abs() {
+        // `unsigned_abs`, not `abs`. An axis is an i16 and a stick pushed
+        // fully to one side reads exactly -32768, whose absolute value is not
+        // an i16 at all: `abs` on it is an overflow, and this crate builds
+        // release with overflow checks on, so it is a panic rather than a
+        // wrong number. It killed the launcher every time a stick went to the
+        // stop, which on a game played with an analogue stick is constantly,
+        // and took the emulator down with it because the emulator is its
+        // child. From the sofa that is the machine hanging.
+        if self.y.unsigned_abs() >= self.x.unsigned_abs() {
             if self.y <= -DEAD_ZONE {
                 Some(Nav::Up)
             } else if self.y >= DEAD_ZONE {
@@ -200,6 +208,44 @@ impl Stick {
                 Some(d)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod stick_extremes {
+    use super::*;
+
+    /// A stick at its stop reads i16::MIN, whose absolute value does not fit
+    /// in an i16. Every direction has to survive it.
+    #[test]
+    fn a_stick_at_the_stop_does_not_panic() {
+        for (x, y, want) in [
+            (i16::MIN, 0, Nav::Left),
+            (i16::MAX, 0, Nav::Right),
+            (0, i16::MIN, Nav::Up),
+            (0, i16::MAX, Nav::Down),
+            (i16::MIN, i16::MIN, Nav::Up),
+            // A stick is not symmetric: -32768 is one step further from the
+            // middle than +32767 is, so a corner held down and to the left
+            // is a left rather than a down. The old `abs` could not see that
+            // because it could not represent it.
+            (i16::MIN, i16::MAX, Nav::Left),
+            (i16::MAX, i16::MIN, Nav::Up),
+        ] {
+            let mut s = Stick::new();
+            s.set(Axis::LeftX, x);
+            s.set(Axis::LeftY, y);
+            assert_eq!(s.poll(0.0), Some(want), "x {x} y {y}");
+        }
+    }
+
+    /// And the middle is still the middle.
+    #[test]
+    fn a_stick_at_rest_is_no_direction() {
+        let mut s = Stick::new();
+        s.set(Axis::LeftX, 0);
+        s.set(Axis::LeftY, 0);
+        assert_eq!(s.poll(0.0), None);
     }
 }
 

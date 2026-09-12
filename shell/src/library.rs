@@ -996,6 +996,16 @@ impl Library {
             );
             kv("global_core_options", "true");
             kv("core_options_path", &cores_cfg.display().to_string());
+            // A permission rather than a setting: a core asks the frontend
+            // for a second GL context to compile shaders on, and RetroArch
+            // grants it only if this is true. Left false, which is its
+            // default, Dolphin reports "Failed to create shared context for
+            // shader compiling" and then "Failed to initialize shader
+            // compiler worker thread", and compiles every new shader on the
+            // main thread inside the frame. On a GameCube title that is a
+            // visible hitch at every cut in a cutscene, because a cut is
+            // where new shaders arrive. Cores that do not ask are unaffected.
+            kv("video_shared_context", "true");
             // A shader preset the player picked. The presets that ship on
             // Arch are Slang, which the plain `gl` driver cannot compile, so
             // a chosen shader brings `glcore` with it and no shader leaves
