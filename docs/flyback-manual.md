@@ -165,4 +165,4 @@ decorations, no clipboard. Popups are configured so a client making one is
 not broken, and are not drawn. The full list, with the reasons, is in
 [`flyback.md`](flyback.md#what-it-does-not-do).
 
-**It is experimental**, and it drives hardware that a wrong signal destroys.
+**It is experimental**, and it sets the line rate of a circuit tuned for one.

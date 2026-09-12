@@ -179,7 +179,7 @@ output, drives it as a television rather than as a monitor, schedules frames
 for a tube instead of for a desktop, and says out loud how long its own
 picture took to arrive.
 
-It is experimental, it drives hardware that a wrong signal destroys, and it
+It is experimental, it sets the line rate of a circuit tuned for one, and it
 has been run in one room. What it contributes that outlasts it is the
 measurements and the method, both of which are written down here for anyone
 who wants to disagree with them on their own set.

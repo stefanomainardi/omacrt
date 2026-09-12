@@ -13,8 +13,8 @@ no desktop would ever set, and then schedules every frame against what a
 cathode ray tube does with it. Everything below was measured on one
 television; nothing here is quoted from a specification.
 
-**This is experimental.** It drives hardware that can be damaged by a signal
-outside its range, and the guard that prevents that is described under
+**This is experimental.** It sets the line rate of a circuit tuned for one,
+and the guard that keeps any other one off the connector is described under
 [Safety](#safety) so that it can be checked rather than trusted. Read that
 section before pointing it at a set you care about.
 
@@ -326,9 +326,14 @@ on the tube for filming, with a clapper and tick-counted steps.
 ## Safety
 
 A television is not a monitor that shrugs at a signal it cannot use. Its
-horizontal deflection is a tuned circuit — a flyback transformer and an
-output transistor sized for one line rate — and driving it well above that
-destroys both.
+horizontal deflection is a tuned circuit, a flyback transformer and an output
+transistor sized for one line rate, and it is under no obligation to work at
+another.
+
+What a given set does when it is given another is a property of that set.
+Some lose sync and roll, some blank, some shut themselves down, and some have
+no protection worth the name. This project has not tested which, on any set,
+and does not intend to: the guard below exists so that nobody finds out.
 
 So no timing reaches the kernel without passing `Modeline::fault`, at both
 places one can arrive. It refuses:

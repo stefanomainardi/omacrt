@@ -140,10 +140,11 @@ its own rate without the fifth of a second of darkness a mode change costs.
 How far a set follows that is a property of the set, measured from film and
 written down as one number in `crt.toml`.
 
-**It is experimental**, and it drives hardware that a wrong signal destroys:
-a television's horizontal deflection is a tuned circuit built for one
-frequency. No timing reaches the kernel without passing a guard that refuses
-a line rate outside the configured band.
+**It is experimental**, and it sets the line rate of a television, a circuit
+tuned for one rate and under no obligation to work at another. No timing
+reaches the kernel without passing a guard: the line rate inside the band
+`crt.toml` allows for that set, 15 to 16.5 kHz as shipped, the field rate
+between 40 and 90 Hz, and every timing in order.
 
 | | |
 | --- | --- |

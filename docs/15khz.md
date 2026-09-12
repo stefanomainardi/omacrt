@@ -207,8 +207,10 @@ the stock one.
 
 A television is not a monitor that shrugs at a signal it cannot use. Its
 horizontal deflection is a tuned circuit - a flyback transformer and an
-output transistor sized for one line rate - and driving it well above that
-destroys both. Everything here runs at 15.6 or 15.7 kHz, so any other rate
+output transistor sized for one line rate - and it is under no obligation to
+work at another. What a given set does with one is a property of that set,
+and this project has not tested it on any set and does not intend to.
+Everything here runs at 15.6 or 15.7 kHz, so any other rate
 is a mistake rather than an intention: a typo in `crt.toml`, a bug here, or
 anything else on the machine writing to the control pipe. That pipe is
 owner-only - a named pipe created 0600 in the user's own state folder - so
