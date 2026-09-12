@@ -28,8 +28,10 @@ turned out, the exact geometry of the mark it has to be a sibling of.
 
 ## 2. Ground truth instead of taste
 
-The project already had a mark, called **Retrace**: four bars crossed by the
-dark cut of a beam running back between two lines. A studio would have been
+The project already had a mark — **OmaCRT's own**: four bars crossed by the
+dark cut of a beam running back between two lines. It is drawn from a
+constant called `RETRACE` in the source, which is where that word belongs and
+the only place it should appear. A studio would have been
 sent a PNG of it and would have measured the PNG.
 
 The mark is not a PNG. It is a struct:
@@ -79,7 +81,7 @@ Each sheet carried a **For** and an **Against**, and the Against was written
 before the client saw it. C's:
 
 > *For* — says the name's engineering meaning rather than its picture, and
-> cannot be mistaken for Retrace at any size. Reads as a bracket, which suits
+> cannot be mistaken for the parent mark at any size. Reads as a bracket, which suits
 > a thing that encloses an output.
 > *Against* — the least literal of the three; someone who has never seen a
 > deflection waveform reads it as an abstract monogram, not as a beam.
@@ -107,7 +109,7 @@ The argument is not "it looks better". It is that the stroke *is* a bar: the
 same beam, travelling about a hundred times faster. At six units it was the
 only edge in the mark that did not sit on the 8-thick, 4-gap rhythm, so the
 mark had two weights in it and the small sizes showed it. At eight, every edge
-in the drawing is on the same grid as Retrace, the silhouette is one weight,
+in the drawing is on the same grid as the parent mark, the silhouette is one weight,
 and the shape still reads at 16 pixels, where 8 of 44 units is 2.9 pixels of
 ink.
 
@@ -127,7 +129,7 @@ Three sheets, in the order a studio would hand them over:
   badge. Clear space is four units — the gap again. Four things drawn
   deliberately wrong: rotated, gradient-filled, outlined, and with five bars.
 - **Lockup and family.** The horizontal and stacked lockups, and the two marks
-  side by side: Retrace's cut moving down and to the left, Flyback's ramp
+  side by side: OmaCRT's cut moving down and to the left, Flyback's ramp
   stepping down and to the right. One alphabet, two words.
 
 There is one constraint behind all of it that no studio has ever been given:

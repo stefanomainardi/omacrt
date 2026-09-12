@@ -12,7 +12,7 @@ skill in Claude Code.
 | `sketch/DirectionC.dc.html` | the ramp and its return stroke, as first drawn |
 | `Main.dc.html` | the chosen direction, finished: construction, the numbers, the size ramp |
 | `Colour.dc.html` | colour, clear space, the mark as the tube draws it, and four misuses |
-| `Lockup.dc.html` | the two lockups, and the family beside Retrace |
+| `Lockup.dc.html` | the two lockups, and the family beside OmaCRT's mark |
 | `canvas.json` | where the three finished sheets sit on the canvas |
 
 The rejected directions are kept deliberately. A process nobody can inspect is
