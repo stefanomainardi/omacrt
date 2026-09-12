@@ -96,6 +96,22 @@ case "${1:-}" in
     echo "live EDID Microsoft blocks: $(edid-decode "$edid" 2>/dev/null | grep -c 'Microsoft')"
     ;;
   off)
+    # Nothing to undo while the machine is going down. The override lives in
+    # debugfs and goes with the kernel, and the connector is about to stop
+    # existing either way.
+    #
+    # Doing it anyway was worse than useless. A stopping unit gets
+    # DefaultTimeoutStopSec, five seconds on this desktop, and the replug
+    # below asks for up to twelve: two waiting for the reset to take, five
+    # for the unplug, five for the plug. So the script was killed part way
+    # through every single shutdown, and where it was killed is between the
+    # unplug and the plug, with the display pipeline being torn down around
+    # it. The marker that exists to recover from exactly that is written to
+    # /run, which is a tmpfs, so the next boot never sees it.
+    if [ "$(systemctl is-system-running 2>/dev/null)" = stopping ]; then
+      echo "the system is shutting down; the override goes with the kernel"
+      exit 0
+    fi
     printf reset > "$dbg/edid_override"; echo detect > "$status"
     settle connected 2 || true
     replug

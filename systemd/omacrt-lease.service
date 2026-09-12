@@ -34,6 +34,17 @@ CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_SYS_ADMIN
 ProtectSystem=strict
 ReadWritePaths=/sys/kernel/debug /sys/class/drm /run
 Environment=OMACRT_CONNECTOR=HDMI-A-1
+# The AMD FreeSync range written into the same override, which is what makes
+# amdgpu call the connector vrr_capable and lets the refresh change by
+# stretching the vertical blanking instead of by a mode change.
+#
+# It belongs here rather than in a command somebody remembers to run: without
+# it the boot marks the connector non-desktop and nothing else, so the
+# variable rate quietly went away at every reboot and came back only when the
+# setup script was run again by hand. How far a set actually follows is a
+# property of the set and lives in `output.vrr_min_hz`; this is only what the
+# driver is told the sink accepts. Empty turns it off.
+Environment=OMACRT_FREESYNC=48:62
 ExecStart=/usr/local/lib/omacrt/crt-lease-setup.sh on ${OMACRT_CONNECTOR}
 ExecStop=/usr/local/lib/omacrt/crt-lease-setup.sh off ${OMACRT_CONNECTOR}
 

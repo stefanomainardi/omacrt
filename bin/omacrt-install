@@ -176,10 +176,21 @@ for arg in "$@"; do
       case "$conn" in
         *[!A-Za-z0-9-]*|"") echo "not a connector name: $conn" >&2; exit 1 ;;
       esac
+      # The FreeSync range goes into the same unit, and is interpolated into
+      # the same sed replacement, so it is checked the same way: digits and
+      # one colon, or empty to leave the variable rate off.
+      freesync="${OMACRT_FREESYNC-48:62}"
+      case "$freesync" in
+        "") ;;
+        [0-9]*:[0-9]*) case "$freesync" in *[!0-9:]*|*:*:*) echo "not a freesync range: $freesync" >&2; exit 1 ;; esac ;;
+        *) echo "not a freesync range: $freesync" >&2; exit 1 ;;
+      esac
       step "installing the lease setup for $conn (root)"
       install -d -m 755 /usr/local/lib/omacrt
       install -m 755 "$repo/scripts/crt-lease-setup.sh" "$repo/scripts/edid-non-desktop.py" /usr/local/lib/omacrt/
-      sed "s/^Environment=OMACRT_CONNECTOR=.*/Environment=OMACRT_CONNECTOR=$conn/" "$repo/systemd/omacrt-lease.service" > /etc/systemd/system/omacrt-lease.service
+      sed -e "s/^Environment=OMACRT_CONNECTOR=.*/Environment=OMACRT_CONNECTOR=$conn/" \
+          -e "s/^Environment=OMACRT_FREESYNC=.*/Environment=OMACRT_FREESYNC=$freesync/" \
+          "$repo/systemd/omacrt-lease.service" > /etc/systemd/system/omacrt-lease.service
       # The unit the old name installed would run the same setup at the next
       # boot. It is disabled but not stopped: its ExecStop takes the EDID
       # override back off the connector, which a running launcher is leasing.
