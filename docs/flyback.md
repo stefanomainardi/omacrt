@@ -248,12 +248,27 @@ callback the way a program paces itself:
 
 | the client takes | fixed rate | variable rate |
 | --- | --- | --- |
-| 1 ms | 16.6 ms | **3.6 ms** |
-| 2 ms | 16.6 ms | **4.5 ms** |
-| 4 ms | 16.6 ms | **6.3 ms** |
+| 1 ms | 6.98 ms | **3.79 ms** |
+| 2 ms | 7.90 ms | **4.61 ms** |
+| 4 ms | 9.79 ms | **6.54 ms** |
+
+Measured with the launcher mapped underneath, which is how the television
+actually runs: a program is never the only client on it.
 
 The launcher end to end reports **2.0 ms** in `omacrt status`, and 4.5 ms
 with every core on the machine busy. Before any of this work it was 30.9 ms.
+
+**That second sentence cost a day.** The same measurement with the launcher
+stopped read 3.56 ms, and with it running read 18.70 ms, with one frame in
+six arriving two frames late. The drawing-time estimate the callbacks were
+paced by was one number for the whole compositor, so it was really the
+slowest client on the tube; frame callbacks all go out together, and the
+launcher was setting the pace for a client it was hidden behind. It is kept
+per window now and read from the window on top, a window underneath no
+longer decides when the flip goes out, and a window's first measurement
+replaces the whole-frame assumption rather than losing to it for fifty
+frames. A hidden window costs the visible one nothing: 3.79 ms against 3.56
+alone.
 
 **The whole chain**, from the kernel's timestamp for a button press to the
 start of scanout, over three hundred presses at random points of the frame:

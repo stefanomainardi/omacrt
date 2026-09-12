@@ -333,9 +333,12 @@ draws on the frame callback the way a program paces itself:
 
 | the client takes | fixed rate | variable rate |
 | --- | --- | --- |
-| 1 ms | 16.6 ms | **3.6 ms** |
-| 2 ms | 16.6 ms | **4.5 ms** |
-| 4 ms | 16.6 ms | **6.3 ms** |
+| 1 ms | 6.98 ms | **3.79 ms** |
+| 2 ms | 7.90 ms | **4.61 ms** |
+| 4 ms | 9.79 ms | **6.54 ms** |
+
+Measured with the launcher mapped underneath, which is how the television
+actually runs: a program is never the only client on it.
 
 The launcher itself, end to end through `omacrt on`, reports **2.0 ms** in
 `omacrt status`, and 4.5 ms with every core on the machine busy.
