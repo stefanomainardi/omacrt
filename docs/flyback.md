@@ -146,6 +146,14 @@ client's commit and the kernel's vblank. It keeps the median of the last
 three hundred and writes it where the launcher and `omacrt status` can read
 it, so the tube says out loud how long its own picture takes to arrive.
 
+<p align="center">
+  <img src="screens/diagnostics.png" width="560" alt="The launcher's diagnostics screen on the tube, showing a latency row of 2.0 ms and 0.12 frames and a scanout row of 60.04 Hz">
+</p>
+
+That screen is photographed from the compositor's own framebuffer, which is
+3520x240: the horizontal is averaged down and the vertical left alone, so the
+scan lines in the picture are the scan lines the television draws.
+
 ---
 
 ## What it does not do
