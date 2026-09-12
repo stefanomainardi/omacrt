@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 44 44" shape-rendering="crispEdges" role="img" aria-label="The Flyback mark animating: four bars sweeping out in turn, then the full height stroke where the beam flies back"><style>@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+@keyframes b0 { 0%, 0.00% { transform: scaleX(0) } 21.34%, 85.37% { transform: scaleX(1) } 85.38%, 100% { transform: scaleX(0) } }
+#b0 { transform-box: fill-box; transform-origin: left center; animation: b0 1.23s linear infinite; }
+@keyframes b1 { 0%, 21.34% { transform: scaleX(0) } 42.68%, 85.37% { transform: scaleX(1) } 85.38%, 100% { transform: scaleX(0) } }
+#b1 { transform-box: fill-box; transform-origin: left center; animation: b1 1.23s linear infinite; }
+@keyframes b2 { 0%, 42.68% { transform: scaleX(0) } 64.02%, 85.37% { transform: scaleX(1) } 85.38%, 100% { transform: scaleX(0) } }
+#b2 { transform-box: fill-box; transform-origin: left center; animation: b2 1.23s linear infinite; }
+@keyframes b3 { 0%, 64.02% { transform: scaleX(0) } 85.37%, 85.37% { transform: scaleX(1) } 85.38%, 100% { transform: scaleX(0) } }
+#b3 { transform-box: fill-box; transform-origin: left center; animation: b3 1.23s linear infinite; }
+@keyframes ret { 0%, 85.37% { opacity: .22 } 85.38%, 91.87% { opacity: 1 } 91.88%, 100% { opacity: .22 } }
+#ret { opacity: .22; animation: ret 1.23s linear infinite; }</style><rect width="44" height="44" fill="#0b0d14"/><rect id="ret" x="0" y="0" width="8" height="44" fill="#9ece6a"/><rect id="b0" x="12" y="0" width="8" height="8" fill="#9ece6a"/><rect id="b1" x="12" y="12" width="16" height="8" fill="#9ece6a"/><rect id="b2" x="12" y="24" width="24" height="8" fill="#9ece6a"/><rect id="b3" x="12" y="36" width="32" height="8" fill="#9ece6a"/></svg>
