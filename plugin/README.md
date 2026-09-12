@@ -21,6 +21,22 @@ That builds the launcher and the CLI, copies them to `~/.local/bin`, copies
 this plugin to `~/.config/omarchy/plugins/io.github.stefanomainardi.omacrt`
 and enables it in the right section of the bar.
 
+### The helper
+
+Everything the widget and the panel do is a call to `omacrt`, through
+`bin/omacrt` in this folder. That file is a two line launcher for the
+installed program, written by `omacrt plugin sync`, and not a copy of it.
+
+It was a copy once, and a copy is a snapshot: no package upgrade writes into
+anybody's home, so the bar went on running the build that was current when
+the plugin was last installed. Two versions of one program then shared one
+state directory, and every rename on the program's side became a failure that
+appeared only through the bar. `omacrt doctor` reports a helper that is not
+the launcher for this install, under `plugin up to date`.
+
+A symlink would say the same thing more directly, and Omarchy's plugin
+validator refuses every symlink inside a plugin folder.
+
 ## Use
 
 - Left click opens the panel, middle click toggles the tube, right click

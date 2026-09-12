@@ -340,9 +340,16 @@ step "installing the plugins into $plugin_dir and $library_dir"
 # there for. Overwrite in place: removing a folder makes the shell drop the
 # plugin for a moment and the bar widget vanishes; changed files hot reload.
 #
-# A copy, not a link, because Omarchy's plugin validator refuses a symlink
-# inside a plugin folder.
-"$built_dir/omacrt" plugin sync --install
+# The helper the widget runs is a launcher for whichever omacrt writes it,
+# so this has to be the installed one and never the freshly built copy in
+# the work tree: a `cargo clean` would otherwise take the bar with it.
+# A launcher rather than a symlink because Omarchy's plugin validator
+# refuses a symlink inside a plugin folder.
+if [ "$packaged" = 1 ]; then
+  "$built_dir/omacrt" plugin sync --install
+else
+  "$bin_dir/omacrt" plugin sync --install
+fi
 
 # Hot reloading plugin code while the session is locked makes the shell's
 # lock plugin re-create its surfaces without an active lock, which Quickshell

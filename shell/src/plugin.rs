@@ -74,11 +74,50 @@ pub fn drift() -> Vec<PathBuf> {
     }
     let helper = main.join("bin/omacrt");
     if let Ok(mine) = std::env::current_exe()
-        && std::fs::read(&helper).ok() != std::fs::read(&mine).ok()
+        && !helper_launches(&helper, &mine)
     {
         out.push(helper);
     }
     out
+}
+
+/// True when the widget's helper already launches `mine`.
+fn helper_launches(helper: &Path, mine: &Path) -> bool {
+    std::fs::read_to_string(helper).ok().as_deref() == Some(&launcher_text(mine))
+}
+
+/// The helper the bar runs: a launcher for this program, not a copy of it.
+///
+/// The helper used to be a copy, and a copy is a snapshot. No package upgrade
+/// writes into anybody's home, so the bar went on running the build that was
+/// current when the plugin was last installed: two versions of one program
+/// sharing one state directory, and every rename on this side became a
+/// failure that appeared only through the bar. A launcher has no version of
+/// its own.
+///
+/// A symlink would say the same thing in one inode, and Omarchy's own
+/// validator refuses every symlink inside a plugin folder: a copied plugin
+/// could otherwise point at arbitrary files once it lands in the trusted
+/// plugins directory. This is a regular file, which that rule allows.
+///
+/// `exec -a "$0"` keeps this path as `argv[0]`, because the panel finds the
+/// DAC watcher with `pgrep -f` on exactly this path; `/proc/self/exe` still
+/// resolves to the program, which is how it finds the compositor beside
+/// itself rather than in the plugin folder.
+fn launcher_text(mine: &Path) -> String {
+    format!(
+        "#!/bin/bash\n\
+         # Written by `omacrt plugin sync`. Not a copy of the program: a copy\n\
+         # is a snapshot, and the bar would go on running it after an upgrade.\n\
+         exec -a \"$0\" {} \"$@\"\n",
+        shell_quote(mine)
+    )
+}
+
+/// A path as one shell word, for a file name that may hold anything a file
+/// name may hold.
+fn shell_quote(p: &Path) -> String {
+    format!("'{}'", p.to_string_lossy().replace('\'', "'\\''"))
 }
 
 /// Write what differs, and say what was written.
@@ -112,14 +151,13 @@ pub fn sync(create: bool) -> Result<Vec<String>, String> {
             wrote.push(format!("{name} in {}", dir.display()));
         }
     }
-    // The helper the widget runs.
+    // The helper the widget runs: a launcher for this program, never a copy.
     let helper = main.join("bin/omacrt");
     let mine = std::env::current_exe().map_err(|e| e.to_string())?;
-    if std::fs::read(&helper).ok() != std::fs::read(&mine).ok() {
+    if !helper_launches(&helper, &mine) {
         std::fs::create_dir_all(helper.parent().unwrap_or(&main))
             .map_err(|e| format!("{}: {e}", main.display()))?;
-        let body = std::fs::read(&mine).map_err(|e| format!("{}: {e}", mine.display()))?;
-        write_file(&helper, &body, 0o755)?;
+        write_file(&helper, launcher_text(&mine).as_bytes(), 0o755)?;
         wrote.push(format!("bin/omacrt in {}", main.display()));
     }
     Ok(wrote)
@@ -136,6 +174,11 @@ fn write_file(path: &Path, body: &[u8], mode: u32) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", tmp.display()))?;
     f.sync_all()
         .map_err(|e| format!("{}: {e}", tmp.display()))?;
+    // Closed before the rename, not at the end of this function: a file still
+    // open for writing cannot be executed, and the widget runs the helper
+    // this writes. The window was small and the failure is ETXTBSY, which
+    // says nothing about where it came from.
+    drop(f);
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode))
         .map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| {
@@ -147,6 +190,110 @@ fn write_file(path: &Path, body: &[u8], mode: u32) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tmp(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("omacrt-helper-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_launcher_for_this_program_is_not_drift_and_anything_else_is() {
+        let root = tmp("launcher");
+        let mine = root.join("omacrt");
+        std::fs::write(&mine, b"program").unwrap();
+        let helper = root.join("bin/omacrt");
+        std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
+
+        // Nothing there at all.
+        assert!(!helper_launches(&helper, &mine));
+
+        // A copy of the program is drift even when its bytes are current:
+        // it is a snapshot, and the next build leaves it behind.
+        std::fs::write(&helper, b"program").unwrap();
+        assert!(!helper_launches(&helper, &mine));
+
+        // What this version writes.
+        write_file(&helper, launcher_text(&mine).as_bytes(), 0o755).expect("the launcher");
+        assert!(helper_launches(&helper, &mine));
+
+        // A launcher for some other install.
+        let other = root.join("other/omacrt");
+        std::fs::create_dir_all(other.parent().unwrap()).unwrap();
+        assert!(!helper_launches(&helper, &other));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// It must survive the characters a home directory may hold, because the
+    /// path is written into a shell script.
+    #[test]
+    fn the_path_goes_in_as_one_shell_word() {
+        let text = launcher_text(Path::new("/home/o'brien/a dir/omacrt"));
+        assert!(
+            text.contains(r#"exec -a "$0" '/home/o'\''brien/a dir/omacrt' "$@""#),
+            "{text}"
+        );
+    }
+
+    /// The arguments the bar passes arrive unchanged, and nothing of the
+    /// program is copied into the plugin folder.
+    #[test]
+    fn the_launcher_passes_its_arguments_on_and_stays_small() {
+        let root = tmp("runs");
+        let target = root.join("omacrt");
+        write_file(
+            &target,
+            b"#!/bin/sh\nprintf '%s|' \"$@\"\n",
+            0o755,
+        )
+        .unwrap();
+        let helper = root.join("bin/omacrt");
+        std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
+        write_file(&helper, launcher_text(&target).as_bytes(), 0o755).unwrap();
+
+        let out = std::process::Command::new(&helper)
+            .args(["dac", "watch"])
+            .output()
+            .expect("the launcher runs");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "dac|watch|");
+        assert!(std::fs::metadata(&helper).unwrap().len() < 512);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `argv[0]` stays the helper's own path, which is what the panel's
+    /// `pgrep -f` matches on to find the DAC watcher it started.
+    ///
+    /// The stand-in is a real program because that is what the helper points
+    /// at: the kernel runs a script through its interpreter and uses the
+    /// file's own path, so a script would not show the property at all.
+    #[test]
+    fn the_bar_still_recognises_what_it_started() {
+        let Some(shell) = ["/usr/bin/bash", "/bin/bash"]
+            .into_iter()
+            .map(PathBuf::from)
+            .find(|p| p.is_file())
+        else {
+            return;
+        };
+        let root = tmp("argv0");
+        let helper = root.join("bin/omacrt");
+        std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
+        write_file(&helper, launcher_text(&shell).as_bytes(), 0o755).unwrap();
+
+        let out = std::process::Command::new(&helper)
+            .args(["-c", r#"printf '%s' "$0""#])
+            .output()
+            .expect("the launcher runs");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout),
+            helper.display().to_string()
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn the_files_it_carries_are_the_files_it_installs() {
