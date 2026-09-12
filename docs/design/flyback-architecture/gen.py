@@ -112,90 +112,138 @@ def titled(x, y, w, h, title, lines, accent=PAPER, stroke=LINE, fill=PANEL):
 def label(x, y, s, fill=DIM):
     return text(x, y, s, size=10, fill=fill, weight=500, anchor="middle", ls=0.4)
 
+# The drawing is laid out at 976 units because that is the width of the
+# reading column the page gives it. Rendering a 1120 unit drawing into 976
+# is a true resize and nothing collides, but it takes the smallest type from
+# 9.5 px to 8.3, and that would be the smallest type on the page. So the
+# geometry is narrower and the type is unchanged, which is a re-layout rather
+# than a scale. Every column below is sized from the longest string in it:
+# the check at the foot of this file fails the build if one stops fitting.
+W = 976
+COL_L = (0, 190)          # the desktop and the clients
+GAP_L = 106               # holds "wp_drm_lease_v1" and "frame callbacks"
+COL_M = (296, 316)        # the compositor
+GAP_R = 94                # holds "atomic commit"
+COL_R = (706, 264)        # kernel, converter, tube
+BOX_M = (COL_M[0] + 18, COL_M[1] - 36)   # the inner boxes
+
+ROWS = [
+    (74, 52, "lease.rs", ["takes the lease: a DRM fd that is",
+                          "master for one connector and its",
+                          "CRTC, and nothing else"]),
+    (140, 68, "the Wayland side",
+     ["wl_compositor  wl_subcompositor",
+      "xdg_shell  wl_shm  wp_viewporter",
+      "zwp_linux_dmabuf  wp_presentation",
+      "wl_seat, keyboard only: no libinput"]),
+    (226, 90, "the scheduler",
+     ["when to tell the clients, when to",
+      "draw, when to flip. fixed rate: draw",
+      "at the deadline less render_cost.",
+      "variable rate: no deadline, draw the",
+      "moment a client commits"]),
+    (334, 58, "the DRM output",
+     ["atomic commit, and no timing",
+      "reaches it without Modeline::fault"]),
+    (406, 58, "the control pipe",
+     ["0600 in the user's own state folder",
+      "top key mode vrr rate shot record"]),
+]
+
+RIGHT = [
+    (20, 120, "amdgpu / DRM", BLUE,
+     ["atomic modeset on the leased fd",
+      "page flip, and a vblank timestamp",
+      "on CLOCK_MONOTONIC",
+      "adaptive sync on the CRTC"]),
+    (200, 95, "RGB-Pi 2", CYAN,
+     ["HDMI in, RGB SCART out",
+      "composite sync selected over I2C"]),
+    (355, 115, "CRT television", PAPER,
+     ["15.731 kHz, 240 lines, 60.04 Hz",
+      "no panel, no scaler, no frame store:",
+      "the photon leaves when it arrives"]),
+]
+
+CLIENTS = [("omacrt-shell", "the launcher, 320x240"),
+           ("RetroArch", "a core per system"),
+           ("mpv", "films and YouTube")]
+
+
+def fits(lines, size, room, where):
+    """Refuse to emit a drawing whose text does not fit the box it is in.
+
+    0.6 em per glyph is JetBrains Mono's advance, so this is exact for the
+    monospaced faces these sheets use rather than an estimate."""
+    for ln in lines:
+        w = len(ln) * size * 0.6
+        if w > room:
+            raise SystemExit(f"{where}: {w:.0f} units of text in {room} units of box: {ln!r}")
+
+
 def architecture():
-    s = [f'<svg width="1120" height="500" viewBox="0 0 1120 500" xmlns="http://www.w3.org/2000/svg">']
+    s = [f'<svg width="{W}" height="500" viewBox="0 0 {W} 500" xmlns="http://www.w3.org/2000/svg">']
     s.append(defs([DIM, GREEN, BLUE, CYAN]))
 
-    # left column
-    s.append(titled(0, 20, 220, 100, "Hyprland",
-                    ["the desktop session", "offers the connector it was",
-                     "told to leave alone"]))
-    s.append(titled(0, 140, 220, 75, "omacrt",
+    lx, lw = COL_L
+    fits(["the desktop session", "offers the connector it", "was told to leave alone"], 10.5, lw - 28, "Hyprland")
+    s.append(titled(lx, 20, lw, 100, "Hyprland",
+                    ["the desktop session", "offers the connector it",
+                     "was told to leave alone"]))
+    s.append(titled(lx, 140, lw, 75, "omacrt",
                     ["the CLI and the bar plugin", "on the desktop side"]))
-    s.append(box(0, 245, 220, 225, stroke=LINE, fill="none"))
-    s.append(cap(14, 266, "the clients"))
-    for i, (n, d) in enumerate([("omacrt-shell", "the launcher, 320x240"),
-                                ("RetroArch", "a core per system"),
-                                ("mpv", "films and YouTube")]):
+    s.append(box(lx, 245, lw, 225, stroke=LINE, fill="none"))
+    s.append(cap(lx + 14, 266, "the clients"))
+    for i, (n, d) in enumerate(CLIENTS):
         y = 280 + i * 62
-        s.append(box(14, y, 192, 50, stroke=LINE, fill=BG))
-        s.append(text(26, y + 21, n, size=12, fill=PAPER, weight=700))
-        s.append(text(26, y + 38, d, size=10, fill=DIM))
+        fits([d], 10, lw - 40, "client")
+        s.append(box(lx + 14, y, lw - 28, 50, stroke=LINE, fill=BG))
+        s.append(text(lx + 26, y + 21, n, size=12, fill=PAPER, weight=700))
+        s.append(text(lx + 26, y + 38, d, size=10, fill=DIM))
 
-    # the compositor
-    s.append(box(330, 0, 400, 480, stroke=GREEN, fill=PANEL))
-    s.append(text(350, 32, "Flyback", size=21, fill=GREEN, weight=800))
-    s.append(text(350, 51, "one process, one thread, one calloop event loop",
-                  size=10, fill=DIM))
-    rows = [
-        (74, 52, "lease.rs", ["takes the lease: a DRM fd that is master for",
-                              "one connector and its CRTC, and nothing else"]),
-        (140, 68, "the Wayland side",
-         ["wl_compositor  wl_subcompositor  xdg_shell  wl_shm",
-          "zwp_linux_dmabuf  wp_viewporter  wp_presentation",
-          "wl_seat, keyboard only: no pointer, no libinput"]),
-        (222, 90, "the scheduler",
-         ["when to tell the clients, when to draw, when to flip",
-          "fixed rate: draw at the deadline less render_cost",
-          "variable rate: no deadline, draw the moment a client",
-          "commits. render_cost, client_cost, rate_trim"]),
-        (326, 58, "the DRM output",
-         ["atomic commit, and no timing reaches it without",
-          "passing Modeline::fault"]),
-        (398, 58, "the control pipe",
-         ["0600 in the user's own state folder",
-          "top  key  mode  vrr  rate  shot  record"]),
-    ]
-    for y, h, title, lines in rows:
-        s.append(box(350, y, 360, h, stroke=LINE, fill=BG))
-        s.append(text(362, y + 19, title, size=11.5, fill=PAPER, weight=700))
+    mx, mw = COL_M
+    s.append(box(mx, 0, mw, 480, stroke=GREEN, fill=PANEL))
+    s.append(text(mx + 20, 32, "Flyback", size=21, fill=GREEN, weight=800))
+    s.append(text(mx + 20, 51, "one process, one thread, one calloop loop", size=10, fill=DIM))
+    bx, bw = BOX_M
+    for y, h, title, lines in ROWS:
+        fits(lines, 9.5, bw - 24, title)
+        s.append(box(bx, y, bw, h, stroke=LINE, fill=BG))
+        s.append(text(bx + 12, y + 19, title, size=11.5, fill=PAPER, weight=700))
         for i, ln in enumerate(lines):
-            s.append(text(362, y + 35 + i * 14, ln, size=9.5, fill=DIM))
+            s.append(text(bx + 12, y + 35 + i * 14, ln, size=9.5, fill=DIM))
 
-    # right column
-    s.append(titled(830, 20, 290, 120, "amdgpu / DRM",
-                    ["atomic modeset on the leased fd",
-                     "page flip, and a vblank timestamp",
-                     "on CLOCK_MONOTONIC",
-                     "adaptive sync on the CRTC"], accent=BLUE))
-    s.append(titled(830, 200, 290, 95, "RGB-Pi 2",
-                    ["HDMI in, RGB SCART out",
-                     "composite sync selected over I2C"], accent=CYAN))
-    s.append(titled(830, 355, 290, 115, "CRT television",
-                    ["15.731 kHz, 240 lines, 60.04 Hz",
-                     "no panel, no scaler, no frame store:",
-                     "the photon leaves when the signal does"], accent=PAPER))
+    rx, rw = COL_R
+    for y, h, title, accent, lines in RIGHT:
+        fits(lines, 10.5, rw - 28, title)
+        s.append(titled(rx, y, rw, h, title, lines, accent=accent))
 
-    # connections
-    s.append(arrow(220, 70, 328, 70, GREEN))
-    s.append(label(274, 62, "wp_drm_lease_v1", GREEN))
-    s.append(arrow(220, 178, 328, 178, DIM))
-    s.append(label(274, 170, "control pipe"))
-    s.append(arrow(220, 330, 328, 330, DIM))
-    s.append(label(274, 322, "wayland-crt"))
-    s.append(arrow(328, 420, 222, 420, DIM, dash="4 4"))
-    s.append(label(274, 412, "frame callbacks"))
+    # connections. The labels live in the gaps between the columns, so the
+    # gaps are sized from the labels rather than the other way round: this is
+    # what let "wp_drm_lease_v1" run under the compositor's own border once.
+    fits(["wp_drm_lease_v1", "frame callbacks", "wayland-crt", "control pipe"], 10, GAP_L - 16, "left gap")
+    fits(["atomic commit", "vblank"], 10, GAP_R - 16, "right gap")
+    s.append(arrow(lx + lw, 70, mx - 2, 70, GREEN))
+    s.append(label((lx + lw + mx) / 2, 62, "wp_drm_lease_v1", GREEN))
+    s.append(arrow(lx + lw, 178, mx - 2, 178, DIM))
+    s.append(label((lx + lw + mx) / 2, 170, "control pipe"))
+    s.append(arrow(lx + lw, 330, mx - 2, 330, DIM))
+    s.append(label((lx + lw + mx) / 2, 322, "wayland-crt"))
+    s.append(arrow(mx - 2, 420, lx + lw + 2, 420, DIM, dash="4 4"))
+    s.append(label((lx + lw + mx) / 2, 412, "frame callbacks"))
 
-    s.append(arrow(730, 70, 828, 70, BLUE))
-    s.append(label(779, 62, "atomic commit", BLUE))
-    s.append(arrow(828, 120, 732, 120, BLUE, dash="4 4"))
-    s.append(label(779, 112, "vblank", BLUE))
-    s.append(arrow(975, 140, 975, 198, CYAN))
-    s.append(text(987, 175, "HDMI", size=10, fill=CYAN, weight=500))
-    s.append(arrow(975, 295, 975, 353, CYAN))
-    s.append(text(987, 330, "RGB SCART", size=10, fill=CYAN, weight=500))
+    s.append(arrow(mx + mw, 70, rx - 2, 70, BLUE))
+    s.append(label((mx + mw + rx) / 2, 62, "atomic commit", BLUE))
+    s.append(arrow(rx - 2, 120, mx + mw + 2, 120, BLUE, dash="4 4"))
+    s.append(label((mx + mw + rx) / 2, 112, "vblank", BLUE))
+    cxx = rx + rw / 2
+    s.append(arrow(cxx, 140, cxx, 198, CYAN))
+    s.append(text(cxx + 12, 175, "HDMI", size=10, fill=CYAN, weight=500))
+    s.append(arrow(cxx, 295, cxx, 353, CYAN))
+    s.append(text(cxx + 12, 330, "RGB SCART", size=10, fill=CYAN, weight=500))
     s.append("</svg>")
     return "".join(s)
+
 
 sheet("Main.dc.html",
       "Flyback &middot; architecture",
