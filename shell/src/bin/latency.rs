@@ -819,6 +819,27 @@ fn report(probe: &Probe, paced: bool) {
         println!("no frame was ever answered: the compositor kept nothing");
         return;
     }
+    // `--dump FILE` writes every sample in the order it was taken, one
+    // millisecond figure per line, with the frame length on the first line
+    // as a comment. Five summary numbers are a claim; the whole set is a
+    // distribution somebody else can draw or disagree with, which is the
+    // only reason to publish a measurement at all.
+    if let Some(path) = std::env::args()
+        .position(|a| a == "--dump")
+        .and_then(|i| std::env::args().nth(i + 1))
+    {
+        let mut out = format!("# frame {:.3} ms\n", probe.refresh as f64 / 1_000_000.0);
+        for s in &probe.samples {
+            out.push_str(&format!(
+                "{:.3}\n",
+                s.latency.as_nanos() as f64 / 1_000_000.0
+            ));
+        }
+        match std::fs::write(&path, out) {
+            Ok(()) => println!("dumped {} samples to {path}", probe.samples.len()),
+            Err(e) => eprintln!("dump: {path}: {e}"),
+        }
+    }
     us.sort_unstable();
     let frame_us = probe.refresh / 1000;
     let mean = us.iter().sum::<u64>() / us.len() as u64;
