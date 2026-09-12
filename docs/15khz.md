@@ -202,7 +202,7 @@ follows stable within days. Building one is a package that coexists with the
 stock kernel, its own UKI and its own boot entry, and the default entry stays
 the stock one.
 
-## A variable refresh rate, and where it stops
+## A variable refresh rate
 
 A television's horizontal rate must not move: the flyback transformer and the
 deflection circuit are tuned for one. The vertical rate is another matter,
@@ -226,40 +226,92 @@ that range is a question for a camera, not for software: the one report of
 adaptive sync on a CRT, on multisync PC monitors rather than televisions,
 says some sets change vertical size in proportion to the blanking interval.
 
-**The driver does not.** The pieces are all reachable:
+**And so does the driver, with two things set.** The pieces:
 
 1. `vrr_capable` on an HDMI connector comes from an AMD vendor block in the
    EDID, which the display microcontroller parses. Nine bytes,
    `68 1a 00 00 01 01 <min> <max> 00`, and since this project writes the
-   connector's EDID anyway, `OMACRT_FREESYNC=50:62 crt-lease-setup.sh on`
-   adds it and `vrr_capable` becomes 1.
-2. `VRR_ENABLED` on the leased CRTC is accepted, and the driver logs the
-   `VRR off->on` transition.
-3. And the timing generator stays pinned. `amdgpu_dm_dtn_log` reports
-   `vmax 261 vmin 261` for the tube's OTG throughout, which is one frame with
-   no room either side.
+   connector's EDID anyway, `OMACRT_FREESYNC=48:62 crt-lease-setup.sh on`
+   adds it. The range matters: `mod_freesync_build_vrr_params` caps the
+   declared maximum at the mode's own nominal rate and then wants
+   `refresh_range >= MIN_REFRESH_RANGE`, which is 10 Hz, so at a nominal
+   60.04 Hz the minimum has to be 50 or below. A range of 55 to 66 collapses
+   to five and is refused in silence.
+2. `amdgpu.freesync_video=1` on the kernel command line. Without it the
+   config computed for the CRTC is overwritten a few lines further on and
+   the state falls back to `VRR_STATE_INACTIVE`.
 
-Two gates in the current tree explain it, and the second is the one that
-bites. `mod_freesync_build_vrr_params` in `modules/freesync/freesync.c` caps
-the declared maximum at the mode's own nominal rate and then requires
-`refresh_range >= MIN_REFRESH_RANGE`, which is 10 Hz: at a nominal 60.04 Hz a
-declared range of 55 to 66 collapses to 5 and is refused, so the minimum has
-to be 50 or below to be worth declaring at all. Past that gate,
-`dc_stream_adjust_vmin_vmax` - the call that actually programs the two
-registers - is reached from only two places: the per-flip path in
-`amdgpu_dm_freesync.c`, which is inside `if (adev->family < AMDGPU_FAMILY_AI)`
-and so never runs on anything since Vega, and `amdgpu_dm.c` under
-`amdgpu_dm_is_dc_timing_adjust_needed`, which for a variable rate is true only
-on the transition itself. At that transition the driver logged
-`VRR packet update: enabled=0 state=2`, which is `VRR_STATE_INACTIVE`: the
-range written was the nominal one, and nothing writes it again.
+With both, the timing generator is programmed with room: `amdgpu_dm_dtn_log`
+reports `vmin 261 vmax 327` for the tube's OTG, which is 60.04 Hz down to
+48 Hz of vertical blanking at an unchanged 15.731 kHz, and the driver logs
+`VRR packet update: enabled=1 state=3`, which is `VRR_STATE_ACTIVE_VARIABLE`.
 
-So the television is not the obstacle and neither is the DAC. Whatever the
-missing step is, it is above them, and finding it needs either a kernel built
-with the per-flip path open or `amdgpu.freesync_video=1`, which routes the
-whole thing through `VRR_STATE_ACTIVE_FIXED` instead - a state that does
-program the registers on every commit. That parameter is read-only at
-runtime; it takes a reboot.
+The scanout then follows the program, frame by frame. A client committing at
+a fixed rate, and the interval between two vblanks measured from the
+compositor's own DRM events:
+
+| client | scanout |
+| --- | --- |
+| 60 Hz | 60.05 Hz |
+| 57 Hz | 56.80 Hz |
+| 55 Hz | 54.82 Hz |
+| 50 Hz | 49.92 Hz |
+
+**And the picture keeps its height.** A camera on the tube through seven
+steps of vertical total, measured as the ratio of picture height to picture
+width so that the camera's own drift cancels - the width cannot change,
+because the line rate never does:
+
+| vtotal | Hz | frame longer by | height |
+| --- | --- | --- | --- |
+| 262 | 60.04 | reference | - |
+| 264 | 59.59 | +0.8% | +0.07% |
+| 266 | 59.14 | +1.5% | +0.32% |
+| 270 | 58.26 | +3.1% | -0.12% |
+| 276 | 57.00 | +5.3% | -0.10% |
+| 286 | 55.00 | +9.2% | +0.06% |
+
+If the vertical amplitude followed the frame period, the last row would read
++9.2%. The seventh step repeats the first, and its 0.69% disagreement over
+forty-two seconds is the camera moving; the residuals above have that drift
+taken out linearly. The BeoCenter 1 regulates its vertical size, and every
+refresh emulation asks for on this side of the world - 60.0988 for a NES,
+59.92 for a Mega Drive, 59.6 to 61.7 for the arcade boards - is inside
+±1.8%, five times inside what was measured.
+
+## What the compositor does with it
+
+A variable refresh rate turns the scheduling problem inside out. With a fixed
+one, a frame that misses the deadline is shown a whole frame late, so the
+compositor draws at the last safe moment and no later. With a variable one
+there is no deadline at all: a flip that arrives after the frame's minimum
+length simply makes that frame longer. Nothing is dropped and nothing
+judders.
+
+So under a variable rate Flyback gives a client the whole frame rather than
+the frame less a margin, halves the slack it holds back, and stops counting a
+commit that arrives with a flip in the air as late - under a fixed rate that
+is a client to give more room to, and here it is the normal case. The one
+thing it must not do is draw at the vblank: anything committed while the last
+flip was in flight is about to be superseded by the frame the client is
+drawing now, and flipping it puts a stale picture in the air that the fresh
+one then waits behind. That single mistake cost a frame and a half.
+
+Measured on the television, commit to the start of scanout, for a client that
+draws on the frame callback the way a program paces itself:
+
+| the client takes | fixed rate | variable rate |
+| --- | --- | --- |
+| 1 ms | 16.6 ms | **3.6 ms** |
+| 2 ms | 16.6 ms | **4.5 ms** |
+| 4 ms | 16.6 ms | **6.3 ms** |
+
+The launcher itself, end to end through `omacrt on`, reports **2.0 ms** in
+`omacrt status`, and 4.5 ms with every core on the machine busy.
+
+Asking for the range in the EDID is the switch. There is nothing else a
+television leased to this compositor would want a variable refresh rate for,
+so when the kernel says the connector is capable, Flyback turns it on.
 
 ## Modelines and interlace in Hyprland
 

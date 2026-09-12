@@ -49,6 +49,7 @@
 
 use std::collections::HashMap;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::fs::OpenOptionsExt;
 use std::time::Duration;
 
 use wayland_client::backend::ObjectId;
@@ -144,6 +145,27 @@ struct Probe {
 }
 
 impl Probe {
+    fn new() -> Probe {
+        Probe {
+            compositor: None,
+            shm: None,
+            wm_base: None,
+            presentation: None,
+            viewporter: None,
+            surface: None,
+            viewport: None,
+            buffers: Vec::new(),
+            size: (0, 0),
+            configured: false,
+            inflight: HashMap::new(),
+            pressed: None,
+            samples: Vec::new(),
+            refresh: 16_666_666,
+            discarded: 0,
+            callbacks: 0,
+            closed: false,
+        }
+    }
     /// A pool of `BUFFERS` two-pixel buffers, alternating black and white, so
     /// consecutive frames differ on the glass as well as in the protocol.
     fn make_buffers(&mut self, qh: &QueueHandle<Probe>) -> Result<(), String> {
@@ -292,6 +314,267 @@ fn pump_until(
     }
 }
 
+/// The vertical totals the pattern walks through, and what each one is.
+///
+/// Only upwards from the mode's own 262 lines: a variable refresh rate can
+/// stretch the vertical blanking but never shorten it, so the base mode has
+/// to be the fastest rate wanted.
+const STEPS: &[u32] = &[262, 264, 266, 270, 276, 286, 262];
+
+/// Draw a frame at the exact edges of the picture and walk the vertical
+/// total, so a camera pointed at the television can be measured afterwards
+/// rather than judged by eye.
+///
+/// A television's vertical deflection is a sawtooth that re-triggers on
+/// sync. Whether its amplitude is regulated against the frame period decides
+/// whether the picture keeps its height when the blanking is stretched, and
+/// that is the one question about this that software cannot answer: the
+/// scanout is correct either way, and only the glass shows the difference.
+///
+/// The frame is two lines thick against the first and last active line, so
+/// the height of the picture is the distance between them. Ticks along the
+/// top count the step, so a single take needs no clapperboard: step one is
+/// one tick, step two is two, and the frame in the video says which vertical
+/// total it belongs to.
+fn pattern() -> Result<(), String> {
+    let conn = Connection::connect_to_env().map_err(|e| format!("no compositor: {e}"))?;
+    let mut queue = conn.new_event_queue::<Probe>();
+    let qh = queue.handle();
+    let _registry = conn.display().get_registry(&qh, ());
+    let mut probe = Probe::new();
+    queue
+        .roundtrip(&mut probe)
+        .map_err(|e| format!("registry: {e}"))?;
+
+    let comp = probe.compositor.clone().ok_or("no wl_compositor")?;
+    let wm = probe.wm_base.clone().ok_or("no xdg_wm_base")?;
+    let vp = probe.viewporter.clone().ok_or("no wp_viewporter")?;
+    let surface = comp.create_surface(&qh, ());
+    let xdg = wm.get_xdg_surface(&surface, &qh, ());
+    let top = xdg.get_toplevel(&qh, ());
+    top.set_app_id("omacrt-pattern".into());
+    top.set_title("pattern".into());
+    surface.commit();
+    probe.surface = Some(surface.clone());
+    probe.viewport = Some(vp.get_viewport(&surface, &qh, ()));
+    for _ in 0..100 {
+        queue
+            .roundtrip(&mut probe)
+            .map_err(|e| format!("configure: {e}"))?;
+        if probe.configured && probe.size.0 > 0 {
+            break;
+        }
+    }
+    let (w, h) = (probe.size.0 as usize, probe.size.1 as usize);
+    if w == 0 || h == 0 {
+        return Err("the compositor never gave the window a size".into());
+    }
+    let stride = w * 4;
+    let len = stride * h;
+    // SAFETY: a fresh anonymous file, sized and mapped before use.
+    let fd = unsafe { libc::memfd_create(c"omacrt-pattern".as_ptr(), libc::MFD_CLOEXEC) };
+    if fd < 0 {
+        return Err("memfd_create".into());
+    }
+    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+    if unsafe { libc::ftruncate(fd, len as libc::off_t) } < 0 {
+        return Err("ftruncate".into());
+    }
+    let map = unsafe {
+        libc::mmap(
+            std::ptr::null_mut(),
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_SHARED,
+            fd,
+            0,
+        )
+    };
+    if map == libc::MAP_FAILED {
+        return Err("mmap".into());
+    }
+    let px = unsafe { std::slice::from_raw_parts_mut(map as *mut u32, w * h) };
+    let shm = probe.shm.clone().ok_or("no wl_shm")?;
+    let pool = shm.create_pool(owned.as_fd(), len as i32, &qh, ());
+    let buffer = pool.create_buffer(
+        0,
+        w as i32,
+        h as i32,
+        stride as i32,
+        wl_shm::Format::Xrgb8888,
+        &qh,
+        (),
+    );
+    pool.destroy();
+    if let Some(v) = &probe.viewport {
+        v.set_destination(w as i32, h as i32);
+    }
+
+    let ctl = std::path::Path::new(&std::env::var("HOME").unwrap_or_default())
+        .join(".local/state/omacrt/display.ctl");
+    // The back porch is held and the front porch grows, so the picture keeps
+    // its place under the sync and only the frame gets longer.
+    let mode = |vtotal: u32| {
+        let line = format!(
+            "mode 72 3520 3695 4033 4577 240 {} {} {vtotal} -hsync -vsync\n",
+            vtotal - 20,
+            vtotal - 17
+        );
+        if let Ok(f) = std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&ctl)
+        {
+            use std::io::Write;
+            let _ = (&f).write_all(line.as_bytes());
+        }
+    };
+
+    // A clapperboard, then the word: the whole screen black and white once a
+    // second, six times, then REC. It says on the glass that the run is
+    // starting, and the flashes give a frame the video can be lined up on.
+    mode(STEPS[0]);
+    println!("\n  ===  FLASHES, THEN REC ON SCREEN: START RECORDING  ===\n");
+    for i in 0..6 {
+        px.fill(if i % 2 == 0 { 0x00ff_ffff } else { 0x0000_0000 });
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage_buffer(0, 0, w as i32, h as i32);
+        surface.commit();
+        conn.flush().map_err(|e| format!("flush: {e}"))?;
+        pump(&conn, &mut queue, &mut probe, Duration::from_secs(1))?;
+    }
+    word(px, w, h, "REC");
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage_buffer(0, 0, w as i32, h as i32);
+    surface.commit();
+    conn.flush().map_err(|e| format!("flush: {e}"))?;
+    pump(&conn, &mut queue, &mut probe, Duration::from_secs(3))?;
+
+    println!(
+        "pattern on a {w}x{h} picture; {} steps of 6 seconds",
+        STEPS.len()
+    );
+    for (i, vtotal) in STEPS.iter().enumerate() {
+        mode(*vtotal);
+        draw(px, w, h, i + 1);
+        surface.attach(Some(&buffer), 0, 0);
+        surface.damage_buffer(0, 0, w as i32, h as i32);
+        surface.commit();
+        conn.flush().map_err(|e| format!("flush: {e}"))?;
+        println!(
+            "  step {}/{}: vtotal {vtotal}, {:.2} Hz, {} tick(s)",
+            i + 1,
+            STEPS.len(),
+            72_000_000.0 / (4577.0 * *vtotal as f64),
+            i + 1
+        );
+        pump(&conn, &mut queue, &mut probe, Duration::from_secs(6))?;
+    }
+
+    // And the end, in letters: nothing else in the run looks like that, so
+    // there is no doubt about where to stop.
+    println!("\n  ===  END ON SCREEN: STOP RECORDING  ===\n");
+    word(px, w, h, "END");
+    surface.attach(Some(&buffer), 0, 0);
+    surface.damage_buffer(0, 0, w as i32, h as i32);
+    surface.commit();
+    conn.flush().map_err(|e| format!("flush: {e}"))?;
+    pump(&conn, &mut queue, &mut probe, Duration::from_secs(10))?;
+    Ok(())
+}
+
+/// Five by seven bits per letter, enough to write REC and END on the tube.
+/// A television has no font of its own and this needs none: the run has to
+/// say on the glass where it starts and where it ends, or whoever is holding
+/// the camera is guessing.
+fn glyph(c: char) -> [u8; 7] {
+    match c {
+        'R' => [
+            0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001,
+        ],
+        'E' => [
+            0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111,
+        ],
+        'C' => [
+            0b01111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b01111,
+        ],
+        'N' => [
+            0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001,
+        ],
+        'D' => [
+            0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110,
+        ],
+        _ => [0; 7],
+    }
+}
+
+/// Write a word across the middle of the picture, white on black.
+///
+/// The word is fitted to the line first and the vertical scale taken from
+/// it: a 3520 sample line is squeezed into a four by three screen, so a
+/// letter has to be about eleven times wider than it is tall to look square,
+/// and three of them at any larger scale run off the end of the picture.
+fn word(px: &mut [u32], w: usize, h: usize, text: &str) {
+    px.fill(0x0000_0000);
+    let n = text.chars().count().max(1);
+    let sx = (w / (6 * n)).max(1);
+    let sy = (sx / 11).clamp(1, h / 9);
+    let cell = 6 * sx;
+    let x0 = w.saturating_sub(n * cell) / 2;
+    let y0 = h.saturating_sub(7 * sy) / 2;
+    for (i, c) in text.chars().enumerate() {
+        for (row, bits) in glyph(c).iter().enumerate() {
+            for col in 0..5 {
+                if bits & (1 << (4 - col)) == 0 {
+                    continue;
+                }
+                for dy in 0..sy {
+                    let y = y0 + row * sy + dy;
+                    let xs = x0 + i * cell + col * sx;
+                    if y >= h || xs >= w {
+                        continue;
+                    }
+                    px[y * w + xs..y * w + (xs + sx).min(w)].fill(0x00ff_ffff);
+                }
+            }
+        }
+    }
+}
+
+/// The frame, the centre cross and the step ticks.
+fn draw(px: &mut [u32], w: usize, h: usize, ticks: usize) {
+    const WHITE: u32 = 0x00ff_ffff;
+    const BLACK: u32 = 0x0000_0000;
+    px.fill(BLACK);
+    // Two lines thick against the first and last active line: the height of
+    // the picture is the distance between the outside of these two.
+    for y in [0, 1, h - 2, h - 1] {
+        px[y * w..y * w + w].fill(WHITE);
+    }
+    // And down the sides, so a photograph carries the width as well.
+    for y in 0..h {
+        for x in [0, 1, 2, w - 3, w - 2, w - 1] {
+            px[y * w + x] = WHITE;
+        }
+    }
+    // A line across the middle, which moves by half of any change in height
+    // and so says which way the picture grew.
+    for y in [h / 2 - 1, h / 2] {
+        px[y * w..y * w + w].fill(WHITE);
+    }
+    // The step number, as blocks along the top quarter. Wide, because a
+    // 3520 sample line is squeezed into a 4:3 screen.
+    let (bw, bh, gap) = (60usize, 24usize, 40usize);
+    for t in 0..ticks {
+        let x0 = w / 2 - (ticks * (bw + gap)) / 2 + t * (bw + gap);
+        for y in h / 4..(h / 4 + bh).min(h) {
+            for x in x0..(x0 + bw).min(w) {
+                px[y * w + x] = WHITE;
+            }
+        }
+    }
+}
+
 fn percentile(sorted: &[u64], p: f64) -> u64 {
     if sorted.is_empty() {
         return 0;
@@ -339,6 +622,13 @@ fn main() {
         .and_then(|i| args.get(i + 1))
         .and_then(|s| s.parse::<f64>().ok());
     let pad = args.iter().any(|a| a == "--pad");
+    if args.iter().any(|a| a == "--pattern") {
+        if let Err(e) = pattern() {
+            eprintln!("latency: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let draw = args
         .iter()
         .position(|a| a == "--draw")
@@ -362,25 +652,7 @@ fn run(n: usize, paced: bool, pad: bool, draw: Duration, hz: Option<f64>) -> Res
     let qh = queue.handle();
     let _registry = conn.display().get_registry(&qh, ());
 
-    let mut probe = Probe {
-        compositor: None,
-        shm: None,
-        wm_base: None,
-        presentation: None,
-        viewporter: None,
-        surface: None,
-        viewport: None,
-        buffers: Vec::new(),
-        size: (0, 0),
-        configured: false,
-        inflight: HashMap::new(),
-        pressed: None,
-        samples: Vec::new(),
-        refresh: 16_666_666,
-        discarded: 0,
-        callbacks: 0,
-        closed: false,
-    };
+    let mut probe = Probe::new();
     queue
         .roundtrip(&mut probe)
         .map_err(|e| format!("registry: {e}"))?;

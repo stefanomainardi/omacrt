@@ -26,6 +26,7 @@ use omacrt_shell::crt::{Config, dac, display, output};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
+use smithay::backend::drm::VrrSupport;
 use smithay::backend::drm::compositor::{FrameFlags, PrimaryPlaneElement};
 use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::{DrmOutput, DrmOutputManager, DrmOutputRenderElements};
@@ -512,10 +513,31 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     // `Supported` means the vertical blanking can be stretched frame by
     // frame without a mode change, which is the only way to follow a
     // program's own rate on a set whose horizontal rate must not move.
-    match drm_output.with_compositor(|c| c.vrr_supported(conn_handle)) {
-        Ok(v) => println!("vrr: {v:?}"),
-        Err(e) => println!("vrr: cannot tell ({e})"),
-    }
+    // Asking for it in the EDID is the switch: the FreeSync range is only
+    // there because the operator put it there, and there is nothing else a
+    // television leased to this compositor would want a variable refresh
+    // rate for. So if the kernel says the connector can, it does.
+    let vrr_on = match drm_output.with_compositor(|c| c.vrr_supported(conn_handle)) {
+        Ok(VrrSupport::NotSupported) => {
+            println!("vrr: the connector is not capable of it");
+            false
+        }
+        Ok(v) => match drm_output.with_compositor(|c| c.use_vrr(true)) {
+            Ok(()) => {
+                let on = drm_output.with_compositor(|c| c.vrr_enabled());
+                println!("vrr: on ({v:?})");
+                on
+            }
+            Err(e) => {
+                println!("vrr: refused ({e})");
+                false
+            }
+        },
+        Err(e) => {
+            println!("vrr: cannot tell ({e})");
+            false
+        }
+    };
 
     // The DAC wants composite sync once the signal is up.
     if let Some(conn) = output::connectors()
@@ -663,7 +685,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         flips_failed: 0,
         dirty: true,
         pacer_armed: false,
-        vrr_on: false,
+        vrr_on,
         conn_handle,
         mode_at: None,
         last_vblank: None,
@@ -1349,10 +1371,26 @@ impl Crt {
         if self.callback_armed {
             return;
         }
-        let room = self.period().saturating_sub(self.margin());
+        // With a fixed refresh the compositor has to be drawing by the
+        // margin or the frame is shown a whole frame late, so the room a
+        // client gets stops there. With a variable one it does not: a flip
+        // that arrives after the frame's minimum length simply makes that
+        // frame longer, and nothing is dropped. So the whole frame is room,
+        // and a client is given as much of it as its own drawing time
+        // allows, which is what puts its picture on the glass at once.
+        let room = if self.vrr_on {
+            self.period()
+        } else {
+            self.period().saturating_sub(self.margin())
+        };
         self.client_cost = self.client_cost.min(self.period());
-        let wait = if self.late_draw {
-            callback_wait(room, self.client_cost, self.client_slack)
+        let slack = if self.vrr_on {
+            self.client_slack / 2
+        } else {
+            self.client_slack
+        };
+        let wait = if self.late_draw || self.vrr_on {
+            callback_wait(room, self.client_cost, slack)
         } else {
             Duration::ZERO
         };
@@ -1601,6 +1639,10 @@ impl Crt {
         } else {
             self.last_vblank = Some(Instant::now());
         }
+        // The estimate comes down on its own, so a client that was slow once
+        // is not given the whole frame for ever. A floor, because nothing is
+        // woken and drawn in less than that.
+        self.client_cost = (self.client_cost * 31 / 32).max(Duration::from_micros(300));
         if let Some(t) = self.showing.take() {
             self.latencies.push_back(t.elapsed());
             if self.latencies.len() > 300 {
@@ -1679,11 +1721,20 @@ impl Crt {
             );
         }
         if self.vrr_on {
-            // Tell everyone at once: the next flip decides when the next
-            // frame is scanned out, so the sooner a client draws the sooner
-            // the television shows it.
-            self.send_frames();
-            self.render();
+            // With a variable refresh rate there is no deadline to miss, so
+            // the only thing to do at the vblank is decide when to let the
+            // clients draw. Drawing here would be the mistake: the frame a
+            // client is about to commit would find a flip already in the air
+            // and wait a whole frame for the next one.
+            self.arm_callbacks();
+            // Anything committed while the last flip was in flight is about
+            // to be superseded by the frame the client is drawing now, so
+            // flipping it here would only put a stale picture in the air and
+            // make the fresh one wait for the frame after. Drawn only when
+            // the telling has already gone out and nothing newer is coming.
+            if !self.callback_armed {
+                self.render();
+            }
             if !self.frame_queued {
                 self.arm_pacer();
             }
@@ -1755,12 +1806,28 @@ impl CompositorHandler for Crt {
         // rest are a client drawing more than once in a frame.
         if let Some(told) = self.told_at.take() {
             let cost = at.saturating_duration_since(told);
-            self.client_cost = cost.max(self.client_cost * 31 / 32);
+            // A client that answers a whole frame later was not waiting on
+            // this telling: the callback went out when it had not asked for
+            // one, and the wait that follows is the next frame's, not its
+            // drawing time. Taken as a reading it pegs the estimate at a
+            // frame for ever, and a client given no room draws at the vblank
+            // again, which is the thing this is trying to avoid.
+            if cost * 2 < self.period() {
+                self.client_cost = self.client_cost.max(cost);
+            }
         }
         // Too late for the frame it was meant for: the deadline has gone and
         // the flip with it. Give this client more room next time rather than
         // let it miss every frame.
-        if !self.deadline_armed && self.frame_queued {
+        //
+        // Not under a variable refresh rate, where nothing is ever late: a
+        // commit that arrives with a flip in the air is shown as soon as
+        // that one has had its minimum, and the frame is a little longer.
+        // Counting it as late walks the estimate up to a whole frame, the
+        // client is then told to draw at the vblank, and its picture waits
+        // for the flip it has just missed - which is the very thing the
+        // variable rate is there to avoid.
+        if !self.vrr_on && !self.deadline_armed && self.frame_queued {
             self.late += 1;
             self.client_cost = (self.client_cost * 5 / 4).min(self.period());
         }
