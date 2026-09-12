@@ -196,6 +196,9 @@ pub struct Crt {
     /// emulator's refresh is a property of the machine it is imitating - and
     /// this is where that is said.
     target_period: Option<Duration>,
+    /// The band of line rates this display may be given, from
+    /// `output.hfreq_khz`. See `Modeline::fault`.
+    hfreq_band: [f64; 2],
     /// The longest frame this television keeps its picture at, from
     /// `output.vrr_min_hz`. Nothing here asks the tube for a slower rate
     /// than that, however slowly a program runs: past it the vertical
@@ -401,6 +404,15 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         .modeline(standard)
         .ok_or("no modeline for the standard in crt.toml")?;
     let ml = Modeline::parse(text).ok_or("bad modeline in crt.toml")?;
+    // Nothing reaches the connector without passing here. A television's
+    // horizontal deflection is tuned for one line rate, and this is the last
+    // place a timing that would drive it somewhere else can be stopped.
+    if let Some(why) = ml.fault(cfg.output.hfreq_khz) {
+        return Err(format!(
+            "refusing the {standard} modeline in crt.toml: it asks the \
+             television for {why}"
+        ));
+    }
 
     let mut lease = Lease::take(&want)?;
     println!(
@@ -725,6 +737,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         // Assume the worst until a client has shown otherwise: a whole frame
         // to draw in, which is where every other compositor leaves it.
         client_cost: Duration::from_millis(16),
+        hfreq_band: cfg.output.hfreq_khz,
         slowest: Duration::from_secs_f64(1.0 / cfg.output.vrr_min_hz.clamp(20.0, 200.0)),
         target_period: None,
         rate_trim: 0,
@@ -1240,6 +1253,16 @@ impl Crt {
     /// Live modeline change: the CRTC, the advertised output mode and the
     /// size every client is told to use.
     fn switch_mode(&mut self, ml: &Modeline) {
+        // The control pipe is a named pipe in the user's own state folder,
+        // so a modeline can arrive here from anywhere that can write a line
+        // to a file: this project, a mistake in `crt.toml`, or something
+        // else entirely. Programming a line rate a television is not built
+        // for is the one thing here that breaks hardware rather than a
+        // picture, so it is checked on the way in and not on the way out.
+        if let Some(why) = ml.fault(self.hfreq_band) {
+            eprintln!("mode: refused, it asks the television for {why}");
+            return;
+        }
         let Some(out) = self.drm_output.as_mut() else {
             return;
         };

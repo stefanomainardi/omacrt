@@ -202,6 +202,32 @@ follows stable within days. Building one is a package that coexists with the
 stock kernel, its own UKI and its own boot entry, and the default entry stays
 the stock one.
 
+## What must never reach the connector
+
+A television is not a monitor that shrugs at a signal it cannot use. Its
+horizontal deflection is a tuned circuit - a flyback transformer and an
+output transistor sized for one line rate - and driving it well above that
+destroys both. Everything here runs at 15.6 or 15.7 kHz, so any other rate
+is a mistake rather than an intention: a typo in `crt.toml`, a bug, or
+something else writing to the control pipe, which is a named pipe in the
+user's own state folder and takes a line from anyone who can write a file.
+
+So no timing reaches the kernel without passing `Modeline::fault`, at the
+two places one can arrive: the modeline read from `crt.toml` at start-up,
+and the `mode` command. It refuses a line rate outside `output.hfreq_khz`,
+which is 15 to 16.5 kHz by default and is the one setting in this project
+that can break hardware if it is wrong. It also refuses what cannot work at
+all - sync outside blanking, blanking inside the picture, a field rate no 15
+kHz set locks to - because the kernel is not obliged to notice those before
+the television does.
+
+Widening the band is deliberate and in one place, for a display that can
+take it: a multisync monitor, an arcade chassis rated for 25 or 31 kHz.
+
+The variable refresh rate below is on the other axis and cannot do this: it
+stretches the vertical blanking and never moves the line rate by a single
+hertz. That is why the worst seen from it is a picture that loses height.
+
 ## A variable refresh rate
 
 A television's horizontal rate must not move: the flyback transformer and the

@@ -258,6 +258,55 @@ impl Modeline {
         self.hfreq_khz() * 1000.0 / self.v[3] as f64
     }
 
+    /// Why this timing must not be given to the television, if it must not.
+    ///
+    /// A fixed frequency set is not a monitor that shrugs at a signal it
+    /// cannot use. Its horizontal deflection is a tuned circuit - a flyback
+    /// transformer and an output transistor sized for one line rate - and
+    /// driving it well above that is how both of them die. Everything this
+    /// project sends runs at 15.6 or 15.7 kHz, so anything outside a narrow
+    /// band around those is a mistake rather than an intention: a typo in
+    /// `crt.toml`, a bug here, or something else writing to the control
+    /// pipe. None of those should reach the kernel.
+    ///
+    /// The band is `output.hfreq_khz`, because a multisync monitor is a
+    /// different animal and its owner should be able to say so, deliberately
+    /// and in one place.
+    ///
+    /// The rest is arithmetic that has to hold for any timing at all: the
+    /// sync pulse inside the blanking, the blanking after the picture, a
+    /// clock that is not zero. A mode that fails those does not damage
+    /// anything, it just produces nonsense, and the kernel is not obliged to
+    /// notice before the television does.
+    pub fn fault(&self, band: [f64; 2]) -> Option<String> {
+        let (lo, hi) = (band[0].min(band[1]), band[0].max(band[1]));
+        if !(self.clock_mhz.is_finite() && self.clock_mhz > 0.0) {
+            return Some(format!("a pixel clock of {} MHz", self.clock_mhz));
+        }
+        for (name, t) in [("horizontal", self.h), ("vertical", self.v)] {
+            if !(t[0] < t[1] && t[1] < t[2] && t[2] <= t[3]) {
+                return Some(format!(
+                    "{name} timings out of order: {} {} {} {}",
+                    t[0], t[1], t[2], t[3]
+                ));
+            }
+        }
+        let hz = self.hfreq_khz();
+        if !(lo..=hi).contains(&hz) {
+            return Some(format!(
+                "a line rate of {hz:.3} kHz, outside the {lo} to {hi} kHz \
+                 that output.hfreq_khz allows this display"
+            ));
+        }
+        let field = self.field_hz();
+        if !(40.0..=90.0).contains(&field) {
+            return Some(format!(
+                "{field:.2} fields a second, which no 15 kHz set locks to"
+            ));
+        }
+        None
+    }
+
     /// The same timing with a different number of active lines, centred in
     /// the frame: a 224 line game on a 240 line standard keeps the line rate
     /// and refresh and gains blank lines above and below.
@@ -741,5 +790,70 @@ mod edid_tests {
         // Thirteen bytes is all a descriptor holds, so the lie is cut
         // short as well as disarmed.
         assert_eq!(got, "[2KOK   fin");
+    }
+}
+
+#[cfg(test)]
+mod guard {
+    use super::Modeline;
+
+    const TV: [f64; 2] = [15.0, 16.5];
+
+    fn ml(text: &str) -> Modeline {
+        Modeline::parse(text).expect("a modeline")
+    }
+
+    #[test]
+    fn every_timing_this_project_ships_is_allowed() {
+        // If one of these ever fails, either the band is wrong or a shipped
+        // modeline is, and both are worth stopping the build for.
+        for text in [
+            "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync",
+            "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync",
+            "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync",
+            "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace",
+            "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace",
+        ] {
+            assert_eq!(ml(text).fault(TV), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_line_rate_a_television_cannot_take_is_refused() {
+        // 640x480 at 31.5 kHz: a perfectly ordinary VGA timing, and twice
+        // the rate the deflection in a television is built for.
+        let why = ml("25.175 640 656 752 800 480 490 492 525 -hsync -vsync")
+            .fault(TV)
+            .expect("a fault");
+        assert!(why.contains("31.4") || why.contains("31.5"), "{why}");
+        assert!(why.contains("output.hfreq_khz"), "{why}");
+    }
+
+    #[test]
+    fn a_display_that_can_take_it_may_be_told_so() {
+        assert_eq!(
+            ml("25.175 640 656 752 800 480 490 492 525 -hsync -vsync").fault([15.0, 70.0]),
+            None
+        );
+    }
+
+    #[test]
+    fn timings_out_of_order_are_refused() {
+        for text in [
+            "72 3520 3695 4033 4000 240 242 245 262",
+            "72 3520 3520 4033 4577 240 242 245 262",
+            "72 3520 3695 4033 4577 240 242 245 244",
+        ] {
+            assert!(ml(text).fault(TV).is_some(), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_field_rate_nothing_locks_to_is_refused() {
+        // The line rate is right and the frame is four times too long.
+        let why = ml("72 3520 3695 4033 4577 240 242 245 1048")
+            .fault(TV)
+            .expect("a fault");
+        assert!(why.contains("fields a second"), "{why}");
     }
 }

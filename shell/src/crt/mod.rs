@@ -195,6 +195,20 @@ pub struct Output {
     /// 240 progressive, which is soft but right.
     #[serde(default)]
     pub interlace: bool,
+    /// The band of line rates this display may be given, in kilohertz.
+    ///
+    /// The one setting here that can break hardware if it is wrong. A fixed
+    /// frequency television's horizontal deflection is tuned for a single
+    /// rate, and driving it well above that destroys the flyback transformer
+    /// and the output transistor. Every timing this project ships runs at
+    /// 15.6 or 15.7 kHz, so nothing outside a narrow band around those is
+    /// ever intended, and a modeline that asks for one is refused rather
+    /// than programmed.
+    ///
+    /// Widen it only for a display that can take it - a multisync monitor,
+    /// an arcade chassis rated for 25 or 31 kHz - and knowing which.
+    #[serde(default = "default_hfreq_khz")]
+    pub hfreq_khz: [f64; 2],
     /// The slowest refresh this television keeps its picture at, in hertz.
     ///
     /// A variable refresh rate stretches the vertical blanking, and a set's
@@ -215,6 +229,10 @@ pub struct Output {
 
 fn default_vrr_min_hz() -> f64 {
     55.0
+}
+
+fn default_hfreq_khz() -> [f64; 2] {
+    [15.0, 16.5]
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -274,6 +292,7 @@ impl Default for Output {
             csync: "xor".into(),
             standard: "ntsc".into(),
             interlace: false,
+            hfreq_khz: default_hfreq_khz(),
             vrr_min_hz: default_vrr_min_hz(),
         }
     }
@@ -330,6 +349,11 @@ position = "auto"
 csync = "xor"
 # Standard used by `omacrt on` without an argument: "ntsc" or "pal".
 standard = "ntsc"
+# The band of line rates this display may be given, in kHz. The one setting
+# here that can break hardware: a television's horizontal deflection is tuned
+# for a single rate, and driving it well above that destroys the flyback
+# transformer. Widen it only for a display that can take it.
+hfreq_khz = [15.0, 16.5]
 # The slowest refresh this television holds its picture at. A variable
 # refresh rate stretches the vertical blanking, and a set follows that only
 # so far: on a BeoCenter 1 the picture does not move at 55 Hz and loses an
