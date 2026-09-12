@@ -14,11 +14,20 @@ caveat for a 0.x project: anything may still move.
 - **A variable refresh rate on the television.** A television's horizontal
   rate must not move; its vertical one may, so every refresh emulation asks
   for is reachable by stretching the vertical blanking alone. With an AMD
-  FreeSync range written into the EDID this project already injects
-  (`OMACRT_FREESYNC=48:62` on the setup script) and `amdgpu.freesync_video=1`
-  on the kernel command line, the tube follows a program's own rate frame by
-  frame: a client at 57 Hz is scanned out at 56.80, one at 50 Hz at 49.92,
-  with the line rate never leaving 15.731 kHz and no mode change at all.
+  FreeSync range written into the EDID this project already injects, and
+  nothing else, the tube follows a program's own rate frame by frame: a
+  client at 57 Hz is scanned out at 56.80, one at 50 Hz at 49.92, with the
+  line rate never leaving 15.731 kHz and no mode change at all.
+
+  It needs no kernel parameter. This project published for a week that
+  `amdgpu.freesync_video=1` was required, which reading the driver did not
+  support, and which has now been measured with the parameter absent from
+  the kernel command line rather than merely unused: asked for 58, 57, 56
+  and 55 Hz the television was given 58.06, 57.19, 55.99 and 55.01, and at
+  55 Hz every frame of three hundred fell between 17.59 and 19.15 ms with
+  none at the mode's own 16.66. The parameter adds modes so that a change
+  of refresh can skip a modeset, in the kernel's own words, and changing
+  refresh by a modeset is the thing this does not do.
 
   Filmed and measured, the picture keeps its height: over a frame 9.2%
   longer it moves by 0.06%, where following the period would be 9.2%. Every
