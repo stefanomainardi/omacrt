@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap">
+  <style>
+    body { margin: 0; font-family: "JetBrains Mono", ui-monospace, monospace; }
+    .sheet { background: #0b0d14; color: #c0caf5; padding: 40px; display: flex; flex-direction: column; gap: 30px; min-height: 100%; box-sizing: border-box; }
+    .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #565f89; font-weight: 500; }
+    .name { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; color: #c0caf5; }
+    .row { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+    .cell { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
+    .cap { font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase; color: #565f89; }
+    .cap.no { color: #f7768e; }
+    .hex { font-size: 10px; color: #3b4261; letter-spacing: 0.06em; }
+    .plate { border: 1px solid #1f2335; padding: 14px; display: flex; align-items: center; justify-content: center; }
+    .note { font-size: 12px; line-height: 1.6; color: #565f89; border-top: 1px solid #1f2335; padding-top: 14px; max-width: 68ch; }
+    .note b { color: #9aa5ce; font-weight: 500; }
+    h3 { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #9aa5ce; margin: 0; font-weight: 500; }
+  </style>
+</helmet>
+<div class="sheet">
+  <div>
+    <div class="eyebrow">Flyback &middot; colour, space, misuse</div>
+    <div class="name">One weight, four grounds</div>
+  </div>
+
+  <h3>Colour</h3>
+  <div class="row">
+    <div class="cell">
+      <div class="cap">primary &middot; phosphor green</div>
+      <div class="plate" style="background:#0b0d14">
+        <svg width="96" height="96" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      </div>
+      <div class="hex">#9ece6a on #0b0d14</div>
+    </div>
+    <div class="cell">
+      <div class="cap">quiet &middot; paper</div>
+      <div class="plate" style="background:#0b0d14">
+        <svg width="96" height="96" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><g fill="#c0caf5"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      </div>
+      <div class="hex">#c0caf5 on #0b0d14</div>
+    </div>
+    <div class="cell">
+      <div class="cap">on light</div>
+      <div class="plate" style="background:#c0caf5">
+        <svg width="96" height="96" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><g fill="#0b0d14"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      </div>
+      <div class="hex">#0b0d14 on #c0caf5</div>
+    </div>
+    <div class="cell">
+      <div class="cap">knockout</div>
+      <div class="plate" style="background:#9ece6a">
+        <svg width="96" height="96" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><g fill="#0b0d14"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      </div>
+      <div class="hex">#0b0d14 on #9ece6a</div>
+    </div>
+  </div>
+
+  <h3>Clear space and the tube</h3>
+  <div class="row">
+    <div class="cell">
+      <div class="cap">clear space = 4 units, the gap</div>
+      <div class="plate" style="background:#0b0d14">
+        <svg width="136" height="136" viewBox="-4 -4 52 52" xmlns="http://www.w3.org/2000/svg">
+          <rect x="-4" y="-4" width="52" height="52" fill="#11141f"/>
+          <rect x="0" y="0" width="44" height="44" fill="#0b0d14"/>
+          <g fill="#9ece6a" shape-rendering="crispEdges"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g>
+          <rect x="-4" y="-4" width="52" height="52" fill="none" stroke="#565f89" stroke-width="0.3" stroke-dasharray="2 2" shape-rendering="geometricPrecision"/>
+        </svg>
+      </div>
+      <div class="hex">nothing inside the dashed box</div>
+    </div>
+    <div class="cell">
+      <div class="cap">as the tube draws it &middot; 240 lines</div>
+      <div class="plate" style="background:#0b0d14">
+        <svg width="136" height="136" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+          <rect width="44" height="44" fill="#0b0d14"/>
+          <g fill="#9ece6a" shape-rendering="crispEdges"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g>
+          <g fill="#0b0d14" opacity="0.45" shape-rendering="crispEdges">
+            <rect x="0" y="1" width="44" height="0.5"/><rect x="0" y="3" width="44" height="0.5"/><rect x="0" y="5" width="44" height="0.5"/><rect x="0" y="7" width="44" height="0.5"/><rect x="0" y="9" width="44" height="0.5"/><rect x="0" y="11" width="44" height="0.5"/><rect x="0" y="13" width="44" height="0.5"/><rect x="0" y="15" width="44" height="0.5"/><rect x="0" y="17" width="44" height="0.5"/><rect x="0" y="19" width="44" height="0.5"/><rect x="0" y="21" width="44" height="0.5"/><rect x="0" y="23" width="44" height="0.5"/><rect x="0" y="25" width="44" height="0.5"/><rect x="0" y="27" width="44" height="0.5"/><rect x="0" y="29" width="44" height="0.5"/><rect x="0" y="31" width="44" height="0.5"/><rect x="0" y="33" width="44" height="0.5"/><rect x="0" y="35" width="44" height="0.5"/><rect x="0" y="37" width="44" height="0.5"/><rect x="0" y="39" width="44" height="0.5"/><rect x="0" y="41" width="44" height="0.5"/><rect x="0" y="43" width="44" height="0.5"/>
+          </g>
+        </svg>
+      </div>
+      <div class="hex">every bar still four lines thick</div>
+    </div>
+  </div>
+
+  <h3>Not this</h3>
+  <div class="row">
+    <div class="cell">
+      <div class="cap no">no rotation</div>
+      <div class="plate" style="background:#0b0d14">
+        <svg width="72" height="72" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><g fill="#565f89" transform="rotate(-14 22 22)"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="cap no">no gradient</div>
+      <div class="plate" style="background:#0b0d14">
+        <svg width="72" height="72" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#565f89"/><stop offset="1" stop-color="#292e42"/></linearGradient></defs><rect width="44" height="44" fill="#0b0d14"/><g fill="url(#g)"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="cap no">no outline</div>
+      <div class="plate" style="background:#0b0d14">
+        <svg width="72" height="72" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><g fill="none" stroke="#565f89" stroke-width="1"><rect x="0.5" y="0.5" width="7" height="43"/><rect x="12.5" y="0.5" width="7" height="7"/><rect x="12.5" y="12.5" width="15" height="7"/><rect x="12.5" y="24.5" width="23" height="7"/><rect x="12.5" y="36.5" width="31" height="7"/></g></svg>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="cap no">never five bars</div>
+      <div class="plate" style="background:#0b0d14">
+        <svg width="72" height="72" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><g fill="#565f89"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="6" height="6"/><rect x="12" y="9" width="13" height="6"/><rect x="12" y="18" width="19" height="6"/><rect x="12" y="27" width="26" height="6"/><rect x="12" y="36" width="32" height="6"/></g></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><b>Green is the default</b> because it is the launcher's own phosphor green and the colour the diagnostics print in. Paper is for a row of logos where green would shout. The light ground is for print and for anywhere the mark sits on white; the knockout is for a badge. <b>There is no other lock-up colour</b>, and the mark never carries an effect: everything on this sheet that is grey is a mistake drawn on purpose.</div>
+</div>
+</x-dc>
+</body>
+</html>

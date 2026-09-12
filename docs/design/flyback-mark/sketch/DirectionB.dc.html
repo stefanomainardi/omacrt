@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap">
+  <style>
+    body { margin: 0; font-family: "JetBrains Mono", ui-monospace, monospace; }
+    a { color: #9ece6a; } a:hover { color: #c0caf5; }
+    .sheet { background: #0b0d14; color: #c0caf5; padding: 40px; display: flex; flex-direction: column; gap: 34px; min-height: 100%; box-sizing: border-box; }
+    .hdr { display: flex; flex-direction: column; gap: 8px; }
+    .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #565f89; font-weight: 500; }
+    .name { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; color: #c0caf5; }
+    .why { font-size: 13px; line-height: 1.65; color: #9aa5ce; max-width: 62ch; }
+    .why b { color: #c0caf5; font-weight: 500; }
+    .row { display: flex; gap: 28px; align-items: flex-end; flex-wrap: wrap; }
+    .cell { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+    .cap { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #565f89; }
+    .plate { background: #0b0d14; border: 1px solid #1f2335; padding: 18px; display: flex; align-items: center; justify-content: center; }
+    .lock { display: flex; align-items: center; gap: 18px; }
+    .word { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; color: #c0caf5; line-height: 1; }
+    .word small { display: block; font-size: 10px; font-weight: 500; letter-spacing: 0.22em; color: #565f89; margin-top: 7px; }
+    .trade { font-size: 12px; line-height: 1.6; color: #565f89; border-top: 1px solid #1f2335; padding-top: 14px; max-width: 62ch; }
+    .trade b { color: #9aa5ce; font-weight: 500; }
+  </style>
+</helmet>
+<div class="sheet">
+  <div class="hdr">
+    <div class="eyebrow">Direction B</div>
+    <div class="name">The line still being drawn</div>
+    <div class="why">The same four bars and the same rhythm as Retrace, with nothing cut out of them. Three are complete and the fourth stops a third of the way across: the raster, caught mid-scan. Where Retrace draws the return, this draws the moment before it.</div>
+  </div>
+
+  <div class="row">
+    <div class="cell">
+      <div class="cap">mark</div>
+      <div class="plate"><svg width="176" height="176" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><rect x="0" y="0" width="44" height="8" fill="#9ece6a"/><rect x="0" y="12" width="44" height="8" fill="#9ece6a"/><rect x="0" y="24" width="44" height="8" fill="#9ece6a"/><rect x="0" y="36" width="16" height="8" fill="#9ece6a"/></svg></div>
+    </div>
+    <div class="cell">
+      <div class="cap">32 px</div>
+      <div class="plate"><svg width="32" height="32" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><rect x="0" y="0" width="44" height="8" fill="#9ece6a"/><rect x="0" y="12" width="44" height="8" fill="#9ece6a"/><rect x="0" y="24" width="44" height="8" fill="#9ece6a"/><rect x="0" y="36" width="16" height="8" fill="#9ece6a"/></svg></div>
+    </div>
+    <div class="cell">
+      <div class="cap">one colour</div>
+      <div class="plate"><svg width="88" height="88" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><rect x="0" y="0" width="44" height="8" fill="#c0caf5"/><rect x="0" y="12" width="44" height="8" fill="#c0caf5"/><rect x="0" y="24" width="44" height="8" fill="#c0caf5"/><rect x="0" y="36" width="16" height="8" fill="#c0caf5"/></svg></div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cap">lockup</div>
+    <div class="lock"><svg width="60" height="60" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><rect x="0" y="0" width="44" height="8" fill="#9ece6a"/><rect x="0" y="12" width="44" height="8" fill="#9ece6a"/><rect x="0" y="24" width="44" height="8" fill="#9ece6a"/><rect x="0" y="36" width="16" height="8" fill="#9ece6a"/></svg><div class="word">Flyback<small>WAYLAND COMPOSITOR</small></div></div>
+  </div>
+
+  <div class="trade"><b>For</b> - the simplest to draw and the clearest at 32 px and below, and the only one that is legible in a terminal cell grid without changes. <b>Against</b> - closest to Retrace of the three, and at small sizes a reader who knows the parent mark may take it for a badly drawn one.</div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 900,
+      "h": 800,
+      "title": "The mark"
+    },
+    {
+      "file": "Colour.dc.html",
+      "x": 980,
+      "y": 0,
+      "w": 900,
+      "h": 800,
+      "title": "Colour, space, misuse"
+    },
+    {
+      "file": "Lockup.dc.html",
+      "x": 1960,
+      "y": 0,
+      "w": 900,
+      "h": 800,
+      "title": "Lockup and family"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -160,
+      "w": 660,
+      "text": "Flyback: a Wayland compositor for a 15 kHz television.\nDirection C, chosen. The return stroke went from 6 units to 8 so every edge sits on the parent mark's 8 thick / 4 gap rhythm.\nWhole units only, no hairlines, no gradients: the mark has to be drawable on 240 scan lines."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

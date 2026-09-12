@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap">
+  <style>
+    body { margin: 0; font-family: "JetBrains Mono", ui-monospace, monospace; }
+    .sheet { background: #0b0d14; color: #c0caf5; padding: 40px; display: flex; flex-direction: column; gap: 30px; min-height: 100%; box-sizing: border-box; }
+    .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #565f89; font-weight: 500; }
+    .name { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; color: #c0caf5; }
+    .row { display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; }
+    .cell { display: flex; flex-direction: column; gap: 9px; align-items: flex-start; }
+    .cap { font-size: 10px; letter-spacing: 0.13em; text-transform: uppercase; color: #565f89; }
+    .plate { border: 1px solid #1f2335; padding: 20px; display: flex; align-items: center; justify-content: center; background: #0b0d14; }
+    .lock { display: flex; align-items: center; gap: 18px; }
+    .stack { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .word { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; color: #c0caf5; line-height: 1; }
+    /* The two lines are aligned on their ink, not on their origins. Every
+       glyph in JetBrains Mono sits in the same advance, so a capital F at
+       40px carries about 3px of left bearing and a capital W at 10px carries
+       a fifth of one: set flush they read as misaligned by the difference.
+       The margin puts the two stems on one edge. */
+    .word small { display: block; font-size: 10px; font-weight: 500; letter-spacing: 0.22em; color: #a9b1d6; margin: 9px 0 0 3px; }
+    .word.mid { font-size: 26px; }
+    .word.mid small { font-size: 8px; letter-spacing: 0.2em; margin: 7px 0 0 2px; }
+    .note { font-size: 12px; line-height: 1.6; color: #565f89; border-top: 1px solid #1f2335; padding-top: 14px; max-width: 68ch; }
+    .note b { color: #9aa5ce; font-weight: 500; }
+    h3 { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #9aa5ce; margin: 0; font-weight: 500; }
+    .pair { display: flex; gap: 28px; align-items: flex-end; }
+    .pairlab { font-size: 10px; color: #3b4261; text-align: center; margin-top: 8px; letter-spacing: 0.1em; text-transform: uppercase; }
+  </style>
+</helmet>
+<div class="sheet">
+  <div>
+    <div class="eyebrow">Flyback &middot; lockup and family</div>
+    <div class="name">Beside the word, beside its sibling</div>
+  </div>
+
+  <h3>Lockup</h3>
+  <div class="row">
+    <div class="cell">
+      <div class="cap">horizontal &middot; the default</div>
+      <div class="plate">
+        <div class="lock">
+          <svg width="60" height="60" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+          <div class="word">Flyback<small>WAYLAND COMPOSITOR</small></div>
+        </div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="cap">stacked &middot; for a square</div>
+      <div class="plate">
+        <div class="stack">
+          <svg width="72" height="72" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+          <div class="word mid" style="text-align:center">Flyback<small>WAYLAND COMPOSITOR</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>The family</h3>
+  <div class="row">
+    <div class="cell">
+      <div class="cap">same grid, opposite diagonal</div>
+      <div class="plate">
+        <div class="pair">
+          <div>
+            <svg width="112" height="112" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+              <rect width="44" height="44" fill="#0b0d14"/>
+              <g fill="#c0caf5">
+                <rect x="0" y="0" width="34" height="8"/>
+                <rect x="0" y="12" width="22" height="8"/><rect x="34" y="12" width="10" height="8"/>
+                <rect x="0" y="24" width="10" height="8"/><rect x="22" y="24" width="22" height="8"/>
+                <rect x="10" y="36" width="34" height="8"/>
+              </g>
+            </svg>
+            <div class="pairlab">Retrace &middot; OmaCRT</div>
+          </div>
+          <div>
+            <svg width="112" height="112" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+              <rect width="44" height="44" fill="#0b0d14"/>
+              <g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g>
+            </svg>
+            <div class="pairlab">Flyback &middot; the compositor</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><b>Retrace is the dark cut of the beam coming back between two lines</b> — four bars standing still, the return moving down and to the left. <b>Flyback is the same beam seen as its waveform</b> — the ramp stepping down and to the right, and the stroke where it collapses. Four bars, eight thick, four apart, a 44 unit grid: one alphabet, two words. The compositor is drawn in the phosphor green it reports its own latency in; the product keeps paper.</div>
+
+  <div class="note" style="border:0;padding-top:0"><b>Rules.</b> The mark's height sets the wordmark's cap height. The space between them is the mark's own gap, 4 units, scaled. Never set the word in anything but JetBrains Mono 800, and never letterspace it apart. Where the name has to appear without the mark, the word alone is fine; the mark alone is fine everywhere.</div>
+</div>
+</x-dc>
+</body>
+</html>

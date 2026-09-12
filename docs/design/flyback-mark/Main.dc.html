@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&display=swap">
+  <style>
+    body { margin: 0; font-family: "JetBrains Mono", ui-monospace, monospace; }
+    .sheet { background: #0b0d14; color: #c0caf5; padding: 40px; display: flex; flex-direction: column; gap: 32px; min-height: 100%; box-sizing: border-box; }
+    .hdr { display: flex; flex-direction: column; gap: 8px; }
+    .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #565f89; font-weight: 500; }
+    .name { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; color: #c0caf5; }
+    .why { font-size: 13px; line-height: 1.65; color: #9aa5ce; max-width: 66ch; }
+    .why b { color: #c0caf5; font-weight: 500; }
+    .row { display: flex; gap: 34px; align-items: flex-start; flex-wrap: wrap; }
+    .cell { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+    .cap { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #565f89; }
+    .plate { background: #0b0d14; border: 1px solid #1f2335; padding: 16px; display: flex; align-items: flex-end; justify-content: center; }
+    table { border-collapse: collapse; font-size: 12px; color: #9aa5ce; }
+    td { padding: 4px 18px 4px 0; white-space: nowrap; }
+    td.k { color: #565f89; }
+    td.v { color: #c0caf5; font-weight: 500; }
+    .note { font-size: 12px; line-height: 1.6; color: #565f89; border-top: 1px solid #1f2335; padding-top: 14px; max-width: 66ch; }
+    .note b { color: #9aa5ce; font-weight: 500; }
+    .sizes { display: flex; gap: 26px; align-items: flex-end; }
+  </style>
+</helmet>
+<div class="sheet">
+  <div class="hdr">
+    <div class="eyebrow">Flyback &middot; the mark</div>
+    <div class="name">The ramp, and the stroke back</div>
+    <div class="why">A television's horizontal deflection is a sawtooth: the current ramps across the screen, then collapses back in almost no time at all. That collapse is the <b>flyback</b>, and the transformer named after it is the part that dies when the line rate is wrong. The mark is that waveform — four bars stepping out on the parent mark's 8&nbsp;thick, 4&nbsp;gap rhythm, and one full-height stroke where the ramp resets.</div>
+  </div>
+
+  <div class="row">
+    <div class="cell">
+      <div class="cap">construction &middot; 44 unit grid, 4 unit rule</div>
+      <div class="plate">
+        <svg width="264" height="264" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+          <rect width="44" height="44" fill="#0b0d14"/>
+          <g stroke="#1b1f2e" stroke-width="0.2" shape-rendering="geometricPrecision">
+            <path d="M4 0V44M8 0V44M12 0V44M16 0V44M20 0V44M24 0V44M28 0V44M32 0V44M36 0V44M40 0V44"/>
+            <path d="M0 4H44M0 8H44M0 12H44M0 16H44M0 20H44M0 24H44M0 28H44M0 32H44M0 36H44M0 40H44"/>
+          </g>
+          <g fill="#9ece6a" shape-rendering="crispEdges">
+            <rect x="0" y="0" width="8" height="44"/>
+            <rect x="12" y="0" width="8" height="8"/>
+            <rect x="12" y="12" width="16" height="8"/>
+            <rect x="12" y="24" width="24" height="8"/>
+            <rect x="12" y="36" width="32" height="8"/>
+          </g>
+          <g stroke="#1f2335" stroke-width="0.2" shape-rendering="geometricPrecision" fill="none">
+            <rect x="0" y="0" width="44" height="44"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="cap">the numbers</div>
+      <table>
+        <tr><td class="k">grid</td><td class="v">44 &times; 44</td><td class="k">shared with Retrace</td></tr>
+        <tr><td class="k">bar thickness</td><td class="v">8</td><td class="k">same</td></tr>
+        <tr><td class="k">gap</td><td class="v">4</td><td class="k">same</td></tr>
+        <tr><td class="k">pitch</td><td class="v">12</td><td class="k">same</td></tr>
+        <tr><td class="k">return stroke</td><td class="v">8 &times; 44</td><td class="k">one bar, stood up</td></tr>
+        <tr><td class="k">stroke to bars</td><td class="v">4</td><td class="k">the gap again</td></tr>
+        <tr><td class="k">bar widths</td><td class="v">8, 16, 24, 32</td><td class="k">step of 8</td></tr>
+        <tr><td class="k">bars end at</td><td class="v">44</td><td class="k">flush right</td></tr>
+        <tr><td class="k">smallest feature</td><td class="v">8 units</td><td class="k">2.9 px at 16 px</td></tr>
+      </table>
+      <div class="note" style="border:0;padding:0;margin-top:6px"><b>Everything is a whole unit.</b> No hairline, no diagonal, no gradient: the mark has to survive being drawn into 240 scan lines by a beam whose spot is about a line wide, and a shape that changes when it shrinks is a patch rather than a system.</div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cap">it holds down to 16 px</div>
+    <div class="plate sizes">
+      <svg width="176" height="176" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      <svg width="64" height="64" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      <svg width="32" height="32" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      <svg width="24" height="24" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+      <svg width="16" height="16" viewBox="0 0 44 44" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="44" height="44" fill="#0b0d14"/><g fill="#9ece6a"><rect x="0" y="0" width="8" height="44"/><rect x="12" y="0" width="8" height="8"/><rect x="12" y="12" width="16" height="8"/><rect x="12" y="24" width="24" height="8"/><rect x="12" y="36" width="32" height="8"/></g></svg>
+    </div>
+  </div>
+
+  <div class="note"><b>What changed since the sketch.</b> The return stroke was 6 units wide; it is 8 now, the same weight as a bar, because it is the same beam — only travelling a hundred times faster. That also puts every edge of the mark on the 8/4 rhythm, so the whole thing is one weight and reads at 16 px.</div>
+</div>
+</x-dc>
+</body>
+</html>

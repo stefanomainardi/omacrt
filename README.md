@@ -242,7 +242,7 @@ can be read again and pasted into an issue. Piped, redirected, under
 | `bin/omacrt-pick` | Pick a game with the desktop's runner, play it on the tube |
 | `scripts/` | The EDID override and lease setup, DRM probing, the offline demo renderer, the video takes and montage |
 | `systemd/` | The oneshot unit that hands the tube over at boot |
-| `docs/` | The 15 kHz study, [the compositor](docs/flyback.md), what is on the tube screen by screen, what Omarchy lends it, [the same without Omarchy](docs/hyprland.md), hardware notes, systems and video policy, controllers, CLI, troubleshooting |
+| `docs/` | The 15 kHz study, [the compositor](docs/flyback.md), [how the mark was drawn](docs/identity.md), what is on the tube screen by screen, what Omarchy lends it, [the same without Omarchy](docs/hyprland.md), hardware notes, systems and video policy, controllers, CLI, troubleshooting |
 | `packaging/` | The Arch `PKGBUILD` and what it installs where |
 | `THIRD-PARTY.md` | Everything here that somebody else wrote, and under what terms |
 | `.github/workflows/` | The build, the lints, the tests and a headless render of the launcher's own frames |
