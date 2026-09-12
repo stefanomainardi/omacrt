@@ -191,6 +191,27 @@ fn write_file(path: &Path, body: &[u8], mode: u32) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    /// Runs the helper and gives back what it printed.
+    ///
+    /// Retried while the kernel calls the file busy, which here has nothing
+    /// to do with the launcher: these tests share a process with a hundred
+    /// others, one of them forks while this file is being written, and the
+    /// child holds the inherited write descriptor until its own exec. A file
+    /// anybody has open for writing cannot be executed. It clears in
+    /// microseconds, and without the retry this fails about once in eight
+    /// runs of the suite and never on its own.
+    fn run(helper: &Path, args: &[&str]) -> std::process::Output {
+        for _ in 0..200 {
+            match std::process::Command::new(helper).args(args).output() {
+                Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) => {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                other => return other.expect("the launcher runs"),
+            }
+        }
+        panic!("{} stayed busy for a second", helper.display());
+    }
+
     fn tmp(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("omacrt-helper-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -253,10 +274,7 @@ mod tests {
         std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
         write_file(&helper, launcher_text(&target).as_bytes(), 0o755).unwrap();
 
-        let out = std::process::Command::new(&helper)
-            .args(["dac", "watch"])
-            .output()
-            .expect("the launcher runs");
+        let out = run(&helper, &["dac", "watch"]);
         assert_eq!(String::from_utf8_lossy(&out.stdout), "dac|watch|");
         assert!(std::fs::metadata(&helper).unwrap().len() < 512);
 
@@ -283,10 +301,7 @@ mod tests {
         std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
         write_file(&helper, launcher_text(&shell).as_bytes(), 0o755).unwrap();
 
-        let out = std::process::Command::new(&helper)
-            .args(["-c", r#"printf '%s' "$0""#])
-            .output()
-            .expect("the launcher runs");
+        let out = run(&helper, &["-c", r#"printf '%s' "$0""#]);
         assert_eq!(
             String::from_utf8_lossy(&out.stdout),
             helper.display().to_string()

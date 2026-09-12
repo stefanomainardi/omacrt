@@ -172,15 +172,19 @@ pub fn leaseable(connector: &str) -> bool {
 }
 
 pub fn running() -> bool {
-    let Ok(pid) = std::fs::read_to_string(pid_path()) else {
-        return false;
-    };
-    let Ok(pid) = pid.trim().parse::<i32>() else {
-        return false;
-    };
+    pid().is_some()
+}
+
+/// The compositor's process id while it is up.
+pub fn pid() -> Option<i32> {
+    let pid: i32 = std::fs::read_to_string(pid_path())
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
     // Alive is not enough: the number in the file can have been handed to
     // something else entirely since it was written.
-    super::pid_runs(pid, "flyback")
+    super::pid_runs(pid, BINARY).then_some(pid)
 }
 
 /// Where the compositor's binary is.
@@ -191,13 +195,14 @@ pub fn running() -> bool {
 /// this program from the plugin folder, where nothing else of the install
 /// sits. Then the workspace's release directory, for a run straight out of
 /// `cargo build`.
-fn binary() -> PathBuf {
+pub fn binary() -> PathBuf {
     let exe = std::env::current_exe().ok();
     resolve(BINARY, exe.as_deref(), std::env::var_os("PATH").as_deref())
 }
 
-/// The compositor's process and file name.
-const BINARY: &str = "flyback";
+/// The compositor's process and file name. It is what a reader of the bar or
+/// the report is being told is driving the tube, so it is public.
+pub const BINARY: &str = "flyback";
 
 /// The search, with its two inputs passed in so it can be tested: `exe` is
 /// this program's own path and `path` the PATH to walk.
@@ -228,6 +233,18 @@ fn resolve(name: &str, exe: Option<&std::path::Path>, path: Option<&std::ffi::Os
         }
     }
     PathBuf::from(name)
+}
+
+/// The compositor's binary: while it is up, the file the running process was
+/// started from, and otherwise the one a start would use.
+///
+/// The two are not always the same file. A report that named the second
+/// while the first was on the air would be describing a program nobody is
+/// running, which is the sort of thing a status report exists to rule out.
+pub fn binary_in_use() -> PathBuf {
+    pid()
+        .and_then(|p| std::fs::read_link(format!("/proc/{p}/exe")).ok())
+        .unwrap_or_else(binary)
 }
 
 /// Start the display process on `connector` and wait for its socket.
@@ -314,7 +331,7 @@ pub fn stop() -> String {
             return "stopped".into();
         }
     }
-    if pid > 0 && super::pid_runs(pid, "flyback") {
+    if pid > 0 && super::pid_runs(pid, BINARY) {
         unsafe { libc::kill(pid, libc::SIGTERM) };
     }
     std::thread::sleep(Duration::from_millis(300));

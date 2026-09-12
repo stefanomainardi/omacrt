@@ -370,6 +370,7 @@ fn status(cfg: &Config) -> Value {
         "dac": { "present": false },
         "audio": Value::Null,
         "shell": Value::Null,
+        "display": Value::Null,
         "playing": launcher::playing(),
         "latency": Value::Null,
         "bios": Value::Null,
@@ -487,6 +488,17 @@ fn status(cfg: &Config) -> Value {
             });
         }
     }
+    // The compositor by name. Everything else here describes the television
+    // or the launcher; without this the program that owns the tube, sets the
+    // timing and measures the latency below is the one thing the report never
+    // mentions.
+    st["display"] = json!({
+        "name": display::BINARY,
+        "running": display::running(),
+        "pid": display::pid(),
+        "binary": display::binary_in_use(),
+        "socket": display::SOCKET,
+    });
     let pids = launcher::pids();
     st["shell"] = json!({
         "running": !pids.is_empty(),

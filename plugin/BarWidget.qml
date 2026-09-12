@@ -17,6 +17,14 @@ BarWidget {
   // Only a lost lock while the tube is on the air is news; standby reads as lost too.
   readonly property bool lockLost: root.active && !!(status.dac && status.dac.present && status.dac.lock === "lost")
   readonly property string lines: (status.mode && status.mode.lines) ? status.mode.lines : ""
+  // The compositor driving the tube, and the one number only it can measure:
+  // a client's commit to the start of scanout.
+  readonly property string compositor: (status.display && status.display.running === true)
+    ? String(status.display.name || "flyback")
+    : ""
+  readonly property string toScreen: (status.latency && status.latency.ms !== undefined)
+    ? ((Math.round(Number(status.latency.ms) * 10) / 10).toFixed(1) + " ms to screen")
+    : ""
   readonly property bool hideWhenAbsent: setting("hideWhenAbsent", false) === true
   readonly property int refreshIntervalSec: Math.max(2, Math.min(60, Number(setting("refreshIntervalSec", 5)) || 5))
   readonly property string helper: Qt.resolvedUrl("bin/omacrt").toString().replace("file://", "")
@@ -119,7 +127,9 @@ BarWidget {
     // nf-md-television, with the line standard once the tube is on the air.
     text: root.active ? ("󰔂 " + root.lines) : "󰔂"
     tooltipText: root.active
-      ? ("OmaCRT on the air, " + root.lines)
+      ? ("OmaCRT on the air, " + root.lines
+         + (root.compositor ? (", " + root.compositor) : "")
+         + (root.toScreen ? (", " + root.toScreen) : ""))
       : (root.connected ? "OmaCRT in standby" : "No CRT DAC connected")
     dimmed: !root.connected
     active: root.lockLost

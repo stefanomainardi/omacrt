@@ -36,6 +36,8 @@ Panel {
   readonly property var dac: status.dac || ({})
   readonly property var audio: status.audio || null
   readonly property var shell: status.shell || ({})
+  readonly property var display: status.display || ({})
+  readonly property var latency: status.latency || null
   readonly property var bios: status.bios || ({})
   readonly property var library: status.library || ({})
   readonly property bool connected: !!(conn && conn.connected)
@@ -47,6 +49,19 @@ Panel {
   readonly property bool audioOnTv: !!(audio && audio.routed)
   readonly property bool audioAll: !!(audio && audio["default"])
   readonly property bool shellRunning: shell.running === true
+  readonly property bool displayRunning: display.running === true
+  // `/proc/<pid>/exe` says `(deleted)` once the file the process was started
+  // from has been replaced. The compositor on the air is then not the one an
+  // upgrade just installed, and only a restart of the tube changes that.
+  readonly property bool displayStale: root.displayRunning
+    && String(root.display.binary || "").indexOf(" (deleted)") >= 0
+  // A number of one decimal, the way the command line prints it.
+  function ms(v) { return (Math.round(Number(v) * 10) / 10).toFixed(1) }
+  // The two ends of the frames the tube was given. Only worth a line when
+  // they are apart, which under a variable refresh rate is what a set reacts
+  // to and at a fixed rate is nothing at all.
+  readonly property bool framesVary: !!root.latency
+    && Number(root.latency.frame_max) - Number(root.latency.frame_min) > 1.0
   readonly property int biosMissing: Number(bios.missing || 0)
   readonly property var missingCores: (library.missing_cores || [])
   readonly property int volume: Number((audio && audio.volume) || 100)
@@ -436,9 +451,49 @@ Panel {
             visible: !!root.conn
             label: "Tube"
             value: root.conn && root.conn.leaseable
-              ? (root.conn.display ? "ours: leased from the desktop, own compositor" : "leaseable, display process off")
+              ? (root.conn.display ? "ours: leased from the desktop" : "leaseable, nothing driving it")
               : "shared with the desktop (pinned windows)"
             valueColor: root.conn && root.conn.leaseable && root.conn.display ? root.fg : root.muted
+          }
+          // The compositor that owns the tube. Everything else in this
+          // section is the television or the launcher; this is the program
+          // that holds the lease, sets the timing and measures the two rows
+          // below, and until now the panel never named it.
+          Row2 {
+            label: "Compositor"
+            value: root.displayRunning
+              ? (String(root.display.name || "flyback") + ", pid " + root.display.pid
+                 + " on " + String(root.display.socket || "")
+                 + (root.displayStale ? ", from a binary since replaced: off and on to pick it up" : ""))
+              : (String(root.display.name || "flyback") + " not running")
+            valueColor: root.displayStale ? root.urgent : (root.displayRunning ? root.fg : root.muted)
+          }
+          // Commit to the start of scanout, which on a set with no panel and
+          // no scaler is very nearly to the phosphor. Nothing else on the
+          // machine can measure it: the two ends are a client's commit and
+          // the kernel's own vblank timestamp, and only the compositor sees
+          // both.
+          Row2 {
+            visible: root.displayRunning && !!root.latency
+            label: "To screen"
+            value: root.latency
+              ? (root.ms(root.latency.ms) + " ms, " + Number(root.latency.frames).toFixed(2)
+                 + " of a frame at " + Number(root.latency.hz).toFixed(2) + " Hz")
+              : ""
+            valueColor: root.phosphor
+          }
+          Row2 {
+            visible: root.displayRunning && !!root.latency && root.latency.p95 !== undefined
+            label: "Worst"
+            value: root.latency && root.latency.p95 !== undefined
+              ? ("95th " + root.ms(root.latency.p95) + " ms, worst " + root.ms(root.latency.worst)
+                 + " ms, over " + Number(root.latency.samples) + " frames"
+                 + (root.framesVary
+                    ? ("; the tube was given " + root.ms(root.latency.frame_min) + " to "
+                       + root.ms(root.latency.frame_max) + " ms frames")
+                    : ""))
+              : ""
+            valueColor: root.framesVary ? root.urgent : root.muted
           }
           Row2 {
             label: "Launcher"
