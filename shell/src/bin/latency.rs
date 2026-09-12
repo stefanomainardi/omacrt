@@ -570,6 +570,21 @@ fn draw(px: &mut [u32], w: usize, h: usize, ticks: usize) {
     for y in [h / 2 - 1, h / 2] {
         px[y * w..y * w + w].fill(WHITE);
     }
+    // And a dashed pair one eighth in from each edge, which is the measurement
+    // that survives. The rules on the first and last active line are the first
+    // things to leave the screen when a set shifts or overflows the picture,
+    // and a film where they have gone cannot be read at all: the first take of
+    // this lost them at the third step and everything after it measured two
+    // different rules without saying so. These two are 3/4 of the picture
+    // apart, they stay on the glass through anything this walk asks for, and
+    // the dashes tell them apart from the solid ones.
+    for y in [h / 8, h / 8 + 1, h - h / 8 - 2, h - h / 8 - 1] {
+        for x in 0..w {
+            if (x / 40) % 2 == 0 {
+                px[y * w + x] = WHITE;
+            }
+        }
+    }
     // The step number, as blocks along the top quarter. Wide, because a
     // 3520 sample line is squeezed into a 4:3 screen.
     let (bw, bh, gap) = (60usize, 24usize, 40usize);
