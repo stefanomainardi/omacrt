@@ -9,6 +9,26 @@ caveat for a 0.x project: anything may still move.
 
 ### Added
 
+- **A variable refresh rate on the television.** A television's horizontal
+  rate must not move; its vertical one may, so every refresh emulation asks
+  for is reachable by stretching the vertical blanking alone. With an AMD
+  FreeSync range written into the EDID this project already injects
+  (`OMACRT_FREESYNC=48:62` on the setup script) and `amdgpu.freesync_video=1`
+  on the kernel command line, the tube follows a program's own rate frame by
+  frame: a client at 57 Hz is scanned out at 56.80, one at 50 Hz at 49.92,
+  with the line rate never leaving 15.731 kHz and no mode change at all.
+
+  Filmed and measured, the picture keeps its height: over a frame 9.2%
+  longer it moves by 0.06%, where following the period would be 9.2%. Every
+  NTSC refresh is inside 1.8% of the base.
+
+  Flyback turns it on when the connector reports it, and schedules for it:
+  with no deadline to miss, a client is given the whole frame instead of the
+  frame less a margin, and a commit that arrives with a flip already in the
+  air is no longer treated as late. Commit to the start of scanout for a
+  program that draws on its frame callback falls from 16.6 ms to 3.6, and
+  the launcher end to end reports **2.0 ms** in `omacrt status`.
+
 - Flyback offers `wp_presentation`, so a client is told on `CLOCK_MONOTONIC`
   when its frame reached the screen instead of guessing. RetroArch and mpv
   both ask for it.
