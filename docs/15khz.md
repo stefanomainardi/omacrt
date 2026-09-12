@@ -208,9 +208,11 @@ A television is not a monitor that shrugs at a signal it cannot use. Its
 horizontal deflection is a tuned circuit - a flyback transformer and an
 output transistor sized for one line rate - and driving it well above that
 destroys both. Everything here runs at 15.6 or 15.7 kHz, so any other rate
-is a mistake rather than an intention: a typo in `crt.toml`, a bug, or
-something else writing to the control pipe, which is a named pipe in the
-user's own state folder and takes a line from anyone who can write a file.
+is a mistake rather than an intention: a typo in `crt.toml`, a bug here, or
+anything else on the machine writing to the control pipe. That pipe is
+owner-only - a named pipe created 0600 in the user's own state folder - so
+the danger is a mistake and not a stranger, which is exactly the kind of
+danger that reaches hardware.
 
 So no timing reaches the kernel without passing `Modeline::fault`, at the
 two places one can arrive: the modeline read from `crt.toml` at start-up,

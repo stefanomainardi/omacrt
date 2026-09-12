@@ -654,7 +654,14 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     // Control pipe: `top <app_id>`, `mode <modeline>`, `quit`. Opened
-    // read-write so it never reports end of file between writers.
+    // read-write so it never reports end of file between writers, and made
+    // 0600 so only the user this runs as can say anything to the tube.
+    //
+    // A line longer than the buffer below would arrive in two pieces and
+    // neither would parse, which is the right failure: every command here is
+    // a few dozen bytes, and a half command is refused rather than guessed
+    // at. `mode` in particular goes through `Modeline::fault` before it
+    // reaches the connector.
     let ctl = display::ctl_path();
     let _ = std::fs::remove_file(&ctl);
     let cpath =
