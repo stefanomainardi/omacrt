@@ -554,30 +554,19 @@ fn draw(px: &mut [u32], w: usize, h: usize, ticks: usize) {
     const WHITE: u32 = 0x00ff_ffff;
     const BLACK: u32 = 0x0000_0000;
     px.fill(BLACK);
-    // Two lines thick against the first and last active line: the height of
-    // the picture is the distance between the outside of these two.
-    for y in [0, 1, h - 2, h - 1] {
-        px[y * w..y * w + w].fill(WHITE);
-    }
-    // And down the sides, so a photograph carries the width as well.
-    for y in 0..h {
-        for x in [0, 1, 2, w - 3, w - 2, w - 1] {
-            px[y * w + x] = WHITE;
-        }
-    }
-    // A line across the middle, which moves by half of any change in height
-    // and so says which way the picture grew.
-    for y in [h / 2 - 1, h / 2] {
-        px[y * w..y * w + w].fill(WHITE);
-    }
-    // And a dashed pair one eighth in from each edge, which is the measurement
-    // that survives. The rules on the first and last active line are the first
-    // things to leave the screen when a set shifts or overflows the picture,
-    // and a film where they have gone cannot be read at all: the first take of
-    // this lost them at the third step and everything after it measured two
-    // different rules without saying so. These two are 3/4 of the picture
-    // apart, they stay on the glass through anything this walk asks for, and
-    // the dashes tell them apart from the solid ones.
+    // Two rules, and nothing else that crosses the picture.
+    //
+    // There used to be five: solid ones on the first and last active line, a
+    // line across the middle, rails down both sides, and this pair. Measuring
+    // them off a photograph does not work. A curved tube breaks a solid rule
+    // into a dozen pieces, which is indistinguishable from a dashed one, and
+    // an analysis that has to guess which pair it is looking at will guess
+    // wrong somewhere in sixty seconds and say nothing about it. Two takes
+    // were lost that way, both of them well shot.
+    //
+    // So: one dashed rule an eighth in from each edge, 3/4 of the picture
+    // apart, and they are the only things in the frame wider than a tick. A
+    // row that crosses the picture is one of these two or it is nothing.
     for y in [h / 8, h / 8 + 1, h - h / 8 - 2, h - h / 8 - 1] {
         for x in 0..w {
             if (x / 40) % 2 == 0 {
@@ -585,6 +574,7 @@ fn draw(px: &mut [u32], w: usize, h: usize, ticks: usize) {
             }
         }
     }
+
     // The step number, as blocks along the top quarter. Wide, because a
     // 3520 sample line is squeezed into a 4:3 screen.
     let (bw, bh, gap) = (60usize, 24usize, 40usize);
