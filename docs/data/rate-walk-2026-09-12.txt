@@ -1,0 +1,23 @@
+# Where this television stops following a stretched vertical blanking.
+#
+# Filmed 2026-09-12 on the BeoCenter 1, one take, hand held, the whole screen
+# in frame. The pattern draws two dashed rules three quarters of the picture
+# apart and nothing else that crosses it; the walk holds each rate for six
+# seconds and ends by returning to the first, as its own control.
+#
+# Every reading is the distance between the rules over their own width, taken
+# from the last two seconds of each step, because the set is still moving at
+# the start of one. The width cannot change, since the line rate never moves,
+# so a hand-held camera's drift divides out.
+#
+# Measured with scripts/measure-rate-walk.py.
+#
+# step  vtotal  refresh   h/w      against step 1
+1       262     60.041    0.5686   +0.0
+2       286     55.003    0.5673   -0.2
+3       291     54.058    0.4835   -15.0
+4       297     52.966    0.4855   -14.6
+5       303     51.917    0.4835   -15.0
+6       308     51.074    0.4848   -14.7
+7       315     49.939    0.4875   -14.3
+8       262     60.041    0.5477   -3.7    still recovering after six seconds
