@@ -145,3 +145,50 @@
 # help. The television and one of the desktop's outputs are on the same card,
 # and nothing here asks the kernel to treat the tube's work as more urgent
 # than a browser's.
+
+# ---------------------------------------------------------------------------
+# 8. The threshold is the set's own sync window, not a percentage.
+#
+# A television's vertical countdown, once it has locked, works in a narrow
+# window: a Philips jungle datasheet gives 261 to 264 lines a field for the 60
+# Hz standard, and says that when a sync pulse falls outside it "the retrace of
+# the vertical ramp generator is started at the end of the window" rather than
+# on the incoming sync. So what matters is not how long a field is in per cent.
+# It is whether it leaves the window. This mode's nominal is 262 lines, which
+# leaves two lines of room, 127 microseconds.
+#
+# Counted against that threshold, the same three-by-three windows as above:
+#
+#   state   fields   outside 264 lines   longest field
+#   off      3601          0                262.1 lines
+#   on       3600          3  (0.08%)       291.0 lines
+#
+# With the rate fixed the set never loses its window. With it variable it
+# loses it about once every twenty seconds, which is the interval the owner
+# describes as "every so often".
+#
+# And the longest field is 291.0 lines. The rate walk filmed on 2026-09-12 put
+# this set's cliff at 291 lines, 54.06 Hz, where the picture loses 15% of its
+# height all at once. One field in a thousand is being stretched to exactly the
+# number at which this television gives up, measured a day earlier and for an
+# unrelated reason.
+#
+# That sharpens the design target. It is not "reduce the stretching": it is
+# "keep every field inside 264 lines", which means no flip may be more than
+# 127 microseconds late past the end of its frame. Slack makes that rarer and
+# cannot make it impossible, since the overruns reach three milliseconds and
+# slack is paid for on every frame whether it is needed or not.
+#
+# ---------------------------------------------------------------------------
+# 9. Two things checked because they were worth ruling out.
+#
+# A still picture would be worse than any of this: with no flip the field runs
+# to V_TOTAL_MAX, 328 lines, 37 past the cliff. It does not happen here. Over
+# 10125 consecutive intervals the compositor missed a flip three times, each
+# for two or three frames: the launcher draws every frame, so the tube is never
+# left without one for long.
+#
+# Turning the variable rate on and off costs no modeset on this chain, despite
+# the driver reporting RequiresModeset for the property. Fourteen toggles, the
+# frames either side of every one of them 16655 or 16656 microseconds, not a
+# single gap above 20 ms.
