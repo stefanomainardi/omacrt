@@ -168,10 +168,14 @@
 # describes as "every so often".
 #
 # And the longest field is 291.0 lines. The rate walk filmed on 2026-09-12 put
-# this set's cliff at 291 lines, 54.06 Hz, where the picture loses 15% of its
-# height all at once. One field in a thousand is being stretched to exactly the
-# number at which this television gives up, measured a day earlier and for an
-# unrelated reason.
+# this set's cliff between 286 and 291 lines: at 286 the picture is 0.2% short,
+# which is inside the noise of that method, and at 291 it is 15% short. So the
+# worst field this compositor produces lands on the far side of a cliff that
+# was measured a day earlier, for an unrelated reason, and to within five lines
+# of where it begins.
+#
+# The cliff is a range and not a number, which the first draft of this file got
+# wrong by naming 291 as the cliff rather than as the first step past it.
 #
 # That sharpens the design target. It is not "reduce the stretching": it is
 # "keep every field inside 264 lines", which means no flip may be more than
