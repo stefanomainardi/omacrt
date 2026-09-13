@@ -161,7 +161,8 @@ The result lands in `~/.local/share/omacrt/library.json` with title,
 tags, region and disc number per game. The launcher lists from it: one entry
 per title (regional variants collapse onto the preferred region, multi disc
 games onto disc 1), systems appear when they have games and hide when they
-do not, and folders no longer matter. Roots and your folder answers live in
+do not, and the folder a game sits in does not decide which system it belongs
+to. Roots and your folder answers live in
 `~/.config/omacrt/library.toml`. `systems.toml` keeps only what is
 tuning: core, options, video policy, run-ahead. Systems the scan finds but
 `systems.toml` does not mention take their core from the built in catalogue

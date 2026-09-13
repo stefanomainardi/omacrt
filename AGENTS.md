@@ -70,9 +70,8 @@ hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = "name:crt" }))'
 ```
 
 **Never set `misc:exit_window_retains_fullscreen` for the session.** A leased
-output returns early from the code that used to clear it, so the setting
-outlived the game and every desktop window came back fullscreen after an
-unlock. Save what a setting was, set it for as long as it is needed, clear it
+output returns early from the code that clears it, so the setting outlives the
+game and every desktop window comes back fullscreen after an unlock. Save what a setting was, set it for as long as it is needed, clear it
 in both directions and at login.
 
 **Do not invent libretro core option values.** A set of guessed Dolphin
