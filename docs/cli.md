@@ -129,7 +129,7 @@ this working:
 hl.monitor({ output = "desc:ATG MORTACA DEV00", disabled = true })
 ```
 
-Note that the rule matches by description rather than by name, so grepping the
+Note that the rule matches by description instead of by name, so grepping the
 config for `HDMI` does not find it. `omacrt doctor` says so in as many words
 when it sees a connector that is marked and still held.
 
@@ -162,7 +162,7 @@ ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"   # 15.73 kHz, 60.
 pal  = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"   # 15.63 kHz, 50.08 Hz
 ```
 
-Two interlaced timings sit next to them, for video rather than games. They
+Two interlaced timings sit next to them, for video and not games. They
 keep the same line rate and draw two fields per frame, so the tube shows 480
 or 576 lines:
 
@@ -191,13 +191,12 @@ Latency:    16.5 ms  0.99 frames  over the last 300
 ```
 
 It is the median time from the commit that drew a frame to the vblank that
-started scanning it out, measured on the tube that is running rather than
+started scanning it out, measured on the tube that is running instead of
 quoted from anywhere. Both ends are real: the commit is the client's own, the
-vblank timestamp is the kernel's, and only the compositor sees both, which is
-why no other tool on the machine reports this. On a set with no panel and no
+vblank timestamp is the kernel's, and only the compositor sees both, so no other tool on the machine reports this. On a set with no panel and no
 scaler between the connector and the phosphor, the start of scanout is very
 nearly the picture on the glass; what it does not include is what happens in
-front of the commit, which is the pad's own polling and whatever the program
+front of the commit, the pad's own polling and whatever the program
 does with the input before it draws.
 
 Two knobs move it, both in the display process's environment, and both are
@@ -206,7 +205,7 @@ set so that the tube is as quick as it has been measured to be safely:
 | | |
 | --- | --- |
 | `FLYBACK_MARGIN_US` | how long before the vblank the compositor starts drawing. Auto by default, from what recent frames cost; a number sets it in microseconds, `off` goes back to drawing as soon as a client commits, which costs a frame. |
-| `FLYBACK_LATE_DRAW=off` | go back to telling a program it may draw at the vblank, which is the conventional thing to tell it. By default it is told twice its own measured drawing time before the deadline instead, so its picture is finished just in time rather than waiting most of a frame. |
+| `FLYBACK_LATE_DRAW=off` | go back to telling a program it may draw at the vblank, the conventional thing to tell it. By default it is told twice its own measured drawing time before the deadline instead, so its picture is finished just in time instead of waiting most of a frame. |
 | `FLYBACK_SLACK_US` | how much room a program is given on top of twice its drawing time. Three milliseconds by default. |
 
 The whole chain, from the kernel's timestamp for a button press to the start
@@ -244,7 +243,7 @@ No instrument here produces that precision, and one of the four was below
 `output.vrr_min_hz` and would have been held at it; see
 [`audit-2026-09-12.md`](audit-2026-09-12.md).
 
-How slow it may go is `output.vrr_min_hz` in `crt.toml`, which is a
+How slow it may go is `output.vrr_min_hz` in `crt.toml`, a
 calibration of the set in the room: past it a television stops following and
 the picture loses height. 55 Hz by default, measured on a BeoCenter 1. A rate
 below it is held there and `rate` says so.
@@ -253,7 +252,7 @@ below it is held there and `rate` says so.
 
 `library scan DIR...` indexes every game under the given folders, whatever
 their layout, and remembers the folders as roots. With `--progress` it prints
-`scanning <folder>` as it goes, which is how the library overlay shows a scan
+`scanning <folder>` as it goes, and that is how the library overlay shows a scan
 without opening a terminal. Without arguments it rescans the roots, or discovers mounted disks that look like collections.
 `library` shows systems with counts and sources, `library unknown` the files
 it could not place and `library assign FOLDER SYSTEM` teaches it. See
@@ -310,7 +309,7 @@ too. This is how `scripts/shoot.sh` records the tour and how tests drive the
 menu; a game already running keeps the real keyboard and pad, nothing from
 the pipe reaches it.
 
-A whole screen can be asked for by name, which is what the desktop menu does
+A whole screen can be asked for by name, and that is what the desktop menu does
 rather than counting rows:
 
 ```
@@ -365,7 +364,7 @@ rarely needed by hand:
   up, which blocks every launch until somebody notices.
 - **`on` and `shell start`** clear whatever a previous life left, since with
   no launcher running nothing can own it.
-- **the watchdog** sweeps once a minute while the tube is on, which is the one
+- **the watchdog** sweeps once a minute while the tube is on, the one
   process already awake to do it.
 
 ## Starting a game from anywhere
@@ -442,7 +441,7 @@ empty asks about the city in the machine's own timezone) and `calendar` (an
 `.ics` address for the next appointment). Both are typed into the file rather
 than spelled out with a pad, so the page shows what they are and `A` opens the
 real page. The third row is whether this page takes its turn on an idle
-television, which is the same switch as Settings, Screensaver.
+television, the same switch as Settings, Screensaver.
 
 ## Sound
 
@@ -542,8 +541,7 @@ becomes the wordmark page with that effect.
 `bin/omacrt-install` adds a **Television** entry to Omarchy's own menu by
 writing the block in `menu/omarchy-menu.jsonc` into
 `~/.config/omarchy/extensions/omarchy-menu.jsonc`, between two markers, with
-the previous file kept beside it as `.omacrt.bak`. That path is the
-extension point Omarchy offers: nothing is patched and nothing is forked.
+the previous file kept beside it as `.omacrt.bak`. That path is the extension point Omarchy offers, so nothing is patched and nothing is forked.
 `--uninstall` takes the block out again.
 
 The rows are power, the link in the clipboard, then Channel (games, music,

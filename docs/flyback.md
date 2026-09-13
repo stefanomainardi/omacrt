@@ -6,7 +6,7 @@
 
 A Wayland compositor that owns the scanout of a fifteen kilohertz television.
 
-It is not a desktop, and it is not a kiosk shell either. A kiosk compositor
+It is not a desktop, and no kiosk shell either. A kiosk compositor
 puts one window on a monitor the system already knows how to drive. This one
 takes a connector the desktop has been told to leave alone, programs a timing
 no desktop would ever set, and then schedules every frame against what a
@@ -15,11 +15,11 @@ television; nothing here is quoted from a specification.
 
 **This is experimental.** It sets the line rate of a circuit tuned for one,
 and the guard that keeps any other one off the connector is described under
-[Safety](#safety) so that it can be checked rather than trusted. Read that
+[Safety](#safety) so that it can be checked instead of trusted. Read that
 section before pointing it at a set you care about.
 
-Where a claim here rests on hardware behaviour rather than on code, the
-measurement and the method are in [`15khz.md`](15khz.md), which is the
+Where a claim here rests on hardware behaviour instead of on code, the
+measurement and the method are in [`15khz.md`](15khz.md), the
 reference for the display chain itself. This document is about the
 compositor.
 
@@ -36,11 +36,11 @@ descriptor that is master for one connector and its CRTC. From there it sets
 the mode itself, with no compositor above it deciding anything: no layers, no
 window rules, no scaling, no pointer.
 
-That is the whole reason the project has a compositor rather than a
+That is the whole reason the project has a compositor instead of a
 fullscreen window. A desktop compositor will not set a 15 kHz modeline,
 cannot be told to stop touching an output's timing, and will not give a
 client the scanout. Leasing is the supported way to ask for all three at
-once, and it is what makes everything after this possible.
+once, and it makes everything after this possible.
 
 ### It programs a 15 kHz modeline, and refuses everything else
 
@@ -48,8 +48,8 @@ The timing comes from `crt.toml`. Before any of it reaches the kernel it goes
 through `Modeline::fault`, which refuses a line rate outside
 `output.hfreq_khz` (15 to 16.5 kHz by default), sync outside blanking,
 blanking inside the picture, and a field rate no such set will lock to. There
-are exactly two ways a timing can arrive — the configuration file at start-up
-and the `mode` command on the control pipe — and both call it.
+are exactly two ways a timing can arrive, the configuration file at start-up
+and the `mode` command on the control pipe, and both call it.
 
 ### It schedules frames for a tube, not for a desktop
 
@@ -60,9 +60,9 @@ is safe and costs most of a frame.
 
 At a **fixed** refresh a flip has to be queued before the vblank or the
 picture waits a whole frame, so there is a deadline. Flyback draws at the
-last safe moment — one frame less a margin taken from what recent frames
-actually cost — and tells the clients early enough that their commit arrives
-before that, which is twice their own measured drawing time plus a slack.
+last safe moment, one frame less a margin taken from what recent frames
+actually cost, and tells the clients early enough that their commit arrives
+before that, twice their own measured drawing time plus a slack.
 
 At a **variable** refresh there is no deadline at all: a flip that arrives
 after the frame's minimum length simply makes that frame longer. So nothing
@@ -94,7 +94,7 @@ flowchart LR
   end
 ```
 
-Three estimates feed it, all measured rather than assumed, because between
+Three estimates feed it, all measured, because between
 telling a client to draw and seeing its picture scanned out sit a wake-up, a
 draw, a flip and a hardware latch that no constant gets right:
 
@@ -106,8 +106,7 @@ draw, a flip and a hardware latch that no constant gets right:
 
 The knobs are environment variables on the display process and are documented
 in [`cli.md`](cli.md#latency): `FLYBACK_MARGIN_US`, `FLYBACK_LATE_DRAW`,
-`FLYBACK_SLACK_US`. Each of them turns one of the decisions above back off,
-which is how the numbers below were separated from each other.
+`FLYBACK_SLACK_US`. Each of them turns one of the decisions above back off, which is how the numbers below were separated from each other.
 
 ### It tells a client when its picture was actually shown
 
@@ -123,7 +122,7 @@ added it.
 A set's horizontal rate must not move. Its vertical rate can: the vertical
 oscillator re-triggers on sync, so every refresh an emulation asks for is
 reachable by stretching the vertical blanking alone. That is exactly what
-adaptive sync does in hardware, and on this chain it works — `vmin 261
+adaptive sync does in hardware, and on this chain it works: `vmin 261
 vmax 327` on the tube's timing generator, at an unchanged 15.731 kHz.
 
 Flyback turns it on by itself when the kernel says the connector is capable,
@@ -188,7 +187,7 @@ brochure.
   the way is five gates in the kernel's display code, written up in
   [`15khz.md`](15khz.md#what-a-stock-kernel-still-cannot-do).
 - **No beam racing.** The lease makes it possible for the first time on
-  Linux, which is interesting, and it is not implemented. See
+  Linux, and it is not implemented. See
   [Prior art](#prior-art-and-what-was-already-there).
 - **It is not a general-purpose compositor** and should not be used as one.
 
@@ -198,8 +197,7 @@ brochure.
 
 If any of these is false, most of the above stops being true.
 
-1. **The display chain is analogue and has no buffer.** No panel, no scaler,
-   no frame store: the photon leaves when the signal arrives. That is what
+1. **The display chain is analogue and has no buffer.** No panel, no scaler, no frame store, so the photon leaves when the signal arrives. That is what
    makes a commit-to-vblank number nearly a press-to-photon number, and it is
    why the same scheduling on an LCD would be measuring something else.
 2. **The horizontal rate is fixed and must stay fixed.** Every trick here
@@ -262,17 +260,17 @@ callback the way a program paces itself:
 | 2 ms | 7.90 ms | **4.61 ms** |
 | 4 ms | 9.79 ms | **6.54 ms** |
 
-Measured with the launcher mapped underneath, which is how the television
-actually runs: a program is never the only client on it.
+Measured with the launcher mapped underneath, and that is how the television
+actually runs, since a program is never the only client on it.
 
 The launcher end to end reports **2.0 ms** in `omacrt status`, and 4.5 ms
 with every core on the machine busy.
 
-**The starting point is reproducible rather than remembered.** Turn the three
+**The starting point is reproducible instead of remembered.** Turn the three
 switches off - `FLYBACK_LATE_DRAW=off`, `FLYBACK_MARGIN_US=off`, and the
 variable rate off, which together are this compositor with its scheduling removed - and
 the same client measures **33.36 ms, two frames exactly**, with the launcher's
-own figure at 33.1 ms. That is the comparison, and anybody with this hardware
+own figure at 33.1 ms. The comparison is there, and anybody with this hardware
 can run it.
 
 **That second sentence cost a day.** The same measurement with the launcher
@@ -283,7 +281,7 @@ slowest client on the tube; frame callbacks all go out together, and the
 launcher was setting the pace for a client it was hidden behind. It is kept
 per window now and read from the window on top, a window underneath no
 longer decides when the flip goes out, and a window's first measurement
-replaces the whole-frame assumption rather than losing to it for fifty
+replaces the whole-frame assumption instead of losing to it for fifty
 frames. A hidden window costs the visible one nothing: 3.79 ms against 3.56
 alone.
 
@@ -301,7 +299,7 @@ milliseconds by its rate, which belongs to the pad.
 **A mode change**, for comparison, takes **182 to 229 ms** to its first
 vblank and the television is dark for it, whether it moves the whole standard
 or only the vertical total. Re-applying a timing that has not changed costs
-4 to 16 ms, which is what says the cost is the modeset itself. That is what
+4 to 16 ms, which says the cost is the modeset itself. That is what
 the variable refresh rate avoids.
 
 ### Reproducing them
@@ -327,7 +325,7 @@ on the tube for filming, with a clapper and tick-counted steps.
 
 A television is not a monitor that shrugs at a signal it cannot use. Its
 horizontal deflection is a tuned circuit, a flyback transformer and an output
-transistor sized for one line rate, and it is under no obligation to work at
+transistor sized for one line rate, under no obligation to work at
 another.
 
 What a given set does when it is given another is a property of that set.
@@ -353,7 +351,7 @@ a 31.5 kHz VGA timing is refused unless the band is widened.
 
 The variable refresh rate is on the other axis and cannot do this: it
 stretches the vertical blanking and never moves the line rate by a single
-hertz. The worst it has produced is a picture that loses height, which is why
+hertz. The worst it has produced is a picture that loses height, so
 `output.vrr_min_hz` exists.
 
 ---
@@ -365,23 +363,23 @@ follows is what was checked, and what it means.
 
 - **The control pipe** is a named FIFO created 0600 in the user's own state
   folder, opened read-write so it never reports end of file between writers.
-  Any program running as the user can write a line into it — so the danger is
-  a mistake rather than a stranger, which is exactly the kind of danger that
+  Any program running as the user can write a line into it, so the danger is
+  a mistake instead of a stranger, exactly the kind of danger that
   reaches hardware. `mode` therefore goes through `Modeline::fault`, `key`
-  refuses a code above `KEY_MAX` rather than overflowing, `rate` clamps to
+  refuses a code above `KEY_MAX` instead of overflowing, `rate` clamps to
   the range the set was calibrated for, and an unknown command is refused
-  rather than guessed at. The read buffer is bounded: a line longer than it
-  arrives in two pieces and neither parses, which is the right failure.
+  instead of guessed at. The read buffer is bounded: a line longer than it
+  arrives in two pieces and neither parses, the right failure.
 - **`shot` and `record`** take a path from that pipe and truncate it. Both
   refuse a name that is not a picture or a film respectively, which also
   keeps a leading dash from ever reaching ffmpeg as an option. ffmpeg is
   spawned with an argument vector and no shell, and the output path is behind
   a `--` guard.
-- **The Wayland socket** is in `XDG_RUNTIME_DIR`, which is 0700. Any program
+- **The Wayland socket** is in `XDG_RUNTIME_DIR`, mode 0700. Any program
   the user runs can connect and will be mapped fullscreen on the television,
   exactly as on any other compositor.
 - **Client buffers** are imported through smithay; a dmabuf that fails to
-  import is refused through the protocol's own notifier rather than taken.
+  import is refused through the protocol's own notifier.
 - **The leased file descriptor** is master for one connector and its CRTC and
   nothing else. It cannot touch the desktop's outputs.
 - **A panic in the compositor takes the television with it**, so the paths a
@@ -389,13 +387,13 @@ follows is what was checked, and what it means.
   remain are on smithay's own mutexes, which are poisoned only if another
   thread has already panicked.
 - **Arithmetic overflow panics in release builds too** (`overflow-checks` is
-  on in the release profile), which is deliberate: a television that stops
-  has to stop where the mistake is, rather than wrap in silence and draw
+  on in the release profile), on purpose: a television that stops
+  has to stop where the mistake is, instead of wrap in silence and draw
   something wrong. It also means an overflow on a value taken from the
-  control pipe is a crash rather than a curiosity, which is why every number
+  control pipe is a crash, so every number
   read from it is bounded before it is used.
 - **The watchdog**: ten refused page flips in a row, or two seconds without a
-  vblank for a queued frame, and the display process gives up rather than
+  vblank for a queued frame, and the display process gives up instead of
   leaving a set staring at nothing.
 
 ---
@@ -403,14 +401,14 @@ follows is what was checked, and what it means.
 ## Prior art, and what was already there
 
 Almost none of the pieces here are new on their own. What is new is the
-combination, and it is worth being exact about which is which.
+combination, and being exact about which is which.
 
 - **Driving a 15 kHz display from a PC** is a solved and well-documented
   craft: GroovyMAME, CRT Emudriver, Switchres, the `advancedscan` lineage,
   and on Linux the `video=` modeline route many people have used for years.
   Super resolutions (2560x240, 3840x240) have been standard practice in that
   community for over a decade.
-- **True beam racing** — drawing the frame just ahead of the beam — exists,
+- **True beam racing**, drawing the frame just ahead of the beam, exists,
   in GroovyMAME and WinUAE, on Windows. It has never worked on Linux;
   RetroArch has had a bounty standing for it since 2018. The reason is that
   it needs ownership of the scanout, which a desktop compositor denies. A
@@ -420,15 +418,15 @@ combination, and it is worth being exact about which is which.
   it is one. Leasing a television to get a fifteen kilohertz mode is, as far
   as could be found, not otherwise done.
 - **Adaptive sync on a CRT** has one prior report, on multisync PC monitors
-  rather than on televisions, and it observes that some sets change vertical
+  and not on televisions, and it observes that some sets change vertical
   size with the blanking interval. Using it deliberately, on a consumer
   television, to serve an emulator's exact refresh without a mode change is
-  what this adds — together with the measurement of where a particular set
-  stops following, which is the part that makes it usable rather than a
+  what this adds, together with the measurement of where a particular set
+  stops following, the part that makes it usable instead of a
   demonstration.
 - **Frame scheduling of this kind** is not new either. Weston, KWin,
   Mutter and Gamescope all have latency-aware schedulers, and the idea of
-  drawing late rather than early is standard. What is specific here is the
+  drawing late is standard. What is specific here is the
   variable-refresh regime with no deadline, and a target that shows the
   result as brightness as well as motion.
 - **smithay** is the framework all of this stands on, and the compositor is
@@ -436,13 +434,13 @@ combination, and it is worth being exact about which is which.
 
 The honest summary: this is a new combination of known parts, measured on
 hardware nobody had measured this chain on, and the one thing it might be
-first at — beam racing on Linux — is deliberately still on the shelf.
+first at, beam racing on Linux, is deliberately still on the shelf.
 
 ---
 
 ## Status
 
 Experimental, and part of one project rather than a product. It runs one
-television in one room. The interfaces described here — the control pipe, the
-environment variables, `crt.toml` — change when a measurement says they
+television in one room. The interfaces described here, which are the control pipe, the environment
+variables and `crt.toml`, change when a measurement says they
 should.

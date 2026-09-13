@@ -1,10 +1,11 @@
 # Omarchy on the tube
 
 This is one of two channels. Without Omarchy the television is the same and
-the desktop side is the command line: see [`hyprland.md`](hyprland.md).
+the desktop side is the command line, described in
+[`hyprland.md`](hyprland.md).
 
-The interesting part is not the emulator, it is what an integrated desktop
-can send to a television once the television is just another output it owns.
+What matters is what an integrated desktop can send to a television once the
+television is just another output it owns.
 
 - **The shell.** The bar widget, the panel and the library overlay are
   Omarchy shell plugins, in Quickshell like the rest of the bar, using the
@@ -34,8 +35,7 @@ can send to a television once the television is just another output it owns.
   the same CLI a terminal would. Nothing patched.
 - **Walker.** *Play a game...* in that menu hands the whole collection to
   Omarchy's own runner and plays what comes back on the television, turning
-  the tube on if it is off. Twenty thousand games belong in a fuzzy finder,
-  not in a nested menu.
+  the tube on if it is off. Twenty thousand games belong in a fuzzy finder.
 - **Immich.** The photo frame reads the house's own photograph server: this
   day in the years before, an album, the favourites, with where and when and
   who from the server's own metadata. The pictures never leave the network.

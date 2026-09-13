@@ -33,5 +33,5 @@ flowchart LR
 ```
 
 Read it against [`15khz.md`](15khz.md), which says why the tube has a
-compositor of its own rather than being one more output of the desktop, and
-[`flyback.md`](flyback.md), which is that compositor on its own terms.
+compositor of its own instead of being one more output of the desktop, and
+[`flyback.md`](flyback.md), that compositor on its own terms.

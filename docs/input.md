@@ -28,7 +28,7 @@ systems list opens the whole collection, every system at once, to search
 across it. On a pad the left trigger opens the same bar with an on screen
 keyboard: d-pad to move, `A` types, `X` deletes, `Y` is space, `B` puts the
 keyboard away with the filter kept. The shoulder buttons jump to the next or
-previous initial letter, which is how a list of thousands is read without a
+previous initial letter, so a list of thousands is read without a
 keyboard.
 
 The left stick acts as a d-pad with key repeat: one step when it leaves the
@@ -106,8 +106,7 @@ RetroArch when a core starts, so both take effect at the next start; nothing
 is lost by restarting, because the state is saved on exit and picked up
 again.
 The menu shows when the game's latest save state was written. `B` or `Esc`
-resumes. `F1` reaches the launcher only while the launcher holds the
-keyboard, which is what the panel's "Keys to the launcher" button (and
+resumes. `F1` reaches the launcher only while the launcher holds the keyboard, as the panel's "Keys to the launcher" button (and
 `omacrt focus`) does: the game keeps running and the keys go to the
 launcher. With the game itself focused, use the pad or the CLI.
 
@@ -147,8 +146,8 @@ SDL and RetroArch both keep a list of pad layouts, in different formats,
 matched on different things. SDL matches a GUID and reads
 `gamecontrollerdb.txt`; RetroArch matches a USB vendor and product and reads
 `.cfg` profiles from one directory. A pad in one list and not the other works
-in the launcher and does nothing in a game, which is how a controller ends up
-with no Start button on a title screen.
+in the launcher and does nothing in a game, and a controller ends up with no
+Start button on a title screen.
 
 The launcher keeps the directory RetroArch reads filled. For every pad that
 connects it works out the USB ids from the SDL GUID, and:

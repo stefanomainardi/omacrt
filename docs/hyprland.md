@@ -41,7 +41,7 @@ hl.bind({ mods = "SUPER", key = "L", dispatcher = "exec",
 ```
 
 `omacrt focus` is the one worth binding first: it opens the preview window on
-the desktop and gives it the keyboard, which is how anything on the tube gets
+the desktop and gives it the keyboard, so anything on the tube gets
 typed at. Closing that window gives the keyboard back.
 
 `omacrt --help` lists the rest. Everything the bar widget does is a verb.

@@ -110,13 +110,13 @@ One process, one thread, one event loop, 3616 lines on smithay. It is named
 after what a tube does between two lines, and it is the piece of this project
 that touches hardware.
 
-It is not a desktop and it is not a kiosk shell. A kiosk compositor puts one
-window on a monitor the system already knows how to drive. This one takes a
-connector the desktop has been told to leave alone, programs a timing no
-desktop would set, and then schedules every frame against what a cathode ray
-tube does with it. **The desktop keeps running** on its other outputs, which
-is the thing none of the established ways of driving a CRT from Linux can do:
-they all take the machine.
+It is neither a desktop nor a kiosk shell. A kiosk compositor puts one window
+on a monitor the system already knows how to drive. This one takes a connector
+the desktop has been told to leave alone, programs a timing no desktop would
+set, and then schedules every frame against what a cathode ray tube does with
+it. **The desktop keeps running** on its other outputs, the thing none of the
+established ways of driving a CRT from Linux can do, since they all take the
+machine.
 
 Owning the scanout is also what lets it answer a question nobody else here
 can. Flyback times every frame from the client's own commit to the kernel's
@@ -133,7 +133,7 @@ mapped underneath, which is how the television actually runs:
 | a button press to the start of scanout, 300 presses at random points of the frame | median **10.19 ms**, 0.61 of a frame |
 
 It offers `wp_presentation`, so a client that cares about timing is told
-rather than left guessing, and it runs the television at a **variable refresh
+instead of left guessing, and it runs the television at a **variable refresh
 rate**: every refresh an emulation asks for is reachable by stretching the
 vertical blanking alone, with the line rate never moving, so a program gets
 its own rate without the fifth of a second of darkness a mode change costs.
@@ -142,7 +142,7 @@ written down as one number in `crt.toml`.
 
 **It is experimental**, and it sets the line rate of a television, a circuit
 tuned for one rate and under no obligation to work at another. No timing
-reaches the kernel without passing a guard: the line rate inside the band
+reaches the kernel without passing a guard that checks the line rate against the band
 `crt.toml` allows for that set, 15 to 16.5 kHz as shipped, the field rate
 between 40 and 90 Hz, and every timing in order.
 
@@ -190,14 +190,14 @@ elsewhere:
 | GPU | Any AMD card on `amdgpu`: the lease and the 15 kHz timings are kernel side, not vendor side | Nvidia's proprietary driver does not offer non-desktop connectors for leasing. Intel is untested |
 | DAC | Anything that takes HDMI and puts RGB on a SCART or VGA pin. `omacrt setup` recognises the RGB-Pi 2 from its EDID | Sync mode is set over I2C only on the RGB-Pi 2; on anything else set it on the device itself |
 | Television | Any 15 kHz set with RGB in, PAL or NTSC. The standard follows your locale, `--standard` overrides it | A VGA monitor: 15 kHz is below what it will lock onto |
-| Compositor | Hyprland 0.56 or later, which is what Omarchy ships | Anything without DRM leasing. wlroots, KWin and Mutter all have the protocol, none of them has been tried |
+| Compositor | Hyprland 0.56 or later, and that is what Omarchy ships | Anything without DRM leasing. wlroots, KWin and Mutter all have the protocol, none of them has been tried |
 | Desktop | Omarchy for the bar widget, the library overlay and the menu entry | Plain Hyprland gets the television and the command line: [`docs/hyprland.md`](docs/hyprland.md) |
 
 Run `omacrt setup` first on a machine that is not this one: it lists the
 connectors with what their EDID says, picks the one the DAC is on, works out
 the standard from the locale, and writes those two lines to `crt.toml`.
 `omacrt doctor` says what is still missing. The DisplayPort DAC tier, for
-native 320x240 timings rather than the wide ones, is in
+native 320x240 timings instead of the wide ones, is in
 [`docs/15khz.md`](docs/15khz.md).
 
 ## Install
@@ -221,8 +221,8 @@ Requirements, and the distribution is not one of them: an AMD card on
 time override, RetroArch with libretro cores, mpv, cliamp (a terminal music
 player), yt-dlp for YouTube, ffmpeg, curl, a stable Rust toolchain. What
 decides whether a machine can run this is the card, the compositor and the
-DAC, not what is on the rest of the disk. `omacrt doctor` says which of them
-this machine has, in its own words, before anything is bought.
+DAC, whatever else is on the disk. `omacrt doctor` says which of them this
+machine has, in its own words, before anything is bought.
 
 After `--system` the tube is handed over at every boot, and the first boot
 after it is when the handover starts working: Hyprland decides which
@@ -247,8 +247,8 @@ omacrt shell key <input>... | shot out.png | record start out.mp4
 ```
 
 Every verb, with its flags, is in [`docs/cli.md`](docs/cli.md). `shell key`,
-`shell type` and `shell screen` drive the launcher over its control pipe,
-which is how every screenshot and video in this repository was made.
+`shell type` and `shell screen` drive the launcher over its control pipe, and
+every screenshot and video in this repository was made.
 
 ### omacrt doctor
 
@@ -264,7 +264,7 @@ None of them needs a DAC to be plugged in.
 
 In a terminal it is the launcher's own power on self test. The mark and the
 wordmark stand side by side, the way the boot screen holds them: the word is
-cut by the same laser while the machine is being asked, which is the slow
+cut by the same laser while the machine is being asked, the slow
 part, and the beam runs back across the mark's four bars every time one of
 those answers lands. Then the rest of the answers arrive, one line at a time
 as they come, and last the modeline drawn rather than listed, the card's

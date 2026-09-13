@@ -37,8 +37,8 @@ question the whole project turns on:
 | `lease: offered HDMI-A-1` | the connector is there to be taken |
 
 If the third line is missing, the EDID override has not been applied or the
-connector has not been re-probed. That is `scripts/crt-lease-setup.sh`, not
-this program: see [`15khz.md`](15khz.md#a-television-has-no-edid).
+connector has not been re-probed, which `scripts/crt-lease-setup.sh` does, and
+not this program. See [`15khz.md`](15khz.md#a-television-has-no-edid).
 
 Clients reach it at `WAYLAND_DISPLAY=wayland-crt`.
 
@@ -60,8 +60,8 @@ send "<line>"` writes to it, and several CLI verbs are wrappers over it.
 | `monitor <on\|off>` | a preview window on the desktop, so the tube can be watched without looking at it |
 | `quit` | stop the compositor |
 
-Anything else is refused rather than guessed at, and a line longer than the
-read buffer arrives in two pieces and neither parses, which is the right
+Anything else is refused instead of guessed at, and a line longer than the
+read buffer arrives in two pieces and neither parses, the right
 failure for a pipe that can reach a modeline.
 
 ## What it reads from `crt.toml`
@@ -78,21 +78,22 @@ failure for a pipe that can reach a modeline.
 if it is wrong. Widening it is deliberate and for a display that can take it:
 a multisync monitor, an arcade chassis rated for 25 or 31 kHz.
 
-## Switches, for measuring rather than for running
+## Switches, for measuring
 
 Environment variables on the display process. Each one turns off a decision
-described in [`flyback.md`](flyback.md#it-schedules-frames-for-a-tube-not-for-a-desktop),
-which is how the numbers there were separated from each other.
+described in
+[`flyback.md`](flyback.md#it-schedules-frames-for-a-tube-not-for-a-desktop),
+and that is how the numbers there were separated from each other.
 
 | | |
 | --- | --- |
 | `FLYBACK_MARGIN_US` | how long before the vblank to start drawing. Auto by default, from what recent frames cost; a number sets it in microseconds; `off` goes back to drawing as soon as a client commits, which costs a frame |
-| `FLYBACK_LATE_DRAW=off` | tell clients they may draw at the vblank, which is the conventional thing to tell them, rather than just in time |
+| `FLYBACK_LATE_DRAW=off` | tell clients they may draw at the vblank, the conventional thing to tell them, instead of just in time |
 | `FLYBACK_SLACK_US` | how much room a client gets on top of twice its measured drawing time. 3000 by default |
 | `FLYBACK_TRACE` | print three lines a frame: commit to flip queued, flip queued to vblank, and the vblank interval. This is how the frame timeline in the study was measured, and it writes about 180 lines a second |
-| `FLYBACK_ALL_PROPS` | make `props` print every DRM property rather than the interesting ones |
+| `FLYBACK_ALL_PROPS` | make `props` print every DRM property and not the interesting ones |
 
-All three switches off at once is this compositor with its scheduling removed, and it is
+All three switches off at once is this compositor with its scheduling removed,
 the "before" in the study's numbers:
 
 ```
@@ -115,15 +116,14 @@ scanout, and the rate the tube is actually being given, which under a
 variable refresh rate is not the mode's own.
 
 The second is the tail of the same two things: a frame that arrives late once
-every few seconds is three samples in three hundred and does not move a
-median at all, which is exactly what somebody watching calls a glitch.
+every few seconds is three samples in three hundred and does not move a median
+at all, exactly what somebody watching calls a glitch.
 
 **The third line is the one to read when the picture twitches**, and it exists
 because the second could not show it. A television's vertical countdown
 accepts sync inside a narrow window once it has locked, two lines either side
 on a 60 Hz standard, and a field that leaves that window is retraced at the
-edge of it rather than on the sync that arrived. That is a visible jump for
-that field. Three fields in three thousand six hundred left the window on the
+edge of it instead of on the sync that arrived, a visible jump for that field. Three fields in three thousand six hundred left the window on the
 afternoon this row was written, and the row above read `16.66 to 16.66 ms`
 throughout: a median cannot show three samples, and a hundredth of a
 millisecond is a quarter of a line.
@@ -131,7 +131,7 @@ millisecond is a quarter of a line.
 So it counts instead. `N of 300 frames ran long, the worst L lines` means N
 fields went more than two lines past the mode's vertical total, which for
 NTSC here is 262. Anything above about 290 is past where this particular set
-starts losing height, which is a property of the set and is in
+starts losing height, a property of the set and is in
 [`15khz.md`](15khz.md). The window itself is a documented design for sets of
 that kind rather than a measurement of any one of them, so the row reports the
 count and the number of lines and leaves the reading to somebody who knows
@@ -145,7 +145,7 @@ latency, and the range worth trying is 1500 to about 4500.
 The same two rows appear on the launcher's own Diagnostics page, so the tube
 says it without a terminal.
 
-The log is `~/.local/state/omacrt/display.log`. Lines worth knowing:
+The log is `~/.local/state/omacrt/display.log`. Lines to look for:
 
 | line | meaning |
 | --- | --- |
