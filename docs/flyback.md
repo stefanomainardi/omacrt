@@ -106,7 +106,8 @@ draw, a flip and a hardware latch that no constant gets right:
 
 The knobs are environment variables on the display process and are documented
 in [`cli.md`](cli.md#latency): `FLYBACK_MARGIN_US`, `FLYBACK_LATE_DRAW`,
-`FLYBACK_SLACK_US`. Each of them turns one of the decisions above back off, which is how the numbers below were separated from each other.
+`FLYBACK_SLACK_US`. Each of them turns one of the decisions above back off,
+which is how the numbers below were separated from each other.
 
 ### It tells a client when its picture was actually shown
 
@@ -128,12 +129,13 @@ vmax 327` on the tube's timing generator, at an unchanged 15.731 kHz.
 Flyback turns it on by itself when the kernel says the connector is capable,
 because there is nothing else a television leased to this compositor would
 want it for. `rate 59.92` on the control pipe then asks for a refresh by
-name, and the closed loop holds it. asked for by name and measured as the median of the last 300 vblank
-intervals, with fifteen seconds of settling at each step: **60.041 asked
-gives 60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**, and 50
-is held at 55 because that is where this set stops following. The instrument
-is a median over a five second window, and the numbers are reported to the
-precision it has.
+name, and the closed loop holds it.
+
+Each rate below was asked for by name, then measured as the median of the last
+300 vblank intervals after fifteen seconds of settling: **60.041 asked gives
+60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**. 50 is held at 55,
+because that is where this set stops following. The instrument is a median over
+a five second window, and the numbers are reported to the precision it has.
 
 Where a set stops following is a calibration of the room, not a constant:
 `output.vrr_min_hz`, 55 Hz on the BeoCenter 1, below which the picture starts
@@ -179,13 +181,15 @@ brochure.
 - **No multi-output.** One leased connector, one CRTC, one mode. Two
   televisions would need most of this rewritten.
 - **No fractional scale, no HDR, no colour management, no explicit sync
-  (`linux-drm-syncobj`), no tearing control.** Tearing in particular is the
-  other road to low latency and is not taken: on a 15 kHz set a torn frame is
-  visible across a third of the picture, and the scheduling above gets most
-  of the same time back without it.
-- **No interlace.** The driver refuses it on this connector; what stands in
-  the way is five gates in the kernel's display code, written up in
-  [`15khz.md`](15khz.md#what-a-stock-kernel-still-cannot-do).
+  (`linux-drm-syncobj`), no tearing control.** Tearing is the other road to low
+  latency and is not taken. On a 15 kHz set a torn frame is visible across a
+  third of the picture, and the scheduling above gets most of the same time
+  back without it.
+- **No interlace.** Nothing on the leased path refuses a 480i modeline: the
+  modeset succeeds and the timing is then scanned out progressively, which is
+  a narrow strip at a field rate no television locks to. Five gates in the
+  kernel's display code stand between that modeline and a picture, written up
+  in [`15khz.md`](15khz.md#what-a-stock-kernel-still-cannot-do).
 - **No beam racing.** The lease makes it possible for the first time on
   Linux, and it is not implemented. See
   [Prior art](#prior-art-and-what-was-already-there).
@@ -197,9 +201,10 @@ brochure.
 
 If any of these is false, most of the above stops being true.
 
-1. **The display chain is analogue and has no buffer.** No panel, no scaler, no frame store, so the photon leaves when the signal arrives. That is what
-   makes a commit-to-vblank number nearly a press-to-photon number, and it is
-   why the same scheduling on an LCD would be measuring something else.
+1. **The display chain is analogue and has no buffer.** No panel, no scaler,
+   no frame store, so the photon leaves when the signal arrives. That is what
+   makes a commit-to-vblank number nearly a press-to-photon number. The same
+   scheduling on an LCD would be measuring something else.
 2. **The horizontal rate is fixed and must stay fixed.** Every trick here
    moves the vertical timing only.
 3. **One output, one CRTC, one program that matters at a time.**
@@ -268,22 +273,21 @@ with every core on the machine busy.
 
 **The starting point is reproducible instead of remembered.** Turn the three
 switches off - `FLYBACK_LATE_DRAW=off`, `FLYBACK_MARGIN_US=off`, and the
-variable rate off, which together are this compositor with its scheduling removed - and
-the same client measures **33.36 ms, two frames exactly**, with the launcher's
-own figure at 33.1 ms. The comparison is there, and anybody with this hardware
-can run it.
+variable rate off, which together are this compositor with its scheduling
+removed - and the same client measures **33.36 ms, two frames exactly**, with
+the launcher's own figure at 33.1 ms. The comparison is there, and anybody
+with this hardware can run it.
 
 **That second sentence cost a day.** The same measurement with the launcher
 stopped read 3.56 ms, and with it running read 18.70 ms, with one frame in
 six arriving two frames late. The drawing-time estimate the callbacks were
 paced by was one number for the whole compositor, so it was really the
-slowest client on the tube; frame callbacks all go out together, and the
+slowest client on the tube. Frame callbacks all go out together, and the
 launcher was setting the pace for a client it was hidden behind. It is kept
-per window now and read from the window on top, a window underneath no
-longer decides when the flip goes out, and a window's first measurement
-replaces the whole-frame assumption instead of losing to it for fifty
-frames. A hidden window costs the visible one nothing: 3.79 ms against 3.56
-alone.
+per window now and read from the window on top, so a window underneath no
+longer decides when the flip goes out. A window's first measurement replaces
+the whole-frame assumption instead of losing to it for fifty frames. A hidden
+window costs the visible one nothing: 3.79 ms against 3.56 alone.
 
 **The whole chain**, from the kernel's timestamp for a button press to the
 start of scanout, over three hundred presses at random points of the frame:
@@ -298,9 +302,9 @@ milliseconds by its rate, which belongs to the pad.
 
 **A mode change**, for comparison, blocks the kernel's own call for **182 to
 229 ms** and leaves the television showing nothing for about **400 ms**,
-whether it moves the whole standard or only the vertical total. Re-applying a timing that has not changed costs
-4 to 16 ms, which says the cost is the modeset itself. That is what
-the variable refresh rate avoids.
+whether it moves the whole standard or only the vertical total. Re-applying a
+timing that has not changed costs 4 to 16 ms, which says the cost is the
+modeset itself. That is what the variable refresh rate avoids.
 
 ### Reproducing them
 
@@ -419,11 +423,10 @@ combination, and being exact about which is which.
   as could be found, not otherwise done.
 - **Adaptive sync on a CRT** has one prior report, on multisync PC monitors
   and not on televisions, and it observes that some sets change vertical
-  size with the blanking interval. Using it deliberately, on a consumer
-  television, to serve an emulator's exact refresh without a mode change is
-  what this adds, together with the measurement of where a particular set
-  stops following, the part that makes it usable instead of a
-  demonstration.
+  size with the blanking interval. What this adds is using it deliberately, on
+  a consumer television, to serve an emulator's exact refresh without a mode
+  change. It also measures where a particular set stops following, which is
+  what makes it usable instead of a demonstration.
 - **Frame scheduling of this kind** is not new either. Weston, KWin,
   Mutter and Gamescope all have latency-aware schedulers, and the idea of
   drawing late is standard. What is specific here is the
@@ -441,6 +444,6 @@ first at, beam racing on Linux, is deliberately still on the shelf.
 ## Status
 
 Experimental, and part of one project rather than a product. It runs one
-television in one room. The interfaces described here, which are the control pipe, the environment
-variables and `crt.toml`, change when a measurement says they
-should.
+television in one room. The interfaces described here are the control pipe,
+the environment variables and `crt.toml`. They change when a measurement says
+they should.

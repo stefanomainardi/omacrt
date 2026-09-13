@@ -63,9 +63,9 @@ The reason Flyback leases instead of patching is that a desktop compositor
 will not set a 15 kHz mode, will not stop managing an output's timing on
 request, and will not hand over the scanout. Those are three separate refusals
 with one supported answer: `wp_drm_lease_v1`, marked non-desktop in the EDID.
-The protocol was written for VR headsets and its own specification describes
-the general case (a compositor "will not use this output at all and will make
-it available for leasing"), but every user of it in the wild is a headset. No
+The protocol was written for VR headsets, and its own specification describes
+the general case: a compositor "will not use this output at all and will make
+it available for leasing". Every user of it in the wild is still a headset. No
 trace was found of a television being leased this way, which describes a
 search and not a claim of primacy.
 
@@ -150,10 +150,11 @@ An honest list, because the one above is short.
 - **One television.** Every calibration in `crt.toml` is a property of a
   BeoCenter 1 in one room. The numbers will differ on your set; the method is
   the transferable part.
-- **No interlace.** Five gates in the kernel's display code refuse it on this
-  connector, and this project decided not to require a patched kernel. A
-  distribution that already patches its kernel for 15 kHz is not paying that
-  price, so the trade belongs to us.
+- **No interlace.** A 480i modeline is accepted on this connector and then
+  scanned out progressively, because five gates in the kernel's display code
+  stand between it and a picture. This project decided not to require a
+  patched kernel, and a distribution that already patches its kernel for
+  15 kHz is not paying that price, so the trade belongs to us.
 - **No beam racing.** Which deserves its own section.
 
 ## Beam racing, said plainly
@@ -174,10 +175,9 @@ either.** That sentence is the whole of the claim.
 ## Where this leaves it
 
 Flyback is not a better Batocera. It is the piece that was missing between a
-normal Linux machine and a 15 kHz television: a compositor that takes one
-output, drives it as a television rather than as a monitor, schedules frames
-for a tube instead of for a desktop, and says out loud how long its own
-picture took to arrive.
+normal Linux machine and a 15 kHz television. It takes one output, drives it
+as a television rather than as a monitor, schedules frames for a tube instead
+of for a desktop, and says out loud how long its own picture took to arrive.
 
 It is experimental, it sets the line rate of a circuit tuned for one, and it
 has been run in one room. What it contributes that outlasts it is the
