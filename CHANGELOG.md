@@ -7,6 +7,44 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The test card passes the same guard as the compositor.** `flyback probe`
+  leases the connector, reads the modeline out of `crt.toml` and programs it
+  with a test card on it, and it did that without the check that refuses a
+  line rate outside the band the configuration allows the set. The
+  compositor's own path checks twice and carries a comment at each saying
+  nothing reaches the connector without passing there; the test card reached
+  it. Nothing in this project asks for a timing like that, and the guard
+  exists for the mistake in a hand-edited `crt.toml`, which the test card
+  reads too.
+
+  It was not caught by a test or by a lint. The site's editor asked how the
+  guard should be described on the page, the answer had to come from the code
+  rather than from memory, and reading it for that answer is what found the
+  path that skipped it.
+
+- The lease unit stands down at shutdown instead of taking the connector
+  through an unplug and a plug while the machine is going down. Its undo path
+  asks for up to twelve seconds and a stopping unit gets five here, so it was
+  killed part way through a hotplug on every single shutdown. There is nothing
+  to undo at that point: the override lives in debugfs and goes with the
+  kernel.
+
+- The FreeSync range is written by the boot unit rather than by a command
+  somebody remembers, so the variable refresh rate survives a reboot. Before
+  this the boot marked the connector non-desktop and nothing else.
+
+- The launcher says it is asking the television for a number of lines rather
+  than claiming to follow one. For a core reporting more lines than the
+  standard has, the request is capped at the whole frame and nothing changes,
+  which "following" described incorrectly.
+
+- `omacrt doctor` reports the system side of the lease falling behind. Those
+  three files live outside any home, only root writes them, and an upgrade of
+  this program cannot: on this project's own machine they sat four days
+  behind, which is what produced the two failures above.
+
 ## [0.7.0] - 2026-09-13
 
 ### Added
