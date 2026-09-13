@@ -1,3 +1,13 @@
+<p align="center">
+  <img src="docs/logo.png" alt="The OmaCRT mark, four bars crossed by the dark cut of a beam returning, beside the word OMACRT in block letters" width="560">
+</p>
+
+<h1 align="center">OmaCRT</h1>
+
+<p align="center">
+  <a href="https://omacrt.com">omacrt.com</a>
+</p>
+
 **What it is.** A Wayland compositor that takes one output away from the
 desktop and drives a 15 kHz CRT television on it. Your other screens keep
 working.
@@ -16,21 +26,9 @@ the tube.
 
 **What state it is in.** Experimental. Stock kernel, AMD only, one television.
 
-<p align="center">
-  <img src="docs/logo.png" alt="The OmaCRT mark, four bars crossed by the dark cut of a beam returning, beside the word OMACRT in block letters" width="560">
-</p>
-
-<h1 align="center">OmaCRT</h1>
-
-<p align="center">
-  <a href="https://omacrt.com">omacrt.com</a>
-</p>
-
-A PC plugged into a 15 kHz CRT television over RGB SCART, playing retro games
-the way they were drawn: native lines, native refresh, real scanlines, no
-scaler in between. A launcher on the tube, a display process that owns the
-television outright, and on [Omarchy](https://omarchy.org) a bar plugin and a
-menu entry on the desktop as well. Written in Rust, drawn at 320x240.
+Native lines, native refresh, real scanlines, no scaler in between. A launcher
+on the tube, and on [Omarchy](https://omarchy.org) a bar plugin and a menu
+entry on the desktop as well. Written in Rust, drawn at 320x240.
 
 <p align="center">
   <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
