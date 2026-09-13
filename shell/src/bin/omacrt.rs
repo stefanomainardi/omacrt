@@ -388,6 +388,10 @@ fn status(cfg: &Config) -> Value {
             st["latency"]["worst"] = json!(t.worst);
             st["latency"]["frame_min"] = json!(t.frame_min);
             st["latency"]["frame_max"] = json!(t.frame_max);
+            if let Some(w) = t.window {
+                st["latency"]["over_window"] = json!(w.over);
+                st["latency"]["longest_lines"] = json!(w.longest_lines);
+            }
         }
     }
     if let Some(c) = &conn {
@@ -590,14 +594,32 @@ fn print_status(st: &Value) {
             l["frame_min"].as_f64(),
             l["frame_max"].as_f64(),
         ) {
-            println!(
-                "            95th {p95:.1} ms, worst {worst:.1}; frame {lo:.2} to {hi:.2} ms{}",
-                if hi - lo > 1.0 {
-                    "  <- the tube is being asked for frames of different lengths"
-                } else {
-                    ""
-                }
-            );
+            println!("            95th {p95:.1} ms, worst {worst:.1}; frame {lo:.2} to {hi:.2} ms");
+        }
+        // And the same frames counted in lines, which is the unit the set's
+        // own vertical circuit works in. A television's countdown accepts
+        // sync inside a narrow window once it has locked, and a field that
+        // leaves it is retraced at the edge of the window rather than on the
+        // sync that arrived, which is a visible jump for that field.
+        //
+        // This is here because milliseconds hid it. Three fields in three
+        // thousand six hundred left that window on the afternoon this was
+        // written, and the row above read "16.66 to 16.66 ms" throughout: a
+        // median and two extremes cannot show three samples, and the two
+        // extremes are rounded to a hundredth of a millisecond, which is a
+        // quarter of a line.
+        if let (Some(over), Some(longest)) =
+            (l["over_window"].as_u64(), l["longest_lines"].as_f64())
+        {
+            let n = l["samples"].as_u64().unwrap_or(0);
+            if over > 0 {
+                println!(
+                    "            {over} of {n} frames ran long, the worst {longest:.1} lines  \
+                     <- past the window a set holds sync in"
+                );
+            } else {
+                println!("            every frame inside the mode, the longest {longest:.1} lines");
+            }
         }
     }
     let d = &st["dac"];

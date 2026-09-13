@@ -1728,8 +1728,38 @@ impl Crt {
         // actually given. The last two are the pair that says whether the
         // frame length is steady, which under a variable refresh rate is the
         // thing a television reacts to.
+        // And two more, in the unit the television's own circuitry counts in.
+        //
+        // A set's vertical countdown, once locked, accepts sync inside a
+        // narrow window: a Philips jungle datasheet gives 261 to 264 lines a
+        // field for the 60 Hz standard, and a pulse outside it starts the
+        // retrace at the edge of the window rather than on the sync that
+        // arrived. Two lines over nominal is therefore the number that
+        // predicts what somebody sees, and a median in milliseconds cannot
+        // show it: three fields in three thousand six hundred left that
+        // window on the afternoon this was written, and the row said
+        // "16.66 to 16.66 ms" throughout.
+        //
+        // The window belongs to sets of that design and has not been measured
+        // on any particular television, so what is written here is the count
+        // and the longest field, and the reading of them is left to whoever
+        // knows which set is in the room.
+        let vtotal = self.modeline.as_ref().map(|m| m.v[3]).unwrap_or(262).max(1) as f64;
+        let nominal = self.period().as_micros() as f64;
+        let lines_of = |us: f64| us * vtotal / nominal;
+        let over = self
+            .intervals
+            .iter()
+            .filter(|d| lines_of(d.as_micros() as f64) > vtotal + 2.0)
+            .count();
+        let longest_lines = self
+            .intervals
+            .iter()
+            .map(|d| lines_of(d.as_micros() as f64))
+            .fold(0.0f64, f64::max)
+            .max(vtotal);
         let line = format!(
-            "{commit_to_scanout:.2} {:.2} {} {:.3} {:.2} {:.2} {:.3} {:.3}\n",
+            "{commit_to_scanout:.2} {:.2} {} {:.3} {:.2} {:.2} {:.3} {:.3} {over} {longest_lines:.1}\n",
             commit_to_scanout / frame,
             self.latencies.len(),
             1000.0 / frame,

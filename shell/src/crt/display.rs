@@ -78,6 +78,24 @@ pub struct Tail {
     /// variable refresh rate these two apart is what a television reacts to.
     pub frame_min: f64,
     pub frame_max: f64,
+    /// The same frames counted in lines, which is the unit a television's own
+    /// vertical circuit works in: how many of them ran more than two lines
+    /// past the mode's vertical total, and how long the longest one was.
+    ///
+    /// A set's vertical countdown accepts sync inside a narrow window once it
+    /// has locked, and a field that leaves it is retraced at the edge of the
+    /// window instead of on the sync that arrived. Two lines is where that
+    /// begins on a 60 Hz standard. `None` when reading a file written by a
+    /// display process that predates this.
+    pub window: Option<Window>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Window {
+    /// Frames that ran more than two lines past the mode's vertical total.
+    pub over: usize,
+    /// The longest frame, in lines.
+    pub longest_lines: f64,
 }
 
 /// The last figure the display process wrote. `None` when the tube is not up,
@@ -99,16 +117,34 @@ fn latency_in(text: &str) -> Option<Latency> {
         tail: None,
     };
     // The tail is all four or none of it: a file caught part way through a
-    // write is the case this whole function exists for.
+    // write is the case this whole function exists for. Six is the same tail
+    // with the two line counts after it, which a display process older than
+    // they are does not write: the pair is taken together or not at all, for
+    // the same reason.
     let rest: Vec<f64> = parts.filter_map(|p| p.parse().ok()).collect();
-    if let [p95, worst, frame_min, frame_max] = rest[..] {
-        out.tail = Some(Tail {
+    let tail = |p95, worst, frame_min, frame_max, window| {
+        Some(Tail {
             p95,
             worst,
             frame_min,
             frame_max,
-        });
-    }
+            window,
+        })
+    };
+    out.tail = match rest[..] {
+        [p95, worst, frame_min, frame_max] => tail(p95, worst, frame_min, frame_max, None),
+        [p95, worst, frame_min, frame_max, over, longest_lines] => tail(
+            p95,
+            worst,
+            frame_min,
+            frame_max,
+            Some(Window {
+                over: over.max(0.0) as usize,
+                longest_lines,
+            }),
+        ),
+        _ => None,
+    };
     Some(out)
 }
 
@@ -475,6 +511,33 @@ mod latency_tests {
             (l.ms, l.frames, l.samples, l.hz),
             (16.52, 0.99, 300, 60.041)
         );
+    }
+
+    /// The pair of line counts is what a display process writes now, and a
+    /// reader has to keep working against one that does not write them.
+    #[test]
+    fn the_line_counts_are_read_when_they_are_there_and_missed_when_they_are_not() {
+        let old = latency_in("16.52 0.99 300 60.041 17.0 18.0 16.50 16.80\n").expect("a tail");
+        let tail = old.tail.expect("four numbers of tail");
+        assert_eq!(tail.frame_max, 16.80);
+        assert_eq!(
+            tail.window, None,
+            "an older display process writes no lines"
+        );
+
+        let now =
+            latency_in("16.52 0.99 300 60.041 17.0 18.0 16.50 16.80 3 291.0\n").expect("a tail");
+        let w = now.tail.expect("a tail").window.expect("the line counts");
+        assert_eq!((w.over, w.longest_lines), (3, 291.0));
+    }
+
+    /// Caught between the eighth number and the tenth, the pair is not a
+    /// measurement, and neither is the tail it would have belonged to.
+    #[test]
+    fn half_of_the_line_counts_is_none_of_the_tail() {
+        let half = latency_in("16.52 0.99 300 60.041 17.0 18.0 16.50 16.80 3\n").expect("the four");
+        assert_eq!(half.ms, 16.52, "the four numbers still read");
+        assert_eq!(half.tail, None, "and the rest of the line does not");
     }
 
     #[test]
