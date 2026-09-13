@@ -100,3 +100,48 @@
 # variable rate on and off does not cost a modeset on this chain despite the
 # driver reporting RequiresModeset for the property: the frames either side of
 # every toggle measured 16655 and 16656 us, with no gap at all.
+
+# ---------------------------------------------------------------------------
+# 6. The knob that actually governs this, and what it costs.
+#
+# A stretched frame is a flip that arrived after the compositor meant it to.
+# What decides whether a slow frame still lands on time is the slack a client
+# is given on top of twice its own measured drawing time: FLYBACK_SLACK_US,
+# halved again while the refresh is variable. The default is 3000 us, so 1500
+# under a variable rate, and the overruns measured above were one to three
+# milliseconds. They go straight through 1500 us of slack, which is why the
+# worst frames were 9 to 11% long and not 1%.
+#
+# Measured, same client, same idle machine, eighteen seconds of settling:
+#
+#   slack under a variable rate    commit to the start of scanout
+#           1500 us                 2.02 ms   95th 2.04   worst 2.05
+#           3000 us                 3.52 ms   95th 4.15   worst 4.89
+#           5000 us                 5.51 ms   95th 5.93   worst 6.63
+#
+# The latency is the slack plus about half a millisecond, which is what it
+# should be: the picture waits for the slack.
+#
+# There is a crossover, and it is the useful part. Turning the variable rate
+# off costs 5.16 ms. Slack of 5000 us costs 5.51 ms, which is worse than
+# turning it off, so past about 4.6 ms of slack there is nothing left to buy.
+# The whole usable range is between 1500 and about 4500 us.
+#
+# 3000 us of slack, 3.52 ms of latency, is the candidate: it absorbs the three
+# millisecond overruns that produced the worst frames, and it is still a third
+# better than the 5.16 ms of giving the variable rate up.
+#
+# It is a candidate and not a conclusion. Whether it removes what a person
+# sees can only be found out while somebody is using the machine, because the
+# overruns come from the desktop competing for the same graphics card, and an
+# idle desktop does not produce them. The measurement that decides it is an
+# eye, not this file.
+#
+# ---------------------------------------------------------------------------
+# 7. What is not yet understood.
+#
+# Why the compositor's own commit-to-flip time spikes from 63 us to three
+# milliseconds under contention, and whether a graphics context priority would
+# help. The television and one of the desktop's outputs are on the same card,
+# and nothing here asks the kernel to treat the tube's work as more urgent
+# than a browser's.
