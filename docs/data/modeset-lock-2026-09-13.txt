@@ -64,3 +64,40 @@
 # There is no cheap category. A timing is either the one already programmed,
 # which the compositor now detects and does nothing about, or it is a full
 # modeset at about 200 ms.
+
+# And what the television does, filmed 2026-09-13 13:16.
+#
+# Six mode changes four seconds apart, between two timings that differ only in
+# their vertical total, 262 and 264, so the picture before and after is the
+# same and the only thing that changes on the glass is the interruption. Both
+# keep the 72 MHz clock and the 15.731 kHz line rate.
+#
+# Filmed at 240 fps on a phone held still, the whole screen in frame. The time
+# base is calibrated by the film itself and not by its metadata: the changes
+# are 4.000 s apart by construction and land 961 frames apart, which is
+# 240.25 fps, 4.163 ms a frame.
+#
+# Measured as the mean brightness of a crop containing only the screen. The
+# minimum inside each interruption is 0.1 to 0.3 out of a median of 41.8, so
+# the tube is black rather than showing anything disturbed.
+#
+#   change   dark frames   ms
+#     1          93       387
+#     2          97       404
+#     3         136       566
+#     4          94       391
+#     5          96       400
+#
+# The sixth is not in the film. Median 400 ms.
+#
+# So the three numbers for one mode change, on this chain:
+#
+#   195 ms   the kernel's commit call blocks
+#   280 ms   the converter has nothing to lock to
+#   400 ms   the television shows nothing
+#
+# The tube adds about 120 ms of its own after the converter has reacquired,
+# and the whole thing is roughly twice the figure this project published as
+# the cost of a mode change. That figure was the kernel's part of it, measured
+# correctly and described as though it were the whole. One of the five was
+# 566 ms, 40% worse than the median, so it is not constant either.

@@ -283,6 +283,15 @@ returned: scanout is running again and the RGB-Pi 2 still needs 170 to 200 ms
 to acquire it. That last part is a property of the converter rather than of
 the driver, so another converter moves the total.
 
+**And the television is dark for about 400 ms**, which is what a person
+actually waits through. Filmed at 240 fps with the time base calibrated by the
+film itself, five changes measured 387, 404, 566, 391 and 400 ms of a black
+screen. The tube adds roughly 120 ms of its own after the converter has
+reacquired, and one of the five was 40% worse than the rest, so it is not
+constant either. The number to quote for the cost of a mode change on this
+chain is 400 ms and not 182 to 229: that smaller figure is the kernel's share
+of it, measured correctly and then described as though it were the whole.
+
 This document said for a week that the television was dark for all of the 182
 to 229 ms. Neither half of that was measured: not the darkness, and not that
 it lasted exactly as long as the call. The numbers and the method are in
