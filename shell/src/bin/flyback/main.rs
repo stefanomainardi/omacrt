@@ -71,13 +71,19 @@ impl ControlDevice for Leased {}
 ///
 /// `lease: none` is a compositor without the protocol. `lease: offered` with
 /// no names is a compositor that has it and is offering nothing.
+///
+/// These four lines are an answer to another program and not a log, so they
+/// are written with `std`'s own macros and carry no timestamp. `doctor`
+/// reads them with `strip_prefix("lease:")`, and when the timestamps went in
+/// it started reporting a working lease as a failure. Anything added here
+/// has to stay parseable from the first character.
 fn globals() {
     match lease::offered() {
-        Ok(None) => println!("lease: none"),
-        Ok(Some(names)) if names.is_empty() => println!("lease: offered"),
-        Ok(Some(names)) => println!("lease: offered {}", names.join(" ")),
+        Ok(None) => std::println!("lease: none"),
+        Ok(Some(names)) if names.is_empty() => std::println!("lease: offered"),
+        Ok(Some(names)) => std::println!("lease: offered {}", names.join(" ")),
         Err(e) => {
-            eprintln!("lease: {e}");
+            std::eprintln!("lease: {e}");
             std::process::exit(1);
         }
     }
