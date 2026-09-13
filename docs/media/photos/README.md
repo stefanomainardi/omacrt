@@ -1,9 +1,9 @@
 # Photographs of the television
 
 Four frames of the actual set, not of the framebuffer. Everything else in
-`docs/media/` is what the compositor drew; these are what the tube did with
-it, which is a different kind of evidence and the only kind that can show the
-one measurement in the study that software cannot take.
+`docs/media/` is what the compositor drew; these are what the tube did with it.
+That is a different kind of evidence, and the only kind that can show the one
+measurement in the study software cannot take.
 
 | | |
 | --- | --- |

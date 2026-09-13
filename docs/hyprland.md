@@ -62,10 +62,10 @@ you like.
   <img src="screens/doctor-full.gif" width="620" alt="The whole self test in a terminal: the OmaCRT wordmark cut out of the dark by a laser one letter at a time, the mark under it with the beam running back across its four bars, the checks landing one line at a time, and then the finished report">
 </p>
 
-`omacrt doctor`. The first four rows are the ones that decide whether the
-machine can do this at all: the driver the card is on, whether the compositor
-offers DRM leasing and for which connector, whether systemd is here for the
-boot time override, and whether debugfs is mounted. They can be answered
+`omacrt doctor`. The first four rows decide whether the machine can do this at
+all. They are the driver the card is on, whether the compositor offers DRM
+leasing and for which connector, whether systemd is here for the boot time
+override, and whether debugfs is mounted. They can be answered
 before a DAC is bought.
 
 The row after them says which channel you are on, and everything below it is

@@ -2,8 +2,8 @@
 
 The RGB-Pi 2 is an HDMI to SCART DAC built around a Chrontel CH7101 receiver.
 It is sold for the Raspberry Pi and RePlayOS, but it is a plain HDMI sink, so a
-PC can drive it, and this is the recipe that gets a picture out of it on a Bang
-& Olufsen BeoCenter 1. The registers and the figures come from the device
+PC can drive it. This is the recipe that gets a picture out of it on a Bang &
+Olufsen BeoCenter 1. The registers and the figures come from the device
 itself and from the public parts of RePlayOS (the shell scripts under
 `/opt/replay/extra` and the log strings of its frontend).
 
