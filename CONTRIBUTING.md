@@ -84,6 +84,12 @@ to get this wrong.
   will not sit in a list making the project look neglected.
 - **A question** is a discussion too. There is no support queue here, and
   nobody is on call.
+- **What your television did** is an issue with its own template, and it is
+  the most useful thing anybody can send. Every number in this project was
+  taken on one set in one room; what a different tube, a different converter
+  or a different card does with the same timings is the part this cannot find
+  out on its own. A set that refused to lock is as welcome as one that did.
+  Reports land in [`docs/sets.md`](docs/sets.md).
 
 ## Branches
 

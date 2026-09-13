@@ -1,0 +1,108 @@
+name: What your television did
+description: A set, the chain in front of it, and what happened when it was asked for 15 kHz
+labels: [set report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every number in this project was taken on one set in one room, which
+        is the honest limit of all of it. What it cannot find out on its own
+        is what a different tube, a different converter or a different card
+        does with the same timings, and that is the one thing worth sending
+        back. Accepted reports go into
+        [`docs/sets.md`](https://github.com/stefanomainardi/omacrt/blob/main/docs/sets.md).
+
+        A report is welcome whether it worked or not. A set that refuses to
+        lock is as useful as one that does, and more useful than silence.
+
+        **Before pointing anything new at a set you care about**, read what
+        the guard refuses in
+        [`docs/flyback.md`](https://github.com/stefanomainardi/omacrt/blob/main/docs/flyback.md#safety).
+        A television's horizontal deflection is a circuit tuned for one line
+        rate and under no obligation to work at another.
+
+  - type: input
+    id: set
+    attributes:
+      label: The set
+      description: Make, model, and roughly when it was made. The standard it was built for, if you know it.
+      placeholder: Bang & Olufsen BeoCenter 1, 1998, PAL
+    validations:
+      required: true
+
+  - type: input
+    id: chain
+    attributes:
+      label: What is in front of it
+      description: How the signal gets from the card to the tube, and on which input.
+      placeholder: RGB-Pi 2 over HDMI, RGB SCART into AV1
+    validations:
+      required: true
+
+  - type: input
+    id: machine
+    attributes:
+      label: The card and the kernel
+      description: Graphics card and driver, and the kernel version.
+      placeholder: RX 7800 XT, amdgpu, Linux 7.2.4
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lock
+    attributes:
+      label: Did it lock
+      options:
+        - A picture, stable
+        - A picture, but it rolls or tears
+        - A picture, but the geometry is wrong
+        - No picture at all
+        - The set refused and protected itself
+    validations:
+      required: true
+
+  - type: textarea
+    id: timing
+    attributes:
+      label: The timing it was given
+      description: >
+        The modeline out of `crt.toml`, or whatever you used. The line rate
+        and the refresh matter more than the rest.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: vrr
+    attributes:
+      label: Where it stops following a stretched vertical blanking
+      description: >
+        The number this project most wants back, because it is a property of
+        your set and of nothing else. With the tube up, run `omacrt rate 58`,
+        then 56, 55, 54, 52, 50, and watch the picture. The rate is followed
+        while the picture keeps its height; below that it shrinks, and on this
+        set it loses an eighth of its height between 55 and 54, all at once.
+        Say the lowest rate that kept the height, or say the variable refresh
+        rate was not available.
+      placeholder: keeps its height down to 55, visibly shorter at 54
+    validations:
+      required: false
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `omacrt doctor --plain`
+      description: Optional, and only if you installed this. A report about a set is welcome without it.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: anything
+    attributes:
+      label: Anything else, and a photograph if you took one
+      description: >
+        A photograph of the screen says more than a paragraph, especially when
+        the geometry is wrong.
+    validations:
+      required: false
