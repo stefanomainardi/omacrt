@@ -48,3 +48,19 @@
 2401.3    locked
 5137.2    lost
 5416.3    locked
+
+# A second walk, 2026-09-13 12:13, looking for a timing change that is cheap.
+# Each step held 2.5 s, read from the compositor's log as the first vblank
+# after the request. Every modeline below keeps the 72 MHz clock and the
+# 15.731 kHz line rate, so none of them is asking the set for anything new.
+#
+#   the same timing again                      already set, nothing done
+#   one horizontal sync edge, +16 samples      195.0 ms
+#   one vertical sync edge, +1 line            207.0 ms
+#   active lines 240 to 224, vtotal unchanged  202.3 ms
+#   vtotal 262 to 264                          197.9 ms
+#   back to the base timing                    193.6 ms
+#
+# There is no cheap category. A timing is either the one already programmed,
+# which the compositor now detects and does nothing about, or it is a full
+# modeset at about 200 ms.

@@ -251,10 +251,18 @@ vblank after it:
 | what moved | first vblank after the request |
 | --- | --- |
 | nothing: the same timing re-applied | 4.4, 8.8, 9.7, 15.5 ms |
-| the vertical total alone | 196.5, 196.8, 206.8, 212.2 ms |
+| one horizontal sync edge, by 16 samples | 195.0 ms |
+| one vertical sync edge, by one line | 207.0 ms |
+| the active lines, 240 to 224, vertical total unchanged | 202.3 ms |
+| the vertical total alone | 196.5, 196.8, 197.9, 206.8, 212.2 ms |
 | the whole standard, NTSC to PAL and back | 182.4, 192.9, 216.7, 226.1 ms |
 
 So **182 to 229 ms**, and it does not matter how little of the timing moves.
+The middle rows are what settle that: moving a single sync edge by sixteen
+samples, with the same pixel clock, the same horizontal total, the same
+vertical total and the same refresh, costs what changing the whole standard
+costs. There is no cheap category to find and no partial change to fall back
+on. A timing is either the one already programmed or it is a modeset.
 The first row is what says the cost is the modeset itself: re-applying a
 timing that has not changed costs a hundredth of that, because nothing is
 reprogrammed. Adaptive sync would cost nothing at all.
