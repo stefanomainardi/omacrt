@@ -1,3 +1,21 @@
+**What it is.** A Wayland compositor that takes one output away from the
+desktop and drives a 15 kHz CRT television on it. Your other screens keep
+working.
+
+**What it's for.** Emulated games on a real tube at native 240p, with the
+frame timing written for a CRT. A client's commit reaches the start of scanout
+in 3.79 ms. A button press reaches the picture in 10.19 ms, of which 8.33 is
+the half frame nobody can remove.
+
+**When you don't need it.** The 15 kHz kernel patches let your desktop drive a
+CRT as one of its outputs. If that suits you, use them. This takes the
+connector away from the desktop instead, so nothing of the session can land on
+the tube.
+
+**What it costs.** Nothing. MIT, no account, no telemetry.
+
+**What state it is in.** Experimental. Stock kernel, AMD only, one television.
+
 <p align="center">
   <img src="docs/logo.png" alt="The OmaCRT mark, four bars crossed by the dark cut of a beam returning, beside the word OMACRT in block letters" width="560">
 </p>
@@ -110,13 +128,11 @@ One process, one thread, one event loop, 3616 lines on smithay. It is named
 after what a tube does between two lines, and it is the piece of this project
 that touches hardware.
 
-It is neither a desktop nor a kiosk shell. A kiosk compositor puts one window
-on a monitor the system already knows how to drive. This one takes a connector
-the desktop has been told to leave alone, programs a timing no desktop would
-set, and then schedules every frame against what a cathode ray tube does with
-it. **The desktop keeps running** on its other outputs, the thing none of the
-established ways of driving a CRT from Linux can do, since they all take the
-machine.
+A kiosk compositor puts one window on a monitor the system already knows how
+to drive. This one takes a connector the desktop has been told to leave alone,
+programs a timing no desktop would set, and schedules every frame for a
+cathode ray tube. The desktop keeps running on its other outputs. GroovyArcade
+and Batocera take the whole machine; this takes one connector.
 
 Owning the scanout is also what lets it answer a question nobody else here
 can. Flyback times every frame from the client's own commit to the kernel's
