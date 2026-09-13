@@ -213,7 +213,7 @@ If any of these is false, most of the above stops being true.
 5. **The GPU is an AMD one with atomic modesetting and a driver that will
    take a 15 kHz mode over a lease.** Measured on Navi 32 (RX 7700/7800 XT).
    The variable refresh rate additionally needs a FreeSync range in the
-   injected EDID. It does **not** need `amdgpu.freesync_video=1`, whatever
+   injected EDID. It does not need `amdgpu.freesync_video=1`, whatever
    this document said before: that parameter gates a different mechanism, and
    reading the driver plus testing that mechanism directly says it does
    nothing here. See [`audit-2026-09-12.md`](audit-2026-09-12.md).

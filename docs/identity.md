@@ -55,9 +55,9 @@ which changes shape when it shrinks is a patch.
 
 So the sibling relationship was not a judgement about whether two shapes look
 related. It was arithmetic on numbers that were already written down, with the
-reasoning behind them already written down beside them. **The design system
-existed as source code before anybody called it a design system**, and the
-first thing the agent did was read it.
+reasoning behind them already written down beside them. The design system
+existed as source code before anybody called it a design system, and the first
+thing the agent did was read it.
 
 ## 3. Three directions, with the case against each
 

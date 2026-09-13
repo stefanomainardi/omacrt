@@ -106,8 +106,8 @@ client. The method and the instrument are in
 For comparison, quoted from their own documentation: MiSTer's own
 documentation puts its scaler at four display lines in its fastest mode, about
 a third of a millisecond at 320x200, on top of a core that is the console's
-own timing. **A MiSTer is faster than this and always will be**, because there
-is no operating system in it. What the number above buys is a reference point
+own timing. A MiSTer is faster than this and always will be, because there is
+no operating system in it. What the number above buys is a reference point
 for the software path, which nobody had published for Linux into a real CRT.
 
 **3. A variable refresh rate on a fixed-frequency television.** A set's

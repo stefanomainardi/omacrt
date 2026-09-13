@@ -51,7 +51,7 @@ patches, and an emulator on KMS instead of on a desktop.
 
 ## What this project does
 
-The third wall has a door in it. **The DAC is the sink, not the television.**
+The third wall has a door in it: the DAC is the sink, not the television.
 An HDMI to SCART DAC that accepts arbitrary timings presents itself as a
 normal HDMI monitor. The 25 MHz floor is satisfied by the link to the DAC,
 which then produces the 15 kHz analogue signal on the other side. The mode the
@@ -98,7 +98,7 @@ instead of describing a mode to somebody else.
 **Interlace.** `amdgpu` without the 15 kHz patches accepts a 480i modeline,
 programs something, and scans out a narrow strip. On a Radeon RX 7700/7800 XT
 (Navi 32, DCN 3.2) running the stock Arch kernel 7.2.4, through the leased
-connector, with no compositor in the way, `omacrt mode 480i` **succeeds**:
+connector, with no compositor in the way, `omacrt mode 480i` succeeds:
 the modeset returns without error, the DAC keeps its lock, `status` reports
 3520x480 at 59.927 Hz, and the television shows a narrow image in the middle of
 the screen. Nothing rejects the mode on the leased path. It is programmed with
@@ -334,8 +334,8 @@ some sets change vertical size in proportion to the blanking interval.
    that declares an MCCS control code makes the driver require the display to
    support FreeSync over MCCS, and revoke the capability when it does not. A
    television does not.
-2. That is the whole of it. **`amdgpu.freesync_video=1` is not needed for
-   this**, whatever this project said before. The state used here,
+2. That is the whole of it. `amdgpu.freesync_video=1` is not needed for this,
+   whatever this project said before. The state used here,
    `VRR_STATE_ACTIVE_VARIABLE`, is set from the connector being
    `freesync_capable` with the mode's refresh inside the declared range, and
    from the CRTC's `VRR_ENABLED` property. The module parameter gates a
@@ -355,8 +355,8 @@ some sets change vertical size in proportion to the blanking interval.
    says what it is for, and this is not it: *adds additional modes via VRR for
    refresh changes without a full modeset*, which `modinfo -p amdgpu` prints
    on any machine. Changing the refresh by a modeset is the thing this does
-   not do. **This project has never installed that parameter and does not
-   ask anyone to.**
+   not do. This project has never installed that parameter and does not ask
+   anyone to.
 
 With the range declared, the timing generator is programmed with room:
 `amdgpu_dm_dtn_log` reported `vmin 261 vmax 327` for the tube's OTG, 60.04 Hz

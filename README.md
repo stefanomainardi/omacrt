@@ -156,9 +156,9 @@ written down as one number in `crt.toml`.
 
 **It is experimental**, and it sets the line rate of a television, a circuit
 tuned for one rate and under no obligation to work at another. No timing
-reaches the kernel without passing a guard that checks the line rate against the band
-`crt.toml` allows for that set, 15 to 16.5 kHz as shipped, the field rate
-between 40 and 90 Hz, and every timing in order.
+reaches the kernel without passing a guard that checks the line rate against
+the band `crt.toml` allows for that set, 15 to 16.5 kHz as shipped, the field
+rate between 40 and 90 Hz, and every timing in order.
 
 | | |
 | --- | --- |
@@ -278,14 +278,15 @@ None of them needs a DAC to be plugged in.
 
 In a terminal it is the launcher's own power on self test. The mark and the
 wordmark stand side by side, the way the boot screen holds them. The word is
-cut by the same laser while the machine is being asked, which is the slow
-part. The beam runs back across the mark's four bars every time one of those
-answers lands. Then the rest of the answers arrive, one line at a time
-as they come, and last the modeline drawn rather than listed, the card's
-outputs and what each is for, and the DAC's lock as a lamp. It is drawn with [ratatui](https://ratatui.rs), inline rather
-than on the alternate screen, so the report stays in the scrollback where it
-can be read again and pasted into an issue. Piped, redirected, under
-`NO_COLOR`, or with `--plain`, it prints the lines it always printed.
+cut by the same laser while the machine is being asked, which is the slow part.
+The beam runs back across the mark's four bars every time one of those answers
+lands. Then the rest of the answers arrive, one line at a time as they come,
+and last the modeline drawn rather than listed, the card's outputs and what
+each is for, and the DAC's lock as a lamp. It is drawn with
+[ratatui](https://ratatui.rs), inline rather than on the alternate screen, so
+the report stays in the scrollback where it can be read again and pasted into
+an issue. Piped, redirected, under `NO_COLOR`, or with `--plain`, it prints the
+lines it always printed.
 
 ## Repository layout
 
@@ -314,8 +315,8 @@ bar, and the interlaced timings are there for a kernel that can scan them.
 This is one person's television, given away because it turned out well: not a
 product, and worked on when it is fun to work on. A good change is still
 welcome. One rule is not negotiable, because half of this cannot be checked any
-other way: **it has to have run on a real television**, and the pull request
-has to say what it ran on.
+other way: it has to have run on a real television, and the pull request has to
+say what it ran on.
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): what gets merged, what does not, the
   standards, and the commands CI runs.

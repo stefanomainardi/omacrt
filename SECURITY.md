@@ -124,7 +124,7 @@ The photo frame reads an Immich server on your own network. It needs
 create in Immich and which needs read access and nothing else. The file is
 yours to write and this project only reads it.
 
-The key is handed to curl **on its standard input**, never as an argument, so
+The key is handed to curl on its standard input, never as an argument, so
 it does not appear in the process list where every other program on the
 machine could read it. It is not logged and not printed by any command. It
 goes to the address in that file and to no other, because those requests
@@ -147,8 +147,8 @@ beside your photographs, and the list of what you have been watching.
 
 The project runs external programs: `retroarch`, `mpv`, `yt-dlp`, `cliamp`,
 `bluetoothctl`, `curl`, `ffmpeg`, `hyprctl`, `pactl`, `systemctl`. Every one of
-them is given an argument list. **There is no shell anywhere in the launcher.**
-The module that starts a program cannot run a command line at all, so nothing a
+them is given an argument list. There is no shell anywhere in the launcher: the
+module that starts a program cannot run a command line at all, so nothing a
 file, a server or a game's name contains can ever be read as a command.
 
 The library overlay resolves the program it runs from its own directory. The
@@ -175,9 +175,9 @@ file.
 
 `omacrt doctor --fix`, and the sweep that runs when the launcher starts
 or stops, will stop an emulator. It decides in three steps, and all three have
-to hold. The process is **one of the programs this project starts**
-(`retroarch`, `mpv`), its command line carries **this project's own
-configuration file**, and **no launcher is above it** in the process tree.
+to hold. The process is one of the programs this project starts (`retroarch`,
+`mpv`), its command line carries this project's own configuration file, and no
+launcher is above it in the process tree.
 `/proc` is read directly rather than through `pgrep`, so the survey can never
 match the process doing the surveying. A polite signal first, then a hard one
 after two seconds for a core that has wedged.
