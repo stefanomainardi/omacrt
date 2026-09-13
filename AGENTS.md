@@ -71,8 +71,9 @@ hyprctl eval 'hl.dispatch(hl.dsp.focus({ workspace = "name:crt" }))'
 
 **Never set `misc:exit_window_retains_fullscreen` for the session.** A leased
 output returns early from the code that clears it, so the setting outlives the
-game and every desktop window comes back fullscreen after an unlock. Save what a setting was, set it for as long as it is needed, clear it
-in both directions and at login.
+game and every desktop window comes back fullscreen after an unlock. Save what
+a setting was, set it for as long as it is needed, clear it in both directions
+and at login.
 
 **Do not invent libretro core option values.** A set of guessed Dolphin
 options (`renderer`, `shader_compilation_mode`, `cpu_core`) turned a working
@@ -224,11 +225,11 @@ magick -delay 10 -loop 0 $(ls /tmp/seq/*.ppm | sort -V) \
 **Render weather that is not outside.** The sky is drawn from
 `~/.cache/omacrt/weather-<place>.txt`, one line of
 `place|temp|condition|wind|rain|moon|sunrise|sunset`, so writing that file is
-how any weather gets rendered on demand. Two tricks go with it: sunrise and
+how any weather gets rendered on demand. Two tricks go with it. Sunrise and
 sunset are what decide day from night, so a sunrise an hour from now makes it
-night whatever the clock says, and `TZ=Pacific/Auckland` moves the clock
-itself to the small hours, which is what a night picture with an honest time
-on it needs. Put the real file back afterwards.
+night whatever the clock says. And `TZ=Pacific/Auckland` moves the clock itself
+to the small hours, which is what a night picture with an honest time on it
+needs. Put the real file back afterwards.
 
 **Render an hour that is not now.** `--clock 05:40` draws that time of day
 instead of the wall clock, and `--clock-speed N` runs the clock N times faster,
@@ -312,9 +313,9 @@ Do not put one anywhere else because the home menu is full.
 
 **A screensaver page.** `PAGES` in `settings.rs` is the list, and
 `start_saver_page` puts one up. A page is a screen like any other, so it
-needs everything in the paragraph above as well; being in that list is
-what makes it take its turn in the mix and what makes the first key press
-give the previous screen back. The mix is turned at the top of `draw`,
+needs everything in the paragraph above as well. Being in that list is what
+makes it take its turn in the mix, and what makes the first key press give the
+previous screen back. The mix is turned at the top of `draw`,
 above every branch, because the effects page returns from the first one.
 
 **A setting.** `settings.rs`: a field with `#[serde(default = "...")]` so an
@@ -378,15 +379,18 @@ cargo run --release --features latency --bin latency -- 500 --paced --pad
 ```
 
 Without `--paced` it commits at a random point of every frame, which measures
-the whole window a program could commit in; with it, it draws on the frame
-callback the way a real program paces itself, which is the number a game
-sees. `--pad` adds the half in front of the commit: it makes a virtual pad
-with `uinput`, presses it at a random point of the frame and reads the press
-back through evdev on the same clock as the vblank, so the figure is from the
-kernel's own timestamp for the press. That needs the `input` group, and a
-shell that has it: `newgrp input` is enough without logging out. It reports the distribution and how many frames slipped a vblank, and
-it checks at the end that an idle tube still answers frame callbacks, which
-is the thing the flip scheduling can break.
+the whole window a program could commit in. With it, it draws on the frame
+callback the way a real program paces itself, which is the number a game sees.
+
+`--pad` adds the half in front of the commit. It makes a virtual pad with
+`uinput`, presses it at a random point of the frame, and reads the press back
+through evdev on the same clock as the vblank, so the figure is from the
+kernel's own timestamp for the press. That needs the `input` group and a shell
+that has it: `newgrp input` is enough without logging out.
+
+The probe reports the distribution and how many frames slipped a vblank, and it
+checks at the end that an idle tube still answers frame callbacks, which is the
+thing the flip scheduling can break.
 
 `FLYBACK_TRACE=1` on the display process prints, for every frame, how long
 the commit waited to be queued and the queue waited for the vblank. Those two
