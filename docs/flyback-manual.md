@@ -107,19 +107,40 @@ omacrt display send "vrr off"
 ```
 Latency:    2.0 ms  0.12 frames  at 60.04 Hz  over the last 300
             95th 2.4 ms, worst 3.1; frame 16.62 to 16.69 ms
+            every frame inside the mode, the longest 262.0 lines
 ```
 
 The first line is the median from a client's commit to the start of its
 scanout, and the rate the tube is actually being given, which under a
 variable refresh rate is not the mode's own.
 
-**The second line is the one to read when something looks wrong.** A frame
-that arrives late once every few seconds is three samples in three hundred
-and does not move a median at all, which is exactly what somebody watching
-calls a glitch. `frame X to Y` is the shortest and the longest frame the tube
-was given: those two far apart is the tube being asked for frames of
-different lengths, and a television answers that with a twitch of the whole
-picture.
+The second is the tail of the same two things: a frame that arrives late once
+every few seconds is three samples in three hundred and does not move a
+median at all, which is exactly what somebody watching calls a glitch.
+
+**The third line is the one to read when the picture twitches**, and it exists
+because the second could not show it. A television's vertical countdown
+accepts sync inside a narrow window once it has locked, two lines either side
+on a 60 Hz standard, and a field that leaves that window is retraced at the
+edge of it rather than on the sync that arrived. That is a visible jump for
+that field. Three fields in three thousand six hundred left the window on the
+afternoon this row was written, and the row above read `16.66 to 16.66 ms`
+throughout: a median cannot show three samples, and a hundredth of a
+millisecond is a quarter of a line.
+
+So it counts instead. `N of 300 frames ran long, the worst L lines` means N
+fields went more than two lines past the mode's vertical total, which for
+NTSC here is 262. Anything above about 290 is past where this particular set
+starts losing height, which is a property of the set and is in
+[`15khz.md`](15khz.md). The window itself is a documented design for sets of
+that kind rather than a measurement of any one of them, so the row reports the
+count and the number of lines and leaves the reading to somebody who knows
+which television is in the room.
+
+A count above zero, with nothing asking for a rate other than the mode's own,
+means the variable refresh rate is turning the compositor's own lateness into
+physically longer fields. `FLYBACK_SLACK_US` makes that rarer at the cost of
+latency, and the range worth trying is 1500 to about 4500.
 
 The same two rows appear on the launcher's own Diagnostics page, so the tube
 says it without a terminal.
@@ -153,7 +174,7 @@ If the picture is there but wrong:
 | --- | --- |
 | rolling, no lock | the modeline's field rate, or csync not selected on the converter |
 | a narrow strip in the middle | an interlaced timing was accepted and scanned out progressively. See [`15khz.md`](15khz.md#what-a-stock-kernel-still-cannot-do) |
-| the whole picture twitches now and then | the frame length is moving. Read the second latency row, and try `rate <hz>` rather than letting the compositor follow |
+| the whole picture twitches now and then | the frame length is moving. Read the third latency row: a count above zero is fields leaving the set's sync window. `FLYBACK_SLACK_US` between 1500 and 4500 trades latency for fewer of them |
 | the picture loses height and keeps it | the refresh went below what this set follows. That is `output.vrr_min_hz` |
 
 ## What it will not do
