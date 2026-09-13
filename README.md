@@ -166,6 +166,7 @@ rate between 40 and 90 Hz, and every timing in order.
 | [`docs/flyback-manual.md`](docs/flyback-manual.md) | how to drive it: every line the control pipe answers to, the configuration it reads, the switches that turn each decision off, and what to do when it will not come up |
 | [`docs/comparison.md`](docs/comparison.md) | the same comparison on its own |
 | [`docs/sets.md`](docs/sets.md) | the televisions this has been pointed at, one so far. If you have a set, that page is the ask |
+| [the study](https://omacrt.com/log/flyback/) | how it was built and measured, in eleven parts, with the film and the diagrams |
 
 ## What is on the television
 

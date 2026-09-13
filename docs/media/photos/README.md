@@ -15,7 +15,7 @@ measurement in the study software cannot take.
 Shot by hand from a tripod-less camera, which is why the height in the first
 one is measured as a ratio against the picture's own width: the width cannot
 change while the line rate does not, so it cancels the camera's drift. The
-method is in [`../../log/2026-09-12-flyback.md`](../../log/2026-09-12-flyback.md),
+method is in the study, [omacrt.com/log/flyback](https://omacrt.com/log/flyback/),
 part 7.
 
 `the-television.jpg` shows a corner of a room. Ask before using it anywhere
