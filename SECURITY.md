@@ -86,11 +86,11 @@ Nothing is downloaded during installation. While running, the project fetches:
 - your own photographs from your own Immich server, if you set one up
 
 Seven of the eight go out through `curl`, and all seven ask one function for
-it: `net::curl` restricts the protocol list to HTTP and HTTPS on the request
+it. `net::curl` restricts the protocol list to HTTP and HTTPS, on the request
 and on any redirect, sets a timeout and a size cap, fails on an error status
-rather than saving the error page, and passes arguments as arguments. A
-crafted URL cannot make it read a local file, a redirect cannot leave those
-two protocols, and none of that is a decision at the call site: what a caller
+rather than saving the error page, and passes arguments as arguments. So a
+crafted URL cannot make it read a local file and a redirect cannot leave those
+two protocols. None of that is a decision at the call site: what a caller
 chooses is how long and how large its own fetch may be. The eighth is
 YouTube, which goes through `yt-dlp` and its own network stack, with the
 target after a `--` and never through a shell.
@@ -128,7 +128,7 @@ The key is handed to curl **on its standard input**, never as an argument, so
 it does not appear in the process list where every other program on the
 machine could read it. It is not logged and not printed by any command. It
 goes to the address in that file and to no other, because those requests
-follow no redirect: curl would otherwise send the key header to whatever host
+follow no redirect. Curl would otherwise send the key header to whatever host
 a redirect named, and a photograph server that redirects, by mistake or on
 purpose, would be handing your key to somebody else.
 
@@ -158,7 +158,7 @@ the request.
 
 Two places on the desktop side do use a shell, and both are named here rather
 than glossed over. The bar panel and the library overlay open a floating
-terminal for the few commands that need a password or show long progress; that
+terminal for the few commands that need a password or show long progress. That
 terminal takes a command line, so everything variable in it goes through the
 one function that quotes it. And `bin/omacrt-pick` reads `OMACRT_PICKER` as a
 command with its arguments rather than as a line for a shell to evaluate.
@@ -174,8 +174,8 @@ file.
 ## What it kills
 
 `omacrt doctor --fix`, and the sweep that runs when the launcher starts
-or stops, will stop an emulator. It decides in three steps and all of them
-have to hold: the process is **one of the programs this project starts**
+or stops, will stop an emulator. It decides in three steps, and all three have
+to hold. The process is **one of the programs this project starts**
 (`retroarch`, `mpv`), its command line carries **this project's own
 configuration file**, and **no launcher is above it** in the process tree.
 `/proc` is read directly rather than through `pgrep`, so the survey can never
@@ -246,7 +246,7 @@ committed so a build is the same build. `scripts/audit.py` checks every locked
 version against the RustSec advisory database over OSV's API, needs nothing
 installed but Python, and runs in CI. Two advisories stand today, both against
 `cgmath`, which arrives through `smithay` for the compositor and is never
-called from this code: one says it is unmaintained, the other that a matrix
+called from this code. One says it is unmaintained; the other, that a matrix
 column swap is unsound when both indices are the same. They are listed in that
 script with those reasons, and anything new fails the build.
 

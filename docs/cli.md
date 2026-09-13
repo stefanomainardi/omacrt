@@ -48,10 +48,10 @@ can offer the install through `omarchy pkg add` or `omarchy pkg aur add`.
 
 `setup` is the first run on a new machine. It lists the DRM connectors with
 their EDID name, whether the kernel already marks them non-desktop, and whether
-the desktop is drawing on them; picks the one with a
-DAC it recognises, or a connected HDMI output the desktop is not using; takes
-the standard from `--standard`, else from what is already configured, else
-from the country in the locale; and writes `output.connector` and
+the desktop is drawing on them. Then it picks one: the connector with a DAC it
+recognises, or a connected HDMI output the desktop is not using. The standard
+comes from `--standard`, else from what is already configured, else from the
+country in the locale. What it writes is `output.connector` and
 `output.standard`. `--dry-run` only looks. A connector already named in
 `crt.toml` is not replaced without `--force`.
 
@@ -78,11 +78,12 @@ search by them, and find their box art. Without those databases the set names
 stay as they are.
 
 `library covers` walks the collection and fetches the libretro thumbnail of
-every game into `~/.cache/omacrt/art/<system>/`. The exact file name is
-tried first; when the repository has no such name (collections without
-region tags), the name index of that system (downloaded once a fortnight into
-`art/_index/`) is searched for the same title, in the region order of
-`[music] country` in `settings.toml`, then for the closest title by words.
+every game into `~/.cache/omacrt/art/<system>/`. The exact file name is tried
+first. When the repository has no such name, which is what happens to a
+collection without region tags, the name index of that system is searched for
+the same title instead, in the region order of `[music] country` in
+`settings.toml`, and then for the closest title by words. The index is
+downloaded once a fortnight into `art/_index/`.
 The launcher does the same lazily for any cover it misses. Covers are shrunk
 to 320 pixels on the way in.
 
@@ -193,11 +194,12 @@ Latency:    16.5 ms  0.99 frames  over the last 300
 It is the median time from the commit that drew a frame to the vblank that
 started scanning it out, measured on the tube that is running instead of
 quoted from anywhere. Both ends are real: the commit is the client's own, the
-vblank timestamp is the kernel's, and only the compositor sees both, so no other tool on the machine reports this. On a set with no panel and no
-scaler between the connector and the phosphor, the start of scanout is very
-nearly the picture on the glass; what it does not include is what happens in
-front of the commit, the pad's own polling and whatever the program
-does with the input before it draws.
+vblank timestamp is the kernel's, and only the compositor sees both, so no
+other tool on the machine reports this. On a set with no panel and no scaler
+between the connector and the phosphor, the start of scanout is very nearly
+the picture on the glass. What it leaves out is everything in front of the
+commit: the pad's own polling, and whatever the program does with the input
+before it draws.
 
 Two knobs move it, both in the display process's environment, and both are
 set so that the tube is as quick as it has been measured to be safely:
@@ -337,9 +339,9 @@ whether the compositor offers DRM leasing and for which connector, whether
 systemd is there for the boot time override, and whether debugfs is mounted.
 They can all be answered before a DAC is bought.
 
-In a terminal it draws: the wordmark cut by the same laser the launcher's
-boot screen uses, advancing as each check answers, and then the report, with
-the configured modeline drawn as a diagram and the card's outputs as a map.
+In a terminal it draws. The wordmark is cut by the same laser the launcher's
+boot screen uses, advancing as each check answers. Then the report, with the
+configured modeline drawn as a diagram and the card's outputs as a map.
 Piped, redirected, under `NO_COLOR` or `TERM=dumb`, or with `--plain`, it
 prints the same lines it always has, and the exit code is unchanged: zero
 when everything passed.
@@ -359,9 +361,9 @@ rarely needed by hand:
 
 - **`shell stop` and `off`** take the launcher's emulators with it. An
   emulator does not die with the launcher that started it: the signal goes to
-  the launcher, the child is reparented to systemd and keeps running, holding
-  the audio and answering "something is playing" for as long as the machine is
-  up, which blocks every launch until somebody notices.
+  the launcher, and the child is reparented to systemd and keeps running. It
+  holds the audio and answers "something is playing" for as long as the machine
+  is up, which blocks every launch until somebody notices.
 - **`on` and `shell start`** clear whatever a previous life left, since with
   no launcher running nothing can own it.
 - **the watchdog** sweeps once a minute while the tube is on, the one
@@ -385,9 +387,9 @@ running.
 
 `--force` stops whatever is playing first and waits for the tube to be free.
 
-`omacrt-pick` is that with a picker in front of it: every game the scan
-has seen goes into walker (or fuzzel, or rofi), and what comes back is played
-on the television, turning the tube on first if it is off. It is the
+`omacrt-pick` is that with a picker in front of it. Every game the scan has
+seen goes into walker (or fuzzel, or rofi), and what comes back is played on
+the television, with the tube turned on first if it is off. It is the
 **Play a game...** row in the Omarchy menu, and it is worth a keybinding.
 
 Everything that stops it going through arrives as a notification, and every
