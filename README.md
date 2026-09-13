@@ -129,7 +129,7 @@ mapped underneath, which is how the television actually runs:
 | --- | --- |
 | commit to the start of scanout, client drawing 1 ms | **3.79 ms** |
 | the launcher end to end, in `omacrt status` | **2.0 ms** |
-| the same with every scheduling decision turned off, which is what every other compositor does | **33.4 ms**, two frames exactly |
+| the same compositor with all three of its scheduling decisions removed | **33.4 ms**, two frames exactly |
 | a button press to the start of scanout, 300 presses at random points of the frame | median **10.19 ms**, 0.61 of a frame |
 
 It offers `wp_presentation`, so a client that cares about timing is told

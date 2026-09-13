@@ -87,12 +87,12 @@ which is how the numbers there were separated from each other.
 | | |
 | --- | --- |
 | `FLYBACK_MARGIN_US` | how long before the vblank to start drawing. Auto by default, from what recent frames cost; a number sets it in microseconds; `off` goes back to drawing as soon as a client commits, which costs a frame |
-| `FLYBACK_LATE_DRAW=off` | tell clients they may draw at the vblank, the way every other compositor does, rather than just in time |
+| `FLYBACK_LATE_DRAW=off` | tell clients they may draw at the vblank, which is the conventional thing to tell them, rather than just in time |
 | `FLYBACK_SLACK_US` | how much room a client gets on top of twice its measured drawing time. 3000 by default |
 | `FLYBACK_TRACE` | print three lines a frame: commit to flip queued, flip queued to vblank, and the vblank interval. This is how the frame timeline in the study was measured, and it writes about 180 lines a second |
 | `FLYBACK_ALL_PROPS` | make `props` print every DRM property rather than the interesting ones |
 
-All three switches off at once is what every other compositor does, and it is
+All three switches off at once is this compositor with its scheduling removed, and it is
 the "before" in the study's numbers:
 
 ```

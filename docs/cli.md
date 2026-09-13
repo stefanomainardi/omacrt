@@ -206,7 +206,7 @@ set so that the tube is as quick as it has been measured to be safely:
 | | |
 | --- | --- |
 | `FLYBACK_MARGIN_US` | how long before the vblank the compositor starts drawing. Auto by default, from what recent frames cost; a number sets it in microseconds, `off` goes back to drawing as soon as a client commits, which costs a frame. |
-| `FLYBACK_LATE_DRAW=off` | go back to telling a program it may draw at the vblank, the way every other compositor does. By default it is told twice its own measured drawing time before the deadline instead, so its picture is finished just in time rather than waiting most of a frame. |
+| `FLYBACK_LATE_DRAW=off` | go back to telling a program it may draw at the vblank, which is the conventional thing to tell it. By default it is told twice its own measured drawing time before the deadline instead, so its picture is finished just in time rather than waiting most of a frame. |
 | `FLYBACK_SLACK_US` | how much room a program is given on top of twice its drawing time. Three milliseconds by default. |
 
 The whole chain, from the kernel's timestamp for a button press to the start

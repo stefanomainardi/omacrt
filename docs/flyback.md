@@ -270,7 +270,7 @@ with every core on the machine busy.
 
 **The starting point is reproducible rather than remembered.** Turn the three
 switches off - `FLYBACK_LATE_DRAW=off`, `FLYBACK_MARGIN_US=off`, and the
-variable rate off, which together are what every other compositor does - and
+variable rate off, which together are this compositor with its scheduling removed - and
 the same client measures **33.36 ms, two frames exactly**, with the launcher's
 own figure at 33.1 ms. That is the comparison, and anybody with this hardware
 can run it.
