@@ -25,7 +25,7 @@ and enables it in the right section of the bar.
 
 Everything the widget and the panel do is a call to `omacrt`, through
 `bin/omacrt` in this folder. That file is a two line launcher for the
-installed program, written by `omacrt plugin sync`, and not a copy of it.
+installed program, written by `omacrt plugin sync`. It is not a copy.
 
 It was a copy once, and a copy is a snapshot: no package upgrade writes into
 anybody's home, so the bar went on running the build that was current when

@@ -78,7 +78,7 @@ failure for a pipe that can reach a modeline.
 if it is wrong. Widening it is deliberate and for a display that can take it:
 a multisync monitor, an arcade chassis rated for 25 or 31 kHz.
 
-## Switches, for measuring and not for daily use
+## Switches, for taking a measurement
 
 Environment variables on the display process. Each one turns off a decision
 described in
@@ -91,7 +91,7 @@ and that is how the numbers there were separated from each other.
 | `FLYBACK_LATE_DRAW=off` | tell clients they may draw at the vblank, the conventional thing to tell them, instead of just in time |
 | `FLYBACK_SLACK_US` | how much room a client gets on top of twice its measured drawing time. 3000 by default |
 | `FLYBACK_TRACE` | print three lines a frame: commit to flip queued, flip queued to vblank, and the vblank interval. This is how the frame timeline in the study was measured, and it writes about 180 lines a second |
-| `FLYBACK_ALL_PROPS` | make `props` print every DRM property and not the interesting ones |
+| `FLYBACK_ALL_PROPS` | make `props` print all DRM properties instead of the short list |
 
 All three switches off at once is this compositor with its scheduling removed,
 the "before" in the study's numbers:
@@ -123,8 +123,7 @@ at all, exactly what somebody watching calls a glitch.
 because the second could not show it. A television's vertical countdown accepts
 sync inside a narrow window once it has locked, two lines either side on a
 60 Hz standard. A field that leaves that window is retraced at the edge of the
-window instead of on the sync that arrived, which is a visible jump for that
-field. Three fields in three thousand six hundred left the window on the
+window instead of on the sync that arrived, and that field jumps visibly. Three fields in three thousand six hundred left the window on the
 afternoon this row was written, and the row above read `16.66 to 16.66 ms`
 throughout: a median cannot show three samples, and a hundredth of a
 millisecond is a quarter of a line.
@@ -132,9 +131,9 @@ millisecond is a quarter of a line.
 So it counts instead. `N of 300 frames ran long, the worst L lines` means N
 fields went more than two lines past the mode's vertical total, which for
 NTSC here is 262. Anything above about 290 is past where this particular set
-starts losing height, which is a property of the set and is written up in
-[`15khz.md`](15khz.md). The window itself is a documented design for sets of
-that kind, not a measurement of any one of them. So the row reports the count
+starts losing height, a property of the set written up in
+[`15khz.md`](15khz.md). The window itself comes from a documented design for
+sets of that kind, and no particular set was measured for it. So the row reports the count
 and the number of lines, and leaves the reading to somebody who knows which
 television is in the room.
 
@@ -153,9 +152,9 @@ The log is `~/.local/state/omacrt/display.log`. Lines to look for:
 | `leased HDMI-A-1 (DRM connector 415)` | the lease was taken |
 | `vrr: on (RequiresModeset)` | adaptive sync was asked for at start-up and the connector is capable |
 | `vrr: the connector is not capable of it` | no FreeSync range in the EDID, or the range is too narrow. See [`15khz.md`](15khz.md#a-variable-refresh-rate) |
-| `mode: ... set in 1.3 ms` | the timing was accepted. This is the test commit, not the modeset |
+| `mode: ... set in 1.3 ms` | the timing was accepted. This times the test commit; the modeset itself is timed separately |
 | `mode: first vblank 196.5 ms after the modeline was asked for` | how long the television was actually dark |
-| `mode: refused, it asks the television for ...` | the guard stopped a timing, which is the message that means the guard worked |
+| `mode: refused, it asks the television for ...` | the guard stopped a timing, and this line is what that looks like |
 | `render_frame: ...` | a flip was refused. Ten in a row and the watchdog gives up |
 
 ## When it will not come up

@@ -185,9 +185,9 @@ brochure.
   latency and is not taken. On a 15 kHz set a torn frame is visible across a
   third of the picture, and the scheduling above gets most of the same time
   back without it.
-- **No interlace.** Nothing on the leased path refuses a 480i modeline: the
-  modeset succeeds and the timing is then scanned out progressively, which is
-  a narrow strip at a field rate no television locks to. Five gates in the
+- **No interlace.** Nothing on the leased path refuses a 480i modeline. The
+  modeset succeeds and the timing is then scanned out progressively, so the
+  picture is a narrow strip at a field rate no television locks to. Five gates in the
   kernel's display code stand between that modeline and a picture, written up
   in [`15khz.md`](15khz.md#what-a-stock-kernel-still-cannot-do).
 - **No beam racing.** The lease makes it possible for the first time on
