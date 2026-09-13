@@ -23,7 +23,7 @@ configuration for window rules.
 
 > A change that requires patching Omarchy is the wrong change.
 
-That constraint is the project's argument, not a limitation to work around.
+That constraint is the project's argument, and the design starts from it.
 
 There are two channels, and the Rust belongs to neither. Omarchy gets the
 desktop half; plain Hyprland gets the television and the command line, which
