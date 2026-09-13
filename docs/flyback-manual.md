@@ -120,10 +120,11 @@ every few seconds is three samples in three hundred and does not move a median
 at all, exactly what somebody watching calls a glitch.
 
 **The third line is the one to read when the picture twitches**, and it exists
-because the second could not show it. A television's vertical countdown
-accepts sync inside a narrow window once it has locked, two lines either side
-on a 60 Hz standard, and a field that leaves that window is retraced at the
-edge of it instead of on the sync that arrived, a visible jump for that field. Three fields in three thousand six hundred left the window on the
+because the second could not show it. A television's vertical countdown accepts
+sync inside a narrow window once it has locked, two lines either side on a
+60 Hz standard. A field that leaves that window is retraced at the edge of the
+window instead of on the sync that arrived, which is a visible jump for that
+field. Three fields in three thousand six hundred left the window on the
 afternoon this row was written, and the row above read `16.66 to 16.66 ms`
 throughout: a median cannot show three samples, and a hundredth of a
 millisecond is a quarter of a line.
@@ -131,11 +132,11 @@ millisecond is a quarter of a line.
 So it counts instead. `N of 300 frames ran long, the worst L lines` means N
 fields went more than two lines past the mode's vertical total, which for
 NTSC here is 262. Anything above about 290 is past where this particular set
-starts losing height, a property of the set and is in
+starts losing height, which is a property of the set and is written up in
 [`15khz.md`](15khz.md). The window itself is a documented design for sets of
-that kind rather than a measurement of any one of them, so the row reports the
-count and the number of lines and leaves the reading to somebody who knows
-which television is in the room.
+that kind, not a measurement of any one of them. So the row reports the count
+and the number of lines, and leaves the reading to somebody who knows which
+television is in the room.
 
 A count above zero, with nothing asking for a rate other than the mode's own,
 means the variable refresh rate is turning the compositor's own lateness into
