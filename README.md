@@ -14,8 +14,9 @@ working.
 
 **What it's for.** Emulated games on a real tube at native 240p, with the
 frame timing written for a CRT. A client's commit reaches the start of scanout
-in 3.79 ms. A button press reaches the picture in 10.19 ms, of which 8.33 is
-the half frame nobody can remove.
+in 3.79 ms, and the kernel's timestamp for a button press reaches it in
+10.19 ms, of which 8.33 is the half frame nobody can remove. Both ends are
+kernel clocks, and neither is a photodiode.
 
 **When you don't need it.** The 15 kHz kernel patches let your desktop drive a
 CRT as one of its outputs. If that suits you, use them. This takes the
