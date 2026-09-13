@@ -6,14 +6,14 @@ switches with a blend.
 
 - **Boot.** Power surge and roll, a BIOS style POST with live data, then the
   mark revealed top down behind a beam bar, the dark cut of the beam's return
-  travelling across it, a chime, and the wordmark etched by a laser
+  travelling across it, and a chime. The wordmark is then etched by a laser
   (TerminalTextEffects' `laseretch`, ported pixel by pixel) while a Mode 7
-  floor unrolls under it and the word lands on the glass. The mark's cut
+  floor unrolls under it, and the word lands on the glass. The mark's cut
   returns once every nine seconds, wherever the mark is drawn.
 - **Games.** Systems with console pictures, games with box art from the
-  libretro thumbnails (matched by title when the file names carry no region
-  tags, so a RePlayOS style set gets its covers too; `omacrt library
-  covers` fetches them all at once), collections, favourites, recent. Arcade
+  libretro thumbnails, collections, favourites, recent. Covers are matched by
+  title when the file names carry no region tags, so a RePlayOS style set gets
+  them too, and `omacrt library covers` fetches the lot at once. Arcade
   files named after the emulated set, `mslug` for Metal Slug, are read
   through the databases RetroArch ships, so those lists show titles and find
   their covers as well. `X`
@@ -33,9 +33,10 @@ switches with a blend.
   carry on from the state written on exit, or a new session that leaves that
   state alone.
 - **Pause menu.** Select + Start, the home button, or F1: resume, save state,
-  load state, rewind, fast forward, slow motion, reset, back to the launcher. The compositor presses
-  RetroArch's real hotkeys, so nothing depends on a network command. Every
-  game with a save state carries a small arrow and says when it was left.
+  load state, rewind, fast forward, slow motion, reset, back to the launcher.
+  The compositor presses RetroArch's real hotkeys, so nothing depends on a
+  network command. Every game with a save state carries a small arrow and says
+  when it was left.
 - **Music.** On top of cliamp, started as a daemon when needed: the radio
   stations of your country, every country and genre of the Radio Browser
   directory, favourites, history, and any provider set up in cliamp (Spotify,
@@ -48,7 +49,7 @@ switches with a blend.
   when cliamp has them, a sleep timer, and the selection band of every list
   breathing with the beat. The album art of a Spotify track and the logo of a
   radio station arrive on the cassette label, the record label and the dial.
-  An **equaliser** page moves the engine's ten bands one decibel at a time,
+  An **Equalizer** page moves the engine's ten bands one decibel at a time,
   or takes one of its presets.
 
 <p align="center">
@@ -69,7 +70,7 @@ switches with a blend.
   Nothing over the picture, or the time and the caption in the corners, or the
   whole ambient page with a clock, the weather, the next appointment and what
   is playing. A photograph that fills the screen drifts a pixel a frame while
-  it is up, so it never looks like a photograph of a television, and one held
+  it is up, so it never looks like a photograph of a television. One held
   upright is fitted whole against a blurred copy of itself rather than black
   bars. The prepared pictures are the frame's own collection, so it works with
   the server switched off.

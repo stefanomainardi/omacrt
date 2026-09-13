@@ -52,7 +52,7 @@ send "<line>"` writes to it, and several CLI verbs are wrappers over it.
 | --- | --- |
 | `top <app-id>` | raise that client to the top of the stacking order |
 | `key <name\|code> [ms]` | press a key into the focused client. Names: `rewind` `slow` `pause` `save` `load` `reset` `quit` `ff` `menu` `enter` `slot+` `slot-`, or a raw evdev code up to 0x2ff |
-| `mode <modeline>` | set a timing, in Hyprland's modeline form. **Refused unless it passes `Modeline::fault`** |
+| `mode <modeline>` | set a timing, in Hyprland's modeline form. Refused unless it passes `Modeline::fault` |
 | `rate <hz\|off>` | ask the television for a refresh without a mode change. Needs a variable refresh rate |
 | `vrr <on\|off>` | ask the kernel for adaptive sync on the CRTC |
 | `shot <file.png>` | write the current frame. Refuses a name that is not a `.png` |
@@ -120,10 +120,11 @@ every few seconds is three samples in three hundred and does not move a median
 at all, exactly what somebody watching calls a glitch.
 
 **The third line is the one to read when the picture twitches**, and it exists
-because the second could not show it. A television's vertical countdown
-accepts sync inside a narrow window once it has locked, two lines either side
-on a 60 Hz standard, and a field that leaves that window is retraced at the
-edge of it instead of on the sync that arrived, a visible jump for that field. Three fields in three thousand six hundred left the window on the
+because the second could not show it. A television's vertical countdown accepts
+sync inside a narrow window once it has locked, two lines either side on a
+60 Hz standard. A field that leaves that window is retraced at the edge of the
+window instead of on the sync that arrived, which is a visible jump for that
+field. Three fields in three thousand six hundred left the window on the
 afternoon this row was written, and the row above read `16.66 to 16.66 ms`
 throughout: a median cannot show three samples, and a hundredth of a
 millisecond is a quarter of a line.
@@ -131,11 +132,11 @@ millisecond is a quarter of a line.
 So it counts instead. `N of 300 frames ran long, the worst L lines` means N
 fields went more than two lines past the mode's vertical total, which for
 NTSC here is 262. Anything above about 290 is past where this particular set
-starts losing height, a property of the set and is in
+starts losing height, which is a property of the set and is written up in
 [`15khz.md`](15khz.md). The window itself is a documented design for sets of
-that kind rather than a measurement of any one of them, so the row reports the
-count and the number of lines and leaves the reading to somebody who knows
-which television is in the room.
+that kind, not a measurement of any one of them. So the row reports the count
+and the number of lines, and leaves the reading to somebody who knows which
+television is in the room.
 
 A count above zero, with nothing asking for a rate other than the mode's own,
 means the variable refresh rate is turning the compositor's own lateness into
@@ -154,7 +155,7 @@ The log is `~/.local/state/omacrt/display.log`. Lines to look for:
 | `vrr: the connector is not capable of it` | no FreeSync range in the EDID, or the range is too narrow. See [`15khz.md`](15khz.md#a-variable-refresh-rate) |
 | `mode: ... set in 1.3 ms` | the timing was accepted. This is the test commit, not the modeset |
 | `mode: first vblank 196.5 ms after the modeline was asked for` | how long the television was actually dark |
-| `mode: refused, it asks the television for ...` | the guard stopped a timing. **This is the message that means the guard worked** |
+| `mode: refused, it asks the television for ...` | the guard stopped a timing, which is the message that means the guard worked |
 | `render_frame: ...` | a flip was refused. Ten in a row and the watchdog gives up |
 
 ## When it will not come up

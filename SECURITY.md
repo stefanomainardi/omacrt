@@ -47,8 +47,8 @@ the Omarchy shell reloads plugin code on any change under those folders and a
 reload under the lock screen crashes it. The connector name is validated before
 it reaches the root owned unit file, by the same rule the boot script applies.
 
-The lease unit waits for the connector to appear rather than sleeping through a
-fixed ten seconds of the boot, and stands down without an error when there is no
+The lease unit waits for the connector to appear, with no fixed ten seconds of
+the boot to sleep through, and it stands down without an error when there is no
 television on the other end.
 
 ## The control pipe
@@ -86,11 +86,11 @@ Nothing is downloaded during installation. While running, the project fetches:
 - your own photographs from your own Immich server, if you set one up
 
 Seven of the eight go out through `curl`, and all seven ask one function for
-it: `net::curl` restricts the protocol list to HTTP and HTTPS on the request
+it. `net::curl` restricts the protocol list to HTTP and HTTPS, on the request
 and on any redirect, sets a timeout and a size cap, fails on an error status
-rather than saving the error page, and passes arguments as arguments. A
-crafted URL cannot make it read a local file, a redirect cannot leave those
-two protocols, and none of that is a decision at the call site: what a caller
+and never saves the error page, and passes arguments as arguments. So a
+crafted URL cannot make it read a local file and a redirect cannot leave those
+two protocols. None of that is a decision at the call site: what a caller
 chooses is how long and how large its own fetch may be. The eighth is
 YouTube, which goes through `yt-dlp` and its own network stack, with the
 target after a `--` and never through a shell.
@@ -124,11 +124,11 @@ The photo frame reads an Immich server on your own network. It needs
 create in Immich and which needs read access and nothing else. The file is
 yours to write and this project only reads it.
 
-The key is handed to curl **on its standard input**, never as an argument, so
+The key is handed to curl on its standard input, never as an argument, so
 it does not appear in the process list where every other program on the
 machine could read it. It is not logged and not printed by any command. It
 goes to the address in that file and to no other, because those requests
-follow no redirect: curl would otherwise send the key header to whatever host
+follow no redirect. Curl would otherwise send the key header to whatever host
 a redirect named, and a photograph server that redirects, by mistake or on
 purpose, would be handing your key to somebody else.
 
@@ -147,8 +147,8 @@ beside your photographs, and the list of what you have been watching.
 
 The project runs external programs: `retroarch`, `mpv`, `yt-dlp`, `cliamp`,
 `bluetoothctl`, `curl`, `ffmpeg`, `hyprctl`, `pactl`, `systemctl`. Every one of
-them is given an argument list. **There is no shell anywhere in the launcher.**
-The module that starts a program cannot run a command line at all, so nothing a
+them is given an argument list. There is no shell anywhere in the launcher: the
+module that starts a program cannot run a command line at all, so nothing a
 file, a server or a game's name contains can ever be read as a command.
 
 The library overlay resolves the program it runs from its own directory. The
@@ -158,10 +158,10 @@ the request.
 
 Two places on the desktop side do use a shell, and both are named here rather
 than glossed over. The bar panel and the library overlay open a floating
-terminal for the few commands that need a password or show long progress; that
+terminal for the few commands that need a password or show long progress. That
 terminal takes a command line, so everything variable in it goes through the
 one function that quotes it. And `bin/omacrt-pick` reads `OMACRT_PICKER` as a
-command with its arguments rather than as a line for a shell to evaluate.
+command with its arguments, never as a line for a shell to evaluate.
 
 `output.position` and the trailing flags of a modeline end up in Lua that
 Hyprland evaluates, so both are checked against what they are allowed to hold
@@ -174,10 +174,10 @@ file.
 ## What it kills
 
 `omacrt doctor --fix`, and the sweep that runs when the launcher starts
-or stops, will stop an emulator. It decides in three steps and all of them
-have to hold: the process is **one of the programs this project starts**
-(`retroarch`, `mpv`), its command line carries **this project's own
-configuration file**, and **no launcher is above it** in the process tree.
+or stops, will stop an emulator. It decides in three steps, and all three have
+to hold. The process is one of the programs this project starts (`retroarch`,
+`mpv`), its command line carries this project's own configuration file, and no
+launcher is above it in the process tree.
 `/proc` is read directly rather than through `pgrep`, so the survey can never
 match the process doing the surveying. A polite signal first, then a hard one
 after two seconds for a core that has wedged.
@@ -197,7 +197,7 @@ The project writes `~/.config/omacrt`, `~/.local/state/omacrt`,
 under `~/.config/retroarch`. Every durable file is written atomically through a
 temporary file and a rename, and the copy being replaced is kept as `.bak`.
 `state.json` and `watch-later.tsv` go through that same write, so an interrupted
-one costs the last change rather than the file.
+one costs the last change and never the file.
 
 It never deletes a game and never uploads anything anywhere. It does write
 inside your collection, in three places, and it is better to say so than to
@@ -211,14 +211,14 @@ claim otherwise:
   A failed conversion removes that file only when the same run created it.
 
 `bios import` copies into RetroArch's system directory. A file of the same
-name and a different size is kept as `.replaced` rather than written over: a
+name and a different size is kept as `.replaced` and never written over: a
 BIOS is the one thing here that came off your own console.
 
 `off` puts the machine back as it found it: the television's sink returns to
 the volume it had before `on` set its own, the card's profile and the default
 sink return to what they were, and the output is disabled. `doctor --fix`
 tidies the cache the code actually writes to, so the five megabyte leftovers of
-a scan that crashed halfway are found rather than kept for ever.
+a scan that crashed halfway are found and swept instead of staying for ever.
 
 ## What it does when the data is wrong
 
@@ -246,7 +246,7 @@ committed so a build is the same build. `scripts/audit.py` checks every locked
 version against the RustSec advisory database over OSV's API, needs nothing
 installed but Python, and runs in CI. Two advisories stand today, both against
 `cgmath`, which arrives through `smithay` for the compositor and is never
-called from this code: one says it is unmaintained, the other that a matrix
+called from this code. One says it is unmaintained; the other, that a matrix
 column swap is unsound when both indices are the same. They are listed in that
 script with those reasons, and anything new fails the build.
 

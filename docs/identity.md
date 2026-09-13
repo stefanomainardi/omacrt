@@ -48,16 +48,16 @@ pub const RETRACE: Retrace = Retrace {
 };
 ```
 
-Forty-four units square, bars eight thick with four between them, a cut twelve
-wide that steps once per bar so its edge is a true 45 degrees, and a comment
-above it explaining that five bars cannot shrink to 24 pixels and a mark that
-changes shape when it shrinks is a patch.
+Forty-four units square, bars eight thick with four between them, and a cut
+twelve wide that steps once per bar so its edge is a true 45 degrees. A comment
+above it explains that five bars cannot shrink to 24 pixels, and that a mark
+which changes shape when it shrinks is a patch.
 
 So the sibling relationship was not a judgement about whether two shapes look
 related. It was arithmetic on numbers that were already written down, with the
-reasoning behind them already written down beside them. **The design system
-existed as source code before anybody called it a design system**, and the
-first thing the agent did was read it.
+reasoning behind them already written down beside them. The design system
+existed as source code before anybody called it a design system, and the first
+thing the agent did was read it.
 
 ## 3. Three directions, with the case against each
 
@@ -134,9 +134,9 @@ Three sheets, in the order a studio would hand them over:
   stepping down and to the right. One alphabet, two words.
 
 There is one constraint behind all of it that no studio has ever been given:
-**the mark has to be drawable by an electron beam on 240 scan lines**, because
-this project's mark appears on the television it drives, so there are
-no diagonals, no hairlines and no fractional units anywhere in the system. A
+the mark has to be drawable by an electron beam on 240 scan lines, because
+this project's mark appears on the television it drives. So there are no
+diagonals, no hairlines and no fractional units anywhere in the system. A
 constraint that specific does more for a mark than a mood board does.
 
 ## 7. The critique, and how it was answered

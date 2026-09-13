@@ -63,9 +63,9 @@ The reason Flyback leases instead of patching is that a desktop compositor
 will not set a 15 kHz mode, will not stop managing an output's timing on
 request, and will not hand over the scanout. Those are three separate refusals
 with one supported answer: `wp_drm_lease_v1`, marked non-desktop in the EDID.
-The protocol was written for VR headsets and its own specification describes
-the general case (a compositor "will not use this output at all and will make
-it available for leasing"), but every user of it in the wild is a headset. No
+The protocol was written for VR headsets, and its own specification describes
+the general case: a compositor "will not use this output at all and will make
+it available for leasing". Every user of it in the wild is still a headset. No
 trace was found of a television being leased this way, which describes a
 search and not a claim of primacy.
 
@@ -106,19 +106,19 @@ client. The method and the instrument are in
 For comparison, quoted from their own documentation: MiSTer's own
 documentation puts its scaler at four display lines in its fastest mode, about
 a third of a millisecond at 320x200, on top of a core that is the console's
-own timing. **A MiSTer is faster than this and always will be**, because there
-is no operating system in it. What the number above buys is a reference point
+own timing. A MiSTer is faster than this and always will be, because there is
+no operating system in it. What the number above buys is a reference point
 for the software path, which nobody had published for Linux into a real CRT.
 
 **3. A variable refresh rate on a fixed-frequency television.** A set's
 horizontal rate must never move; its vertical rate can, because the vertical
 oscillator re-triggers on sync. So every refresh an emulation asks for is
 reachable by stretching the vertical blanking alone, exactly what
-adaptive sync does in hardware. Asked for five rates in turn, this chain
-follows, asked for by name and measured as the median of the last 300 vblank
-intervals, with fifteen seconds of settling at each step: **60.041 asked
-gives 60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**, and 50
-is held at 55 because that is where this set stops following. The instrument
+adaptive sync does in hardware. This chain follows. Five rates were asked for
+by name and measured as the median of the last 300 vblank intervals, after
+fifteen seconds of settling at each step: **60.041 asked, 60.04 given; 59.92,
+60.02; 57.5, 57.59; 55, 55.01**. 50 is held at 55, because that is where this
+set stops following. The instrument
 is a median over a five second window, and the numbers are reported to the
 precision it has. And no mode change, where a mode change costs
 **182 to 229 ms** inside the kernel's own call, and about **400 ms** of a black
@@ -150,10 +150,11 @@ An honest list, because the one above is short.
 - **One television.** Every calibration in `crt.toml` is a property of a
   BeoCenter 1 in one room. The numbers will differ on your set; the method is
   the transferable part.
-- **No interlace.** Five gates in the kernel's display code refuse it on this
-  connector, and this project decided not to require a patched kernel. A
-  distribution that already patches its kernel for 15 kHz is not paying that
-  price, so the trade belongs to us.
+- **No interlace.** A 480i modeline is accepted on this connector and then
+  scanned out progressively, because five gates in the kernel's display code
+  stand between it and a picture. This project decided not to require a
+  patched kernel, and a distribution that already patches its kernel for
+  15 kHz is not paying that price, so the trade belongs to us.
 - **No beam racing.** Which deserves its own section.
 
 ## Beam racing, said plainly
@@ -168,16 +169,15 @@ on a high-refresh LCD.
 
 The reason nobody built it on Linux is that beam racing needs ownership of the
 scanout, and a desktop compositor denies it. A leased connector does not.
-**So this is a setup where it could be built, and it has not been built here
-either.** That sentence is the whole of the claim.
+So this is a setup where it could be built, and it has not been built here
+either. That sentence is the whole of the claim.
 
 ## Where this leaves it
 
 Flyback is not a better Batocera. It is the piece that was missing between a
-normal Linux machine and a 15 kHz television: a compositor that takes one
-output, drives it as a television rather than as a monitor, schedules frames
-for a tube instead of for a desktop, and says out loud how long its own
-picture took to arrive.
+normal Linux machine and a 15 kHz television. It takes one output, drives it
+as a television rather than as a monitor, schedules frames for a tube instead
+of for a desktop, and says out loud how long its own picture took to arrive.
 
 It is experimental, it sets the line rate of a circuit tuned for one, and it
 has been run in one room. What it contributes that outlasts it is the

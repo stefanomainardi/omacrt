@@ -106,9 +106,9 @@ added, and keeps the answer.
 
 Applying it now is not the same as having it at boot. Hyprland decides which
 connectors it offers for leasing when it starts, so an override that arrives
-afterwards sets the flag but wins nothing: `non-desktop = 1` while
+afterwards sets the flag and wins nothing else: `non-desktop = 1` while
 `flyback` still reports `connector HDMI-A-1 is not offered for lease
-(offered: none)`, and the picture only comes back at the next boot. Nothing
+(offered: none)`. The picture comes back at the next boot. Nothing
 else needs doing in the meantime.
 
 ## The in-game menu (RGUI) is blank

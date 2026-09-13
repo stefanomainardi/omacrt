@@ -157,15 +157,14 @@ inward:
    names inside a `.zip`, cartridge headers, arcade set names;
 4. what you told it before with `omacrt library assign FOLDER SYSTEM`.
 
-The result lands in `~/.local/share/omacrt/library.json` with title,
-tags, region and disc number per game. The launcher lists from it: one entry
-per title (regional variants collapse onto the preferred region, multi disc
-games onto disc 1), systems appear when they have games and hide when they
+The result lands in `~/.local/share/omacrt/library.json` with title, tags,
+region and disc number per game. The launcher lists from it: one entry per
+title, with regional variants collapsed onto the preferred region and multi
+disc games onto disc 1. Systems appear when they have games and hide when they
 do not, and the folder a game sits in does not decide which system it belongs
-to. Roots and your folder answers live in
-`~/.config/omacrt/library.toml`. `systems.toml` keeps only what is
-tuning: core, options, video policy, run-ahead. Systems the scan finds but
-`systems.toml` does not mention take their core from the built in catalogue
-(`omacrt library systems`).
+to. Roots and your folder answers live in `~/.config/omacrt/library.toml`.
+`systems.toml` keeps only what is tuning: core, options, video policy,
+run-ahead. Systems the scan finds but `systems.toml` does not mention take
+their core from the built in catalogue (`omacrt library systems`).
 
 A 28,000 game disk over USB scans in about four seconds.

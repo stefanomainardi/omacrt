@@ -13,12 +13,12 @@ writing a CRT ready file with ffmpeg.
   59.94 (the American DVD) or the **PAL speed-up** of 25/24 with the audio
   time stretched (the European DVD).
 - **Resolution to 720x480 or 720x576, interlaced.** SD frames have non
-  square pixels, so the picture is first fitted into a square pixel frame
-  (640x480 or 768x576) and then stretched to 720 wide with the matching
-  sample aspect ratio (8:9 or 16:15), the way DVDs are authored. Sources at field rate (50
-  or 60 fps) are scaled to field height and woven two frames per interlaced
-  frame, so every field carries its own instant and motion stays intact.
-  Other sources are scaled to the full frame and flagged interlaced.
+  square pixels. So the picture is first fitted into a square pixel frame
+  (640x480 or 768x576), then stretched to 720 wide with the matching sample
+  aspect ratio (8:9 or 16:15), the way DVDs are authored. Sources at field rate
+  (50 or 60 fps) are scaled to field height and woven two frames per interlaced
+  frame, so every field carries its own instant and motion stays intact. Other
+  sources are scaled to the full frame and flagged interlaced.
 - **16:9 into 4:3.** `letterbox` pads black bars, `crop` cuts the sides,
   `anamorphic` squeezes for sets with a 16:9 mode.
 - **Color.** BT.709 and BT.2020 sources are converted to SD matrices (SMPTE
