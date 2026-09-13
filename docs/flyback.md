@@ -296,9 +296,9 @@ the 1.9 ms above it. The instrument measures its own overhead at 0.01 ms.
 This is a virtual pad; a real one adds its own polling in front, one to eight
 milliseconds by its rate, which belongs to the pad.
 
-**A mode change**, for comparison, takes **182 to 229 ms** to its first
-vblank and the television is dark for it, whether it moves the whole standard
-or only the vertical total. Re-applying a timing that has not changed costs
+**A mode change**, for comparison, blocks the kernel's own call for **182 to
+229 ms** and leaves the television showing nothing for about **400 ms**,
+whether it moves the whole standard or only the vertical total. Re-applying a timing that has not changed costs
 4 to 16 ms, which says the cost is the modeset itself. That is what
 the variable refresh rate avoids.
 

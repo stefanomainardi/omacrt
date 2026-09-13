@@ -121,8 +121,9 @@ gives 60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**, and 50
 is held at 55 because that is where this set stops following. The instrument
 is a median over a five second window, and the numbers are reported to the
 precision it has. And no mode change, where a mode change costs
-**182 to 229 ms** with the screen dark, whether it moves the whole standard or
-only the vertical total.
+**182 to 229 ms** inside the kernel's own call, and about **400 ms** of a black
+screen on the television, whether it moves the whole standard or only the
+vertical total.
 
 Everybody else changes the mode. That is not a criticism: before this, nobody
 had established that a consumer television would follow a stretched blanking
