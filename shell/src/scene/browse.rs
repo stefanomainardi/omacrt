@@ -1640,7 +1640,14 @@ impl Scene {
                         _ => None,
                     };
                     if let Some(l) = system.lines.or(pinned) {
-                        h = l;
+                        // Never taller than the frame the tube is being
+                        // given. A core is free to report any height it
+                        // likes, and a GameCube reports 528; the mode is
+                        // capped at the standard's own frame, so a window
+                        // built from the raw number lays the picture out for
+                        // a screen twice the size of the one it lands on and
+                        // the player sees the top half of it.
+                        h = l.min(h);
                     }
                 }
                 keys.push_str(&format!(

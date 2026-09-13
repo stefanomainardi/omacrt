@@ -339,9 +339,16 @@ impl Modeline {
         let active = self.v[0];
         let vsync = self.v[2] - self.v[1];
         let front = self.v[1] - self.v[0];
-        // Never eat into the blanking: a frame with no front or back porch
-        // left is one the television cannot lock onto.
-        let lines = lines.clamp(180, self.v[3] - vsync - 8);
+        // The standard's own frame is the ceiling, and this is the one place
+        // that decides it. A request for more lines than the frame holds
+        // cannot be honoured: the lines would have to come out of the
+        // blanking, and a frame with no porch left is one the television
+        // cannot lock onto. It used to be allowed down to eight lines of
+        // blanking, which turned a Dreamcast asking for 480 into a 251 line
+        // mode with eleven lines of blanking, a picture that overflowed the
+        // screen. Capping here rather than at each call site is deliberate:
+        // there are four of them and only one had a cap of its own.
+        let lines = lines.clamp(180, active);
         let extra = active as i64 - lines as i64;
         let front = (front as i64 + extra / 2).max(1) as u32;
         let mut m = self.clone();
@@ -855,5 +862,62 @@ mod guard {
             .fault(TV)
             .expect("a fault");
         assert!(why.contains("fields a second"), "{why}");
+    }
+
+    /// A console that draws more lines than the standard's frame holds gets
+    /// the frame. This is the case that put a 251 line mode on a television:
+    /// a Dreamcast asks for 480, a GameCube's core reports 528, and both used
+    /// to come out as a frame with eleven lines of blanking left in it.
+    #[test]
+    fn a_request_larger_than_the_frame_gets_the_frame() {
+        let ntsc = ml("72 3520 3695 4033 4577 240 242 245 262");
+        for asked in [480, 528, 576, 1000] {
+            let got = ntsc.with_lines(asked);
+            assert_eq!(got.height(), 240, "asked for {asked}");
+            // And the blanking is the standard's own, untouched.
+            assert_eq!(got.v, ntsc.v, "asked for {asked}");
+        }
+        let pal = ml("72 3840 3948 4290 4608 288 291 294 312");
+        assert_eq!(pal.with_lines(576).height(), 288);
+    }
+
+    /// Fewer lines than the frame is what the feature is for, and that still
+    /// works: the picture is centred and the blanking grows around it.
+    #[test]
+    fn a_request_smaller_than_the_frame_is_centred() {
+        let ntsc = ml("72 3520 3695 4033 4577 240 242 245 262");
+        let got = ntsc.with_lines(224);
+        assert_eq!(got.height(), 224);
+        assert_eq!(got.v[3], 262, "the frame is unchanged");
+        assert!(got.fault(TV).is_none(), "still a timing a set can lock to");
+        // Eight lines of the difference went above the picture.
+        assert_eq!(got.v[1] - got.v[0], (242 - 240) + (240 - 224) / 2);
+    }
+
+    /// Every line count the built-in catalogue asks for lands on a timing a
+    /// television can lock to, on both standards. The 480 line consoles are
+    /// the ones this is really asking about.
+    #[test]
+    fn every_built_in_line_count_is_a_timing_a_set_can_lock_to() {
+        let frames = [
+            ml("72 3520 3695 4033 4577 240 242 245 262"),
+            ml("72 3840 3948 4290 4608 288 291 294 312"),
+        ];
+        for frame in frames {
+            for asked in [224, 240, 288, 480, 528, 576] {
+                let got = frame.with_lines(asked);
+                assert!(
+                    got.fault(TV).is_none(),
+                    "{asked} lines on a {} line frame: {:?}",
+                    frame.height(),
+                    got.fault(TV)
+                );
+                assert!(
+                    got.height() <= frame.height(),
+                    "{asked} lines came out as {}",
+                    got.height()
+                );
+            }
+        }
     }
 }
