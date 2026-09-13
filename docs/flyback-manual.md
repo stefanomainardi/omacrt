@@ -78,7 +78,7 @@ failure for a pipe that can reach a modeline.
 if it is wrong. Widening it is deliberate and for a display that can take it:
 a multisync monitor, an arcade chassis rated for 25 or 31 kHz.
 
-## Switches, for measuring
+## Switches, for measuring and not for daily use
 
 Environment variables on the display process. Each one turns off a decision
 described in
