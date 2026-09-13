@@ -136,9 +136,14 @@ and Batocera take the whole machine; this takes one connector.
 Owning the scanout is also what lets it answer a question nobody else here
 can. Flyback times every frame from the client's own commit to the kernel's
 vblank timestamp. On a set with no panel and no scaler between the connector
-and the phosphor, that second moment is very nearly the picture on the
-glass. Measured on a BeoCenter 1 through an RGB-Pi 2, with the launcher
-mapped underneath, the way the television actually runs:
+and the phosphor, that second moment is very nearly the picture on the glass.
+The reasoning there is from the hardware rather than from an instrument: there
+is no photodiode in this project, and no number in it is click to photon. What each
+instrument sees is in
+[`docs/flyback.md`](docs/flyback.md#what-kind-of-measurement-each-of-these-is).
+
+Measured on a BeoCenter 1 through an RGB-Pi 2, with the launcher mapped
+underneath, the way the television actually runs:
 
 | | |
 | --- | --- |

@@ -155,7 +155,7 @@ it, so the tube says out loud how long its own picture takes to arrive.
   <img src="screens/diagnostics.png" width="560" alt="The launcher's diagnostics screen on the tube, showing a latency row of 2.0 ms and 0.12 frames and a scanout row of 60.04 Hz">
 </p>
 
-That screen is photographed from the compositor's own framebuffer, which is
+That screen is photographed from the compositor's own framebuffer at
 3520x240: the horizontal is averaged down and the vertical left alone, so the
 scan lines in the picture are the scan lines the television draws.
 
@@ -203,8 +203,10 @@ If any of these is false, most of the above stops being true.
 
 1. **The display chain is analogue and has no buffer.** No panel, no scaler,
    no frame store, so the photon leaves when the signal arrives. That is what
-   makes a commit-to-vblank number nearly a press-to-photon number. The same
-   scheduling on an LCD would be measuring something else.
+   makes a commit-to-vblank number nearly a press-to-photon number, and it is
+   the assumption doing that work rather than an instrument: nothing here is
+   measured at the glass. The same scheduling on an LCD would be measuring
+   something else.
 2. **The horizontal rate is fixed and must stay fixed.** Every trick here
    moves the vertical timing only.
 3. **One output, one CRTC, one program that matters at a time.**
@@ -255,6 +257,39 @@ over a leased HDMI connector on Navi 32, and all re-taken on 2026-09-12 when
 every published claim in this project was checked again. Four did not
 survive; what changed and why is in
 [`audit-2026-09-12.md`](audit-2026-09-12.md).
+
+### What kind of measurement each of these is
+
+Three instruments answer three different questions here, and none of them is a
+photodiode, so no number in this project is a click-to-photon figure. Where a
+number stops, this section says where.
+
+**Kernel clocks**, for anything with a latency in it. A virtual pad is made
+with `uinput` and pressed, then read back through evdev with `EVIOCSCLOCKID`
+set to `CLOCK_MONOTONIC`, so the press carries the timestamp a game would read
+from a real one. The other end is the timestamp DRM puts on the page flip
+event, on that same clock. Outside both ends sit two things: a physical pad's
+own polling in front, one to eight milliseconds depending on the pad, and the
+signal to phosphor gap behind. The instrument measures its own overhead at
+0.01 ms.
+
+**A camera at 240 fps**, for what the kernel cannot see: how long the tube is
+actually dark across a mode change, and how much picture height a set loses as
+the frame lengthens. One frame of that film is 4.16 ms, and no number read off
+it is finer than that. The time base is calibrated from the film itself rather
+than taken from the phone's metadata.
+
+**The compositor's own counters**, for what a running television says about
+itself: the median of the last three hundred frames in `omacrt status`, and
+the count of fields that left the set's sync window. They see every frame,
+which neither of the other two can, and they see nothing at all about what
+reaches the glass.
+
+**Why the start of scanout is treated as nearly the picture.** Nothing in this
+chain holds a finished frame: no panel, no scaler, no frame store, so the beam
+paints as the signal arrives. The reasoning is from what the hardware is
+rather than from an instrument, and it is the one step in this document a
+photodiode would settle.
 
 **Commit to the start of scanout**, for a client that draws on the frame
 callback the way a program paces itself:
