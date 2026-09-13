@@ -22,8 +22,9 @@ derived from anything else.
 
 On the set above it was measured from film: the picture keeps its height at 55
 Hz and is 15% shorter at 54, and it stays 15% shorter all the way down to 50
-instead of shrinking further. A regulation drops out, and an amplitude does
-not follow a period, so the configuration holds at 55 with no margin below it. Six seconds back at 60 Hz and the picture was still 3.7%
+instead of shrinking further. The shape says a regulation dropping out and not
+an amplitude following a period, so the configuration holds at 55 with no
+margin below it. Six seconds back at 60 Hz and the picture was still 3.7%
 short and climbing, so the recovery is slow as well.
 
 You do not need a camera to report it. Run `omacrt rate 58`, then 56, 55, 54,

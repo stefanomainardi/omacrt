@@ -285,7 +285,7 @@ film itself, five changes measured 387, 404, 566, 391 and 400 ms of a black
 screen. The tube adds roughly 120 ms of its own after the converter has
 reacquired, and one of the five was 40% worse than the rest, so it is not
 constant either. The number to quote for the cost of a mode change on this
-chain is 400 ms: that smaller figure is the kernel's share
+chain is 400 ms and not 182 to 229: that smaller figure is the kernel's share
 of it, measured correctly and then described as though it were the whole.
 
 This document said for a week that the television was dark for all of the 182
@@ -304,8 +304,8 @@ declared and never assigned. See [`audit-2026-09-12.md`](audit-2026-09-12.md).
 the RGB-Pi 2 keeps its lock at every step. A stretched vertical blanking
 reaches the set intact. What the tube itself does about picture height across
 that range is a question for a camera, not for software: the one report of
-adaptive sync on a CRT, on multisync PC monitors,
-says some sets change vertical size in proportion to the blanking interval.
+adaptive sync on a CRT, on multisync PC monitors and not on televisions, says
+some sets change vertical size in proportion to the blanking interval.
 
 **And so does the driver, with two things set.** The pieces:
 
