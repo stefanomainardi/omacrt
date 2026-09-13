@@ -63,11 +63,11 @@ snes9x_superscope_crosshair = "0"
 
 ## Built-in defaults
 
-Run-ahead and rewind follow the RGB-Pi frontend's whitelists: on for 8 and
-16 bit consoles and handhelds, off for arcade, PlayStation, Nintendo 64 and
+Run-ahead and rewind follow the RGB-Pi frontend's whitelists: on for 8 and 16
+bit consoles and handhelds, off for arcade, PlayStation, Nintendo 64 and
 Dreamcast. Video is `super` everywhere except the Super Nintendo (`512x224`,
 absorbs the hi-res modes without switching) and the Dreamcast (`native`,
-because 480 line content should be interlaced, not scaled).
+because 480 line content wants interlacing).
 
 | System                  | Core              | Notable options                                                                 |
 | ----------------------- | ----------------- | ------------------------------------------------------------------------------- |
@@ -91,7 +91,7 @@ off, native resolution.
 ### GameCube, and why it carries no options
 
 The Dolphin core takes a graphics option only in the exact value string it
-expects, and a wrong one leaves it drawing a screen of magenta rather than
+expects, and a wrong one leaves it drawing a screen of magenta instead of
 refusing the setting. With no options at all the core uses its own defaults and
 the games run. What decides the picture is the line count the television is set
 to, which comes from `default_lines`, not from the core.
@@ -99,7 +99,7 @@ to, which comes from `default_lines`, not from the core.
 The files Dolphin needs and does not ship, its `Sys` folder, are fetched once
 from the libretro buildbot on the first launch.
 
-### ScummVM, which is a folder rather than a file
+### ScummVM, where a game is a folder
 
 The core wants a `.scummvm` launcher file holding a game id, beside the game's
 own data. The scan works out what each folder holds from its data files and
@@ -137,7 +137,7 @@ a game list. Both are plain text files in the config directory, one
 
 The base `retroarch.cfg` enables automatic frame delay and leaves vsync on;
 run-ahead is per system. On the host side, USB polling at 1 kHz helps with
-some pads: add `usbhid.jspoll=1` to the kernel command line of the CRT boot
+some pads, so add `usbhid.jspoll=1` to the kernel command line of the CRT boot
 entry. Wired pads over the game controller API keep the shell itself under a
 frame of input lag.
 
@@ -152,7 +152,7 @@ inward:
 2. the words in the folder names above the file, tokenised, so `sega_dc`,
    `Sega - Dreamcast` and `DC games` all read as Dreamcast while `dcp` does
    not;
-3. the file itself: disc signatures in `.cue`/`.bin`/`.iso` images (PlayStation,
+3. the file itself, where disc signatures in `.cue`/`.bin`/`.iso` images (PlayStation,
    Saturn, Mega-CD, Dreamcast, PC Engine CD, Neo Geo CD, 3DO, CD-i), the file
    names inside a `.zip`, cartridge headers, arcade set names;
 4. what you told it before with `omacrt library assign FOLDER SYSTEM`.

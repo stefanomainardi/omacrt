@@ -37,7 +37,7 @@ already shutting down crashes it as well; the launcher never does that.
 A fullscreen client whose workspace is not shown on its monitor blocks on
 its next frame, and Hyprland reports it unresponsive. It happens when
 something focuses the launcher (its `crt` workspace) while the game runs on
-`crtgame`. `omacrt focus` focuses the running game rather than the
+`crtgame`. `omacrt focus` focuses the running game instead of the
 launcher, and the launcher does not re-assert its fullscreen while a game
 runs. Two launcher processes fighting over the tube produce the same
 symptom; `omacrt shell stop` waits for the launcher to exit and kills a
@@ -94,7 +94,7 @@ gives the connector back to the desktop.
 kernel has done its part and something in `~/.config/hypr` is claiming it. A
 connector Hyprland has an `hl.monitor` rule for is a monitor to Hyprland, and
 a monitor is never offered for leasing. The rule usually matches by
-description rather than by name:
+description and not by name:
 
 ```lua
 hl.monitor({ output = "desc:ATG MORTACA DEV00", disabled = true })
@@ -124,9 +124,9 @@ driver silently disables keyboard input under Wayland, so the launcher forces
 
 ## RetroArch crashes are logged to the desktop
 
-Every core dump makes Omarchy pop a "Process crashed: retroarch" toast.
-The two causes above, the realtime limit and the run-ahead secondary instance,
-are handled; what remains is an intermittent SIGSEGV inside RetroArch or a
+Every core dump makes Omarchy pop a "Process crashed: retroarch" toast. The
+two causes above, the realtime limit and the run-ahead secondary instance, are
+handled; what remains is an intermittent SIGSEGV inside RetroArch or a
 libretro core, unrelated to omacrt (it happens from a plain terminal too). A
 core dump cannot be suppressed per process here: `RLIMIT_CORE = 0` is ignored
 when `kernel.core_pattern` pipes to systemd-coredump, and `PR_SET_DUMPABLE(0)`
@@ -172,9 +172,9 @@ that long is a bug in the log, not something to restart for ever.
 Every durable file is written through a temporary file and a rename, and the
 copy being replaced is kept next to it as `.bak`. A file that cannot be read
 falls back to that backup, so a truncated `settings.toml` costs the last
-change rather than every setting.
+change instead of every setting.
 
-A file written by a newer build than the one running is not overwritten: it is
+A file written by a newer build than the one running is not overwritten. It is
 copied aside as `settings.toml.v<N>` first, and a line about it goes to the
 launcher's log. Going back to the newer build and moving that copy over the
 current file restores what it held.

@@ -60,7 +60,7 @@ The device node is usually `root:i2c`, so join the `i2c` group.
 
 ## Hyprland modelines that work
 
-Hyprland 0.56 has two quirks worth knowing before writing a modeline:
+Hyprland 0.56 has two quirks that decide how a modeline is written:
 
 - the modeline clock is truncated to whole MHz (`48.328` becomes `48`), so
   choose integer clocks and adapt `htotal` to hit 15.6 to 15.75 kHz;

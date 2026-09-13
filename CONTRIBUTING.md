@@ -1,9 +1,8 @@
 # Contributing
 
 This is one person's television, given away because it turned out well. It is
-not a product, there is no roadmap anybody is owed, and it is worked on when
-it is fun to work on. That is the deal, and it is worth knowing before you
-spend an evening on a change.
+not a product, there is no roadmap anybody is owed, and it gets worked on when
+it is fun to work on. Read that before you spend an evening on a change.
 
 None of which means the door is shut. The parts of this that other people can
 improve are real, and a good change is welcome.
@@ -62,8 +61,7 @@ Nothing exotic, but they are held to:
 - **Conventional Commits**, and a body that says what was wrong and why the
   change is right. The history of this repository is its design document, so a
   commit that says "fix stuff" costs a future reader an hour.
-- **Plain prose** in commits, comments and documentation. A comment explains
-  why the code is the way it is, not what the next line does. No em dashes.
+- **Plain prose** in commits, comments and documentation. A comment explains why the code is the way it is. The next line speaks for itself. No em dashes.
 - **Code you can explain.** Use whatever tools you like, including an
   assistant, but the change is yours: it has to run on your television and you
   have to be able to say why every line of it is there. A patch its author
@@ -80,12 +78,11 @@ to get this wrong.
 - **A bug** is an issue, with the template filled in: the hardware, the
   television, and the output of `omacrt doctor`. That command exists to
   make a bug report answerable, so please run it.
-- **An idea** is a discussion, not an issue. It costs nothing to float and it
+- **An idea** belongs in a discussion. It costs nothing to float and it
   will not sit in a list making the project look neglected.
 - **A question** is a discussion too. There is no support queue here, and
   nobody is on call.
-- **What your television did** is an issue with its own template, and it is
-  the most useful thing anybody can send. Every number in this project was
+- **What your television did** is an issue with its own template, and the most useful thing anybody can send. Every number in this project was
   taken on one set in one room; what a different tube, a different converter
   or a different card does with the same timings is the part this cannot find
   out on its own. A set that refused to lock is as welcome as one that did.

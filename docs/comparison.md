@@ -9,8 +9,7 @@ compete at all.
 instrument is in this repository. Everybody else's numbers here are either
 quoted from their own documentation or absent, because we do not own their
 hardware and will not invent a figure for it. A table that scored their
-latency against ours from memory would be a marketing exercise, not a
-comparison.
+latency against ours from memory would be a marketing exercise.
 
 ---
 
@@ -44,13 +43,13 @@ also a desktop, with a television as one of its outputs.
 | **MiSTer** | an FPGA that reimplements the consoles themselves | a console |
 | **Flyback** | a Wayland compositor that takes one connector from the desktop and drives it | still your desktop |
 
-Flyback is the only row that is a component rather than a system. It has no
+Flyback is the only row that is a component. It has no
 frontend of its own, no game database, no installer and no community. It is
 one process that owns one output.
 
 ## How the 15 kHz mode gets set
 
-This is the technical fork in the road, and it is worth being precise about it
+This is the technical fork in the road, and the precision matters
 because it is where the design decisions come from.
 
 | | mechanism | needs a patched kernel |
@@ -60,22 +59,22 @@ because it is where the design decisions come from.
 | Lakka / RetroPie | fixed modelines and firmware timings, chosen per system | no |
 | Flyback | a leased DRM connector, modeline written straight to KMS from `crt.toml` | no |
 
-The reason Flyback leases rather than patching is that a desktop compositor
+The reason Flyback leases instead of patching is that a desktop compositor
 will not set a 15 kHz mode, will not stop managing an output's timing on
 request, and will not hand over the scanout. Those are three separate refusals
 with one supported answer: `wp_drm_lease_v1`, marked non-desktop in the EDID.
 The protocol was written for VR headsets and its own specification describes
-the general case — a compositor "will not use this output at all and will make
-it available for leasing" — but every user of it in the wild is a headset. No
-trace was found of a television being leased this way, which is not the same
-claim as being the first to do it.
+the general case (a compositor "will not use this output at all and will make
+it available for leasing"), but every user of it in the wild is a headset. No
+trace was found of a television being leased this way, which describes a
+search and not a claim of primacy.
 
 **Where Switchres is better than what we have.** Switchres computes a modeline
 per game from a monitor preset, for any resolution a driver asks for, across
 15, 25 and 31 kHz and dozens of documented arcade monitor types. Flyback ships
-five modelines in `crt.toml` and picks between them. That is a real gap, it is
+five modelines in `crt.toml` and picks between them. It is a real gap, and
 the accumulated work of years, and if this project ever needs per-game timings
-the sensible path is to use Switchres rather than to rewrite it.
+the sensible path is to use Switchres instead of rewriting it.
 
 ## What Flyback does that the others do not
 
@@ -99,12 +98,12 @@ shows it on the television.
 | kernel timestamp of a button press to start of scanout, 300 presses at random phase | best 1.46 ms, **median 10.19 ms** (0.61 frames), worst 18.21 ms |
 
 Measured on a BeoCenter 1 through an RGB-Pi 2 at 3520x240 @ 60.04 Hz, over a
-leased HDMI connector on Navi 32, with the launcher mapped underneath — which
+leased HDMI connector on Navi 32, with the launcher mapped underneath, which
 is how the television actually runs, because a program on it is never the only
 client. The method and the instrument are in
 [`flyback.md`](flyback.md#reproducing-them).
 
-For comparison, and quoted rather than measured by us: MiSTer's own
+For comparison, quoted from their own documentation: MiSTer's own
 documentation puts its scaler at four display lines in its fastest mode, about
 a third of a millisecond at 320x200, on top of a core that is the console's
 own timing. **A MiSTer is faster than this and always will be**, because there
@@ -114,7 +113,7 @@ for the software path, which nobody had published for Linux into a real CRT.
 **3. A variable refresh rate on a fixed-frequency television.** A set's
 horizontal rate must never move; its vertical rate can, because the vertical
 oscillator re-triggers on sync. So every refresh an emulation asks for is
-reachable by stretching the vertical blanking alone, which is exactly what
+reachable by stretching the vertical blanking alone, exactly what
 adaptive sync does in hardware. Asked for five rates in turn, this chain
 follows, asked for by name and measured as the median of the last 300 vblank
 intervals, with fifteen seconds of settling at each step: **60.041 asked
@@ -127,13 +126,13 @@ only the vertical total.
 
 Everybody else changes the mode. That is not a criticism: before this, nobody
 had established that a consumer television would follow a stretched blanking
-at all, or where it stops following. The measurement of where it stops —
-+9.2% of frame length holds, +20% loses 11.5% of the picture height — is in
-[`15khz.md`](15khz.md#a-variable-refresh-rate), and it is what
-`output.vrr_min_hz` is.
+at all, or where it stops following. The measurement of where it stops, with
++9.2% of frame length holding and +20% losing 11.5% of the picture height, is in
+[`15khz.md`](15khz.md#a-variable-refresh-rate), and it sets
+`output.vrr_min_hz`.
 
-The one prior report of adaptive sync on a CRT is on multisync PC monitors
-rather than televisions. Again: no trace found, not a claim of primacy.
+The one prior report of adaptive sync on a CRT is on multisync PC monitors,
+never on televisions. Again: no trace found, which describes a search.
 
 ## What Flyback does not do, that they do
 
@@ -153,7 +152,7 @@ An honest list, because the one above is short.
 - **No interlace.** Five gates in the kernel's display code refuse it on this
   connector, and this project decided not to require a patched kernel. A
   distribution that already patches its kernel for 15 kHz is not paying that
-  price, so the trade is ours and not theirs.
+  price, so the trade belongs to us.
 - **No beam racing.** Which deserves its own section.
 
 ## Beam racing, said plainly
@@ -162,7 +161,7 @@ Drawing the frame just ahead of the electron beam is the last real latency win
 available, and it exists: in GroovyMAME and in WinUAE, on Windows. On Linux it
 has never worked. RetroArch has had
 [a bounty standing for it since 2018](https://github.com/libretro/RetroArch/issues/6984),
-and what landed instead in 2025 is the opposite thing — a
+and what landed instead in 2025 is the opposite thing, a
 [shader that simulates a CRT's rolling scan](https://www.libretro.com/index.php/retroarch-first-program-to-support-blurbusters-crt-beam-racing-simulator-shader/)
 on a high-refresh LCD.
 

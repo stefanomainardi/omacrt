@@ -36,10 +36,10 @@ off while testing in a window. Pinned frames work everywhere.
 
 ## Lines, and the tube following the game
 
-The mode the television is in is decided by a line count, not by a mode name.
-Every system carries one (`lines` in `systems.toml`, with a built-in default
-per console: 240 for a NES, 224 for a Super Nintendo, 480 for a Dreamcast),
-and the launcher switches the tube to it before the game starts.
+A line count decides the mode the television is in. Every system carries one
+(`lines` in `systems.toml`, with a built-in default per console: 240 for a
+NES, 224 for a Super Nintendo, 480 for a Dreamcast), and the launcher switches
+the tube to it before the game starts.
 
 A line count above 288 does not fit a progressive 15 kHz frame, so it selects
 the interlaced mode of the same standard by itself: `--lines 480` on an NTSC
@@ -58,9 +58,9 @@ change to it:
 The tube follows those within a second. A PlayStation game whose menus go to
 480 lines gets an interlaced menu and a progressive game; a Saturn game moving
 between 224 and 240 lines gets both. What the console drew is what the
-television draws, which is the whole point of the exercise: 640x480 squeezed
-into 240 lines is how text becomes unreadable, and it is exactly what happens
-when the mode is left alone.
+television draws, the whole point of the exercise: 640x480 squeezed into 240
+lines is how text becomes unreadable, and it happens when the mode is left
+alone.
 
 ## Interlace
 
