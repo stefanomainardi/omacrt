@@ -36,8 +36,20 @@ pub fn open(path: &Path) -> std::io::Result<File> {
     OpenOptions::new().create(true).append(true).open(path)
 }
 
-/// Move `path` aside when it has passed `cap`, keeping one older generation.
-/// Returns true when a rotation happened.
+/// Copy `path` aside when it has passed `cap` and empty it, keeping one older
+/// generation. Returns true when a rotation happened.
+///
+/// Copied and then emptied in place rather than renamed, which is not a
+/// detail. A rename takes the name away from the inode and a process holding
+/// the file open keeps writing to the inode, so after a rotation the
+/// compositor went on filling the `.1` file while the one a person reads, and
+/// the one the self test reads, stayed empty until the tube was next
+/// restarted. It is the sort of defect that only shows up when somebody is
+/// already looking for something else.
+///
+/// Emptying in place is safe here because every log is opened with O_APPEND
+/// (see [`open`]), so the writer's next line lands at the new end of the file
+/// rather than at the offset it had reached, which would leave a hole.
 pub fn rotate_if_big(path: &Path, cap: u64) -> bool {
     let big = std::fs::metadata(path)
         .map(|m| m.len() > cap)
@@ -47,8 +59,14 @@ pub fn rotate_if_big(path: &Path, cap: u64) -> bool {
     }
     let mut old = path.as_os_str().to_os_string();
     old.push(".1");
-    let _ = std::fs::rename(path, Path::new(&old));
-    true
+    if std::fs::copy(path, Path::new(&old)).is_err() {
+        return false;
+    }
+    std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)
+        .is_ok()
 }
 
 /// What a log has to say about the run that wrote it.
@@ -162,11 +180,42 @@ mod tests {
         assert!(!rotate_if_big(&path, 1024), "a small log stays put");
         std::fs::write(&path, vec![b'x'; 2048]).unwrap();
         assert!(rotate_if_big(&path, 1024), "a big log is rotated");
-        assert!(!path.exists(), "the current log starts again");
-        assert!(
-            dir.join("display.log.1").is_file(),
-            "one generation is kept"
+        assert!(path.is_file(), "the current log is still the same file");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().len(),
+            0,
+            "and it starts again from nothing"
         );
+        assert_eq!(
+            std::fs::metadata(dir.join("display.log.1")).unwrap().len(),
+            2048,
+            "one generation is kept, whole"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The reason it copies instead of renaming: a process that had the log
+    /// open before the rotation has to still be writing into the file people
+    /// read afterwards.
+    #[test]
+    fn a_writer_that_was_already_open_keeps_writing_to_the_same_file() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("omacrt-log-open-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("display.log");
+        let mut held = open(&path).expect("a log to write to");
+        writeln!(held, "{}", "x".repeat(2048)).unwrap();
+
+        assert!(rotate_if_big(&path, 1024));
+        writeln!(held, "after the rotation").unwrap();
+        held.flush().unwrap();
+
+        let now = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            now.contains("after the rotation"),
+            "the line went somewhere else: {now:?}"
+        );
+        assert!(!now.contains("xxxx"), "and the old content is gone from it");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

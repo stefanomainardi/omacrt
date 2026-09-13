@@ -3676,6 +3676,56 @@ fn main() {
                         }
                     }
                 }
+                // An observer, where `watch` is a repair: it samples the
+                // converter's lock and says when it moved, and does nothing
+                // about it. Measuring what a mode change does to the signal
+                // needs one that will not reset the converter half way
+                // through the thing being measured.
+                "poll" => {
+                    let secs: f64 = pos
+                        .get(1)
+                        .and_then(|s| s.parse::<f64>().ok())
+                        .unwrap_or(10.0)
+                        .clamp(0.1, 600.0);
+                    let t0 = std::time::Instant::now();
+                    let mut last: Option<Lock> = None;
+                    let mut samples: u64 = 0;
+                    let mut failed: u64 = 0;
+                    println!("t_ms\tstate");
+                    while t0.elapsed().as_secs_f64() < secs {
+                        match dac.lock() {
+                            Ok(now) => {
+                                samples += 1;
+                                if last.as_ref() != Some(&now) {
+                                    println!(
+                                        "{:.1}\t{}",
+                                        t0.elapsed().as_secs_f64() * 1000.0,
+                                        now.label()
+                                    );
+                                    last = Some(now);
+                                }
+                            }
+                            // A read that fails is itself a state worth
+                            // seeing: the bus does not answer while the
+                            // display controller is reprogramming it.
+                            Err(_) => {
+                                failed += 1;
+                                if last.is_some() {
+                                    println!(
+                                        "{:.1}\tno answer on the bus",
+                                        t0.elapsed().as_secs_f64() * 1000.0
+                                    );
+                                    last = None;
+                                }
+                            }
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                    }
+                    println!(
+                        "# {samples} reads, {failed} with no answer, over {:.1} ms",
+                        t0.elapsed().as_secs_f64() * 1000.0
+                    );
+                }
                 "reset" => {
                     let mode = Csync::parse(&cfg.output.csync);
                     dac.reset(mode).unwrap_or_else(|e| die(&e.to_string()));
@@ -3710,18 +3760,21 @@ fn main() {
                 ("display", display::log_path()),
             ];
             if pos.first().map(|s| s.as_str()) == Some("--clear") || has(args, "--clear") {
-                // Moved aside rather than deleted: what was in it is the
+                // Copied aside rather than deleted: what was in it is the
                 // only account of what happened, and the row in the report
-                // goes quiet without throwing the evidence away.
+                // goes quiet without throwing the evidence away. The file
+                // itself is emptied and not renamed, so a compositor that
+                // already has it open goes on writing into the one that is
+                // read rather than into the copy.
                 for (what, path) in &logs {
                     if path.is_file() {
                         let ok = omacrt_shell::logfile::rotate_if_big(path, 0);
                         term::sheet::step(
                             what,
                             if ok {
-                                format!("moved aside as {}.1", path.display())
+                                format!("emptied, kept as {}.1", path.display())
                             } else {
-                                "could not be moved aside".into()
+                                "could not be emptied".into()
                             },
                         );
                     }

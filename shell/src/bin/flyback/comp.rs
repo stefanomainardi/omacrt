@@ -1578,9 +1578,14 @@ impl Crt {
         // `use_mode` below is a TEST_ONLY atomic commit plus the bookkeeping
         // that follows it: it asks the kernel whether the timing is
         // acceptable and costs a millisecond or two. The modeset itself
-        // happens on the next real commit, and the television is dark from
-        // here until the first vblank after that. `mode_at` is that second
+        // happens on the next real commit, and `mode_at` is that second
         // clock, read in the vblank handler.
+        //
+        // It used to say the television was dark from here until that vblank.
+        // Sampling the converter's lock every millisecond says otherwise: the
+        // signal survives the first 110 ms of a call that blocks for 200, and
+        // then the converter has nothing to lock to for 280 ms, a third of it
+        // after this call has already returned.
         //
         // It used to be declared and never set, so the line it feeds was
         // never printed and the figure that was published for the cost of a

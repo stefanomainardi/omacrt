@@ -16,6 +16,42 @@ use omacrt_shell::crt::Config;
 use omacrt_shell::crt::output::Modeline;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 
+/// Every line this binary writes carries the time it was written.
+///
+/// These shadow `std`'s own macros for the whole binary, which is why no call
+/// site had to be touched: `macro_rules!` is in scope from here to the end of
+/// the file, and the modules below are declared after it.
+///
+/// It exists because sixty thousand lines of this log had no time on them. A
+/// page flip that took 167 milliseconds could not be placed against anything:
+/// not the kernel's own log, not a game starting, not the moment somebody
+/// said the picture stuttered. A log that cannot be lined up beside another
+/// log is a diary rather than an instrument, and this one is read when
+/// something has already gone wrong.
+///
+/// The clock is the wall clock and not the monotonic one, because the thing
+/// this gets compared against is `journalctl`. The measurements inside the
+/// compositor stay on `CLOCK_MONOTONIC`, where they belong.
+macro_rules! stamped {
+    ($sink:expr, $($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(
+            $sink,
+            "{} {}",
+            chrono::Local::now().format("%H:%M:%S%.3f"),
+            format_args!($($arg)*)
+        );
+    }};
+}
+
+macro_rules! println {
+    ($($arg:tt)*) => { stamped!(std::io::stdout(), $($arg)*) };
+}
+
+macro_rules! eprintln {
+    ($($arg:tt)*) => { stamped!(std::io::stderr(), $($arg)*) };
+}
+
 mod comp;
 mod host;
 mod lease;

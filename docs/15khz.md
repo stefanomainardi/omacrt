@@ -246,7 +246,7 @@ touches nothing else.
 
 Today a change of refresh costs a mode change. Measured through the leased
 connector on Navi 32, from the moment the modeline is asked for to the first
-vblank after it, with the television dark for all of it:
+vblank after it:
 
 | what moved | first vblank after the request |
 | --- | --- |
@@ -258,6 +258,29 @@ So **182 to 229 ms**, and it does not matter how little of the timing moves.
 The first row is what says the cost is the modeset itself: re-applying a
 timing that has not changed costs a hundredth of that, because nothing is
 reprogrammed. Adaptive sync would cost nothing at all.
+
+**All of it is inside the kernel's own call.** The compositor's test commit,
+which asks whether the timing is acceptable, costs 0.2 to 0.3 ms; the first
+vblank arrives 0.6 to 0.8 ms after `drmModeAtomicCommit` returns. The 182 to
+229 ms is spent inside that call and nowhere else: not in this project's
+scheduling, not waiting for a frame, not in the link coming up afterwards.
+Whatever is to be won here is to be won in amdgpu.
+
+**And that figure is not what the signal costs, which is worse.** Sampling the
+converter's lock register every millisecond across a mode change, the
+converter keeps lock for the first 110 ms of a call that blocks for 200, so
+the output is undisturbed for more than half of it. It then has nothing to
+lock to for **280 ms**, and a third of that is *after* the driver has
+returned: scanout is running again and the RGB-Pi 2 still needs 170 to 200 ms
+to acquire it. That last part is a property of the converter rather than of
+the driver, so another converter moves the total.
+
+This document said for a week that the television was dark for all of the 182
+to 229 ms. Neither half of that was measured: not the darkness, and not that
+it lasted exactly as long as the call. The numbers and the method are in
+[`data/modeset-lock-2026-09-13.txt`](data/modeset-lock-2026-09-13.txt). What
+is still not measured is the television itself, because a converter without
+lock is not the same as a dark screen, and that needs a camera at the glass.
 
 This project published 166 to 190 ms before, from a measurement that could
 not be reproduced from any log, because the clock meant to take it was

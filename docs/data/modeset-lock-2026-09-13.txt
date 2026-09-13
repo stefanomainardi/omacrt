@@ -1,0 +1,50 @@
+# What a mode change does to the signal, seen at the converter.
+#
+# Measured 2026-09-13 on the BeoCenter 1 chain: RX 7700/7800 XT, amdgpu,
+# RGB-Pi 2 over HDMI. `omacrt dac poll` samples the converter's lock register
+# over i2c every millisecond and reports only the transitions; it does not
+# reset the converter, which `omacrt dac watch` would, and which would have
+# repaired the thing being measured half way through it.
+#
+# The compositor's own timestamps come from its log, which carries the wall
+# clock on every line. The two are lined up on that clock.
+#
+# 4224 reads over 8000 ms, none refused by the bus: the i2c side answers
+# throughout, including while the display controller is being reprogrammed.
+#
+#   NTSC to PAL, requested at 10:47:30.866
+#     +118 ms   the converter loses lock
+#     +222 ms   first vblank: drmModeAtomicCommit returns
+#     +400 ms   the converter has lock again
+#     no lock for 282 ms
+#
+#   PAL to NTSC, requested at 10:47:33.893
+#     +109 ms   the converter loses lock
+#     +182 ms   first vblank: drmModeAtomicCommit returns
+#     +388 ms   the converter has lock again
+#     no lock for 279 ms
+#
+# Three things follow.
+#
+# The signal is still good for the first 110 ms of a call that blocks for 200.
+# Whatever amdgpu spends that time on, it is not yet disturbing the output.
+#
+# The cost is larger than the 182 to 229 ms this project published, not
+# smaller. That figure is how long the kernel's commit blocks. The converter
+# has nothing to lock to for 280 ms.
+#
+# A third of that is after the driver has returned: scanout is running again
+# and the converter still needs 170 to 200 ms to acquire it. That is a
+# property of the RGB-Pi 2 rather than of the driver or of this project, so a
+# different converter moves the total.
+#
+# What this does not measure is the television. A converter with no lock is
+# not the same as a dark screen, and what the tube does across those 280 ms
+# needs a camera pointed at the glass.
+
+# t_ms    state            (t0 = 10:47:28.865)
+0.8       locked
+2119.2    lost
+2401.3    locked
+5137.2    lost
+5416.3    locked
