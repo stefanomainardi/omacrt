@@ -607,16 +607,21 @@ fn run(args: &Args) -> Result<(), String> {
                             // either, and that case is now not asked for at
                             // all.
                             let have = canvas.output_size().map(|(_, h)| h).unwrap_or(0);
-                            if h == have {
+                            // What the tube can be given, not what the core
+                            // said: the frame is the ceiling, so a core
+                            // reporting 528 is asking for the frame it
+                            // already has.
+                            let want = if have > 0 { h.min(have) } else { h };
+                            if want == have {
                                 eprintln!(
-                                    "the core is drawing {h} lines, which is what the tube has"
+                                    "the core is drawing {h} lines, which is the frame the tube has"
                                 );
                             } else {
                                 eprintln!(
-                                    "the core is drawing {h} lines, asking the tube for them"
+                                    "the core is drawing {h} lines, asking the tube for {want}"
                                 );
                                 crt_mode_async(Some(Geometry {
-                                    lines: Some(h),
+                                    lines: Some(want),
                                     shift_x: 0,
                                     shift_y: 0,
                                     follow: true,
