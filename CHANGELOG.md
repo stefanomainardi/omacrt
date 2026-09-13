@@ -9,6 +9,17 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- **A frame is timed on the driver's clock now, not on the compositor's own
+  wakeup.** The gap between two vblanks was measured when the handler ran,
+  which is a different quantity and varies with scheduling. The two are the
+  same size, so a frame that was genuinely longer and a wakeup that was late
+  read identically. With the right clock a fixed refresh rate reports not one
+  frame in 3601 more than twenty microseconds from the median, and a variable
+  one reports one frame in four hundred stretched by up to eleven per cent,
+  which is what somebody watching has been calling a shimmer. The figures the
+  status row prints for frame length were measuring the wrong thing and now
+  are not.
+
 - **The test card passes the same guard as the compositor.** `flyback probe`
   leases the connector, reads the modeline out of `crt.toml` and programs it
   with a test card on it, and it did that without the check that refuses a
