@@ -433,7 +433,11 @@ draws on the frame callback the way a program paces itself:
 | 4 ms | 9.79 ms | **6.54 ms** |
 
 Measured with the launcher mapped underneath, and that is how the television
-actually runs, since a program is never the only client on it.
+actually runs, since a program is never the only client on it. Both ends are
+kernel clocks, the client's own commit and the timestamp DRM puts on the page
+flip, and neither of them is at the glass. What each instrument in this
+project sees, and where each number stops, is set out in
+[`flyback.md`](flyback.md#what-kind-of-measurement-each-of-these-is).
 
 The launcher itself, end to end through `omacrt on`, reports **2.0 ms** in
 `omacrt status`, and 4.5 ms with every core on the machine busy.

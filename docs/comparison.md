@@ -100,7 +100,10 @@ shows it on the television.
 Measured on a BeoCenter 1 through an RGB-Pi 2 at 3520x240 @ 60.04 Hz, over a
 leased HDMI connector on Navi 32, with the launcher mapped underneath, which
 is how the television actually runs, because a program on it is never the only
-client. The method and the instrument are in
+client. Every end of every one of these is a kernel timestamp, never a
+photodiode: what each instrument sees is in
+[`flyback.md`](flyback.md#what-kind-of-measurement-each-of-these-is), and the
+commands that reproduce them are in
 [`flyback.md`](flyback.md#reproducing-them).
 
 For comparison, quoted from their own documentation: MiSTer's own

@@ -195,11 +195,16 @@ It is the median time from the commit that drew a frame to the vblank that
 started scanning it out, measured on the tube that is running instead of
 quoted from anywhere. Both ends are real: the commit is the client's own, the
 vblank timestamp is the kernel's, and only the compositor sees both, so no
-other tool on the machine reports this. On a set with no panel and no scaler
-between the connector and the phosphor, the start of scanout is very nearly
-the picture on the glass. What it leaves out is everything in front of the
-commit: the pad's own polling, and whatever the program does with the input
-before it draws.
+other tool on the machine reports this. What it leaves out is everything in
+front of the commit: the pad's own polling, and whatever the program does with
+the input before it draws.
+
+On a set with no panel and no scaler between the connector and the phosphor,
+the start of scanout is very nearly the picture on the glass. That is an
+argument from what the hardware is and not a measurement: no photodiode is
+involved anywhere in this project, so nothing here is a click-to-photon
+number. What each instrument does and does not see is set out in
+[`flyback.md`](flyback.md#what-kind-of-measurement-each-of-these-is).
 
 Two knobs move it, both in the display process's environment, and both are
 set so that the tube is as quick as it has been measured to be safely:
@@ -219,7 +224,8 @@ frame: **best 1.46 ms, median 10.19 ms (0.61 frames), 95th 17.52 ms, worst
 next vblank, whoever is compositing - so the compositor's own contribution is
 the 1.9 ms above it. The instrument measures its own overhead at 0.01 ms.
 This is a virtual pad; a real one adds its own polling in front, one to eight
-milliseconds by its rate, which belongs to the pad.
+milliseconds by its rate, which belongs to the pad. Both ends are kernel
+clocks and neither is at the glass.
 
 ## The refresh a program wants
 

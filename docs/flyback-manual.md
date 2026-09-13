@@ -113,7 +113,10 @@ Latency:    2.0 ms  0.12 frames  at 60.04 Hz  over the last 300
 
 The first line is the median from a client's commit to the start of its
 scanout, and the rate the tube is actually being given, which under a
-variable refresh rate is not the mode's own.
+variable refresh rate is not the mode's own. Both ends are kernel clocks and
+neither is at the glass: see
+[`flyback.md`](flyback.md#what-kind-of-measurement-each-of-these-is) for what
+this row does and does not see.
 
 The second is the tail of the same two things: a frame that arrives late once
 every few seconds is three samples in three hundred and does not move a median
