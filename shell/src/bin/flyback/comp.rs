@@ -201,6 +201,9 @@ pub struct Crt {
     /// be reported: that interval is the refresh rate the television is
     /// actually being given, whatever the mode says.
     last_vblank: Option<Instant>,
+    /// The driver's own timestamp for the previous vblank, which is when the
+    /// hardware flipped rather than when this process woke up.
+    last_vblank_hw: Option<Duration>,
     /// Whether this frame's frame callbacks are already on their way.
     callback_armed: bool,
     /// When the clients were last told they may draw, until the first of
@@ -848,6 +851,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         conn_handle,
         mode_at: None,
         last_vblank: None,
+        last_vblank_hw: None,
         callback_armed: false,
         told_at: None,
         modeline: Some(ml.clone()),
@@ -2182,10 +2186,35 @@ impl Crt {
         // actually being given, whatever the mode says it is. With a
         // stretched vertical blanking they stop being equal, and that is the
         // only way to see from here that it worked.
-        if let Some(t) = self.last_vblank.replace(Instant::now()) {
-            let interval = t.elapsed();
+        // Measured on the driver's own stamp, which is when the hardware
+        // flipped. `Instant::now()` here is when this process woke up, and
+        // the two differ by however late the wakeup was.
+        //
+        // This mattered more than it looks. Reading the second and calling it
+        // the first made a variable refresh rate and a fixed one produce the
+        // same figure, because at a fixed rate the hardware's frame length
+        // cannot vary at all and every bit of the spread was our own wakeup,
+        // while under a variable rate the frame really does end when the flip
+        // lands. The two are the same size here, so the instrument could not
+        // tell a frame that was longer from a wakeup that was late.
+        let woke = self
+            .last_vblank
+            .replace(Instant::now())
+            .map(|t| t.elapsed());
+        let hw = when.and_then(|now| {
+            let prev = self.last_vblank_hw.replace(now);
+            prev.filter(|p| now > *p).map(|p| now - p)
+        });
+        if let Some(interval) = hw.or(woke) {
             if self.trace {
-                eprintln!("trace: vblank interval {} us", interval.as_micros());
+                match (hw, woke) {
+                    (Some(h), Some(w)) => eprintln!(
+                        "trace: vblank interval {} us on the driver's clock, {} us on ours",
+                        h.as_micros(),
+                        w.as_micros()
+                    ),
+                    _ => eprintln!("trace: vblank interval {} us", interval.as_micros()),
+                }
             }
             // A vblank event only arrives for a flip, so this is the time
             // between two flips and not the length of a frame. They are the

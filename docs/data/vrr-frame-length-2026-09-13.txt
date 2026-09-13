@@ -1,0 +1,102 @@
+# What a variable refresh rate does to the length of a frame, with nothing
+# asking for a rate other than the mode's own.
+#
+# The owner of this television reported, for two days, that the picture
+# "shimmers every so often" and once that "it looked like the format changed".
+# Turning the variable refresh rate off stopped it; turning it back on brought
+# it back. Twice each, by eye. This is the attempt to find out why, and to
+# find out whether the fix is as simple as leaving it off.
+#
+# Measured 2026-09-13 on the BeoCenter 1 chain, the launcher idle on the tube
+# at 60.041 Hz, nothing asking for another rate.
+#
+# ---------------------------------------------------------------------------
+# 1. The instrument was measuring the wrong thing.
+#
+# The compositor timed the gap between vblanks with its own clock, at the
+# moment its handler ran. That is when the process woke up, not when the
+# hardware flipped. The driver's own timestamp was already in hand and was
+# being passed to clients, and not used for this.
+#
+# It matters because the two quantities are the same size. At a fixed rate the
+# hardware's frame length cannot vary at all, so every microsecond of the
+# spread was the wakeup; under a variable rate the frame really does end when
+# the flip lands. Reading the wakeup and calling it the frame made the two
+# states produce the same figure and hid the whole effect.
+#
+# ---------------------------------------------------------------------------
+# 2. With the right clock, the two states are not alike at all.
+#
+# Three alternating windows of twenty seconds each, 1200 frames apiece,
+# nothing else changed between them.
+#
+#   state   interquartile   frames more than 20 us   longest continuous
+#                  range      above the median             frame
+#   off              1 us            0.0%                16661 us
+#   off              1 us            0.0%                16656 us
+#   off              1 us            0.0%                16660 us
+#   on               1 us            0.3%                17100 us
+#   on               1 us            0.2%                18500 us
+#   on               1 us            0.2%                16719 us
+#
+# With the rate fixed the hardware is a metronome: not one frame in 3601
+# departed from the median by as much as 20 microseconds. With it variable the
+# bulk is just as steady, and then one frame in four hundred is stretched, by
+# up to 11%.
+#
+# That is the shimmer. A frame 11% longer gives a television's vertical
+# deflection 11% more time, and the picture jumps.
+#
+# ---------------------------------------------------------------------------
+# 3. Turning it off is not free, which is the part that makes this a choice.
+#
+# Three alternating windows, the same client, commit to the start of scanout:
+#
+#   state   median      95th     worst
+#   off     5.16 ms   5.36 ms   5.75 ms
+#   on      2.01 ms   2.04 ms   2.42 ms
+#   off     5.18 ms   5.75 ms   6.94 ms
+#   on      2.02 ms   2.05 ms   2.46 ms
+#   off     5.16 ms   5.36 ms   5.62 ms
+#   on      2.02 ms   2.04 ms   2.20 ms
+#
+# Leaving it off costs 3.1 ms, two and a half times the latency. The benefit
+# and the cost are the same mechanism seen from two sides: the frame ends when
+# the flip lands, which is what lets the compositor draw at the last moment,
+# and also what stretches the frame when the flip is late.
+#
+# ---------------------------------------------------------------------------
+# 4. Where the late flips come from.
+#
+# Every stretched frame carries the same signature: the time from the client's
+# commit to the flip being queued, normally 63 us at the median, is one to
+# three milliseconds on those frames. The client's own drawing cost does not
+# move. It is the compositor that is late, not the program.
+#
+# They arrive in bursts, and the bursts line up with the desktop being used.
+# This television is on the same graphics card as one of the desktop's own
+# outputs. With the desktop idle the rate falls to 6 frames in 3602, 0.17%,
+# and over the following minutes to none at all; with somebody working on the
+# machine it was nine in half a second.
+#
+# ---------------------------------------------------------------------------
+# 5. What was considered and rejected.
+#
+# Leaving the variable rate off by default: rejected, it costs 3.1 ms and the
+# shimmer is rare and depends on what else the machine is doing.
+#
+# Deferring a late flip to the next frame boundary instead of stretching:
+# rejected on the mechanism. Under a variable rate the frame does not end
+# until the flip is queued, so deferring makes the same frame longer still.
+# Queueing immediately already stretches it by exactly the lateness and no
+# more, which is the least bad thing available.
+#
+# Narrowing the FreeSync range in the EDID to cap how far a frame can stretch:
+# rejected, it does not bind. The declared range allows 328 lines, 25% long,
+# and the worst frame observed was 11%. The excursions are bounded by the
+# compositor's own lateness, not by the declared maximum.
+#
+# Toggling it per program: possible, and cheaper than it looks. Turning the
+# variable rate on and off does not cost a modeset on this chain despite the
+# driver reporting RequiresModeset for the property: the frames either side of
+# every toggle measured 16655 and 16656 us, with no gap at all.
