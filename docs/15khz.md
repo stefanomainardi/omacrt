@@ -1,9 +1,9 @@
 # Driving a 15 kHz television from a modern PC
 
 This is the research the project rests on: what a television with a SCART
-socket wants on its pins, why a modern graphics card cannot give it that on its
-own, and how a DAC, a leased connector and a wide modeline answer each of those
-in turn. It is worth reading before buying anything.
+socket wants on its pins, and why a modern graphics card cannot give it that on
+its own. A DAC, a leased connector and a wide modeline answer those in turn. It
+is worth reading before buying anything.
 
 ## What a 15 kHz television actually wants
 
@@ -18,15 +18,16 @@ expects, on those pins:
 | 8 | AV switching | 9.5 to 12 V, convenient, not required |
 
 Two of those are the ones people get wrong. A PC's VGA output has separate
-horizontal and vertical sync at TTL level, five volts: fed straight to pin 20
-it is out of specification by a factor of five, and the two signals have to be
-combined into one anyway. And without a volt or two on pin 16 the television
+horizontal and vertical sync at TTL level, five volts. Fed straight to pin 20
+that is out of specification by a factor of five, and the two signals have to
+be combined into one anyway. And without a volt or two on pin 16 the television
 never switches its decoder off, so a perfect RGB signal arrives and is shown
 as monochrome composite.
 
-The line rate is the other half. 15.734 kHz for NTSC, 15.625 kHz for PAL, a horizontal frequency roughly half of what the oldest VGA monitor
-will lock onto. It is not a resolution, it is a scan rate: a television draws
-262 or 312 lines per field and it cannot draw more.
+The line rate is the other half. 15.734 kHz for NTSC, 15.625 kHz for PAL, a
+horizontal frequency roughly half of what the oldest VGA monitor will lock
+onto. It is not a resolution, it is a scan rate: a television draws 262 or 312
+lines per field and it cannot draw more.
 
 ## Why a modern GPU cannot do this on its own
 
@@ -52,7 +53,7 @@ patches, and an emulator on KMS instead of on a desktop.
 
 The third wall has a door in it. **The DAC is the sink, not the television.**
 An HDMI to SCART DAC that accepts arbitrary timings presents itself as a
-normal HDMI monitor: the 25 MHz floor is satisfied by the link to the DAC,
+normal HDMI monitor. The 25 MHz floor is satisfied by the link to the DAC,
 which then produces the 15 kHz analogue signal on the other side. The mode the
 GPU programs is wide, with a high clock and a long line:
 
@@ -107,9 +108,9 @@ total and 15.731 kHz is 29.96 Hz, and no television locks to that.
 Five things in the current upstream tree stand between that modeline and a
 picture on DCN 3.2.
 
-1. `fill_stream_properties_from_drm_display_mode` in `amdgpu_dm.c` never
-   copies `DRM_MODE_FLAG_INTERLACE` into `timing_out->flags.INTERLACE`, so
-   everything downstream believes the timing is progressive, which produces the strip.
+1. `fill_stream_properties_from_drm_display_mode` in `amdgpu_dm.c` never copies
+   `DRM_MODE_FLAG_INTERLACE` into `timing_out->flags.INTERLACE`, so everything
+   downstream believes the timing is progressive, which produces the strip.
 2. `optc1_validate_timing` in `dcn10_optc.c` returns false for any interlaced
    timing, under the comment *"Temporarily blocking interlacing mode until
    it's supported"*. Forcing the flag alone turns a wrong picture into no
@@ -170,23 +171,24 @@ legacy DCE path, so it is not an option on Navi, where every part requires the
 Display Core.
 
 This project does not patch the kernel or the driver. `output.interlace` is
-off by default, 480 line consoles are shown at 240p instead, and the line
-count per console exists for, and this section is here to say what that costs
-and what changing it would take.
+off by default and 480 line consoles are shown at 240p instead, with the line
+count set per console. This section says what that costs and what changing it
+would take.
 
 What it costs is narrower than it first looks. Interlace concerns one group of
-systems, the Dreamcast, Naomi, GameCube and the PlayStation 2 if it ever
-arrives, leaving the rest of a collection alone, which at 240p is already in its
-native shape. On those systems the gain is the full vertical resolution in
-text and menus. The price is the shimmer of alternating fields, the
-authentic look of that era and which many people find worse than 240p, and
-that is the whole of the trade.
+systems: the Dreamcast, Naomi, GameCube and the PlayStation 2 if it ever
+arrives. The rest of a collection is left alone, because at 240p it is already
+in its native shape. On those systems the gain is the full vertical resolution
+in text and menus. The price is the shimmer of alternating fields, which is the
+authentic look of that era and which many people find worse than 240p. That is
+the whole of the trade.
 
 For anybody who wants the interlaced modes, the patches are maintained at
 `D0023R/linux_kernel_15khz`, which tracks Calamity's original work from
 GroovyMAME and Switchres. The eight of them, in the order they are applied:
 
-1. Removes the minimum dot clock limits and enables 15, 25 and 31 kHz modes in DRM.
+1. Removes the minimum dot clock limits and enables 15, 25 and 31 kHz modes
+   in DRM.
 2. A general interlace correction.
 3. Interlace for the DCN 1 to 4 display engines, RDNA 1 to 4 and the APUs.
 4. Interlace for the older DCE engines.
@@ -285,8 +287,8 @@ film itself, five changes measured 387, 404, 566, 391 and 400 ms of a black
 screen. The tube adds roughly 120 ms of its own after the converter has
 reacquired, and one of the five was 40% worse than the rest, so it is not
 constant either. The number to quote for the cost of a mode change on this
-chain is 400 ms and not 182 to 229: that smaller figure is the kernel's share
-of it, measured correctly and then described as though it were the whole.
+chain is 400 ms, not 182 to 229. That smaller figure is the kernel's share of
+it, measured correctly and then described as though it were the whole.
 
 This document said for a week that the television was dark for all of the 182
 to 229 ms. Neither half of that was measured: not the darkness, and not that
@@ -303,42 +305,44 @@ declared and never assigned. See [`audit-2026-09-12.md`](audit-2026-09-12.md).
 274, 288 and 312 lines at a constant 15.731 kHz - 60.04 Hz down to 50.4 Hz -
 the RGB-Pi 2 keeps its lock at every step. A stretched vertical blanking
 reaches the set intact. What the tube itself does about picture height across
-that range is a question for a camera, not for software: the one report of
+that range is a question for a camera, not for software. The one report of
 adaptive sync on a CRT, on multisync PC monitors and not on televisions, says
 some sets change vertical size in proportion to the blanking interval.
 
 **And so does the driver, with two things set.** The pieces:
 
 1. `vrr_capable` on an HDMI connector comes from an AMD vendor block in the
-   EDID, which the display microcontroller parses. Nine bytes,
-   `68 1a 00 00 01 01 <min> <max> 00`, and since this project writes the
-   connector's EDID anyway, it adds it. `omacrt-install --system` writes the
-   range into the boot unit, so it is there on every boot without anybody
-   remembering a command; `OMACRT_FREESYNC=` empty at install time leaves the
-   variable rate off, and the same variable in front of `crt-lease-setup.sh
-   on` changes it for one run. The range matters: `mod_freesync_build_vrr_params` caps the
-   declared maximum at the mode's own nominal rate and then wants `refresh_range >= MIN_REFRESH_RANGE`, 10 Hz, so at a nominal
-   60.04 Hz the minimum has to be 50 or below. A range of 55 to 66 collapses
-   to five and is refused in silence. Two different checks are involved and
-   they are not the same: capability wants the declared range to be strictly
-   greater than 10, and the active state wants the capped range to be 10 or
-   more, so a declared range of exactly 10 fails the first and never reaches
-   the second.
+   EDID, which the display microcontroller parses. Nine bytes, `68 1a 00 00 01
+   01 <min> <max> 00`, and since this project writes the connector's EDID
+   anyway, it adds it. `omacrt-install --system` writes the range into the boot
+   unit, so it is there on every boot without anybody remembering a command;
+   `OMACRT_FREESYNC=` empty at install time leaves the variable rate off, and
+   the same variable in front of `crt-lease-setup.sh on` changes it for one
+   run. The range matters: `mod_freesync_build_vrr_params` caps the declared
+   maximum at the mode's own nominal rate and then wants `refresh_range >=
+   MIN_REFRESH_RANGE`, 10 Hz, so at a nominal 60.04 Hz the minimum has to be 50
+   or below. A range of 55 to 66 collapses to five and is refused in silence.
+   Two different checks are involved and they are not the same. Capability
+   wants the declared range to be strictly greater than 10; the active state
+   wants the capped range to be 10 or more. A declared range of exactly 10
+   fails the first and never reaches the second.
 
    Nothing in the kernel parses those nine bytes. The CEA block is handed to
    the display microcontroller and the firmware hands back a version and the
-   two rates, so the layout above had to be found by trying it
-   instead of read out of the tree. The last byte is flags, left at zero on purpose: a block that declares an MCCS control code makes the
-   driver require the display to support FreeSync over MCCS, and revoke the
-   capability when it does not. A television does not.
+   two rates, so the layout above had to be found by trying it instead of read
+   out of the tree. The last byte is flags, left at zero on purpose: a block
+   that declares an MCCS control code makes the driver require the display to
+   support FreeSync over MCCS, and revoke the capability when it does not. A
+   television does not.
 2. That is the whole of it. **`amdgpu.freesync_video=1` is not needed for
    this**, whatever this project said before. The state used here,
    `VRR_STATE_ACTIVE_VARIABLE`, is set from the connector being
    `freesync_capable` with the mode's refresh inside the declared range, and
    from the CRTC's `VRR_ENABLED` property. The module parameter gates a
    different mechanism, a smooth change of the front porch that skips the
-   modeset; tested here with a timing shaped exactly as that condition
-   requires, it still cost 222.8 and 229.1 ms, so that path does not trigger on this chain.
+   modeset. Tested here with a timing shaped exactly as that condition
+   requires, it still cost 222.8 and 229.1 ms, so that path does not trigger
+   on this chain.
 
    That test has since been done the other way round. With the parameter
    taken off the kernel command line and the machine rebooted, so that
@@ -409,13 +413,14 @@ there is no deadline at all: a flip that arrives after the frame's minimum
 length simply makes that frame longer. Nothing is dropped and nothing
 judders.
 
-So under a variable rate Flyback gives a client the whole frame instead of
-the frame less a margin, halves the slack it holds back, and stops counting a
-commit that arrives with a flip in the air as late - under a fixed rate that
-is a client to give more room to, and here it is the normal case. The one
-thing it must not do is draw at the vblank: anything committed while the last
-flip was in flight is about to be superseded by the frame the client is
-drawing now, and flipping it puts a stale picture in the air that the fresh
+So under a variable rate Flyback gives a client the whole frame instead of the
+frame less a margin, and halves the slack it holds back. It also stops counting
+a commit that arrives with a flip in the air as late: under a fixed rate that
+is a client to give more room to, and here it is the normal case.
+
+The one thing it must not do is draw at the vblank. Anything committed while
+the last flip was in flight is about to be superseded by the frame the client
+is drawing now, and flipping it puts a stale picture in the air that the fresh
 one then waits behind. That single mistake cost a frame and a half.
 
 Measured on the television, commit to the start of scanout, for a client that
@@ -481,37 +486,37 @@ each step; the numbers are in
 [`data/rate-walk-2026-09-12.txt`](data/rate-walk-2026-09-12.txt).
 
 Where the set gives up is a calibration, like the picture shift, and
-`output.vrr_min_hz` in `crt.toml` is where it goes. Nothing asks the tube for
-a slower rate than that, however slowly a program runs. The EDID has to
-declare a wider range - amdgpu refuses one narrower than ten hertz and caps
-the top at the mode's own, so the declared minimum has to be 50 or below -
-but what is declared only turns the feature on. What is used is the
-calibration.
+`output.vrr_min_hz` in `crt.toml` is where it goes. Nothing asks the tube for a
+slower rate than that, however slowly a program runs. The EDID has to declare a
+wider range than that: amdgpu refuses one narrower than ten hertz and caps the
+top at the mode's own, so the declared minimum has to be 50 or below. What is
+declared only turns the feature on. What is used is the calibration.
 
 The brightness in that table is the other half of the answer: steady to
 within two parts in a hundred at every step. A television whose frame length
 keeps changing *will* pulse, and this is what that looks like when it is not
 happening.
 
-A program that runs at a rate of its own is where this stops being simple.
-A television whose frame length is the one thing that varies will pulse if
-that length keeps changing, because the brightness of a phosphor depends on
-how long it is left between refreshes. Put an emulator on the tube whose
-content rate is not the compositor's cadence and the two beat: half the
-frames end at the hardware's minimum vertical total and half run all the way
-to its maximum, four milliseconds apart, and the picture flickers visibly.
-Pacing the frame callbacks to the client's own commit interval instead of to
-the mode's period removes it - measured on a Mega Drive core, the step
-between one frame and the next falls from 4283 microseconds to 24, and the
-tube runs at the core's own 59.95 Hz.
+A program that runs at a rate of its own is where this stops being simple. A
+television whose frame length is the one thing that varies will pulse if that
+length keeps changing, because the brightness of a phosphor depends on how long
+it is left between refreshes. Put an emulator on the tube whose content rate is
+not the compositor's cadence and the two beat. Half the frames end at the
+hardware's minimum vertical total and half run all the way to its maximum, four
+milliseconds apart, and the picture flickers visibly.
+
+Pacing the frame callbacks to the client's own commit interval, instead of to
+the mode's period, removes it. Measured on a Mega Drive core, the step between
+one frame and the next falls from 4283 microseconds to 24, and the tube runs at
+the core's own 59.95 Hz.
 
 What that does not do is let a program choose a rate. A client paced by frame
 callbacks runs at the cadence it is given, and the cadence is taken from the
 cadence it runs at, so whatever it settles on is where it stays. Taking the
-brake off - `video_vsync=false` with `vrr_runloop_enable=true` - lets the
-core set the rate, and on an NTSC title it does exactly that; on a PAL one
-RetroArch then had nothing holding it at all and ran at 80 Hz, faster than
-the hardware's shortest frame, and the pacing collapsed again. The rate has
+brake off - `video_vsync=false` with `vrr_runloop_enable=true` - lets the core
+set the rate, and on an NTSC title it does exactly that. On a PAL one RetroArch
+then had nothing holding it at all: it ran at 80 Hz, faster than the hardware's
+shortest frame, and the pacing collapsed again. The rate has
 to be asked for: the launcher knows which system is
 running and what that system's refresh is, and telling the compositor is one
 line on the control pipe it already has.
@@ -528,10 +533,10 @@ in the source.
 **Modelines work, the interlace flag does not.** The monitor rule takes a full
 modeline: `monitor = DP-2, modeline 6.400 320 336 368 400 240 244 247 262
 -hsync -vsync, 0x0, 1`. The parser reads the clock, eight timings and then the
-flags. The flag table holds the key `Interlace` with a capital letter while
-the parser lowercases every flag before looking it up, so the flag is never
-found, is logged as invalid, and the mode is applied as progressive with the
-wrong timings. Issue 4607 covers it and was closed as not planned in 2024. A
+flags. The flag table holds the key `Interlace` with a capital letter while the
+parser lowercases every flag before looking it up. So the flag is never found,
+it is logged as invalid, and the mode is applied as progressive with the wrong
+timings. Issue 4607 covers it and was closed as not planned in 2024. A
 one line fix upstream, and independent of everything here.
 
 **aquamarine drops interlaced modes.** Every interlaced mode read from an
