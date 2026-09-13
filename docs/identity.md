@@ -134,7 +134,7 @@ Three sheets, in the order a studio would hand them over:
   stepping down and to the right. One alphabet, two words.
 
 There is one constraint behind all of it that no studio has ever been given:
-**the mark has to be drawable by an electron beam on 240 scan lines**, because
+the mark has to be drawable by an electron beam on 240 scan lines, because
 this project's mark appears on the television it drives. So there are no
 diagonals, no hairlines and no fractional units anywhere in the system. A
 constraint that specific does more for a mark than a mood board does.

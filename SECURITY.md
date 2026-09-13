@@ -47,8 +47,8 @@ the Omarchy shell reloads plugin code on any change under those folders and a
 reload under the lock screen crashes it. The connector name is validated before
 it reaches the root owned unit file, by the same rule the boot script applies.
 
-The lease unit waits for the connector to appear rather than sleeping through a
-fixed ten seconds of the boot, and stands down without an error when there is no
+The lease unit waits for the connector to appear, with no fixed ten seconds of
+the boot to sleep through, and it stands down without an error when there is no
 television on the other end.
 
 ## The control pipe
@@ -88,7 +88,7 @@ Nothing is downloaded during installation. While running, the project fetches:
 Seven of the eight go out through `curl`, and all seven ask one function for
 it. `net::curl` restricts the protocol list to HTTP and HTTPS, on the request
 and on any redirect, sets a timeout and a size cap, fails on an error status
-rather than saving the error page, and passes arguments as arguments. So a
+and never saves the error page, and passes arguments as arguments. So a
 crafted URL cannot make it read a local file and a redirect cannot leave those
 two protocols. None of that is a decision at the call site: what a caller
 chooses is how long and how large its own fetch may be. The eighth is
@@ -161,7 +161,7 @@ than glossed over. The bar panel and the library overlay open a floating
 terminal for the few commands that need a password or show long progress. That
 terminal takes a command line, so everything variable in it goes through the
 one function that quotes it. And `bin/omacrt-pick` reads `OMACRT_PICKER` as a
-command with its arguments rather than as a line for a shell to evaluate.
+command with its arguments, never as a line for a shell to evaluate.
 
 `output.position` and the trailing flags of a modeline end up in Lua that
 Hyprland evaluates, so both are checked against what they are allowed to hold
@@ -197,7 +197,7 @@ The project writes `~/.config/omacrt`, `~/.local/state/omacrt`,
 under `~/.config/retroarch`. Every durable file is written atomically through a
 temporary file and a rename, and the copy being replaced is kept as `.bak`.
 `state.json` and `watch-later.tsv` go through that same write, so an interrupted
-one costs the last change rather than the file.
+one costs the last change and never the file.
 
 It never deletes a game and never uploads anything anywhere. It does write
 inside your collection, in three places, and it is better to say so than to
@@ -211,14 +211,14 @@ claim otherwise:
   A failed conversion removes that file only when the same run created it.
 
 `bios import` copies into RetroArch's system directory. A file of the same
-name and a different size is kept as `.replaced` rather than written over: a
+name and a different size is kept as `.replaced` and never written over: a
 BIOS is the one thing here that came off your own console.
 
 `off` puts the machine back as it found it: the television's sink returns to
 the volume it had before `on` set its own, the card's profile and the default
 sink return to what they were, and the output is disabled. `doctor --fix`
 tidies the cache the code actually writes to, so the five megabyte leftovers of
-a scan that crashed halfway are found rather than kept for ever.
+a scan that crashed halfway are found and swept instead of staying for ever.
 
 ## What it does when the data is wrong
 

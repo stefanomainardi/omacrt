@@ -19,15 +19,20 @@ cliamp are its clients. Everything else in the repository serves that.
 It is not a distribution, a fork or a patch. It lives inside Omarchy through
 Omarchy's own extension points: Quickshell plugins for the bar widget and the
 library overlay, the menu extension file for the desktop menu, Hyprland's Lua
-configuration for window rules. **A change that requires patching Omarchy is
-the wrong change.** That constraint is the project's argument, not a
-limitation to work around.
+configuration for window rules.
+
+> A change that requires patching Omarchy is the wrong change.
+
+That constraint is the project's argument, not a limitation to work around.
 
 There are two channels, and the Rust belongs to neither. Omarchy gets the
 desktop half; plain Hyprland gets the television and the command line, which
-is everything else. **Nothing in `shell/src` may come to need Omarchy**: today
-not one line calls it, every path under `~/.config/omarchy` is read with a
-fallback already in place, and it stays that way. What needs Omarchy lives in
+is everything else.
+
+> Nothing in `shell/src` may come to need Omarchy.
+
+Today not one line calls it, every path under `~/.config/omarchy` is read with
+a fallback already in place, and it stays that way. What needs Omarchy lives in
 `plugin/` and `menu/`, where it can be absent.
 
 ## Rules that do damage when they are broken
@@ -299,7 +304,7 @@ and look before assuming otherwise.
 
 **Something drawn that has to look like 1994.** Two rules earn most of it.
 No gradient is smooth: `sky.rs` has a 4x4 ordered dither and everything
-graded goes through it, which is what a console with a fixed palette did.
+graded goes through it, the way a console with a fixed palette did.
 And nothing is symmetrical or hand placed: the clouds, the buildings and the
 stars come out of a small xorshift with a fixed seed, so the picture is the
 same every evening and was never drawn by hand. Then render it and look at
@@ -354,11 +359,11 @@ it goes through the control pipe rather than a signal.
 **A row in the Omarchy menu.** `menu/omarchy-menu.jsonc`, which the
 installer writes into Omarchy's extension file. Two things are worth knowing
 before designing one. The icons must be code points Omarchy's own menu already
-uses, or the row comes out blank in whatever font the bar has. And a
-**provider is not available to a third party**: the menu plugin holds its
+uses, or the row comes out blank in whatever font the bar has. And a provider
+is not available to a third party: the menu plugin holds its
 providers in a fixed table in its own QML (`fonts`, `power-profiles`, and a
 native `apps`), so a row cannot enumerate anything of ours at runtime. A list
-that changes belongs behind a picker on the desktop, which is what
+that changes belongs behind a picker on the desktop. That is what
 `bin/omacrt-pick` is.
 
 **Anything that talks to a network service.** Through `curl` as a
@@ -380,7 +385,8 @@ cargo run --release --features latency --bin latency -- 500 --paced --pad
 
 Without `--paced` it commits at a random point of every frame, which measures
 the whole window a program could commit in. With it, it draws on the frame
-callback the way a real program paces itself, which is the number a game sees.
+callback the way a real program paces itself, and that is the number a game
+sees.
 
 `--pad` adds the half in front of the commit. It makes a virtual pad with
 `uinput`, presses it at a random point of the frame, and reads the press back
@@ -389,8 +395,8 @@ kernel's own timestamp for the press. That needs the `input` group and a shell
 that has it: `newgrp input` is enough without logging out.
 
 The probe reports the distribution and how many frames slipped a vblank, and it
-checks at the end that an idle tube still answers frame callbacks, which is the
-thing the flip scheduling can break.
+checks at the end that an idle tube still answers frame callbacks, the thing
+the flip scheduling can break.
 
 `FLYBACK_TRACE=1` on the display process prints, for every frame, how long
 the commit waited to be queued and the queue waited for the vblank. Those two

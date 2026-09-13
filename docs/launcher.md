@@ -49,7 +49,7 @@ switches with a blend.
   when cliamp has them, a sleep timer, and the selection band of every list
   breathing with the beat. The album art of a Spotify track and the logo of a
   radio station arrive on the cassette label, the record label and the dial.
-  An **equaliser** page moves the engine's ten bands one decibel at a time,
+  An **Equalizer** page moves the engine's ten bands one decibel at a time,
   or takes one of its presets.
 
 <p align="center">

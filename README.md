@@ -137,7 +137,7 @@ can. Flyback times every frame from the client's own commit to the kernel's
 vblank timestamp. On a set with no panel and no scaler between the connector
 and the phosphor, that second moment is very nearly the picture on the
 glass. Measured on a BeoCenter 1 through an RGB-Pi 2, with the launcher
-mapped underneath, which is how the television actually runs:
+mapped underneath, the way the television actually runs:
 
 | | |
 | --- | --- |
@@ -165,7 +165,7 @@ rate between 40 and 90 Hz, and every timing in order.
 | [`docs/flyback.md`](docs/flyback.md) | what it is: the lease, the EDID, the scheduler, the variable rate, what it costs, what it deliberately does not do, and where it sits beside GroovyArcade, Batocera and a MiSTer |
 | [`docs/flyback-manual.md`](docs/flyback-manual.md) | how to drive it: every line the control pipe answers to, the configuration it reads, the switches that turn each decision off, and what to do when it will not come up |
 | [`docs/comparison.md`](docs/comparison.md) | the same comparison on its own |
-| [`docs/sets.md`](docs/sets.md) | the televisions this has been pointed at, which is one so far. If you have a set, that page is the ask |
+| [`docs/sets.md`](docs/sets.md) | the televisions this has been pointed at, one so far. If you have a set, that page is the ask |
 
 ## What is on the television
 

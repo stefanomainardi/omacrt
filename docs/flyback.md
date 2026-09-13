@@ -132,8 +132,8 @@ want it for. `rate 59.92` on the control pipe then asks for a refresh by
 name, and the closed loop holds it.
 
 Each rate below was asked for by name, then measured as the median of the last
-300 vblank intervals after fifteen seconds of settling: **60.041 asked gives
-60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**. 50 is held at 55,
+300 vblank intervals after fifteen seconds of settling: **60.041 asked, 60.04
+given; 59.92, 60.02; 57.5, 57.59; 55, 55.01**. 50 is held at 55,
 because that is where this set stops following. The instrument is a median over
 a five second window, and the numbers are reported to the precision it has.
 
@@ -294,7 +294,7 @@ start of scanout, over three hundred presses at random points of the frame:
 **best 1.46 ms, median 10.19 ms (0.61 frames), 95th 17.52 ms, worst
 18.21 ms**, every sample kept in
 [`data/press-to-picture.txt`](data/press-to-picture.txt). Of that median,
-**8.33 ms is half a frame** - what any commit at a random phase waits for the
+**8.33 ms** is half a frame - what any commit at a random phase waits for the
 next vblank, whoever is compositing - so the compositor's own contribution is
 the 1.9 ms above it. The instrument measures its own overhead at 0.01 ms.
 This is a virtual pad; a real one adds its own polling in front, one to eight

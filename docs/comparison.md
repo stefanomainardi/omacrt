@@ -114,11 +114,11 @@ for the software path, which nobody had published for Linux into a real CRT.
 horizontal rate must never move; its vertical rate can, because the vertical
 oscillator re-triggers on sync. So every refresh an emulation asks for is
 reachable by stretching the vertical blanking alone, exactly what
-adaptive sync does in hardware. Asked for five rates in turn, this chain
-follows, asked for by name and measured as the median of the last 300 vblank
-intervals, with fifteen seconds of settling at each step: **60.041 asked
-gives 60.04, 59.92 gives 60.02, 57.5 gives 57.59, 55 gives 55.01**, and 50
-is held at 55 because that is where this set stops following. The instrument
+adaptive sync does in hardware. This chain follows. Five rates were asked for
+by name and measured as the median of the last 300 vblank intervals, after
+fifteen seconds of settling at each step: **60.041 asked, 60.04 given; 59.92,
+60.02; 57.5, 57.59; 55, 55.01**. 50 is held at 55, because that is where this
+set stops following. The instrument
 is a median over a five second window, and the numbers are reported to the
 precision it has. And no mode change, where a mode change costs
 **182 to 229 ms** inside the kernel's own call, and about **400 ms** of a black
@@ -169,8 +169,8 @@ on a high-refresh LCD.
 
 The reason nobody built it on Linux is that beam racing needs ownership of the
 scanout, and a desktop compositor denies it. A leased connector does not.
-**So this is a setup where it could be built, and it has not been built here
-either.** That sentence is the whole of the claim.
+So this is a setup where it could be built, and it has not been built here
+either. That sentence is the whole of the claim.
 
 ## Where this leaves it
 
