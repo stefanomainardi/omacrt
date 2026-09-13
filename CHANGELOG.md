@@ -7,6 +7,35 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-13
+
+### Added
+
+- **The status rows count the frames that ran long, in the unit a television
+  counts in.** A set's vertical countdown accepts sync inside a narrow window
+  once it has locked, and a field that leaves it is retraced at the edge of
+  the window rather than on the sync that arrived, which is a visible jump for
+  that field. A median in milliseconds cannot show that: three fields in three
+  thousand six hundred left the window on the afternoon this was written and
+  the row read `16.66 to 16.66 ms` throughout. So the same frames are also
+  counted in lines, with how many went more than two lines past the mode's
+  vertical total and how long the longest was. It found a field of 304 lines
+  within minutes of being installed, where the worst measured by hand had been
+  291 and where this set starts losing height between 286 and 291.
+
+### Changed
+
+- Three figures this project published are corrected, all of them measured
+  rather than reasoned about. A mode change costs the television **400 ms of a
+  black screen** and not the 182 to 229 ms of the kernel's own call: the
+  converter has nothing to lock to for 280 ms and the tube adds about 120 ms
+  after that, filmed at 240 fps with the time base calibrated by the film. The
+  set's cliff is a range between 286 and 291 lines rather than a point at 291.
+  And "33.4 ms, which is what every other compositor does" appeared in seven
+  places and was never a measurement of anybody else's software: it is this
+  compositor with its own three scheduling decisions removed, which is what
+  the files say now.
+
 ### Fixed
 
 - **A frame is timed on the driver's clock now, not on the compositor's own
@@ -50,6 +79,11 @@ caveat for a 0.x project: anything may still move.
   than claiming to follow one. For a core reporting more lines than the
   standard has, the request is capped at the whole frame and nothing changes,
   which "following" described incorrectly.
+
+- Rotating a log copies it aside and empties it in place instead of renaming
+  it. A rename takes the name away from the inode, so a compositor holding the
+  file open went on filling the `.1` file while the one a person reads, and
+  the one the self test reads, stayed empty until the tube was next restarted.
 
 - `omacrt doctor` reports the system side of the lease falling behind. Those
   three files live outside any home, only root writes them, and an upgrade of
@@ -1096,7 +1130,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.7.1
 [0.7.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.7.0
 [0.6.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.6.0
 [0.5.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.5.0
