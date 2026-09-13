@@ -50,8 +50,8 @@ film.
 A television that marked a couple of generations sits in a corner, still
 perfect at what it was built for, and a modern PC can feed it the exact signal
 its tube was made to show. This project is a way to learn in the open how that
-signal, the kernel, a compositor, an emulator and a music player fit together,
-and to give the old screen a second life: the games look the way they were
+signal, the kernel, a compositor, an emulator and a music player fit together.
+The old screen gets a second life out of it: the games look the way they were
 drawn, the radio sounds like a radio, an evening's video plays without a
 scaler in between. It is also a playground, because a system this malleable
 invites the experiments the big frontends never bothered with.
@@ -103,9 +103,9 @@ project's own Wayland compositor, takes the lease, programs the 15 kHz timing
 straight into the kernel and owns the scanout of that output. It is named
 after what a tube does between two lines. The launcher, RetroArch
 and mpv are its clients, forced fullscreen at the output's size. No bar,
-notification, pointer or stray window can reach the tube, and any timing the
+notification, pointer or stray window can reach the tube. Any timing the
 kernel accepts is one command away, live, including a different line count per
-system (224 lines for a Super Nintendo game, 240 for a NES one).
+system: 224 lines for a Super Nintendo game, 240 for a NES one.
 
 The bar plugin and the CLI stay on the desktop and talk to the tube over a
 control pipe: the panel is the remote control, the overlay manages the
@@ -134,9 +134,9 @@ and Batocera take the whole machine; this takes one connector.
 
 Owning the scanout is also what lets it answer a question nobody else here
 can. Flyback times every frame from the client's own commit to the kernel's
-vblank timestamp, and on a set with no panel and no scaler between the
-connector and the phosphor that second moment is very nearly the picture on
-the glass. Measured on a BeoCenter 1 through an RGB-Pi 2, with the launcher
+vblank timestamp. On a set with no panel and no scaler between the connector
+and the phosphor, that second moment is very nearly the picture on the
+glass. Measured on a BeoCenter 1 through an RGB-Pi 2, with the launcher
 mapped underneath, which is how the television actually runs:
 
 | | |
@@ -238,10 +238,10 @@ decides whether a machine can run this is the card, the compositor and the
 DAC, whatever else is on the disk. `omacrt doctor` says which of them this
 machine has, in its own words, before anything is bought.
 
-After `--system` the tube is handed over at every boot, and the first boot
-after it is when the handover starts working: Hyprland decides which
-connectors it offers for leasing when it starts, so the override has to be in
-place before it is. Set `shell.autostart = true` in
+After `--system` the tube is handed over at every boot, and the handover
+starts working at the first boot after that. Hyprland decides which connectors
+it offers for leasing when it starts, so the override has to be in place
+before it is. Set `shell.autostart = true` in
 `~/.config/omacrt/crt.toml` and the television boots straight into the
 launcher along with the desktop.
 
@@ -277,10 +277,10 @@ systemd is there for the boot time override, and whether debugfs is mounted.
 None of them needs a DAC to be plugged in.
 
 In a terminal it is the launcher's own power on self test. The mark and the
-wordmark stand side by side, the way the boot screen holds them: the word is
-cut by the same laser while the machine is being asked, the slow
-part, and the beam runs back across the mark's four bars every time one of
-those answers lands. Then the rest of the answers arrive, one line at a time
+wordmark stand side by side, the way the boot screen holds them. The word is
+cut by the same laser while the machine is being asked, which is the slow
+part. The beam runs back across the mark's four bars every time one of those
+answers lands. Then the rest of the answers arrive, one line at a time
 as they come, and last the modeline drawn rather than listed, the card's
 outputs and what each is for, and the DAC's lock as a lamp. It is drawn with [ratatui](https://ratatui.rs), inline rather
 than on the alternate screen, so the report stays in the scrollback where it
@@ -313,9 +313,9 @@ bar, and the interlaced timings are there for a kernel that can scan them.
 
 This is one person's television, given away because it turned out well: not a
 product, and worked on when it is fun to work on. A good change is still
-welcome, and there is one rule that is not negotiable, because half of this
-cannot be checked any other way: **it has to have run on a real television**,
-and the pull request has to say what it ran on.
+welcome. One rule is not negotiable, because half of this cannot be checked any
+other way: **it has to have run on a real television**, and the pull request
+has to say what it ran on.
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): what gets merged, what does not, the
   standards, and the commands CI runs.
