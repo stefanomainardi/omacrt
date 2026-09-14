@@ -7,6 +7,31 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- `doctor` counts the `dcn32_program_compbuf_size` register timeouts in the
+  current boot's journal. They are the card's display block, not the tube, and
+  a picture that dies mid-game sends everybody to suspect their own cable
+  first.
+
+### Changed
+
+- The display process no longer gives up its lease when the connector refuses
+  page flips. It resets the buffers, asks for the timing again and retries,
+  waiting 200 ms and then doubling to a ceiling of 5 s. Surrendering was a
+  one-way door: Hyprland reads `non-desktop` when it builds the output object
+  and keeps that answer, so a connector the desktop has taken back is not
+  offered for leasing again until the session restarts.
+
+### Fixed
+
+- The recovery advice in `doctor` and the watchdog said to restart the lease
+  unit and run `omacrt on`. That does not work after a lease is lost: the mark
+  comes back and nothing is offered. Both now say the session has to be
+  restarted, which is what actually brings the tube back.
+- `omacrt watchdog --stop` started a second watchdog instead of rejecting an
+  argument it does not take.
+
 ## [0.7.1] - 2026-09-13
 
 ### Added

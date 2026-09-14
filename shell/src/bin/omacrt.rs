@@ -1205,9 +1205,12 @@ fn cmd_watchdog(cfg: &Config) -> i32 {
             match stray {
                 Some(c) => eprintln!(
                     "{} is connected and back under the desktop: the lease was \
-                     given up and only root can hand it over again. Run \
-                     `sudo systemctl restart omacrt-lease.service` and then \
-                     `omacrt on`. Nothing here can do it, so this watchdog is \
+                     given up, and once Hyprland has taken a connector as a \
+                     monitor it does not offer it for leasing again. Restoring \
+                     the non-desktop mark is not enough - measured on 0.56.2, \
+                     the unit restarts, the mark comes back and nothing is \
+                     offered. Log out and back in, or reboot, and the tube is \
+                     there again. Nothing here can do it, so this watchdog is \
                      standing down.",
                     c.name
                 ),
@@ -1803,6 +1806,35 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             ),
         },
     ));
+    // The card's own display block, which on this one sometimes stops
+    // answering. It is not our fault and not the television's, but a picture
+    // that dies mid-game sends everybody to look at their cable first, so the
+    // count is put where they will see it. See docs/15khz.md.
+    probes.push(Probe::new(MACHINE, "display block", || {
+        let out = std::process::Command::new("journalctl")
+            .args(["-k", "-b", "-g", "dcn32_program_compbuf_size", "--no-pager"])
+            .output();
+        let Ok(out) = out else {
+            return (Level::Ok, "no journal to read".into());
+        };
+        let text = String::from_utf8_lossy(&out.stdout);
+        let faults = text
+            .lines()
+            .filter(|l| l.contains("REG_WAIT timeout"))
+            .count();
+        match faults {
+            0 => (Level::Ok, "no register timeouts this boot".into()),
+            n => (
+                Level::Warn,
+                format!(
+                    "{n} REG_WAIT timeout{} in dcn32_program_compbuf_size this boot: the card's \
+                     display block, not the tube. A picture lost mid-game may be one of these; \
+                     see docs/15khz.md",
+                    if n == 1 { "" } else { "s" }
+                ),
+            ),
+        }
+    }));
     probes.push(Probe::new(MACHINE, "compositor", move || {
         match compositor_version() {
             Some(v) => {
@@ -2007,17 +2039,24 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                     .into(),
                 ),
                 // Not marked. Either it was never set up, or it was and the
-                // mark has gone: the display process gives up its lease when
-                // the connector refuses ten page flips in a row, and the
-                // desktop takes the output straight back. The two want
-                // different commands, and after a fall the wrong one sends
-                // somebody to reinstall when a restart of the unit is enough.
+                // mark has gone with a lease that was given up. The two want
+                // different answers, and the second one is worse than it
+                // looks: putting the mark back does not bring the tube back,
+                // because Hyprland reads non-desktop when it builds the
+                // output object and keeps that answer for the life of the
+                // session. Verified on 0.56.2 on 2026-09-14: the unit
+                // restarted, the mark returned, and no connector was offered
+                // for leasing until the session was restarted. Saying
+                // "restart the unit" here sent somebody round in circles in
+                // front of a dead television, so it says the truth instead.
                 _ => (
                     Level::Fail,
                     if std::path::Path::new("/etc/systemd/system/omacrt-lease.service").is_file() {
                         "not marked non-desktop, and the unit that marks it is \
-                         installed: the lease was given up. \
-                         sudo systemctl restart omacrt-lease.service, then omacrt on"
+                         installed: the lease was given up and the desktop took \
+                         the connector. Restoring the mark is not enough, \
+                         Hyprland will not offer a connector it has already \
+                         taken: log out and back in, or reboot"
                             .into()
                     } else {
                         "not marked non-desktop: sudo bin/omacrt-install --system".to_string()
@@ -3415,7 +3454,19 @@ fn main() {
         }
         "on" => cmd_on(&cfg, positional(args).first().map(|s| s.as_str())),
         "off" => cmd_off(&cfg),
-        "watchdog" => exit(cmd_watchdog(&cfg)),
+        // Nothing to pass. It used to ignore whatever came after it, so
+        // `omacrt watchdog --stop` - a reasonable guess, and one that was
+        // made - started a second watchdog instead of stopping the first.
+        "watchdog" => {
+            if let Some(bad) = args.first() {
+                eprintln!(
+                    "watchdog takes no arguments, and `{bad}` is not one. It is started by \
+                     `omacrt on` and stopped by `omacrt off`."
+                );
+                exit(2);
+            }
+            exit(cmd_watchdog(&cfg))
+        }
         "setup" => exit(cmd_setup(&cfg, args)),
         "boot" => cmd_boot(&cfg),
         "toggle" => {

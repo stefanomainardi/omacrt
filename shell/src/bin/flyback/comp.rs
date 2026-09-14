@@ -255,6 +255,12 @@ pub struct Crt {
     /// picture, for the log and for anybody asking whether the floor is
     /// doing anything.
     fields_repeated: u64,
+    /// How many times the pipe has been put back together after the
+    /// connector started refusing flips.
+    recoveries: u64,
+    /// When the last of those happened, so a recovery that held can stop
+    /// counting against the next one.
+    recovered_at: Option<Instant>,
     /// How long the last few frames took to draw and queue, decaying, so the
     /// deadline is set from what this machine and this scene actually cost
     /// rather than from a guess.
@@ -389,10 +395,47 @@ fn cost_of(window: &Window) -> &ClientCost {
 }
 
 /// Page flips the connector may refuse in a row before the display process
-/// gives up. Ten is about a sixth of a second of a picture that is not
-/// arriving, long enough to ride out a mode change and short enough that the
-/// watchdog puts the television back while somebody is still looking at it.
+/// tries to put the pipe back together.
+///
+/// It used to be the number at which the process gave up altogether, on the
+/// reasoning that the watchdog would then restart it. That reasoning was
+/// wrong, and the day it mattered it cost a reboot: **giving up closes the
+/// lease, closing the lease hands the connector back to the desktop, and a
+/// connector the desktop has taken is not offered for leasing again until the
+/// session restarts.** Hyprland reads a connector's non-desktop property when
+/// it builds the output object and keeps the answer (`src/output/Monitor.cpp`,
+/// and a disabled monitor returns before the offer is even considered), so a
+/// simulated replug does not undo it. Verified on 0.56.2 by trying.
+///
+/// So the process does not give up. Ten refusals in a row is a pipe that
+/// needs putting back, not a television that has gone: it resets the buffers,
+/// re-applies the timing it already has and carries on. Retrying costs
+/// nothing that surrendering does not cost more of - the connector stays
+/// ours, and the moment the hardware answers again the picture comes back by
+/// itself.
 const FLIP_FAILURES_ALLOWED: u32 = 10;
+
+/// How long to wait between attempts to put the pipe back, and the ceiling
+/// it backs off to. A display block that has stopped answering is not going
+/// to answer sooner for being asked a thousand times a second.
+const RECOVER_FIRST: Duration = Duration::from_millis(200);
+const RECOVER_LONGEST: Duration = Duration::from_secs(5);
+
+/// How long a recovery has to hold before the next fault is treated as a
+/// fresh one rather than the same one carrying on.
+const RECOVERY_HELD: Duration = Duration::from_secs(60);
+
+/// How long to wait before asking for the timing again, on the nth attempt.
+///
+/// It doubles from `RECOVER_FIRST` and stops at `RECOVER_LONGEST`, so a fault
+/// that clears at once costs a fifth of a second and one that does not settles
+/// into a try every five seconds rather than a busy loop against a card that
+/// is not answering.
+fn recover_wait(attempt: u64) -> Duration {
+    RECOVER_FIRST
+        .saturating_mul(1u32 << attempt.saturating_sub(1).min(5))
+        .min(RECOVER_LONGEST)
+}
 
 /// How long a queued frame may go without its vblank. Two seconds is far
 /// beyond any mode change and short enough that somebody watching sees the
@@ -910,6 +953,8 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         floor_on: std::env::var("FLYBACK_FLOOR").as_deref() != Ok("off"),
         field_seq: 0,
         fields_repeated: 0,
+        recoveries: 0,
+        recovered_at: None,
         render_cost: Duration::from_micros(500),
         margin_override: std::env::var("FLYBACK_MARGIN_US")
             .ok()
@@ -1094,6 +1139,25 @@ mod cost {
         assert!(c.cost.get() < Duration::from_millis(4));
         assert!(c.cost.get() > Duration::from_millis(3));
         let _ = FRAME;
+    }
+}
+
+#[cfg(test)]
+mod recovery {
+    use super::{RECOVER_FIRST, RECOVER_LONGEST, recover_wait};
+    use std::time::Duration;
+
+    #[test]
+    fn the_first_try_is_quick_and_the_waits_stop_growing() {
+        // A fault that clears on its own should not cost a visible pause.
+        assert_eq!(recover_wait(1), RECOVER_FIRST);
+        assert_eq!(recover_wait(2), Duration::from_millis(400));
+        assert_eq!(recover_wait(3), Duration::from_millis(800));
+        // And one that does not clear settles instead of running away: at a
+        // hundred attempts the wait is still the ceiling, not an hour.
+        assert_eq!(recover_wait(6), RECOVER_LONGEST);
+        assert_eq!(recover_wait(100), RECOVER_LONGEST);
+        assert_eq!(recover_wait(u64::MAX), RECOVER_LONGEST);
     }
 }
 
@@ -2073,6 +2137,56 @@ impl Crt {
             .is_ok();
     }
 
+    /// Put the display pipe back together after the connector has started
+    /// refusing flips, and keep the lease while doing it.
+    ///
+    /// The fault this exists for, seen on 2026-09-14: the card's display
+    /// block timed out on a register write
+    /// (`amdgpu REG_WAIT timeout - dcn32_program_compbuf_size`) and every
+    /// page flip after it came back `EINVAL`. Nothing was wrong with the
+    /// television, the DAC or the timing; one block of the GPU had stopped
+    /// answering. Five of those in one day, four of them harmless because
+    /// nothing was playing.
+    ///
+    /// What it does is what a person would do: throw the buffers away, ask
+    /// for the timing again, and try. What it will not do is let go of the
+    /// connector, because letting go is the one move that cannot be undone
+    /// without restarting the session.
+    fn recover(&mut self) {
+        let attempt = self.recoveries + 1;
+        self.recoveries = attempt;
+        let wait = recover_wait(attempt);
+        println!(
+            "the connector has refused {} page flips in a row on {}. Resetting the pipe and \
+             asking for the timing again, attempt {attempt}; the lease stays ours, so this \
+             comes back by itself when the hardware answers.",
+            self.flips_failed,
+            self.modeline
+                .as_ref()
+                .map(|m| format!("{}x{}", m.width(), m.label()))
+                .unwrap_or_else(|| "no mode".into()),
+        );
+        if let Some(out) = self.drm_output.as_ref() {
+            out.reset_buffers();
+        }
+        self.frame_queued = false;
+        self.queued_at = None;
+        self.flips_failed = 0;
+        self.recovered_at = Some(Instant::now());
+        // The timing goes down again after the wait, not now: a block that
+        // has just refused ten commits will refuse the eleventh too.
+        let ml = self.modeline.clone();
+        let _ = self
+            .handle
+            .insert_source(Timer::from_duration(wait), move |_, _, st: &mut Crt| {
+                if let Some(ml) = ml.clone() {
+                    st.switch_mode(&ml);
+                }
+                st.damaged();
+                TimeoutAction::Drop
+            });
+    }
+
     /// Stop the field before it runs past what this television follows.
     ///
     /// Under a variable refresh rate a field ends when a flip lands, and if
@@ -2327,37 +2441,30 @@ impl Crt {
                     // The flip was refused, so no vblank is coming and
                     // `frame_queued` stays false: every client commit tries
                     // again. That is a picture that never arrives and a log
-                    // line per commit, so stop and let the watchdog restart
-                    // the display rather than spin here for ever.
+                    // line per commit, so the log is thinned to the first
+                    // few and then one a second.
                     self.flips_failed += 1;
-                    eprintln!("queue_frame: {e} ({} in a row)", self.flips_failed);
+                    if self.flips_failed <= 3 || self.flips_failed.is_multiple_of(50) {
+                        eprintln!("queue_frame: {e} ({} in a row)", self.flips_failed);
+                    }
                     if self.flips_failed >= FLIP_FAILURES_ALLOWED {
-                        // One line somebody can act on, above the ten
-                        // identical DRM errors. Giving up the lease hands the
-                        // television back to the desktop and takes the
-                        // launcher and whatever was playing with it, so the
-                        // last thing written should say what was on the air
-                        // and for how long, not only that it stopped.
-                        eprintln!(
-                            "the connector has refused {FLIP_FAILURES_ALLOWED} page flips in a row: \
-                             giving up the lease. It was on {} for {:.0} s, and the desktop takes \
-                             the output back now: sudo systemctl restart omacrt-lease.service, \
-                             then omacrt on",
-                            self.modeline
-                                .as_ref()
-                                .map(|m| format!(
-                                    "{}x{} at {:.3} kHz",
-                                    m.width(),
-                                    m.label(),
-                                    m.hfreq_khz()
-                                ))
-                                .unwrap_or_else(|| "no mode".into()),
-                            self.start.elapsed().as_secs_f64()
-                        );
-                        self.running = false;
+                        self.recover();
                     }
                 } else {
                     self.flips_failed = 0;
+                    // A recovery that has held for a minute is over, and the
+                    // next fault starts its waits from the short end again.
+                    // Without this the backoff only ever grows, and an
+                    // evening with two unrelated stumbles in it would wait
+                    // five seconds for the second one for no reason.
+                    if self.recoveries > 0
+                        && self
+                            .recovered_at
+                            .is_some_and(|t| t.elapsed() > RECOVERY_HELD)
+                    {
+                        self.recoveries = 0;
+                        self.recovered_at = None;
+                    }
                     self.dirty = false;
                     self.dirty_top = false;
                     // What this frame cost, kept as a decaying maximum: the

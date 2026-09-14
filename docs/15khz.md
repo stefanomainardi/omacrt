@@ -529,6 +529,39 @@ Asking for the range in the EDID is the switch. There is nothing else a
 television leased to this compositor would want a variable refresh rate for,
 so when the kernel says the connector is capable, Flyback turns it on.
 
+## A fault in the display block
+
+On this card the display engine sometimes stops answering a register write:
+
+```
+amdgpu 0000:03:00.0: [drm] REG_WAIT timeout 1us * 100 tries
+                          - dcn32_program_compbuf_size line:148
+```
+
+`dcn32_program_compbuf_size` sets the size of the compressed frame buffer in
+DCN 3.2, and it runs on every mode set. Twenty-three of these in one uptime,
+five of them on 2026-09-14 alone: 07:18, 09:33, 10:17, 10:29 and 10:57. The
+first four fell inside a tube being switched off and on again, so no picture
+was up and nobody noticed. The fifth landed on a live pipe, and every page
+flip after it came back `EINVAL`.
+
+Nothing about the television, the DAC or the timing is involved. A rate that
+had been on the air for four minutes stopped being flippable in the middle of
+a game. What the count does correlate with is the number of mode sets: the day
+of the five faults carried 52 of them, against a handful on a normal evening,
+which is one more argument for deciding the standard once per game instead of
+switching back and forth.
+
+`omacrt doctor` counts the occurrences in the current boot's journal and says
+so, because the first thing anybody suspects on a picture that dies mid-game
+is their own cable, DAC or modeline.
+
+What this project can do about it is not go down with it. The display process
+does not surrender the lease when flips are refused - see
+[`docs/troubleshooting.md`](troubleshooting.md) for why surrendering is a
+one-way door - it resets the buffers, asks for the timing again, and retries
+with growing pauses.
+
 ## Modelines and interlace in Hyprland
 
 Two things are true of Hyprland 0.56 and its aquamarine backend, and both are

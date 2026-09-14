@@ -111,6 +111,29 @@ afterwards sets the flag and wins nothing else: `non-desktop = 1` while
 (offered: none)`. The picture comes back at the next boot. Nothing
 else needs doing in the meantime.
 
+### A lease given up mid-session does not come back
+
+The same rule bites hardest after the tube has been working. If the display
+process ends its lease while the session is running, the desktop takes the
+connector back and no command short of restarting the session gives it up
+again. Measured on Hyprland 0.56.2 on 2026-09-14: `systemctl restart
+omacrt-lease.service` put `non-desktop = 1` back within a second, and
+`flyback` still saw `offered: none` for the next hour.
+
+The reason is in `src/output/Monitor.cpp`: Hyprland reads `nonDesktop` when it
+builds the output object, and the lease offer is decided from that stored
+answer. A connector already built as a desktop monitor stays one. The DRM
+lease protocol says a compositor should offer a connector again "when a leased
+connector becomes available again", and this one does not.
+
+So the display process never gives a lease up on its own any more. When the
+connector starts refusing page flips it resets the buffers, asks for the
+timing again and retries with growing pauses, writing one line each time.
+Retrying may not fix a card whose display block has stopped answering, but it
+costs nothing, and letting go is a door that only a new session reopens.
+
+Log out and back in, or reboot. There is no shortcut.
+
 ## The in-game menu (RGUI) is blank
 
 RetroArch's own menu opens and pauses the game (the picture freezes) but
