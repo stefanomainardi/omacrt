@@ -261,6 +261,9 @@ pub struct Crt {
     /// When the last of those happened, so a recovery that held can stop
     /// counting against the next one.
     recovered_at: Option<Instant>,
+    /// True between asking for a recovery and the wait running out, so a
+    /// client that keeps committing cannot ask for a hundred of them.
+    recovering: bool,
     /// How long the last few frames took to draw and queue, decaying, so the
     /// deadline is set from what this machine and this scene actually cost
     /// rather than from a guess.
@@ -955,6 +958,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         fields_repeated: 0,
         recoveries: 0,
         recovered_at: None,
+        recovering: false,
         render_cost: Duration::from_micros(500),
         margin_override: std::env::var("FLYBACK_MARGIN_US")
             .ok()
@@ -2153,19 +2157,34 @@ impl Crt {
     /// connector, because letting go is the one move that cannot be undone
     /// without restarting the session.
     fn recover(&mut self) {
+        // One at a time. A client goes on committing while the card is not
+        // answering, every commit tries a flip, and ten more failures can
+        // pile up in a millisecond: without this the waits would be handed
+        // out faster than they are served and the log would fill with a
+        // recovery that never gets to happen.
+        if self.recovering {
+            self.flips_failed = 0;
+            return;
+        }
+        self.recovering = true;
         let attempt = self.recoveries + 1;
         self.recoveries = attempt;
         let wait = recover_wait(attempt);
-        println!(
-            "the connector has refused {} page flips in a row on {}. Resetting the pipe and \
-             asking for the timing again, attempt {attempt}; the lease stays ours, so this \
-             comes back by itself when the hardware answers.",
-            self.flips_failed,
-            self.modeline
-                .as_ref()
-                .map(|m| format!("{}x{}", m.width(), m.label()))
-                .unwrap_or_else(|| "no mode".into()),
-        );
+        // The first three, then one a minute. A card that never comes back
+        // would otherwise write a line every five seconds all night.
+        if attempt <= 3 || attempt.is_multiple_of(12) {
+            println!(
+                "the connector has refused {} page flips in a row on {}. Resetting the pipe and \
+                 asking for the timing again in {} ms, attempt {attempt}; the lease stays ours, \
+                 so this comes back by itself when the hardware answers.",
+                self.flips_failed,
+                self.modeline
+                    .as_ref()
+                    .map(|m| format!("{}x{}", m.width(), m.label()))
+                    .unwrap_or_else(|| "no mode".into()),
+                wait.as_millis(),
+            );
+        }
         if let Some(out) = self.drm_output.as_ref() {
             out.reset_buffers();
         }
@@ -2176,15 +2195,26 @@ impl Crt {
         // The timing goes down again after the wait, not now: a block that
         // has just refused ten commits will refuse the eleventh too.
         let ml = self.modeline.clone();
-        let _ = self
+        let armed = self
             .handle
             .insert_source(Timer::from_duration(wait), move |_, _, st: &mut Crt| {
+                st.recovering = false;
                 if let Some(ml) = ml.clone() {
                     st.switch_mode(&ml);
                 }
                 st.damaged();
                 TimeoutAction::Drop
-            });
+            })
+            .is_ok();
+        // No timer means no wait and no second chance either, so do it now
+        // rather than leave the flag set and never try again.
+        if !armed {
+            self.recovering = false;
+            if let Some(ml) = self.modeline.clone() {
+                self.switch_mode(&ml);
+            }
+            self.damaged();
+        }
     }
 
     /// Stop the field before it runs past what this television follows.
