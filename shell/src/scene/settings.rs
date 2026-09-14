@@ -180,7 +180,17 @@ impl Scene {
             ("shell".into(), env!("CARGO_PKG_VERSION").to_string()),
             ("kernel".into(), self.info.kernel.clone()),
             ("host".into(), self.info.host.clone()),
-            ("mode".into(), self.info.mode.clone()),
+            // What the tube is actually being given, as the compositor
+            // published it. `self.info.mode` is the size this process was
+            // started with and never changes, so a page that a person opens
+            // to find out what the television is doing was answering with a
+            // command line argument from an hour ago.
+            (
+                "mode".into(),
+                omacrt_shell::crt::display::current_mode()
+                    .map(|m| format!("{}x{} {:.2} Hz", m.width(), m.label(), m.field_hz()))
+                    .unwrap_or_else(|| self.info.mode.clone()),
+            ),
             ("theme".into(), self.theme.name.clone()),
         ];
         // GPU driver of the first card.

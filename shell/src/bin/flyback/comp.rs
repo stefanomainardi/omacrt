@@ -2204,7 +2204,14 @@ impl Crt {
                     // A flip is a register write and takes microseconds. One
                     // that takes milliseconds is carrying a modeset, which is
                     // the only thing here that makes the television dark.
-                    if spent > Duration::from_millis(2) {
+                    //
+                    // Not while a mode change is already being reported: the
+                    // two lines either side of it say the same thing with
+                    // more in them, and fifty of anything in a log is read as
+                    // a condition rather than an event. An evening of fifty
+                    // games would have turned the self test red for doing
+                    // exactly what it is supposed to do.
+                    if spent > Duration::from_millis(2) && self.mode_at.is_none() {
                         println!("queue_frame: {:.1} ms", spent.as_secs_f64() * 1000.0);
                     }
                     r
