@@ -191,13 +191,20 @@ pub const ALLOWED: &[(&[&str], &str, &str)] = &[
     (
         NTSC_SHAPED,
         "the picture",
-        "48.89 us against the standard's 52.66. This is the arcade width, and \
-         it is where the whole super resolution reading comes from: 3520 \
-         samples at 72 MHz, eleven per source pixel, which two documents \
-         quote. Widening it to 52.5 needs a 67 MHz clock and an eye at the \
-         tube to say whether the wider picture is better. Until then the \
-         width is deliberate and the centre, which is what a person notices, \
-         is right.",
+        "48.89 us against the standard's 52.66, and this one is not a \
+         compromise but the practice of everybody who drives this hardware. \
+         Switchres's `generic_15` preset - 2.000, 4.700, 8.000 microseconds \
+         of porch, sync and back porch, so 48.86 of picture on a 63.556 line \
+         - is what both reference systems for this DAC select: RGB-Pi OS V4 \
+         writes 320 of 417 samples active (76.7%) in its own timing table, \
+         and ReplayOS carries libswitchres and asks it for `generic_15`. Ours \
+         is 3520 of 4577, 76.9%. The standard's 52.66 is what a broadcaster \
+         sends, of which a set shows about ninety percent; the 15 kHz world \
+         shrinks it by seven percent up front so an emulator's whole frame \
+         lands inside the glass. Read on a tube on 2026-09-14: at the \
+         standard's width the launcher's own writing ran off the sides. \
+         Widening it to 52.5 needs a 67 MHz clock, which the CH7101 does \
+         lock to, so the option is there for a monitor that shows the lot.",
     ),
     (
         NTSC_SHAPED,
@@ -205,7 +212,9 @@ pub const ALLOWED: &[(&[&str], &str, &str)] = &[
         "3.63 us against 1.50, the other side of the same choice: the picture \
          is narrower than the standard's, so the blanking it does not use has \
          to go somewhere. It is split to put the centre where a television \
-         puts it.",
+         puts it, which is not how `generic_15` splits it - that preset puts \
+         2.00 in front and 8.00 behind, and its picture therefore sits 1.6 \
+         microseconds further right than ours.",
     ),
     (
         NTSC_SHAPED,

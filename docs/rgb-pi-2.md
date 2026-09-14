@@ -80,6 +80,11 @@ modeline 72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync
 modeline 48 2560 2632 2860 3051 240 244 247 262 -hsync -vsync
 ```
 
+The picture is 48.9 us of the 63.556 line rather than the standard's 52.66,
+and that is deliberate: it is the shape of Switchres's `generic_15` preset,
+which is what both RGB-Pi OS and ReplayOS select for this DAC. See
+[`docs/15khz.md`](15khz.md) for the three timing tables side by side.
+
 The wide "super resolution" horizontals keep the HDMI pixel clock above the
 TMDS floor and let the shell stretch its 320 pixel wide framebuffer with
 integer factors (11x at 3520, 12x at 3840). The CH7101 locks at 48 and

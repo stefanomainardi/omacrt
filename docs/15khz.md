@@ -529,6 +529,45 @@ Asking for the range in the EDID is the switch. There is nothing else a
 television leased to this compositor would want a variable refresh rate for,
 so when the kernel says the connector is capable, Flyback turns it on.
 
+## What the two systems built for this DAC actually send
+
+Both reference systems for the RGB-Pi 2 were read on 2026-09-14, from the
+images their vendors ship.
+
+**RGB-Pi OS V4** (`/opt/rgbpi/ui/data/timings.dat`) writes its modes out in
+full. Its 320x240 line is 320 samples of picture in a total of 417, and its
+super resolution line 2624 of 3411:
+
+| | active / total | picture |
+| --- | --- | --- |
+| RGB-Pi OS, 320x240 | 320/417 = 76.7% | 49.1 us |
+| RGB-Pi OS, super resolution | 2624/3411 = 76.9% | 49.2 us |
+| this project | 3520/4577 = 76.9% | 48.89 us |
+| the NTSC standard | 52.66/63.556 = 82.9% | 52.66 us |
+
+**ReplayOS** carries `libswitchres.so` and its configuration says which preset
+to ask it for: `video_crt_type = "generic_15"`. That preset is in the library
+itself, as `15625-15750, 49.50-65.00, 2.000, 4.700, 8.000, ...`: two
+microseconds of front porch, 4.7 of sync and eight of back porch, so 48.86 of
+picture on a 63.556 line. RGB-Pi OS names the same preset in its own
+configuration (`crt_type = generic_15`).
+
+So the two systems agree with each other and with this project to within a
+twentieth of a microsecond, and all three are about seven percent narrower
+than the standard. That is not a mistake in any of the three. The standard's
+52.66 microseconds is what a broadcaster transmits, of which a set shows
+around ninety percent; a console or an emulator has no broadcaster's margin to
+spare, so the 15 kHz world shrinks the picture up front and puts the whole
+frame inside the glass.
+
+Where the three differ is not the width but where the picture sits.
+`generic_15` splits its blanking 2.00 in front and 8.00 behind, which centres
+the picture 32.43 microseconds after the end of sync. This project splits it
+3.63 and 6.36, which centres at 30.81, and the standard puts it at 31.03.
+ReplayOS ships a `video_crt_h_shift` for exactly this, and this project has
+`omacrt mode --shift-x`: a set's own centring is a property of that set, and
+no timing can be right for all of them.
+
 ## A fault in the display block
 
 On this card the display engine sometimes stops answering a register write:
