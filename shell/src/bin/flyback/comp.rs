@@ -242,6 +242,16 @@ pub struct Crt {
     client_slack: Duration,
     /// Whether this frame's drawing deadline is already on its way.
     deadline_armed: bool,
+    /// Whether a timer is out waiting to see whether this field is going to
+    /// run past what the television follows.
+    floor_armed: bool,
+    /// Bumped on every vblank, so a floor timer that was armed for a field
+    /// already over can tell and do nothing.
+    field_seq: u64,
+    /// How many fields have been ended with a repeat rather than a fresh
+    /// picture, for the log and for anybody asking whether the floor is
+    /// doing anything.
+    fields_repeated: u64,
     /// How long the last few frames took to draw and queue, decaying, so the
     /// deadline is set from what this machine and this scene actually cost
     /// rather than from a guess.
@@ -893,6 +903,9 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
             .map(Duration::from_micros)
             .unwrap_or(Duration::from_millis(3)),
         deadline_armed: false,
+        floor_armed: false,
+        field_seq: 0,
+        fields_repeated: 0,
         render_cost: Duration::from_micros(500),
         margin_override: std::env::var("FLYBACK_MARGIN_US")
             .ok()
@@ -1130,6 +1143,27 @@ mod timing {
     /// between two ends the wrong way round, and a European game asking for
     /// 49.70 gets the mode's own 50.08 instead. It then drops a frame every
     /// two and a half seconds, which is what a person sees.
+    /// The floor is armed early enough that the flip is in the kernel's
+    /// hands by the time the field would leave the set's window, not started
+    /// at it.
+    #[test]
+    fn the_floor_is_armed_before_the_field_runs_out() {
+        let stretch = 60.041 / 55.0;
+        let period = Duration::from_micros(16_655);
+        let floor = period.mul_f64(stretch);
+        let render_cost = Duration::from_micros(500);
+        let wait = floor.saturating_sub(render_cost + Duration::from_micros(500));
+        assert!(wait < floor, "the timer fires before the floor");
+        assert!(
+            wait > period,
+            "and after the frame the tube would have made anyway, or every \
+             field would be repeated"
+        );
+        // A millisecond of room between the two, which is twice what a flip
+        // and a composite pass were measured at.
+        assert!((floor - wait).as_micros() >= 1_000);
+    }
+
     #[test]
     fn the_floor_follows_the_mode_and_not_a_rate_from_another_standard() {
         let stretch = 60.041 / 55.0;
@@ -2035,6 +2069,71 @@ impl Crt {
             .is_ok();
     }
 
+    /// Stop the field before it runs past what this television follows.
+    ///
+    /// Under a variable refresh rate a field ends when a flip lands, and if
+    /// none does it runs to whatever the hardware allows: `V_TOTAL_MAX`, set
+    /// from the FreeSync range in the EDID this project writes, which is 328
+    /// lines here. This set gives up at 291. Measured with the launcher alone
+    /// on the tube and a terminal busy on the desktop, twenty-six fields in
+    /// every three hundred left the set's window and the worst ran the whole
+    /// way to 328: it does not take a game, it takes the desk being used.
+    ///
+    /// Nobody else has this problem because on a panel the driver's own
+    /// below-the-range handling does the same job, and it is off here for a
+    /// reason we cannot change: it wants the declared maximum to be at least
+    /// twice the declared minimum, and 62 over 48 is not. So the compositor
+    /// does it: if no real frame has arrived by the time the field reaches
+    /// the floor, the last one is sent again. A repeated field keeps the set
+    /// locked. A field that runs off the end does not.
+    fn arm_floor(&mut self) {
+        if self.floor_armed || !self.vrr_on {
+            return;
+        }
+        // Less the cost of drawing and queueing, because the flip has to be
+        // in the kernel's hands by the floor and not started at it.
+        let wait = self
+            .slowest()
+            .saturating_sub(self.render_cost + Duration::from_micros(500));
+        let seq = self.field_seq;
+        self.floor_armed = self
+            .handle
+            .insert_source(Timer::from_duration(wait), move |_, _, st: &mut Crt| {
+                st.floor_armed = false;
+                st.floor_tick(seq);
+                TimeoutAction::Drop
+            })
+            .is_ok();
+    }
+
+    /// The floor came up. Send the last picture again unless a real one is
+    /// already on its way.
+    fn floor_tick(&mut self, seq: u64) {
+        // A vblank since this was armed means the field it belonged to is
+        // over and somebody else is keeping time.
+        if seq != self.field_seq || self.frame_queued || !self.vrr_on {
+            return;
+        }
+        // smithay will not flip a frame with nothing new in it, which is
+        // usually what keeps a still picture from costing anything. Here the
+        // whole point is to flip a frame with nothing new in it, so the
+        // buffer ages are reset and every part of the picture counts as
+        // damaged again.
+        if let Some(out) = self.drm_output.as_ref() {
+            out.with_compositor(|c| c.reset_buffer_ages());
+        }
+        self.fields_repeated += 1;
+        if self.trace {
+            eprintln!(
+                "trace: the field reached the floor with no frame, repeating ({} so far)",
+                self.fields_repeated
+            );
+        }
+        self.dirty = true;
+        self.dirty_top = true;
+        self.render();
+    }
+
     /// One tick in a frame's time, unless one is already on its way.
     fn arm_pacer(&mut self) {
         if self.pacer_armed {
@@ -2321,6 +2420,9 @@ impl Crt {
         // while under a variable rate the frame really does end when the flip
         // lands. The two are the same size here, so the instrument could not
         // tell a frame that was longer from a wakeup that was late.
+        // A new field starts here, so any floor timer still out belongs to
+        // the one that just ended.
+        self.field_seq = self.field_seq.wrapping_add(1);
         let woke = self
             .last_vblank
             .replace(Instant::now())
@@ -2488,6 +2590,9 @@ impl Crt {
         } else {
             self.tick();
         }
+        // Whatever else this field is waiting for, it must not run past what
+        // the set follows.
+        self.arm_floor();
     }
 
     fn window_for(&self, surface: &WlSurface) -> Option<Window> {
