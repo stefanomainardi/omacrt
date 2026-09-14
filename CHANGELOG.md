@@ -31,6 +31,9 @@ caveat for a 0.x project: anything may still move.
   restarted, which is what actually brings the tube back.
 - `omacrt watchdog --stop` started a second watchdog instead of rejecting an
   argument it does not take.
+- A game whose compositor died was logged as `game exited: exit status: 1`,
+  the same as a game that crashed on its own. It now says the display process
+  went with it and where to read why.
 
 ## [0.7.1] - 2026-09-13
 

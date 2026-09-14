@@ -576,13 +576,30 @@ fn run(args: &Args) -> Result<(), String> {
             match c.try_wait() {
                 Ok(Some(status)) => {
                     child = None;
-                    eprintln!(
-                        "game exited: {status} (its output: {})",
-                        library::game_log_path().display()
-                    );
+                    // A game that ends badly is usually a game that ended
+                    // badly, but not always: when the display process goes
+                    // the Wayland connection goes with it and every client on
+                    // that tube dies where it stood. That is what happened on
+                    // 2026-09-14, and the log said only `exit status: 1`,
+                    // which sent us looking at the core for an hour.
+                    let display_gone = !status.success() && !omacrt_shell::crt::display::running();
+                    if display_gone {
+                        eprintln!(
+                            "game exited: {status}, and the display process is gone with it. \
+                             The game did not fail, its compositor did; see {}",
+                            omacrt_shell::crt::display::log_path().display()
+                        );
+                    } else {
+                        eprintln!(
+                            "game exited: {status} (its output: {})",
+                            library::game_log_path().display()
+                        );
+                    }
                     // A crash inside RetroArch's own shutdown is a normal
                     // end of play as far as the launcher is concerned.
-                    scene.game_finished(status.success() || library::exited_after_unload());
+                    scene.game_finished(
+                        status.success() || display_gone || library::exited_after_unload(),
+                    );
                     omacrt_shell::crt::output::expect_game_clear();
                     following = None;
                     stick.release();
