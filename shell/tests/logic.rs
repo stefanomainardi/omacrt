@@ -371,3 +371,47 @@ fn no_system_asks_for_a_window_taller_than_the_frame() {
         }
     }
 }
+
+/// A game whose file name says Europe is laid out for the European frame,
+/// not for the one the tube happens to be showing.
+///
+/// The emulator's window is built before the mode changes, so reading the
+/// current output gives the frame the tube is leaving. The height came from
+/// the system's own line count and was right; the width came from the output
+/// and was not, so a European game on a machine sitting in NTSC was given a
+/// 3520 sample window on a 3840 sample line and left 320 samples of the
+/// launcher showing down the side of the picture.
+#[test]
+fn a_european_game_is_laid_out_for_the_european_frame() {
+    let frame = |name: &str| {
+        let (_, text) = omacrt_shell::crt::SHIPPED
+            .iter()
+            .find(|(n, _)| *n == name)
+            .expect("shipped");
+        let m = Modeline::parse(text).expect("a modeline");
+        (m.width(), m.height())
+    };
+    let (ntsc_w, _) = frame("ntsc");
+    let (pal_w, pal_h) = frame("pal");
+    assert_ne!(
+        ntsc_w, pal_w,
+        "the two frames are different widths, which is the whole hazard"
+    );
+
+    use std::path::Path;
+    let european = Path::new("/roms/Sonic Compilation (Europe).md");
+    let std = omacrt_shell::library::standard_for_path(european).expect("a standard");
+    assert_eq!(std, "pal");
+    assert_eq!(
+        frame(std),
+        (pal_w, pal_h),
+        "laid out for the frame it asks for"
+    );
+
+    // And an American release is not moved.
+    let american = Path::new("/roms/Sonic the Hedgehog (USA).md");
+    assert_eq!(
+        omacrt_shell::library::standard_for_path(american),
+        Some("ntsc")
+    );
+}

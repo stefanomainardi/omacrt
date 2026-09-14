@@ -1631,9 +1631,24 @@ impl Scene {
             let mut keys = self.profile.retroarch_keys();
             if self.wide_output() {
                 // Fill the frame (aspect 24 = Full): the tube turns the wide frame back into 4:3.
-                // The window is as tall as the mode the tube switches to for
-                // this system, not as the mode showing right now.
-                let (w, mut h) = self.output_size;
+                // The window is the size of the mode the tube is about to be
+                // put in, never the one showing now. Those are different
+                // whenever the standard changes with the game: a European
+                // release moves the tube from a 3520 sample line to a 3840
+                // one, and a window built from the old width left 320 samples
+                // of the launcher showing down the side of the picture.
+                //
+                // The height has been read from the system's own line count
+                // all along, which is why only the width was wrong; both come
+                // from the same place now.
+                let frame = crate::library::standard_for_path(&entry.game.path)
+                    .and_then(|std| {
+                        let cfg = omacrt_shell::crt::Config::load();
+                        omacrt_shell::crt::output::Modeline::parse(cfg.modeline(std)?)
+                            .map(|m| (m.width(), m.height()))
+                    })
+                    .unwrap_or(self.output_size);
+                let (w, mut h) = frame;
                 // `frame` leaves the window the height of the tube's own
                 // frame, which is what asks the emulator to scale into it.
                 if !system.is_video() && system.aspect != "frame" {
