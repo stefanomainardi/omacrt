@@ -10,6 +10,7 @@ pub mod display;
 pub mod launcher;
 pub mod output;
 pub mod roms;
+pub mod standards;
 pub mod tidy;
 pub mod watchdog;
 
@@ -334,7 +335,7 @@ impl Default for Audio {
     }
 }
 
-pub const DEFAULT_CONFIG: &str = r#"# omacrt configuration. Every key is optional.
+const DEFAULT_CONFIG_TEMPLATE: &str = r#"# omacrt configuration. Every key is optional.
 
 [output]
 # DRM connector of the CRT DAC (HDMI-A-1 or card1-HDMI-A-1). Empty = the first
@@ -378,13 +379,13 @@ vrr_min_hz = 55.0
 # what `h_shift` was being spent on. They move together because a picture
 # that jumps sideways when the tube goes to 480i is worse than one that is
 # off centre in all three.
-ntsc = "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync"
-pal = "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync"
+ntsc = "{ntsc}"
+pal = "{pal}"
 # 240p at exactly 60.00 Hz, for filming the tube with a 60 fps camera.
-film = "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync"
+film = "{film}"
 # Interlaced frames for video (omacrt mode 480i | 576i).
-ntsc_i = "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace"
-pal_i = "74 3840 3966 4314 4736 576 582 588 625 -hsync -vsync interlace"
+ntsc_i = "{ntsc_i}"
+pal_i = "{pal_i}"
 
 [shell]
 bin = "omacrt-shell"
@@ -403,6 +404,54 @@ system_default = false
 volume = 125
 "#;
 
+/// The timings this project ships, and the one place they are written.
+///
+/// They used to be typed out in three: the default configuration text, and
+/// two lists inside tests. The list in `tests/logic.rs` had already fallen a
+/// day behind and its test passed anyway, because line rate, field rate,
+/// width and height are identical either side of the change that fixed the
+/// picture. Everything that needs to know a shipped timing reads this.
+pub const SHIPPED: [(&str, &str); 5] = [
+    (
+        "ntsc",
+        "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync",
+    ),
+    (
+        "pal",
+        "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync",
+    ),
+    (
+        "film",
+        "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync",
+    ),
+    (
+        "ntsc_i",
+        "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace",
+    ),
+    (
+        "pal_i",
+        "74 3840 3966 4314 4736 576 582 588 625 -hsync -vsync interlace",
+    ),
+];
+
+/// The commented file written to a machine that has none, with the shipped
+/// timings filled in from [`SHIPPED`] rather than typed out again.
+pub fn default_config() -> String {
+    let of = |want: &str| {
+        SHIPPED
+            .iter()
+            .find(|(name, _)| *name == want)
+            .map(|(_, text)| *text)
+            .unwrap_or_default()
+    };
+    DEFAULT_CONFIG_TEMPLATE
+        .replace("{ntsc}", of("ntsc"))
+        .replace("{pal}", of("pal"))
+        .replace("{film}", of("film"))
+        .replace("{ntsc_i}", of("ntsc_i"))
+        .replace("{pal_i}", of("pal_i"))
+}
+
 impl Config {
     pub fn path() -> PathBuf {
         config_dir().join("crt.toml")
@@ -413,7 +462,7 @@ impl Config {
         let path = Self::path();
         if !path.exists() {
             let _ = std::fs::create_dir_all(config_dir());
-            let _ = std::fs::write(&path, DEFAULT_CONFIG);
+            let _ = std::fs::write(&path, default_config());
         }
         std::fs::read_to_string(&path)
             .ok()

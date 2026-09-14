@@ -76,9 +76,18 @@ fn every_system_label_is_a_thumbnail_set_name() {
 
 // ------------------------------------------------------------- modelines
 
+/// The shipped NTSC timing, read from the one list rather than typed out.
+///
+/// It used to be typed out, and it fell a day behind the line this project
+/// actually ships: the porches had moved to put the picture where a set puts
+/// it, and every assertion here passed anyway, because a rate and a size
+/// cannot see where a picture sits.
 fn ntsc() -> Modeline {
-    Modeline::parse("72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync")
-        .expect("the shipped NTSC modeline parses")
+    let (_, text) = omacrt_shell::crt::SHIPPED
+        .iter()
+        .find(|(name, _)| *name == "ntsc")
+        .expect("ntsc is shipped");
+    Modeline::parse(text).expect("the shipped NTSC modeline parses")
 }
 
 #[test]
@@ -101,8 +110,11 @@ fn fewer_active_lines_keep_the_line_rate_and_the_refresh() {
 
 #[test]
 fn an_interlaced_modeline_keeps_its_flag() {
-    let m = Modeline::parse("72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace")
-        .expect("480i parses");
+    let (_, text) = omacrt_shell::crt::SHIPPED
+        .iter()
+        .find(|(name, _)| *name == "ntsc_i")
+        .expect("ntsc_i is shipped");
+    let m = Modeline::parse(text).expect("480i parses");
     assert!(m.flags.contains("interlace"));
     assert_eq!(m.height(), 480);
 }

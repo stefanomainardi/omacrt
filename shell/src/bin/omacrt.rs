@@ -7,6 +7,7 @@
 
 use omacrt_shell::crt::dac::{Csync, Dac, Lock};
 use omacrt_shell::crt::output::{self, Connector, Modeline};
+use omacrt_shell::crt::standards;
 use omacrt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
 use omacrt_shell::index::Index;
 use omacrt_shell::library::{self, Library};
@@ -1936,6 +1937,79 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             }
         }));
     }
+    // The shape of the line, in the unit a television is built in. Every
+    // other check here reads a rate, and a rate cannot see where a picture
+    // sits: the PAL timing this project shipped for months summed to the
+    // right 15.625 kHz and still ran off the left of the screen.
+    let shape_standard = {
+        let state = State::load();
+        if state.standard.is_empty() {
+            cfg.output.standard.clone()
+        } else {
+            state.standard.clone()
+        }
+    };
+    let shape_text = cfg.modeline(&shape_standard).map(str::to_string);
+    probes.push(Probe::new(TELEVISION, "shape of the line", move || {
+        let Some(ml) = shape_text.as_deref().and_then(Modeline::parse) else {
+            return (Level::Warn, format!("no modeline for {shape_standard}"));
+        };
+        let Some(std) = standards::Standard::of(&ml) else {
+            return (
+                Level::Ok,
+                format!(
+                    "{:.3} kHz is neither television standard, so there is no \
+                     shape to hold it to",
+                    ml.hfreq_khz()
+                ),
+            );
+        };
+        // A timing this project ships carries the allowances this project
+        // took, with their reasons; one somebody wrote themselves carries
+        // none, because we have no idea what they meant by it.
+        let shipped_as = crt::SHIPPED
+            .iter()
+            .find(|(_, text)| Modeline::parse(text).as_ref() == Some(&ml))
+            .map(|(name, _)| *name);
+        let out: Vec<_> = standards::deviation(&ml, std, standards::TOLERANCE_US)
+            .into_iter()
+            .filter(|d| {
+                !shipped_as.is_some_and(|name| {
+                    standards::ALLOWED
+                        .iter()
+                        .any(|(names, what, _)| names.contains(&name) && *what == d.what)
+                })
+            })
+            .collect();
+        let centre = ml.centre_us() - std.shape().centre_us();
+        if centre.abs() > standards::CENTRE_TOLERANCE_US {
+            return (
+                Level::Warn,
+                format!(
+                    "{}: the picture sits {centre:+.2} us from where a set puts \
+                     it, which is about {} of the launcher's pixels",
+                    std.name(),
+                    (centre * ml.clock_mhz / (ml.width() as f64 / 320.0))
+                        .abs()
+                        .round() as i64
+                ),
+            );
+        }
+        match out.first() {
+            Some(d) => (Level::Warn, format!("{}: {d}", std.name())),
+            None => (
+                Level::Ok,
+                format!(
+                    "{}: picture {:.1} us, centre at {:.1} (the standard puts it at {:.1})",
+                    std.name(),
+                    ml.active_us(),
+                    ml.centre_us(),
+                    std.shape().centre_us()
+                ),
+            ),
+        }
+    }));
+
     let interlace = cfg.output.interlace;
     probes.push(Probe::new(TELEVISION, "interlaced modes", move || {
         if interlace {

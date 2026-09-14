@@ -258,6 +258,56 @@ impl Modeline {
         self.hfreq_khz() * 1000.0 / self.v[3] as f64
     }
 
+    /// How long a run of samples lasts, in microseconds.
+    ///
+    /// The unit a television is built in. Everything above this line counts
+    /// pixels, which is what a graphics card deals in; a deflection circuit
+    /// deals in time, and the difference is why a modeline can have exactly
+    /// the right line rate and still put the picture off the edge of the
+    /// screen.
+    fn us(&self, samples: u32) -> f64 {
+        samples as f64 / self.clock_mhz
+    }
+
+    /// The picture itself: how long the beam is drawing.
+    pub fn active_us(&self) -> f64 {
+        self.us(self.h[0])
+    }
+
+    /// Between the end of the picture and the sync pulse.
+    pub fn front_porch_us(&self) -> f64 {
+        self.us(self.h[1] - self.h[0])
+    }
+
+    /// The pulse that tells the set to start the next line.
+    pub fn sync_us(&self) -> f64 {
+        self.us(self.h[2] - self.h[1])
+    }
+
+    /// Between the sync pulse and the start of the picture. This is the one
+    /// that decides where the picture begins on the glass, because a set
+    /// starts its horizontal sweep from the sync and not from the data.
+    pub fn back_porch_us(&self) -> f64 {
+        self.us(self.h[3] - self.h[2])
+    }
+
+    /// The whole line.
+    pub fn line_us(&self) -> f64 {
+        self.us(self.h[3])
+    }
+
+    /// Where the middle of the picture falls, counted from the end of the
+    /// sync pulse.
+    ///
+    /// Two timings with the same line rate, the same width and the same total
+    /// can still put the picture in different places, and this is the number
+    /// that says so. A PAL line and an NTSC line that disagree here cannot be
+    /// served by one picture shift, because the shift is a property of the
+    /// television and this is a property of the timing.
+    pub fn centre_us(&self) -> f64 {
+        self.back_porch_us() + self.active_us() / 2.0
+    }
+
     /// Why this timing must not be given to the television, if it must not.
     ///
     /// A fixed frequency set is not a monitor that shrugs at a signal it
@@ -812,16 +862,11 @@ mod guard {
 
     #[test]
     fn every_timing_this_project_ships_is_allowed() {
-        // If one of these ever fails, either the band is wrong or a shipped
-        // modeline is, and both are worth stopping the build for.
-        for text in [
-            "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync",
-            "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync",
-            "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync",
-            "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace",
-            "74 3840 3966 4314 4736 576 582 588 625 -hsync -vsync interlace",
-        ] {
-            assert_eq!(ml(text).fault(TV), None, "{text}");
+        // Read from the one list rather than typed out again. They used to be
+        // copied here, and the copy in `tests/logic.rs` had already fallen a
+        // day behind without any test noticing.
+        for (name, text) in crate::crt::SHIPPED {
+            assert_eq!(ml(text).fault(TV), None, "{name}");
         }
     }
 
