@@ -245,6 +245,9 @@ pub struct Crt {
     /// Whether a timer is out waiting to see whether this field is going to
     /// run past what the television follows.
     floor_armed: bool,
+    /// `FLYBACK_FLOOR=off` takes the repeat out of the picture, so a fault
+    /// that might be it can be halved in one restart instead of argued about.
+    floor_on: bool,
     /// Bumped on every vblank, so a floor timer that was armed for a field
     /// already over can tell and do nothing.
     field_seq: u64,
@@ -904,6 +907,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
             .unwrap_or(Duration::from_millis(3)),
         deadline_armed: false,
         floor_armed: false,
+        floor_on: std::env::var("FLYBACK_FLOOR").as_deref() != Ok("off"),
         field_seq: 0,
         fields_repeated: 0,
         render_cost: Duration::from_micros(500),
@@ -2087,7 +2091,7 @@ impl Crt {
     /// the floor, the last one is sent again. A repeated field keeps the set
     /// locked. A field that runs off the end does not.
     fn arm_floor(&mut self) {
-        if self.floor_armed || !self.vrr_on {
+        if self.floor_armed || !self.vrr_on || !self.floor_on {
             return;
         }
         // Less the cost of drawing and queueing, because the flip has to be
@@ -2123,9 +2127,13 @@ impl Crt {
             out.with_compositor(|c| c.reset_buffer_ages());
         }
         self.fields_repeated += 1;
-        if self.trace {
-            eprintln!(
-                "trace: the field reached the floor with no frame, repeating ({} so far)",
+        // Said once, plainly, the first time and then every hundred: whether
+        // this ever fires at all was a question nobody could answer after an
+        // evening of it running, because the only line that said so was
+        // behind the trace flag.
+        if self.fields_repeated == 1 || self.fields_repeated.is_multiple_of(100) {
+            println!(
+                "the field reached the floor with no frame to end it: repeating ({} so far)",
                 self.fields_repeated
             );
         }
@@ -2324,8 +2332,27 @@ impl Crt {
                     self.flips_failed += 1;
                     eprintln!("queue_frame: {e} ({} in a row)", self.flips_failed);
                     if self.flips_failed >= FLIP_FAILURES_ALLOWED {
+                        // One line somebody can act on, above the ten
+                        // identical DRM errors. Giving up the lease hands the
+                        // television back to the desktop and takes the
+                        // launcher and whatever was playing with it, so the
+                        // last thing written should say what was on the air
+                        // and for how long, not only that it stopped.
                         eprintln!(
-                            "the connector has refused {FLIP_FAILURES_ALLOWED} page flips in a row: giving up the lease"
+                            "the connector has refused {FLIP_FAILURES_ALLOWED} page flips in a row: \
+                             giving up the lease. It was on {} for {:.0} s, and the desktop takes \
+                             the output back now: sudo systemctl restart omacrt-lease.service, \
+                             then omacrt on",
+                            self.modeline
+                                .as_ref()
+                                .map(|m| format!(
+                                    "{}x{} at {:.3} kHz",
+                                    m.width(),
+                                    m.label(),
+                                    m.hfreq_khz()
+                                ))
+                                .unwrap_or_else(|| "no mode".into()),
+                            self.start.elapsed().as_secs_f64()
                         );
                         self.running = false;
                     }

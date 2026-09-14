@@ -562,6 +562,9 @@ fn run(args: &Args) -> Result<(), String> {
         };
     let mut standard_now = configured_standard;
     let mut standard_asked = false;
+    // Whether this game's own frame rate has been asked for. Separate from
+    // the standard on purpose: see the comment where it is used.
+    let mut rate_asked = false;
     // Whether the desktop preview window was up when the game started, and
     // so has to be put back when it ends.
     let mut preview_was_up = false;
@@ -588,6 +591,7 @@ fn run(args: &Args) -> Result<(), String> {
                         let _ = omacrt_shell::crt::display::send("monitor on");
                     }
                     standard_asked = false;
+                    rate_asked = false;
                     // The launcher's own screens are not a game and have no
                     // rate to ask for: back to the mode's own.
                     let _ = omacrt_shell::crt::display::send("rate off");
@@ -628,25 +632,40 @@ fn run(args: &Args) -> Result<(), String> {
                         // game: they go to the tube in one command, and a
                         // core that reports its rate again is not asking for
                         // a second mode change.
+                        // The rate, once a game, from the core and from
+                        // nothing else.
+                        //
+                        // Two different questions, and they were one flag.
+                        // A file name says which standard a game belongs to,
+                        // and that answer arrives before the emulator starts;
+                        // the exact rate a core runs at is only ever known
+                        // from the core. Hanging the rate off the standard's
+                        // flag meant that the moment the file name started
+                        // answering the standard - which is the good path -
+                        // the rate stopped being asked for at all, and a
+                        // European game sat at the frame's 50.08 while
+                        // wanting 49.70: a frame handed back every two and a
+                        // half seconds, which is a hitch a person sees.
+                        //
+                        // The compositor cannot work it out for itself: it
+                        // paces the client, so its estimate is its own
+                        // cadence coming back. Somebody has to say the
+                        // number, and the launcher is the only thing that
+                        // reads it.
+                        if !rate_asked
+                            && let Some(hz) = library::core_hz(&log)
+                            && (40.0..=90.0).contains(&hz)
+                        {
+                            rate_asked = true;
+                            let _ = omacrt_shell::crt::display::send(&format!("rate {hz:.3}"));
+                            eprintln!("asking the tube for the core's own {hz:.2} Hz");
+                        }
                         let mut standard_moved = false;
                         if !standard_asked
                             && let Some(hz) = library::core_hz(&log)
                             && let Some(want) = library::standard_for_hz(hz)
                         {
                             standard_asked = true;
-                            // Ask for the rate as well, whether or not the
-                            // standard moves. A PAL frame is 50.08 and a
-                            // European game is 49.70: close enough that the
-                            // standard is right and far enough that the
-                            // emulator has to give a frame back every two and
-                            // a half seconds, which is a visible hitch. The
-                            // compositor cannot work the rate out for itself
-                            // - it paces the client, so its estimate is its
-                            // own cadence coming back - so somebody has to
-                            // say the number, and the launcher is the only
-                            // thing that reads it.
-                            let _ = omacrt_shell::crt::display::send(&format!("rate {hz:.3}"));
-                            eprintln!("asking the tube for the core's own {hz:.2} Hz");
                             if want != standard_now {
                                 eprintln!(
                                     "the core runs at {hz:.2} Hz, which is {want}: the tube follows"

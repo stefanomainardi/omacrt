@@ -1181,8 +1181,43 @@ fn cmd_watchdog(cfg: &Config) -> i32 {
             return 1;
         }
         let Some(conn) = output::pick(cfg) else {
-            eprintln!("no CRT output to restart on");
-            continue;
+            // Two very different situations, and this used to print one line
+            // for both and then go round again for ever.
+            //
+            // The one that actually happens: the connector is still there and
+            // still connected, and has gone back to being a desktop monitor,
+            // because the display process gave up its lease and nothing holds
+            // the non-desktop mark any more. Watching for a display process
+            // to come back is then pointless - the tube cannot be taken until
+            // somebody with root hands the connector over again - so say what
+            // to run and stop, rather than sit in a loop pretending to guard
+            // something.
+            //
+            // 2026-09-14, and the reason this is written down: the card's
+            // display block timed out on a register write, ten page flips
+            // were refused, the lease was surrendered, the desktop took the
+            // output, the launcher died with it, and the watchdog printed
+            // "no CRT output to restart on" every second afterwards while a
+            // person watched a television flicker.
+            let stray = output::connectors()
+                .into_iter()
+                .find(|c| c.connected && c.name.contains("HDMI") && !display::leaseable(&c.name));
+            match stray {
+                Some(c) => eprintln!(
+                    "{} is connected and back under the desktop: the lease was \
+                     given up and only root can hand it over again. Run \
+                     `sudo systemctl restart omacrt-lease.service` and then \
+                     `omacrt on`. Nothing here can do it, so this watchdog is \
+                     standing down.",
+                    c.name
+                ),
+                None => eprintln!(
+                    "no CRT output to restart on: nothing connected that this \
+                     could drive. Standing down."
+                ),
+            }
+            let _ = std::fs::remove_file(watchdog::pid_path());
+            return 1;
         };
         let state = State::load();
         let standard = if state.standard.is_empty() {
@@ -1971,9 +2006,22 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                     )
                     .into(),
                 ),
+                // Not marked. Either it was never set up, or it was and the
+                // mark has gone: the display process gives up its lease when
+                // the connector refuses ten page flips in a row, and the
+                // desktop takes the output straight back. The two want
+                // different commands, and after a fall the wrong one sends
+                // somebody to reinstall when a restart of the unit is enough.
                 _ => (
                     Level::Fail,
-                    "not marked non-desktop: sudo bin/omacrt-install --system".into(),
+                    if std::path::Path::new("/etc/systemd/system/omacrt-lease.service").is_file() {
+                        "not marked non-desktop, and the unit that marks it is \
+                         installed: the lease was given up. \
+                         sudo systemctl restart omacrt-lease.service, then omacrt on"
+                            .into()
+                    } else {
+                        "not marked non-desktop: sudo bin/omacrt-install --system".to_string()
+                    },
                 ),
             }
         }));
