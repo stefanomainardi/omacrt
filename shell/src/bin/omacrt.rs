@@ -74,6 +74,10 @@ const VERBS: Verbs = &[
             ("shell start|stop|restart|focus", ""),
             ("focus", "keyboard focus to the launcher"),
             (
+                "shell safe N",
+                "black border the TV eats, in percent a side; scripts/overscan-test.sh measures it",
+            ),
+            (
                 "shell key <input>...",
                 "drive the launcher: home menu up down left right fire back fav alt search osk del next prev first last",
             ),
@@ -3831,6 +3835,26 @@ fn main() {
                         .map(|s| s.as_str())
                         .unwrap_or_else(|| die("shell screen needs a screen name"));
                     crt::control::send_screen(name).unwrap_or_else(|e| die(&e.to_string()));
+                }
+                // The dial for the black border the television eats. It takes
+                // effect on the next frame, so a person can watch the picture
+                // and stop when the writing reaches the edge of the glass.
+                // The number that suits this set belongs in `--safe` in the
+                // config's shell arguments, or the next start forgets it.
+                "safe" => {
+                    let pos = positional(args);
+                    let n: u32 = pos
+                        .get(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or_else(|| die("shell safe needs a percentage, 0 to 20"));
+                    if n > 20 {
+                        die("shell safe: a television does not eat a fifth of each side");
+                    }
+                    crt::control::send_safe(n).unwrap_or_else(|e| die(&e.to_string()));
+                    term::sheet::step(
+                        "safe",
+                        format!("{n}% a side; put --safe {n} in [shell] args to keep it"),
+                    );
                 }
                 "type" => {
                     let words: Vec<&str> = positional(args)

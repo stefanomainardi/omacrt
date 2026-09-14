@@ -389,7 +389,13 @@ pal_i = "{pal_i}"
 
 [shell]
 bin = "omacrt-shell"
-args = ["--fullscreen", "--stretch", "--auto-boot"]
+# --safe N leaves N% of the width black on each side. A television scans a
+# picture wider than its glass and the mask cuts the rest off, so text at the
+# edge of the frame is text nobody can read. Three suits a BeoCenter 1, whose
+# overscan test hides four pixels of 240. `omacrt shell safe N` turns the dial
+# while the menu is up, and the 240p Test Suite's overscan screen measures it
+# properly.
+args = ["--fullscreen", "--stretch", "--auto-boot", "--safe", "3"]
 # Light the tube at login when the DAC is connected (`omacrt boot`).
 autostart = false
 

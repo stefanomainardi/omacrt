@@ -75,6 +75,25 @@ port nobody listens on succeeds, so `omacrt game save` in a window would report
 a save that never happened. Off the leased tube those commands say there is no
 emulator on this display.
 
+## The picture is cut off at the edges
+
+A television scans a picture wider than its glass and the mask cuts the rest
+off. That is not a fault and it is not something to correct in the timing: a
+game is drawn knowing it happens, and narrowing the raster to compensate makes
+the signal wrong for every game to make one menu fit.
+
+What to correct instead is where the launcher writes. `--safe N` in the
+`[shell]` arguments leaves N percent of the width black on each side, and
+`omacrt shell safe N` turns the same dial while the menu is up, so the number
+can be found by watching the screen rather than guessed.
+
+Two ways to measure a set. The 240p Test Suite's overscan screen is the better
+one: it draws a border and says how many pixels it is inset, and the answer is
+the last inset still visible. On a BeoCenter 1 that is four pixels of 240, or
+1.6 percent, and three is the number that suits it. `scripts/overscan-test.sh`
+does the same with five nested rectangles at 100, 96, 92, 88 and 84 percent
+and needs no ROM.
+
 ## Three things only a cold boot can answer
 
 ```

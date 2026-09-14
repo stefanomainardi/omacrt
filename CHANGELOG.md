@@ -14,11 +14,24 @@ caveat for a 0.x project: anything may still move.
   a picture that dies mid-game sends everybody to suspect their own cable
   first.
 
+- **A safe area for the launcher.** `--safe N` leaves N percent of the width
+  black on each side, because a television scans wider than its glass and text
+  at the edge of the frame is text nobody can read. `omacrt shell safe N`
+  turns the dial while the menu is up. Three is shipped, measured on a
+  BeoCenter 1 with the 240p Test Suite.
+- `scripts/overscan-test.sh` measures the same thing without a ROM: five
+  nested rectangles at 100, 96, 92, 88 and 84 percent of the frame.
 - `scripts/after-reboot.sh` runs the three checks that only a cold boot can
   answer, and says which of them the machine is too warm to answer.
 
 ### Changed
 
+- **The NTSC timing is the standard's width.** 52.54 us of picture against the
+  48.89 this project shipped, and the centre of the picture lands at 31.0 us
+  from the end of sync where the standard puts it at 31.03. Same 15.731 kHz,
+  same 60.04 Hz, same 11x scaling of a 320 pixel framebuffer; the clock moves
+  from 72 to 67 MHz, which the CH7101 locks to. The old width made the menu
+  visibly narrower than a PAL game on the same set.
 - The display process no longer gives up its lease when the connector refuses
   page flips. It resets the buffers, asks for the timing again and retries,
   waiting 200 ms and then doubling to a ceiling of 5 s. Surrendering was a

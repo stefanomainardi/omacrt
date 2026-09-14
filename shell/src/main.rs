@@ -42,6 +42,10 @@ use std::time::Instant;
 struct Args {
     w: usize,
     h: usize,
+    /// Percent of the frame's width to leave black on each side, because the
+    /// television scans wider than its glass. Zero unless asked for: an
+    /// offline render for the website has no tube to lose anything to.
+    safe: u32,
     hz: u32,
     scale: u32,
     fullscreen: bool,
@@ -70,6 +74,9 @@ struct Args {
 
 const USAGE: &str = "usage: omacrt-shell [options]
   --size WxH        framebuffer size (default 320x240)
+  --safe N          leave N% of the width black on each side, for a set that
+                    scans wider than its glass (scripts/overscan-test.sh says
+                    how much yours does)
   --hz N            refresh label shown in POST (default 60)
   --scale N         window scale for desktop testing (default 3)
   --fullscreen      fullscreen on the current output
@@ -115,6 +122,7 @@ fn parse_args() -> Result<Args, String> {
     let mut a = Args {
         w: 320,
         h: 240,
+        safe: 0,
         hz: 60,
         scale: 3,
         fullscreen: false,
@@ -168,6 +176,13 @@ fn parse_args() -> Result<Args, String> {
                     .collect();
             }
             "--dump-dir" => a.dump_dir = PathBuf::from(take(&mut it, &arg)?),
+            "--safe" => {
+                let n: u32 = take(&mut it, &arg)?.parse().map_err(|_| "bad safe")?;
+                if n > 20 {
+                    return Err("safe: a television does not eat a fifth of each side".into());
+                }
+                a.safe = n;
+            }
             "--idle" => a.idle = take(&mut it, &arg)?.parse().map_err(|_| "bad idle")?,
             "--dump-audio" => a.dump_audio = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--clock" => a.clock = Some(take(&mut it, &arg)?),
@@ -227,6 +242,16 @@ fn systems_path(args: &Args) -> PathBuf {
         })
 }
 
+/// How much of the width is left black on each side, in pixels.
+fn safe_pad(args: &Args) -> usize {
+    args.w * args.safe as usize / 100
+}
+
+/// The width the launcher actually draws into: the frame less the safe area.
+fn draw_width(args: &Args) -> usize {
+    args.w - 2 * safe_pad(args)
+}
+
 fn build_scene(args: &Args) -> Scene {
     let theme_path = args
         .theme
@@ -235,7 +260,7 @@ fn build_scene(args: &Args) -> Scene {
     let theme = theme_path
         .and_then(|p| omacrt_shell::theme::Theme::load(&p))
         .unwrap_or_else(omacrt_shell::theme::Theme::tokyo_night);
-    let info = SysInfo::probe(args.w, args.h, args.hz);
+    let info = SysInfo::probe(draw_width(args), args.h, args.hz);
     let library = library::Library::load(&systems_path(args));
     Scene::new(theme, info, args.idle, library)
 }
@@ -479,7 +504,8 @@ fn run(args: &Args) -> Result<(), String> {
     for j in &raw_joys {
         scene.pad_wizard_start(&j.name(), &j.guid().string(), j.instance_id());
     }
-    let mut fb = Framebuffer::new(args.w, args.h);
+    let mut fb = Framebuffer::new(draw_width(args), args.h);
+    let mut safe = safe_pad(args);
     let mut bytes = Vec::with_capacity(args.w * args.h * 4);
     let clock = Instant::now();
     let now = || clock.elapsed().as_secs_f64();
@@ -1013,6 +1039,23 @@ fn run(args: &Args) -> Result<(), String> {
         }
         if let Some(rx) = &control {
             for line in rx.try_iter() {
+                // The safe area, live. How much of the picture a television
+                // throws away is a property of that television, so the only
+                // way to land on the right number is to watch the screen
+                // while it changes. Restarting the launcher for each try
+                // loses the place in the menu and takes four seconds, which
+                // is how a five second question becomes an evening.
+                if let Some(rest) = line.trim().strip_prefix("safe ") {
+                    match rest.trim().parse::<u32>() {
+                        Ok(n) if n <= 20 => {
+                            safe = args.w * n as usize / 100;
+                            fb = Framebuffer::new(args.w - 2 * safe, args.h);
+                            println!("safe area: {n}% a side, drawing {} wide", fb.w);
+                        }
+                        _ => eprintln!("control: safe wants a percentage up to 20, got {rest}"),
+                    }
+                    continue;
+                }
                 match control_input(&line) {
                     Some(inp) => inputs.push(inp),
                     None => eprintln!("control: unknown input {line}"),
@@ -1274,7 +1317,7 @@ fn run(args: &Args) -> Result<(), String> {
             }
         }
 
-        fb.to_bgra(&mut bytes);
+        fb.to_bgra_padded(&mut bytes, safe);
         tex.update(None, &bytes, args.w * 4)
             .map_err(|e| e.to_string())?;
         canvas.clear();
