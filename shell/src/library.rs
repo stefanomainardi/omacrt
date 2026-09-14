@@ -1250,10 +1250,21 @@ input_max_users = "4"
 /// launcher turns the choice into a viewport at the next start, because
 /// RetroArch reads its aspect from the config and nothing can change it in a
 /// running game.
-pub const ASPECTS: [(&str, &str); 3] = [
+pub const ASPECTS: [(&str, &str); 4] = [
     ("fill", "fill the screen"),
     ("core", "as the core asks"),
     ("pixel", "square pixels"),
+    // The one that changes the television rather than the emulator: give the
+    // tube its whole frame and let the picture be scaled into it.
+    //
+    // It exists for a European game on a European frame. A Mega Drive game
+    // made in America draws 224 lines, and a PAL television draws 288, so the
+    // console sent 224 into a 288 line raster and left a black band above and
+    // below. That is what the hardware did and it is what this project does
+    // by default. Somebody who would rather have the screen full can say so,
+    // and pay for it in a picture magnified by 1.29 whose lines no longer
+    // land one on one.
+    ("frame", "fill the tube's frame"),
 ];
 
 /// Shader presets worth offering, in the order the pause menu cycles them.

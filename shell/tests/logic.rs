@@ -303,3 +303,71 @@ fn every_shader_the_pause_menu_offers_is_installed_and_off_comes_first() {
     assert_eq!(shader_path(""), None);
     assert_eq!(shader_path("nothing/at-all.slangp"), None);
 }
+
+// ------------------------------------------------- the frame a game gets
+
+/// For every system in the built-in catalogue and both standards, the window
+/// the emulator is given is never taller than the frame the tube receives.
+///
+/// The case this exists for: a Dreamcast asks for 480 lines and a GameCube's
+/// core reports 528, neither of which a progressive 15 kHz frame can draw.
+/// The mode is capped at the standard's own frame; a window built from the
+/// raw number lays the picture out for a screen twice the size of the one it
+/// lands on, and the player sees the top half of it at twice the size.
+#[test]
+fn no_system_asks_for_a_window_taller_than_the_frame() {
+    let frames: Vec<(&str, Modeline)> = omacrt_shell::crt::SHIPPED
+        .iter()
+        .filter(|(name, _)| *name == "ntsc" || *name == "pal")
+        .map(|(name, text)| (*name, Modeline::parse(text).expect("a shipped modeline")))
+        .collect();
+    // Every console the catalogue knows a line count for, which is the set
+    // that can be wrong: a system with no entry asks for nothing.
+    let systems = [
+        "nes",
+        "snes",
+        "megadrive",
+        "mastersystem",
+        "gamegear",
+        "pcengine",
+        "pcenginecd",
+        "megacd",
+        "32x",
+        "neogeo",
+        "arcade",
+        "saturn",
+        "mame",
+        "psx",
+        "n64",
+        "dreamcast",
+        "naomi",
+        "ps2",
+        "gamecube",
+        "wii",
+        "xbox",
+        "gb",
+        "gbc",
+        "gba",
+        "nds",
+        "psp",
+        "ngp",
+        "wonderswan",
+        "lynx",
+    ];
+    for system in systems {
+        let asked = omacrt_shell::library::default_lines(system);
+        for (standard, frame) in &frames {
+            let got = frame.with_lines(asked.unwrap_or(frame.height()));
+            assert!(
+                got.height() <= frame.height(),
+                "{system} on {standard}: asked {asked:?}, got {} in a {} line frame",
+                got.height(),
+                frame.height()
+            );
+            assert!(
+                got.fault([15.0, 16.5]).is_none(),
+                "{system} on {standard} is not a timing a set can lock to"
+            );
+        }
+    }
+}

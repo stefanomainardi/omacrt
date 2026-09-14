@@ -1636,7 +1636,14 @@ fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
             }
             PauseOutcome::Resumed => {
                 if differs {
-                    crt_mode_async(Some(Geometry {
+                    // Waited for, not fired and forgotten. Starting a game
+                    // waits for the mode on purpose - "an emulator that
+                    // connects in that moment is told the old size" - and
+                    // coming back from the pause menu is the same moment for
+                    // the same program: it is about to draw into whatever
+                    // size it is told. The two paths were not symmetrical and
+                    // the asymmetry had no reason behind it.
+                    crt_mode(Some(Geometry {
                         lines: game_lines,
                         shift: None,
                         follow: true,

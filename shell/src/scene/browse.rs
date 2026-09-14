@@ -1634,7 +1634,9 @@ impl Scene {
                 // The window is as tall as the mode the tube switches to for
                 // this system, not as the mode showing right now.
                 let (w, mut h) = self.output_size;
-                if !system.is_video() {
+                // `frame` leaves the window the height of the tube's own
+                // frame, which is what asks the emulator to scale into it.
+                if !system.is_video() && system.aspect != "frame" {
                     let pinned = match crate::library::VideoPolicy::parse(&system.video) {
                         crate::library::VideoPolicy::Fixed(_, ph) => Some(ph),
                         _ => None,
@@ -1689,7 +1691,16 @@ impl Scene {
                 crate::library::VideoPolicy::Fixed(_, h) => Some(h),
                 _ => None,
             };
-            let l = system.lines.or(pinned);
+            // `frame` asks the tube for its whole frame rather than the
+            // console's own line count, which is what fills a European
+            // screen with an American game's 224 lines. Nothing else here
+            // changes: the emulator's window follows the frame, and the
+            // scaling is the emulator's to do.
+            let l = if system.aspect == "frame" {
+                None
+            } else {
+                system.lines.or(pinned)
+            };
             // The standard the file name claims, so the tube is already in it
             // when the emulator opens. The core says the same thing a second
             // later, and acting on it then means changing the mode under a
