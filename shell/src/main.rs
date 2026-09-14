@@ -588,6 +588,9 @@ fn run(args: &Args) -> Result<(), String> {
                         let _ = omacrt_shell::crt::display::send("monitor on");
                     }
                     standard_asked = false;
+                    // The launcher's own screens are not a game and have no
+                    // rate to ask for: back to the mode's own.
+                    let _ = omacrt_shell::crt::display::send("rate off");
                     if lines_changed {
                         // Back to the standard the machine is configured for.
                         // `mode` with nothing to say would keep whatever the
@@ -595,8 +598,7 @@ fn run(args: &Args) -> Result<(), String> {
                         // flickers.
                         let back = (standard_now != configured_standard).then_some(Geometry {
                             lines: None,
-                            shift_x: 0,
-                            shift_y: 0,
+                            shift: None,
                             follow: true,
                             standard: Some(configured_standard),
                         });
@@ -626,28 +628,52 @@ fn run(args: &Args) -> Result<(), String> {
                         // game: they go to the tube in one command, and a
                         // core that reports its rate again is not asking for
                         // a second mode change.
+                        let mut standard_moved = false;
                         if !standard_asked
                             && let Some(hz) = library::core_hz(&log)
                             && let Some(want) = library::standard_for_hz(hz)
                         {
                             standard_asked = true;
+                            // Ask for the rate as well, whether or not the
+                            // standard moves. A PAL frame is 50.08 and a
+                            // European game is 49.70: close enough that the
+                            // standard is right and far enough that the
+                            // emulator has to give a frame back every two and
+                            // a half seconds, which is a visible hitch. The
+                            // compositor cannot work the rate out for itself
+                            // - it paces the client, so its estimate is its
+                            // own cadence coming back - so somebody has to
+                            // say the number, and the launcher is the only
+                            // thing that reads it.
+                            let _ = omacrt_shell::crt::display::send(&format!("rate {hz:.3}"));
+                            eprintln!("asking the tube for the core's own {hz:.2} Hz");
                             if want != standard_now {
                                 eprintln!(
                                     "the core runs at {hz:.2} Hz, which is {want}: the tube follows"
                                 );
                                 standard_now = want;
                                 following = None;
+                                standard_moved = true;
                                 crt_mode_async(Some(Geometry {
                                     lines: None,
-                                    shift_x: 0,
-                                    shift_y: 0,
+                                    shift: None,
                                     follow: true,
                                     standard: Some(want),
                                 }));
                                 lines_changed = true;
                             }
                         }
-                        if let Some((_, h)) = library::core_geometry(&log)
+                        // Not in the same pass as a standard change. The two
+                        // decisions are made against the size of our own
+                        // window, and that window has not been resized yet:
+                        // asking now reads the frame the tube is leaving and
+                        // concludes the core is already getting what it
+                        // wants. That is how a 224 line game came to sit in a
+                        // 288 line PAL frame, magnified by 1.29. The next
+                        // pass is three quarters of a second away and sees
+                        // the new frame.
+                        if !standard_moved
+                            && let Some((_, h)) = library::core_geometry(&log)
                             && (180..=1200).contains(&h)
                             && following != Some(h)
                         {
@@ -679,8 +705,7 @@ fn run(args: &Args) -> Result<(), String> {
                                 );
                                 crt_mode_async(Some(Geometry {
                                     lines: Some(want),
-                                    shift_x: 0,
-                                    shift_y: 0,
+                                    shift: None,
                                     follow: true,
                                     standard: None,
                                 }));
@@ -1538,11 +1563,13 @@ fn crt_mode_command(geometry: Option<Geometry>) -> std::process::Command {
         if let Some(h) = g.lines {
             cmd.arg("--lines").arg(h.to_string());
         }
-        // Both shifts, always, even at zero: centring is a property of the
-        // set in the room, and a mode change that says nothing about it
-        // leaves the CLI to fall back on what was saved.
-        cmd.arg("--shift-x").arg(g.shift_x.to_string());
-        cmd.arg("--shift-y").arg(g.shift_y.to_string());
+        // Only a program that has a shift of its own says one. Saying zero
+        // when there is nothing to say overwrites the last real answer, and
+        // the CLI falls back on what was saved, which is what we want.
+        if let Some((x, y)) = g.shift {
+            cmd.arg("--shift-x").arg(x.to_string());
+            cmd.arg("--shift-y").arg(y.to_string());
+        }
     }
     cmd.stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -1611,8 +1638,7 @@ fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
                 if differs {
                     crt_mode_async(Some(Geometry {
                         lines: game_lines,
-                        shift_x: 0,
-                        shift_y: 0,
+                        shift: None,
                         follow: true,
                         standard: None,
                     }));

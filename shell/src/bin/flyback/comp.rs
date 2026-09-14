@@ -593,6 +593,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         ml.vfreq_hz(),
         crtc
     );
+    publish_mode(&ml);
 
     // Wayland side.
     let mut event_loop: EventLoop<'static, Crt> =
@@ -940,7 +941,23 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     let _ = std::fs::remove_file(display::monitor_path());
     let _ = std::fs::remove_file(display::ctl_path());
     let _ = std::fs::remove_file(display::latency_path());
+    let _ = std::fs::remove_file(display::mode_path());
     Ok(())
+}
+
+/// Say what the television is being given, for anything that wants to know.
+///
+/// Written after the modeset has landed, never before: this file is the one
+/// answer in the system that is not a reconstruction, and it is worth nothing
+/// if it says what was asked for rather than what happened.
+fn publish_mode(ml: &Modeline) {
+    let path = display::mode_path();
+    let tmp = path.with_extension("mode.new");
+    if std::fs::write(&tmp, format!("{}\n", ml.to_hypr())).is_ok()
+        && std::fs::rename(&tmp, &path).is_err()
+    {
+        let _ = std::fs::remove_file(&tmp);
+    }
 }
 
 /// CLOCK_MONOTONIC, the clock wp_presentation was told about.
@@ -1688,6 +1705,7 @@ impl Crt {
             took.as_secs_f64() * 1000.0
         );
         self.modeline = Some(ml.clone());
+        publish_mode(ml);
         self.frame_queued = false;
         self.queued_at = None;
         self.damaged();

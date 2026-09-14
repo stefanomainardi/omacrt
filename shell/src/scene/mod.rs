@@ -398,8 +398,14 @@ struct Launch {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Geometry {
     pub lines: Option<u32>,
-    pub shift_x: i32,
-    pub shift_y: i32,
+    /// The picture shift this program wants, or `None` for "nothing to say".
+    ///
+    /// It was two plain numbers, so every caller had to name a shift whether
+    /// it had one or not, and the ones that had none named zero. That zero
+    /// went to the CLI, which saved it, and it then became the default for
+    /// every later call: a console's own centring survived exactly until the
+    /// first time its core reported a resolution.
+    pub shift: Option<(i32, i32)>,
     /// Whether to follow the resolution the core reports while it runs. A
     /// pinned frame is a deliberate choice for the whole session, so a core
     /// that changes its mind about its own size is scaled into it instead.

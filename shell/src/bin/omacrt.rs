@@ -404,15 +404,31 @@ fn status(cfg: &Config) -> Value {
         });
         if leased {
             if display::running() {
+                // What the compositor programmed, from the file it writes
+                // after the modeset lands. This used to be rebuilt here out
+                // of the configuration and the saved state, which is how a
+                // 251 line mode that had never existed came to be reported
+                // for ten minutes of a diagnosis. Only if that file is
+                // missing - an older display process - is the arithmetic
+                // used, and then it is a guess and says so.
                 let standard = st["standard"].as_str().unwrap_or("ntsc").to_string();
                 let applied =
                     crt::applied_standard_with(&standard, state.lines, cfg.output.interlace);
-                if let Some(ml) = cfg.modeline(applied).and_then(Modeline::parse) {
-                    let ml = if state.lines > 0 && state.lines != ml.height() {
-                        ml.with_lines(state.lines)
-                    } else {
-                        ml
-                    };
+                let real = display::current_mode();
+                st["mode_source"] = json!(if real.is_some() {
+                    "compositor"
+                } else {
+                    "guess"
+                });
+                if let Some(ml) = real.or_else(|| {
+                    cfg.modeline(applied).and_then(Modeline::parse).map(|ml| {
+                        if state.lines > 0 && state.lines != ml.height() {
+                            ml.with_lines(state.lines)
+                        } else {
+                            ml
+                        }
+                    })
+                }) {
                     st["active"] = json!(true);
                     st["mode"] = json!({
                         "width": ml.width(), "height": ml.height(), "refresh_hz": ml.field_hz(), "disabled": false,
@@ -884,6 +900,14 @@ fn apply_mode(
     } else {
         ml
     };
+    // The same guard the leased path has had all along. This one goes to the
+    // card through Hyprland instead of through our own compositor, and it
+    // had none: a line rate typed wrong in `crt.toml` reached the deflection
+    // circuit with nothing in the way. It is the only check in this project
+    // that exists to keep hardware alive, and it belongs on both roads.
+    if let Some(why) = ml.fault(cfg.output.hfreq_khz) {
+        return Err(format!("that timing asks the television for {why}"));
+    }
     let (ok, out) = output::apply_modeline(&conn.name, &ml, &cfg.output.position);
     if !ok {
         return Err(format!("modeline refused: {out}"));
@@ -1034,7 +1058,14 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
 fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
     let mut state = State::load();
     state.standard = standard.into();
-    state.lines = 0;
+    // The full frame of that standard, which is what the display process is
+    // about to program. Zero used to go here and meant "no line count", a
+    // third meaning for a field that already had two.
+    state.lines = cfg
+        .modeline(standard)
+        .and_then(Modeline::parse)
+        .map(|m| m.height())
+        .unwrap_or(0);
     state.save();
     match display::start_with_sink(&conn.name, crt_sink(cfg, conn).as_deref()) {
         Ok(note) => term::sheet::step("display", &note),
@@ -1194,6 +1225,16 @@ fn cmd_off(cfg: &Config) {
     let mut state = State::load();
     if cfg.audio.route {
         println!("audio:      {}", audio::route_back(&mut state));
+    }
+    // A standard the launcher chose for a European game must not outlive the
+    // game. It writes `pal` while one runs and puts the configured one back
+    // when it ends; taking the tube down from underneath skips that, and the
+    // next `omacrt on` came up at 50 Hz with the launcher flickering on it.
+    // Whatever the reason the tube is going down, this is where the machine
+    // goes back to what it is configured for.
+    if state.standard != cfg.output.standard {
+        state.standard = cfg.output.standard.clone();
+        state.lines = 0;
     }
     if display::running() {
         println!("display:    {}", display::stop());
@@ -2208,6 +2249,12 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
     for (what, path) in [
         ("launcher log", launcher::log_path()),
         ("display log", display::log_path()),
+        // The emulator's own log was not watched, and a game that ran at a
+        // third of speed while writing the same complaint twenty-six times
+        // went unnoticed by every check here until somebody watched the
+        // television. It is the log of a program this project starts, so it
+        // is this project's to read.
+        ("game log", library::game_log_path()),
     ] {
         probes.push(Probe::new(HOUSEKEEPING, what, move || {
             if !path.is_file() {
@@ -3405,10 +3452,18 @@ fn main() {
                     let scale = ml.width() as f32 / 320.0;
                     ml = ml.shifted((shift.0 as f32 * scale) as i32, shift.1);
                 }
-                display::mode(&ml.to_hypr());
+                if !display::mode(&ml.to_hypr()) {
+                    die("the display process did not take that timing: see the display log");
+                }
+                // Saved after the tube has it, and saved as what it got: the
+                // applied standard rather than the base, and the height the
+                // timing actually carries rather than the number asked for.
+                // `state.lines` used to mean three things depending on which
+                // path wrote it, and a request of 528 lines saved as 528 is
+                // what made `status` report a mode that had never existed.
                 let mut state = State::load();
-                state.standard = std.into();
-                state.lines = lines.unwrap_or(0);
+                state.standard = applied.into();
+                state.lines = ml.height();
                 state.shift_x = shift.0;
                 state.shift_y = shift.1;
                 state.save();

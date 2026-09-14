@@ -1698,8 +1698,7 @@ impl Scene {
             if l.is_some() || standard.is_some() || system.shift_x != 0 || system.shift_y != 0 {
                 Some(Geometry {
                     lines: l,
-                    shift_x: system.shift_x,
-                    shift_y: system.shift_y,
+                    shift: Some((system.shift_x, system.shift_y)),
                     follow: pinned.is_none(),
                     standard,
                 })
