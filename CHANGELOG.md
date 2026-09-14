@@ -14,6 +14,9 @@ caveat for a 0.x project: anything may still move.
   a picture that dies mid-game sends everybody to suspect their own cable
   first.
 
+- `scripts/after-reboot.sh` runs the three checks that only a cold boot can
+  answer, and says which of them the machine is too warm to answer.
+
 ### Changed
 
 - The display process no longer gives up its lease when the connector refuses

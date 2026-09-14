@@ -75,6 +75,18 @@ port nobody listens on succeeds, so `omacrt game save` in a window would report
 a save that never happened. Off the leased tube those commands say there is no
 emulator on this display.
 
+## Three things only a cold boot can answer
+
+```
+scripts/after-reboot.sh    # before omacrt on, not in the middle of a session
+```
+
+Whether the lease unit hung on the way down (the previous boot's journal is
+overwritten by the next one), whether the FreeSync range in the EDID is there
+because the boot-time unit put it there rather than because something wrote it
+later, and whether the files installed under `/etc` are the ones this checkout
+carries. Run it late in a session and it says so instead of answering.
+
 ## Is the tube ours?
 
 ```
