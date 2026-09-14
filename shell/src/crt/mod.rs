@@ -252,10 +252,10 @@ pub struct Modelines {
 }
 
 fn default_ntsc_i() -> String {
-    "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace".into()
+    "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace".into()
 }
 fn default_pal_i() -> String {
-    "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace".into()
+    "74 3840 3966 4314 4736 576 582 588 625 -hsync -vsync interlace".into()
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -301,9 +301,9 @@ impl Default for Output {
 impl Default for Modelines {
     fn default() -> Self {
         Self {
-            ntsc: "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync".into(),
-            pal: "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync".into(),
-            film: "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync".into(),
+            ntsc: "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync".into(),
+            pal: "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync".into(),
+            film: "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync".into(),
             ntsc_i: default_ntsc_i(),
             pal_i: default_pal_i(),
         }
@@ -362,13 +362,29 @@ vrr_min_hz = 55.0
 
 [modelines]
 # Hyprland modelines. Clocks must be whole MHz, Hyprland truncates them.
-ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"
-pal = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"
+#
+# The PAL line is at 74 MHz rather than 72 so that 3840 samples come to the
+# 51.9 microseconds a PAL line is supposed to carry, with the 5.7 of back
+# porch that decides where the picture starts. At 72 MHz the same 3840 was
+# 53.3 microseconds with 4.4 of back porch: wider than the standard and
+# starting too early, so the picture ran off the left of the screen and no
+# amount of picture shift brought it back.
+#
+# The three NTSC shaped lines carry 261 of front porch and 458 of back where
+# they used to carry 175 and 544. The width and the totals are untouched, so
+# every rate and every measurement taken on them still holds; what moves is
+# where the picture sits in the line. It was 1.2 microseconds right of where
+# a set puts the centre, about seven of the launcher's own pixels, which is
+# what `h_shift` was being spent on. They move together because a picture
+# that jumps sideways when the tube goes to 480i is worse than one that is
+# off centre in all three.
+ntsc = "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync"
+pal = "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync"
 # 240p at exactly 60.00 Hz, for filming the tube with a 60 fps camera.
-film = "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync"
+film = "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync"
 # Interlaced frames for video (omacrt mode 480i | 576i).
-ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
-pal_i = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
+ntsc_i = "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace"
+pal_i = "74 3840 3966 4314 4736 576 582 588 625 -hsync -vsync interlace"
 
 [shell]
 bin = "omacrt-shell"

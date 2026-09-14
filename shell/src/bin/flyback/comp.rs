@@ -261,11 +261,18 @@ pub struct Crt {
     /// The band of line rates this display may be given, from
     /// `output.hfreq_khz`. See `Modeline::fault`.
     hfreq_band: [f64; 2],
-    /// The longest frame this television keeps its picture at, from
-    /// `output.vrr_min_hz`. Nothing here asks the tube for a slower rate
-    /// than that, however slowly a program runs: past it the vertical
-    /// deflection stops following and the picture loses height.
-    slowest: Duration,
+    /// How far past its own frame this television will follow a stretched
+    /// one, as a ratio, from `output.vrr_min_hz` against the frame that
+    /// setting was measured on.
+    ///
+    /// A ratio and not a rate, because the rate alone belongs to one
+    /// standard. Measured as 55 Hz on a 60.04 Hz frame, which is nine per
+    /// cent; read as an absolute 55 it is *faster* than a PAL frame's own
+    /// 50.08, so the floor came out shorter than the mode itself, the two
+    /// ends of the range met, and the variable rate was off in PAL without
+    /// anybody turning it off. A European game asking for 49.70 was held at
+    /// 50.06 and dropped a frame every two and a half seconds.
+    stretch: f64,
     /// Microseconds added to or taken off the moment a client is told to
     /// draw, so the frame comes out the length that was asked for.
     ///
@@ -859,7 +866,17 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         last_top_commit: None,
         telling: 0,
         hfreq_band: cfg.output.hfreq_khz,
-        slowest: Duration::from_secs_f64(1.0 / cfg.output.vrr_min_hz.clamp(20.0, 200.0)),
+        stretch: {
+            // The calibration was taken on the standard this machine is set
+            // to, so that frame is what the rate has to be read against.
+            let nominal = cfg
+                .modeline(&cfg.output.standard)
+                .and_then(Modeline::parse)
+                .map(|m| m.field_hz())
+                .filter(|hz| (40.0..=90.0).contains(hz))
+                .unwrap_or(60.0);
+            (nominal / cfg.output.vrr_min_hz.clamp(20.0, 200.0)).clamp(1.0, 1.5)
+        },
         target_period: None,
         rate_trim: 0,
         client_period: Duration::from_millis(16),
@@ -1087,6 +1104,47 @@ mod timing {
         );
     }
 
+    /// The calibration is nine per cent past the frame, not an absolute rate,
+    /// and this is the case that proves why it has to be.
+    ///
+    /// `output.vrr_min_hz` is 55 on this set, measured against a 60.04 Hz
+    /// frame. A PAL frame is 50.08, already slower than 55: read as an
+    /// absolute rate the floor lands *inside* the mode, `frame_room` clamps
+    /// between two ends the wrong way round, and a European game asking for
+    /// 49.70 gets the mode's own 50.08 instead. It then drops a frame every
+    /// two and a half seconds, which is what a person sees.
+    #[test]
+    fn the_floor_follows_the_mode_and_not_a_rate_from_another_standard() {
+        let stretch = 60.041 / 55.0;
+        let want_ntsc = |period: Duration| period.mul_f64(stretch).max(period);
+
+        // NTSC: nothing moves. The floor is still 55 Hz, to a microsecond of
+        // rounding either way.
+        let ntsc = Duration::from_micros(16_655);
+        let floor = want_ntsc(ntsc).as_micros() as i64;
+        assert!((floor - 18_182).abs() <= 2, "{floor} us is not 55 Hz");
+
+        // PAL: the frame is 19_968 us and a game wants 20_120. The old
+        // absolute floor of 18_180 is shorter than the frame itself, so the
+        // room collapses onto the mode and the game is refused its rate.
+        let pal = Duration::from_micros(19_968);
+        let asked = Duration::from_micros(20_120);
+        let old = Duration::from_micros(18_180);
+        assert_eq!(
+            super::frame_room(Some(asked), pal, pal, old),
+            pal,
+            "the absolute floor gives the game the mode instead of its rate"
+        );
+
+        // As a ratio the floor is past the frame, and the game gets what it
+        // asked for.
+        assert_eq!(
+            super::frame_room(Some(asked), pal, pal, want_ntsc(pal)),
+            asked
+        );
+        assert!(want_ntsc(pal) > pal, "the floor is past the frame");
+    }
+
     #[test]
     fn a_frame_that_came_out_long_pulls_the_telling_earlier() {
         let target = Duration::from_micros(18_000);
@@ -1282,7 +1340,7 @@ impl Crt {
                 } else if let Ok(hz) = arg.parse::<f64>() {
                     let period = self.period();
                     let want = Duration::from_secs_f64(1.0 / hz.clamp(1.0, 1000.0));
-                    let held = want.clamp(period, self.slowest.max(period));
+                    let held = want.clamp(period, self.slowest());
                     self.target_period = Some(held);
                     self.rate_trim = 0;
                     println!(
@@ -1773,6 +1831,17 @@ impl Crt {
         }
     }
 
+    /// The longest frame this television will hold its picture at, in the
+    /// mode it is in now.
+    ///
+    /// Never shorter than the mode's own frame: hardware cannot make a frame
+    /// shorter than its timing, and a floor below the mode would leave the
+    /// scheduler no room at all.
+    fn slowest(&self) -> Duration {
+        let period = self.period();
+        period.mul_f64(self.stretch).max(period)
+    }
+
     /// The period of one frame on the tube.
     fn period(&self) -> Duration {
         self.output
@@ -1909,7 +1978,7 @@ impl Crt {
                 self.target_period,
                 self.client_period,
                 self.period(),
-                self.slowest,
+                self.slowest(),
             )
         } else {
             self.period().saturating_sub(self.margin())

@@ -1690,12 +1690,18 @@ impl Scene {
                 _ => None,
             };
             let l = system.lines.or(pinned);
-            if l.is_some() || system.shift_x != 0 || system.shift_y != 0 {
+            // The standard the file name claims, so the tube is already in it
+            // when the emulator opens. The core says the same thing a second
+            // later, and acting on it then means changing the mode under a
+            // program that is still starting.
+            let standard = crate::library::standard_for_path(&entry.game.path);
+            if l.is_some() || standard.is_some() || system.shift_x != 0 || system.shift_y != 0 {
                 Some(Geometry {
                     lines: l,
                     shift_x: system.shift_x,
                     shift_y: system.shift_y,
                     follow: pinned.is_none(),
+                    standard,
                 })
             } else {
                 None

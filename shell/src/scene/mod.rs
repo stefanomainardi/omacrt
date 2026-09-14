@@ -404,6 +404,9 @@ pub struct Geometry {
     /// pinned frame is a deliberate choice for the whole session, so a core
     /// that changes its mind about its own size is scaled into it instead.
     pub follow: bool,
+    /// The television standard to put the tube in, when something knows it.
+    /// `None` leaves whatever is already there.
+    pub standard: Option<&'static str>,
 }
 
 const LAUNCH_SECS: f32 = 1.15;

@@ -815,11 +815,11 @@ mod guard {
         // If one of these ever fails, either the band is wrong or a shipped
         // modeline is, and both are worth stopping the build for.
         for text in [
-            "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync",
-            "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync",
-            "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync",
-            "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace",
-            "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace",
+            "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync",
+            "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync",
+            "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync",
+            "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace",
+            "74 3840 3966 4314 4736 576 582 588 625 -hsync -vsync interlace",
         ] {
             assert_eq!(ml(text).fault(TV), None, "{text}");
         }
@@ -870,14 +870,14 @@ mod guard {
     /// to come out as a frame with eleven lines of blanking left in it.
     #[test]
     fn a_request_larger_than_the_frame_gets_the_frame() {
-        let ntsc = ml("72 3520 3695 4033 4577 240 242 245 262");
+        let ntsc = ml("72 3520 3781 4119 4577 240 242 245 262");
         for asked in [480, 528, 576, 1000] {
             let got = ntsc.with_lines(asked);
             assert_eq!(got.height(), 240, "asked for {asked}");
             // And the blanking is the standard's own, untouched.
             assert_eq!(got.v, ntsc.v, "asked for {asked}");
         }
-        let pal = ml("72 3840 3948 4290 4608 288 291 294 312");
+        let pal = ml("74 3840 3966 4314 4736 288 291 294 312");
         assert_eq!(pal.with_lines(576).height(), 288);
     }
 
@@ -885,7 +885,7 @@ mod guard {
     /// works: the picture is centred and the blanking grows around it.
     #[test]
     fn a_request_smaller_than_the_frame_is_centred() {
-        let ntsc = ml("72 3520 3695 4033 4577 240 242 245 262");
+        let ntsc = ml("72 3520 3781 4119 4577 240 242 245 262");
         let got = ntsc.with_lines(224);
         assert_eq!(got.height(), 224);
         assert_eq!(got.v[3], 262, "the frame is unchanged");
@@ -900,8 +900,8 @@ mod guard {
     #[test]
     fn every_built_in_line_count_is_a_timing_a_set_can_lock_to() {
         let frames = [
-            ml("72 3520 3695 4033 4577 240 242 245 262"),
-            ml("72 3840 3948 4290 4608 288 291 294 312"),
+            ml("72 3520 3781 4119 4577 240 242 245 262"),
+            ml("74 3840 3966 4314 4736 288 291 294 312"),
         ];
         for frame in frames {
             for asked in [224, 240, 288, 480, 528, 576] {

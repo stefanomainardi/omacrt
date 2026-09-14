@@ -544,6 +544,24 @@ fn run(args: &Args) -> Result<(), String> {
     let mut index_reload: Option<std::sync::mpsc::Receiver<library::Library>> = None;
     let mut follow_at = 0.0f64;
     let mut following: Option<u32> = None;
+    // The television standard the tube is in, and whether this game has
+    // already moved it. A European release runs at 50 and an American one at
+    // 60, and putting the tube in the wrong one costs the picture: the frame
+    // has to be stretched by a sixth of its length every time, which is past
+    // where a set holds its lock. The core says which it is in its first
+    // seconds, so the tube follows it and goes back afterwards.
+    //
+    // Back afterwards matters as much as the change: 50 Hz on a tube flickers
+    // where 60 does not, so the launcher's own screens have no business
+    // sitting there once the game has gone.
+    let configured_standard: &'static str =
+        if omacrt_shell::crt::Config::load().output.standard == "pal" {
+            "pal"
+        } else {
+            "ntsc"
+        };
+    let mut standard_now = configured_standard;
+    let mut standard_asked = false;
     // Whether the desktop preview window was up when the game started, and
     // so has to be put back when it ends.
     let mut preview_was_up = false;
@@ -569,8 +587,21 @@ fn run(args: &Args) -> Result<(), String> {
                         preview_was_up = false;
                         let _ = omacrt_shell::crt::display::send("monitor on");
                     }
+                    standard_asked = false;
                     if lines_changed {
-                        crt_mode(None);
+                        // Back to the standard the machine is configured for.
+                        // `mode` with nothing to say would keep whatever the
+                        // game moved the tube to, and a launcher left at 50 Hz
+                        // flickers.
+                        let back = (standard_now != configured_standard).then_some(Geometry {
+                            lines: None,
+                            shift_x: 0,
+                            shift_y: 0,
+                            follow: true,
+                            standard: Some(configured_standard),
+                        });
+                        standard_now = configured_standard;
+                        crt_mode(back);
                         lines_changed = false;
                         // Our own screens are 240 lines and the game's were
                         // not: drawing them before the television has changed
@@ -590,7 +621,33 @@ fn run(args: &Args) -> Result<(), String> {
                     // launcher then, not the game.
                     if now() >= follow_at && !scene.is_paused() {
                         follow_at = now() + 0.75;
-                        if let Some((_, h)) = library::core_geometry(&tail_of_game_log())
+                        let log = tail_of_game_log();
+                        // The standard before the line count, and once per
+                        // game: they go to the tube in one command, and a
+                        // core that reports its rate again is not asking for
+                        // a second mode change.
+                        if !standard_asked
+                            && let Some(hz) = library::core_hz(&log)
+                            && let Some(want) = library::standard_for_hz(hz)
+                        {
+                            standard_asked = true;
+                            if want != standard_now {
+                                eprintln!(
+                                    "the core runs at {hz:.2} Hz, which is {want}: the tube follows"
+                                );
+                                standard_now = want;
+                                following = None;
+                                crt_mode_async(Some(Geometry {
+                                    lines: None,
+                                    shift_x: 0,
+                                    shift_y: 0,
+                                    follow: true,
+                                    standard: Some(want),
+                                }));
+                                lines_changed = true;
+                            }
+                        }
+                        if let Some((_, h)) = library::core_geometry(&log)
                             && (180..=1200).contains(&h)
                             && following != Some(h)
                         {
@@ -625,6 +682,7 @@ fn run(args: &Args) -> Result<(), String> {
                                     shift_x: 0,
                                     shift_y: 0,
                                     follow: true,
+                                    standard: None,
                                 }));
                                 lines_changed = true;
                             }
@@ -1049,6 +1107,12 @@ fn run(args: &Args) -> Result<(), String> {
                 && crt_mode(Some(g))
             {
                 lines_changed = true;
+                if let Some(s) = g.standard {
+                    // Said before the emulator opened, so the core saying the
+                    // same thing later is not a second mode change.
+                    standard_now = s;
+                    standard_asked = true;
+                }
                 if args.fullscreen {
                     fit_output(canvas.window_mut());
                 }
@@ -1465,6 +1529,12 @@ fn crt_mode_command(geometry: Option<Geometry>) -> std::process::Command {
     let mut cmd = std::process::Command::new(bin);
     cmd.arg("mode");
     if let Some(g) = geometry {
+        // The standard comes first because the CLI takes it as the one
+        // positional argument, and it decides which modeline the line count
+        // is then applied to.
+        if let Some(std) = g.standard {
+            cmd.arg(std);
+        }
         if let Some(h) = g.lines {
             cmd.arg("--lines").arg(h.to_string());
         }
@@ -1544,6 +1614,7 @@ fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
                         shift_x: 0,
                         shift_y: 0,
                         follow: true,
+                        standard: None,
                     }));
                 }
                 display::raise("com.libretro.RetroArch");
