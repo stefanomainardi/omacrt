@@ -1865,9 +1865,25 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         MACHINE,
         "DRM leasing offered",
         || match leasing_offered() {
+            // An empty list has two causes with two different answers. If
+            // nothing is marked non-desktop, nothing has been set up. If
+            // something is and it is still not offered, the mark arrived
+            // after this session started, and Hyprland decides what a
+            // connector is when it adds it.
             Ok(Some(names)) if names.is_empty() => (
                 Level::Fail,
-                "the compositor offers the protocol and no connector: mark one non-desktop".into(),
+                if output::connectors()
+                    .iter()
+                    .any(|c| c.connected && display::leaseable(&c.name))
+                {
+                    "a connector is marked non-desktop and the compositor is offering \
+                     none: the mark was not there when this session started. Log out and \
+                     back in, or reboot"
+                        .into()
+                } else {
+                    "the compositor offers the protocol and no connector: mark one non-desktop"
+                        .to_string()
+                },
             ),
             Ok(Some(names)) => (Level::Ok, names.join(" ")),
             Ok(None) => (
@@ -2028,7 +2044,27 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                 .map(|m| !m["disabled"].as_bool().unwrap_or(true))
                 .unwrap_or(false);
             match (marked, held) {
-                (true, false) => (Level::Ok, "offered for leasing".into()),
+                // Marked, and the desktop is not using it. That is not the
+                // same as being leasable: ask the compositor rather than
+                // reason about it, because the case where the two disagree is
+                // exactly the one somebody is running this to understand.
+                (true, false) => match leasing_offered() {
+                    Ok(Some(names)) if names.contains(&handed.name) => {
+                        (Level::Ok, "offered for leasing".into())
+                    }
+                    Ok(Some(_)) => (
+                        Level::Fail,
+                        "marked non-desktop, the desktop is not using it, and the \
+                         compositor still offers no connector for leasing. Hyprland \
+                         decides what a connector is when it adds it and keeps the \
+                         answer, so one it has already taken as a monitor is never \
+                         offered again: log out and back in, or reboot"
+                            .into(),
+                    ),
+                    // Nothing to ask, or nothing that answers: say what is
+                    // known and leave the verdict to the row above.
+                    _ => (Level::Ok, "marked non-desktop".into()),
+                },
                 (true, true) => (
                     Level::Fail,
                     concat!(
@@ -2455,10 +2491,15 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             term::sheet::step(&m.what, format!("{}: {done}", m.detail));
         }
     }
-    if checks.iter().all(|c| c.level.ok()) {
-        0
-    } else {
+    // A warning does not make the exit status non-zero. Some of these rows
+    // report something true that nobody can act on: an untested graphics
+    // driver, or the count of the card's own register timeouts. A `doctor`
+    // that can never come back green on a working machine is a `doctor`
+    // nobody reads.
+    if checks.iter().any(|c| c.level == term::Level::Fail) {
         1
+    } else {
+        0
     }
 }
 

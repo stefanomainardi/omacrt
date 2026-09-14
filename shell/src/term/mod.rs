@@ -40,7 +40,11 @@ impl Level {
     pub fn plain_tag(self) -> &'static str {
         match self {
             Level::Ok => "OK  ",
-            _ => "FAIL",
+            // A warning is not a failure, and reading one as the other sends
+            // somebody to fix a machine that is working. The rich report has
+            // always drawn the two differently; this one did not.
+            Level::Warn => "WARN",
+            Level::Fail => "FAIL",
         }
     }
 

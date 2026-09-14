@@ -31,6 +31,12 @@ caveat for a 0.x project: anything may still move.
   restarted, which is what actually brings the tube back.
 - `omacrt watchdog --stop` started a second watchdog instead of rejecting an
   argument it does not take.
+- After a lost lease, `doctor` said "connector handed over: offered for
+  leasing" while the row above it said no connector was offered at all. It
+  now asks the compositor instead of reasoning from the mark, and both rows
+  say the session has to be restarted.
+- A warning read as `FAIL` in the plain report, and any warning made `doctor`
+  exit non-zero. Only a failure does now.
 - A game whose compositor died was logged as `game exited: exit status: 1`,
   the same as a game that crashed on its own. It now says the display process
   went with it and where to read why.
