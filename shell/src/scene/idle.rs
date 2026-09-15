@@ -89,8 +89,8 @@ impl Scene {
             return None;
         }
         match from {
-            // The first page of an evening is any of them, so a television
-            // left alone twice does not open the same way twice.
+            // The first page is any of them, so a television left alone
+            // twice does not open the same way twice.
             None => Some(on[(self.rand() as usize) % on.len()]),
             Some(current) => {
                 let at = on.iter().position(|i| *i == current);

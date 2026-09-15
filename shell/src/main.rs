@@ -25,7 +25,7 @@ mod weather_sound;
 use omacrt_shell::assets;
 use omacrt_shell::padmap::Raw;
 use omacrt_shell::{
-    covers, index, library, music, padmap, player, profile, settings, states, videofit, yt,
+    covers, index, library, music, padmap, player, profile, rates, settings, states, videofit, yt,
 };
 
 use audio::Audio;
@@ -591,6 +591,19 @@ fn run(args: &Args) -> Result<(), String> {
     // Whether this game's own frame rate has been asked for. Separate from
     // the standard on purpose: see the comment where it is used.
     let mut rate_asked = false;
+    // The field rate this game's core runs at, once it has said so, waiting
+    // to be built into the timing.
+    let mut game_hz: Option<f32> = None;
+    // The same rate waiting to be asked of the variable refresh, once the
+    // timing that carries it has landed.
+    let mut rate_pending: Option<(f32, Instant)> = None;
+    // And the rate of the game that is running, kept for as long as it runs:
+    // the pause menu takes the tube to the launcher's own frame and has to
+    // give the game back the one it had.
+    let mut playing_hz: Option<f32> = None;
+    // Which core is running and in which standard, for remembering its rate.
+    let mut playing_core: Option<String> = None;
+    let mut playing_standard: Option<&'static str> = None;
     // Whether the desktop preview window was up when the game started, and
     // so has to be put back when it ends.
     let mut preview_was_up = false;
@@ -635,6 +648,11 @@ fn run(args: &Args) -> Result<(), String> {
                     }
                     standard_asked = false;
                     rate_asked = false;
+                    game_hz = None;
+                    playing_hz = None;
+                    playing_core = None;
+                    playing_standard = None;
+                    rate_pending = None;
                     // The launcher's own screens are not a game and have no
                     // rate to ask for: back to the mode's own.
                     let _ = omacrt_shell::crt::display::send("rate off");
@@ -648,6 +666,7 @@ fn run(args: &Args) -> Result<(), String> {
                             shift: None,
                             follow: true,
                             standard: Some(configured_standard),
+                            hz: None,
                         });
                         standard_now = configured_standard;
                         crt_mode(back);
@@ -664,6 +683,7 @@ fn run(args: &Args) -> Result<(), String> {
                     }
                 }
                 Ok(None) => {
+                    crt_mode_reap();
                     // While it runs: read the tail of its log and follow the
                     // resolution the core reports.
                     // Not while the pause menu is up: the tube is showing the
@@ -695,15 +715,34 @@ fn run(args: &Args) -> Result<(), String> {
                         // cadence coming back. Somebody has to say the
                         // number, and the launcher is the only thing that
                         // reads it.
+                        //
+                        // It is asked for twice, and the two are not the same
+                        // thing. The variable refresh rate is free and can be
+                        // had at any moment, but the driver only offers it
+                        // when the range declared in the EDID survives being
+                        // capped at the mode's own rate, which it does not in
+                        // every standard. Building the rate into the timing
+                        // always works, so that is what decides it; the
+                        // request costs nothing and takes up the remainder.
                         if !rate_asked
                             && let Some(hz) = library::core_hz(&log)
                             && (40.0..=90.0).contains(&hz)
                         {
                             rate_asked = true;
-                            let _ = omacrt_shell::crt::display::send(&format!("rate {hz:.3}"));
-                            eprintln!("asking the tube for the core's own {hz:.2} Hz");
+                            game_hz = Some(hz);
+                            playing_hz = Some(hz);
+                            if let (Some(core), Some(std)) =
+                                (playing_core.as_deref(), playing_standard)
+                            {
+                                rates::remember(core, std, hz);
+                            }
                         }
                         let mut standard_moved = false;
+                        // Whether this pass has already sent the tube a
+                        // timing. The rate goes with it if so, and on its own
+                        // if not: two mode changes in a row would be two
+                        // fifths of a second of black for nothing.
+                        let mut mode_sent = false;
                         if !standard_asked
                             && let Some(hz) = library::core_hz(&log)
                             && let Some(want) = library::standard_for_hz(hz)
@@ -721,7 +760,9 @@ fn run(args: &Args) -> Result<(), String> {
                                     shift: None,
                                     follow: true,
                                     standard: Some(want),
+                                    hz: game_hz,
                                 }));
+                                mode_sent = true;
                                 lines_changed = true;
                             }
                         }
@@ -770,9 +811,40 @@ fn run(args: &Args) -> Result<(), String> {
                                     shift: None,
                                     follow: true,
                                     standard: None,
+                                    hz: game_hz,
                                 }));
+                                mode_sent = true;
                                 lines_changed = true;
                             }
+                        }
+                        // The rate on its own, when the frame and the
+                        // standard were already what this game wanted.
+                        if let Some(hz) = game_hz.filter(|_| !mode_sent) {
+                            eprintln!("building the core's {hz:.3} Hz into the timing");
+                            crt_mode_async(Some(Geometry {
+                                lines: following,
+                                shift: None,
+                                follow: true,
+                                standard: None,
+                                hz: Some(hz),
+                            }));
+                            mode_sent = true;
+                            lines_changed = true;
+                        }
+                        // And the variable rate takes up whatever the timing
+                        // could not reach, asked for after the timing and not
+                        // before it: the request is clamped against the mode
+                        // the tube has at the time, so asking first measures
+                        // it against the mode being replaced.
+                        if mode_sent && let Some(hz) = game_hz.take() {
+                            rate_pending = Some((hz, Instant::now()));
+                        }
+                        if let Some((hz, at)) = rate_pending
+                            && at.elapsed() > std::time::Duration::from_millis(600)
+                        {
+                            rate_pending = None;
+                            let _ = omacrt_shell::crt::display::send(&format!("rate {hz:.3}"));
+                            eprintln!("asking the tube for the core's own {hz:.2} Hz");
                         }
                     }
                 }
@@ -1040,11 +1112,9 @@ fn run(args: &Args) -> Result<(), String> {
         if let Some(rx) = &control {
             for line in rx.try_iter() {
                 // The safe area, live. How much of the picture a television
-                // throws away is a property of that television, so the only
-                // way to land on the right number is to watch the screen
-                // while it changes. Restarting the launcher for each try
-                // loses the place in the menu and takes four seconds, which
-                // is how a five second question becomes an evening.
+                // throws away is a property of that television, so the number
+                // is found by watching the screen while it changes. A restart
+                // would lose the place in the menu.
                 if let Some(rest) = line.trim().strip_prefix("safe ") {
                     match rest.trim().parse::<u32>() {
                         Ok(n) if n <= 20 => {
@@ -1091,12 +1161,17 @@ fn run(args: &Args) -> Result<(), String> {
 
             if scene.is_running() {
                 if inp.menu {
-                    after_pause(scene.toggle_pause(), following, fb.h as u32);
+                    after_pause(scene.toggle_pause(), following, playing_hz, fb.h as u32);
                     continue;
                 }
                 if scene.is_paused() {
                     if is_input {
-                        after_pause(scene.pause_input(nav, fire), following, fb.h as u32);
+                        after_pause(
+                            scene.pause_input(nav, fire),
+                            following,
+                            playing_hz,
+                            fb.h as u32,
+                        );
                     }
                     continue;
                 }
@@ -1207,10 +1282,27 @@ fn run(args: &Args) -> Result<(), String> {
                 f64::MAX
             };
             following = lines.and_then(|g| g.lines);
+            // What core this is, and in which standard, so the rate it
+            // reports can be remembered against the pair and applied before
+            // the emulator opens next time.
+            playing_core = cmd
+                .get_args()
+                .map(|a| a.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .windows(2)
+                .find(|w| w[0] == "-L")
+                .map(|w| w[1].clone());
+            playing_standard = lines.and_then(|g| g.standard);
             if let Some(g) = lines
                 && crt_mode(Some(g))
             {
                 lines_changed = true;
+                // A rate already built into the launch timing is the one this
+                // core ran at last time, so there is nothing to ask for.
+                if g.hz.is_some() {
+                    rate_asked = true;
+                    playing_hz = g.hz;
+                }
                 if let Some(s) = g.standard {
                     // Said before the emulator opened, so the core saying the
                     // same thing later is not a second mode change.
@@ -1642,6 +1734,9 @@ fn crt_mode_command(geometry: Option<Geometry>) -> std::process::Command {
         if let Some(h) = g.lines {
             cmd.arg("--lines").arg(h.to_string());
         }
+        if let Some(hz) = g.hz {
+            cmd.arg("--hz").arg(format!("{hz:.4}"));
+        }
         // Only a program that has a shift of its own says one. Saying zero
         // when there is nothing to say overwrites the last real answer, and
         // the CLI falls back on what was saved, which is what we want.
@@ -1650,8 +1745,11 @@ fn crt_mode_command(geometry: Option<Geometry>) -> std::process::Command {
             cmd.arg("--shift-y").arg(y.to_string());
         }
     }
+    // stdout is a report for a person at a terminal and there is nobody
+    // there. stderr is kept: a mode change that does not happen is invisible
+    // otherwise, and the only sign is a picture that keeps its old timing.
     cmd.stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::piped());
     cmd
 }
 
@@ -1701,7 +1799,12 @@ fn settle_mode(
 /// mode changes with the picture and changes back on the way out. It costs the
 /// television a moment to lock again, which is what a real console did between
 /// its menu and its game.
-fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
+fn after_pause(
+    outcome: PauseOutcome,
+    game_lines: Option<u32>,
+    game_hz: Option<f32>,
+    own_lines: u32,
+) {
     use omacrt_shell::crt::display;
     use omacrt_shell::crt::output::raise;
     let differs = game_lines.is_some_and(|l| l != own_lines);
@@ -1727,6 +1830,12 @@ fn after_pause(outcome: PauseOutcome, game_lines: Option<u32>, own_lines: u32) {
                         shift: None,
                         follow: true,
                         standard: None,
+                        // The rate the game runs at goes back with the frame.
+                        // Without it the tube comes back at the standard's own
+                        // rate and the game slips a field against it every few
+                        // seconds again, which is the whole thing the timing
+                        // was rebuilt to stop.
+                        hz: game_hz,
                     }));
                 }
                 display::raise("com.libretro.RetroArch");
@@ -1806,6 +1915,52 @@ fn tail_of_game_log() -> String {
 }
 
 /// The same without waiting, for a live adjustment while the launcher draws.
+///
+/// The launcher must not block on a mode change - it takes a fifth of a
+/// second inside the kernel - so the child is left to run and reaped on a
+/// later pass by [`crt_mode_reap`], which is also where anything it wrote to
+/// stderr is read.
 fn crt_mode_async(geometry: Option<Geometry>) {
-    let _ = crt_mode_command(geometry).spawn();
+    match crt_mode_command(geometry).spawn() {
+        Ok(child) => PENDING_MODE.with(|p| p.borrow_mut().push(child)),
+        Err(e) => eprintln!("could not ask for a mode: {e}"),
+    }
+}
+
+thread_local! {
+    /// Mode changes asked for and not yet finished.
+    static PENDING_MODE: std::cell::RefCell<Vec<std::process::Child>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Collect the mode changes that have finished, and say so when one failed.
+fn crt_mode_reap() {
+    PENDING_MODE.with(|p| {
+        p.borrow_mut().retain_mut(|child| match child.try_wait() {
+            Ok(None) => true,
+            Ok(Some(status)) => {
+                if !status.success() {
+                    let mut why = String::new();
+                    if let Some(err) = child.stderr.as_mut() {
+                        use std::io::Read;
+                        let _ = err.read_to_string(&mut why);
+                    }
+                    let why = why.trim();
+                    eprintln!(
+                        "the tube refused the mode ({status}){}",
+                        if why.is_empty() {
+                            String::new()
+                        } else {
+                            format!(": {why}")
+                        }
+                    );
+                }
+                false
+            }
+            Err(e) => {
+                eprintln!("could not wait for a mode change: {e}");
+                false
+            }
+        })
+    });
 }

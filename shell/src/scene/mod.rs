@@ -395,7 +395,7 @@ struct Launch {
 }
 
 /// Per program picture geometry handed to the host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Geometry {
     pub lines: Option<u32>,
     /// The picture shift this program wants, or `None` for "nothing to say".
@@ -413,6 +413,10 @@ pub struct Geometry {
     /// The television standard to put the tube in, when something knows it.
     /// `None` leaves whatever is already there.
     pub standard: Option<&'static str>,
+    /// The field rate the program itself runs at, when its core has said so.
+    /// The timing is built to match it, so the two do not slip a whole field
+    /// apart every few seconds. `None` keeps the standard's own rate.
+    pub hz: Option<f32>,
 }
 
 const LAUNCH_SECS: f32 = 1.15;

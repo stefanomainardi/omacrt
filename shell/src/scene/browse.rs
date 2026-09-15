@@ -1721,12 +1721,22 @@ impl Scene {
             // later, and acting on it then means changing the mode under a
             // program that is still starting.
             let standard = crate::library::standard_for_path(&entry.game.path);
-            if l.is_some() || standard.is_some() || system.shift_x != 0 || system.shift_y != 0 {
+            // And the rate this core ran at the last time it was in this
+            // standard, so the timing is right before the emulator opens
+            // rather than one mode change later.
+            let hz = standard.and_then(|s| crate::rates::known(&system.core, s));
+            if l.is_some()
+                || standard.is_some()
+                || hz.is_some()
+                || system.shift_x != 0
+                || system.shift_y != 0
+            {
                 Some(Geometry {
                     lines: l,
                     shift: Some((system.shift_x, system.shift_y)),
                     follow: pinned.is_none(),
                     standard,
+                    hz,
                 })
             } else {
                 None
