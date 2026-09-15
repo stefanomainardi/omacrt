@@ -255,14 +255,64 @@ impl Dac {
     /// Poll the lock register and reset the DAC when the signal drops, the
     /// way RePlayOS works around the PLL issue of this hardware revision.
     pub fn watch(&self, csync: Csync, mut on_event: impl FnMut(&str)) -> io::Result<()> {
+        self.poll_lock(Some(csync), &mut on_event)
+    }
+
+    /// The same poll with nothing done about what it finds.
+    ///
+    /// A reset costs 2.3 seconds of black, so it is the wrong thing to be
+    /// doing while somebody is trying to see whether a brief disturbance
+    /// comes from the converter or from the timing. This reports every change
+    /// of state and how long the last one lasted, and touches nothing.
+    pub fn watch_only(&self, mut on_event: impl FnMut(&str)) -> io::Result<()> {
+        self.poll_lock(None, &mut on_event)
+    }
+
+    fn poll_lock(
+        &self,
+        reset_with: Option<Csync>,
+        on_event: &mut impl FnMut(&str),
+    ) -> io::Result<()> {
         let mut last = self.lock()?;
-        on_event(&format!("watching {}, {}", self.bus, last.label()));
+        let mut since = std::time::Instant::now();
+        let mut losses: u64 = 0;
+        on_event(&format!(
+            "{} watching {} at 1 kHz, {}{}",
+            clock_time(),
+            self.bus,
+            last.label(),
+            if reset_with.is_some() {
+                ", resetting on loss"
+            } else {
+                ", reporting only"
+            }
+        ));
         loop {
             std::thread::sleep(Duration::from_millis(1));
             let Ok(now) = self.lock() else { continue };
-            if last != Lock::Lost && now == Lock::Lost {
-                on_event("lock lost, resetting");
-                self.reset(Some(csync))?;
+            if now == last {
+                continue;
+            }
+            let held = since.elapsed();
+            since = std::time::Instant::now();
+            if now == Lock::Lost {
+                losses += 1;
+                on_event(&format!(
+                    "{} lock lost after {:.1} s of lock ({losses} so far)",
+                    clock_time(),
+                    held.as_secs_f64()
+                ));
+                if let Some(csync) = reset_with {
+                    on_event("resetting");
+                    self.reset(Some(csync))?;
+                    since = std::time::Instant::now();
+                }
+            } else if last == Lock::Lost {
+                on_event(&format!(
+                    "{} lock back after {:.0} ms",
+                    clock_time(),
+                    held.as_millis()
+                ));
             }
             last = now;
         }
@@ -273,4 +323,30 @@ impl Drop for Dac {
     fn drop(&mut self) {
         unsafe { libc::close(self.fd) };
     }
+}
+
+/// The wall clock as `HH:MM:SS.mmm`, so a loss of lock can be lined up
+/// against the display process's own log.
+fn clock_time() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    // Local time without pulling in a calendar: the offset the system is set
+    // to, applied to the day's seconds.
+    // SAFETY: both are ours and localtime_r writes only into `tm`.
+    let offset = unsafe {
+        let t = secs as libc::time_t;
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        tm.tm_gmtoff
+    };
+    let day = (secs as i64 + offset).rem_euclid(86_400);
+    format!(
+        "{:02}:{:02}:{:02}.{:03}",
+        day / 3600,
+        (day % 3600) / 60,
+        day % 60,
+        now.subsec_millis()
+    )
 }

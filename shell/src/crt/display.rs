@@ -115,10 +115,35 @@ pub struct Tail {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Window {
-    /// Frames that ran more than two lines past the mode's vertical total.
+    /// Frames more than two lines from the mode's vertical total, either way.
     pub over: usize,
     /// The longest frame, in lines.
     pub longest_lines: f64,
+    /// The same thing counted since the display process started. The rolling
+    /// window is five seconds of samples rewritten in place, so a fault rarer
+    /// than that never appears in it.
+    ///
+    /// `None` when reading a file written by a display process older than
+    /// these fields.
+    pub run: Option<Run>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Run {
+    /// Fields whose length jumped more than two lines from the field before,
+    /// since the display process started. A rate held steady is not one of
+    /// these; a rate that keeps changing is every time it does.
+    pub out: usize,
+    /// Pictures that reached the screen a field or more after the client
+    /// committed them. This is the count that means somebody saw a stutter;
+    /// a still picture that simply has nothing new to show is not one of
+    /// these.
+    pub skipped: usize,
+    /// The longest and shortest field ever seen, in lines, and how long ago
+    /// the longest one was.
+    pub longest_lines: f64,
+    pub shortest_lines: f64,
+    pub worst_secs_ago: f64,
 }
 
 /// The last figure the display process wrote. `None` when the tube is not up,
@@ -154,6 +179,13 @@ fn latency_in(text: &str) -> Option<Latency> {
             window,
         })
     };
+    let window = |over: f64, longest_lines: f64, run| {
+        Some(Window {
+            over: over.max(0.0) as usize,
+            longest_lines,
+            run,
+        })
+    };
     out.tail = match rest[..] {
         [p95, worst, frame_min, frame_max] => tail(p95, worst, frame_min, frame_max, None),
         [p95, worst, frame_min, frame_max, over, longest_lines] => tail(
@@ -161,10 +193,36 @@ fn latency_in(text: &str) -> Option<Latency> {
             worst,
             frame_min,
             frame_max,
-            Some(Window {
-                over: over.max(0.0) as usize,
+            window(over, longest_lines, None),
+        ),
+        [
+            p95,
+            worst,
+            frame_min,
+            frame_max,
+            over,
+            longest_lines,
+            out_run,
+            skipped,
+            longest_ever,
+            shortest_ever,
+            worst_ago,
+        ] => tail(
+            p95,
+            worst,
+            frame_min,
+            frame_max,
+            window(
+                over,
                 longest_lines,
-            }),
+                Some(Run {
+                    out: out_run.max(0.0) as usize,
+                    skipped: skipped.max(0.0) as usize,
+                    longest_lines: longest_ever,
+                    shortest_lines: shortest_ever,
+                    worst_secs_ago: worst_ago,
+                }),
+            ),
         ),
         _ => None,
     };

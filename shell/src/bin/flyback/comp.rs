@@ -255,6 +255,30 @@ pub struct Crt {
     /// picture, for the log and for anybody asking whether the floor is
     /// doing anything.
     fields_repeated: u64,
+    /// The hardware's own field counter at the last vblank, so the length of
+    /// one field can be told from the gap between two flips even when the
+    /// compositor did not flip for every field.
+    last_seq: Option<u32>,
+    /// Fields the hardware counted that no flip ended, so the television was
+    /// shown the previous picture again. Cumulative, and normal: a still
+    /// picture has nothing new to flip.
+    fields_skipped: u64,
+    /// Pictures that took longer than a field to reach the screen after the
+    /// client committed them, so they arrived a field late. Cumulative. This
+    /// is the one that means a person saw a stutter.
+    commits_late: u64,
+    /// The length of the field before this one, in lines, so a jump can be
+    /// told from a rate being held steady.
+    last_field: Option<f64>,
+    /// Fields whose length jumped past the window a locked set holds sync in.
+    /// Cumulative, and counted in both directions.
+    fields_out: u64,
+    /// The longest and the shortest field seen, in lines, and when the worst
+    /// of them happened. Kept for the whole run, since the rolling window
+    /// holds only five seconds.
+    longest_ever: f64,
+    shortest_ever: f64,
+    worst_at: Option<Instant>,
     /// How many times the pipe has been put back together after the
     /// connector started refusing flips.
     recoveries: u64,
@@ -423,6 +447,12 @@ const FLIP_FAILURES_ALLOWED: u32 = 10;
 /// to answer sooner for being asked a thousand times a second.
 const RECOVER_FIRST: Duration = Duration::from_millis(200);
 const RECOVER_LONGEST: Duration = Duration::from_secs(5);
+
+/// How far a field may be from the mode's own length before a locked set
+/// starts its retrace at the edge of its window instead of on the sync that
+/// arrived. Two lines, from a Philips jungle datasheet's 261 to 264 for the
+/// 60 Hz standard.
+const FIELD_WINDOW_LINES: f64 = 2.0;
 
 /// How long a recovery has to hold before the next fault is treated as a
 /// fresh one rather than the same one carrying on.
@@ -731,33 +761,38 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         )
         .map_err(|e| format!("output: {e}"))?;
 
-    // What the kernel thinks this television can do about its refresh rate.
-    // `Supported` means the vertical blanking can be stretched frame by
-    // frame without a mode change, which is the only way to follow a
-    // program's own rate on a set whose horizontal rate must not move.
-    // Asking for it in the EDID is the switch: the FreeSync range is only
-    // there because the operator put it there, and there is nothing else a
-    // television leased to this compositor would want a variable refresh
-    // rate for. So if the kernel says the connector can, it does.
-    let vrr_on = match drm_output.with_compositor(|c| c.vrr_supported(conn_handle)) {
-        Ok(VrrSupport::NotSupported) => {
-            println!("vrr: the connector is not capable of it");
-            false
-        }
-        Ok(v) => match drm_output.with_compositor(|c| c.use_vrr(true)) {
-            Ok(()) => {
-                let on = drm_output.with_compositor(|c| c.vrr_enabled());
-                println!("vrr: on ({v:?})");
-                on
-            }
-            Err(e) => {
-                println!("vrr: refused ({e})");
+    // A stretched vertical blanking follows a program's own field rate
+    // without a mode change, and moves the field length to do it. A
+    // television's vertical oscillator is locked to what it has been given,
+    // so a field that keeps changing length makes the picture move: with it
+    // on the same still menu measured 16.655 to 16.846 ms a field, with it
+    // off 16.654 to 16.657. The rate is built into the timing instead, which
+    // reaches a console's own to a thousandth of a hertz and leaves the field
+    // alone, so this is off unless `output.vrr` asks for it.
+    let vrr_on = if !cfg.output.vrr {
+        println!("vrr: off, the timing carries the rate instead (output.vrr turns it on)");
+        false
+    } else {
+        match drm_output.with_compositor(|c| c.vrr_supported(conn_handle)) {
+            Ok(VrrSupport::NotSupported) => {
+                println!("vrr: the connector is not capable of it");
                 false
             }
-        },
-        Err(e) => {
-            println!("vrr: cannot tell ({e})");
-            false
+            Ok(v) => match drm_output.with_compositor(|c| c.use_vrr(true)) {
+                Ok(()) => {
+                    let on = drm_output.with_compositor(|c| c.vrr_enabled());
+                    println!("vrr: on ({v:?})");
+                    on
+                }
+                Err(e) => {
+                    println!("vrr: refused ({e})");
+                    false
+                }
+            },
+            Err(e) => {
+                println!("vrr: cannot tell ({e})");
+                false
+            }
         }
     };
 
@@ -956,6 +991,14 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         floor_on: std::env::var("FLYBACK_FLOOR").as_deref() != Ok("off"),
         field_seq: 0,
         fields_repeated: 0,
+        last_seq: None,
+        fields_skipped: 0,
+        commits_late: 0,
+        last_field: None,
+        fields_out: 0,
+        longest_ever: 0.0,
+        shortest_ever: f64::MAX,
+        worst_at: None,
         recoveries: 0,
         recovered_at: None,
         recovering: false,
@@ -1171,6 +1214,26 @@ mod timing {
     use std::time::Duration;
 
     const FRAME: Duration = Duration::from_micros(16_655);
+
+    #[test]
+    fn the_floor_is_a_backstop_and_not_a_second_deadline() {
+        // The two instants have to stay apart. The client is aimed at the
+        // frame less a margin; the floor waits for the longest field the set
+        // will follow. Armed at the same instant as the client's own frame it
+        // wins the race about half the time, and every other field becomes a
+        // repeat with the real frame a field behind: thirty a second on a
+        // still menu, measured.
+        let period = Duration::from_micros(16_684);
+        let ceiling = period.mul_f64(60.041 / 55.0);
+        let render = Duration::from_micros(350);
+        let floor = ceiling - render - Duration::from_micros(500);
+        let deadline = period - margin_for(period, render, None);
+        assert!(
+            floor > deadline + Duration::from_millis(1),
+            "the floor at {floor:?} is not clear of the deadline at {deadline:?}"
+        );
+        assert!(floor > period, "the floor is inside the frame itself");
+    }
 
     #[test]
     fn a_rate_asked_for_wins_over_the_one_the_client_settled_into() {
@@ -1812,6 +1875,13 @@ impl Crt {
         );
         self.modeline = Some(ml.clone());
         publish_mode(ml);
+        // The hardware's field counter is not continuous across a modeset and
+        // the fields either side belong to different timings, so the first
+        // field of the new mode is not measured against the last of the old.
+        // Without this the two hundred millisecond gap of the modeset itself
+        // reads as one field of a thousand lines.
+        self.last_seq = None;
+        self.last_field = None;
         self.frame_queued = false;
         self.queued_at = None;
         self.damaged();
@@ -1871,17 +1941,85 @@ impl Crt {
     ///
     /// The median rather than the mean, because one frame that waited for a
     /// mode change or a game starting is not what the tube feels like.
+    /// One field, measured. `fields` is how many the hardware counted in the
+    /// gap it came from, so anything above one is a field the television was
+    /// given nothing new for.
+    ///
+    /// A locked set's vertical countdown accepts sync inside a narrow window.
+    /// A Philips jungle datasheet gives 261 to 264 lines a field at 60 Hz, and
+    /// a pulse outside it starts the retrace at the edge of the window rather
+    /// than on the sync that arrived: a visible jump for that field.
+    ///
+    /// The comparison is against the field before, not against the mode's own
+    /// total, because the set's oscillator is locked to what it has been
+    /// given. A picture held steadily at 286 lines is still; one alternating
+    /// between 262 and 286 jumps every time it changes.
+    fn note_field(&mut self, field: Duration, fields: u32) {
+        // Nothing is measured across the first vblank of a mode, whose gap
+        // holds the modeset itself: two hundred milliseconds inside the
+        // kernel, which read as a field of fifteen hundred lines.
+        if self.last_field.is_none() {
+            // The mode's own length, not the gap that was just measured:
+            // storing the gap makes the next field look like a jump of a
+            // thousand lines away from it.
+            self.last_field =
+                Some(self.modeline.as_ref().map(|m| m.v[3]).unwrap_or(262).max(1) as f64);
+            return;
+        }
+        self.intervals.push_back(field);
+        if self.intervals.len() > 300 {
+            self.intervals.pop_front();
+        }
+        let vtotal = self.modeline.as_ref().map(|m| m.v[3]).unwrap_or(262).max(1) as f64;
+        let nominal = self.period().as_micros() as f64;
+        if nominal <= 0.0 {
+            return;
+        }
+        let lines = field.as_micros() as f64 * vtotal / nominal;
+        // The first field after a mode change is not a field. The gap it is
+        // measured across contains the modeset itself, two hundred
+        // milliseconds inside the kernel, and counting it put a field of
+        // fifteen hundred lines into the record.
+        let Some(before) = self.last_field.replace(lines) else {
+            return;
+        };
+        if lines > self.longest_ever {
+            self.longest_ever = lines;
+            self.worst_at = Some(Instant::now());
+        }
+        if lines < self.shortest_ever {
+            self.shortest_ever = lines;
+        }
+        let step = lines - before;
+        if step.abs() <= FIELD_WINDOW_LINES {
+            return;
+        }
+        self.fields_out += 1;
+        // The first few and then one in a hundred.
+        if self.fields_out <= 3 || self.fields_out.is_multiple_of(100) {
+            println!(
+                "the field length jumped {step:+.0} lines, {before:.0} to {lines:.0}, against the \
+                 mode's {vtotal:.0}{}: past the window a locked set holds sync in, so the picture \
+                 moves for that field ({} so far, {} field(s) with nothing new in them)",
+                if fields > 1 {
+                    format!(", {fields} field(s) in the gap")
+                } else {
+                    String::new()
+                },
+                self.fields_out,
+                self.fields_skipped,
+            );
+        }
+    }
+
     fn write_latency(&self) {
         if self.latencies.is_empty() {
             return;
         }
-        // A median and two points of the tail. The median alone was the
-        // whole of this file for a day, and it cannot show what a viewer
-        // actually complains about: a frame that arrives late once every few
-        // seconds is three or four samples in three hundred and does not move
-        // the middle at all. What is reported here is the same mistake this
-        // project spent a day finding in its other instruments, which is an
-        // instrument that answers a question nobody asked.
+        // A median and two points of the tail. A median alone cannot show
+        // what a viewer complains about: a frame that arrives late once every
+        // few seconds is three or four samples in three hundred and does not
+        // move the middle at all.
         let at = |q: &std::collections::VecDeque<Duration>, p: f64| -> Option<f64> {
             if q.is_empty() {
                 return None;
@@ -1916,11 +2054,8 @@ impl Crt {
         // narrow window: a Philips jungle datasheet gives 261 to 264 lines a
         // field for the 60 Hz standard, and a pulse outside it starts the
         // retrace at the edge of the window rather than on the sync that
-        // arrived. Two lines over nominal is therefore the number that
-        // predicts what somebody sees, and a median in milliseconds cannot
-        // show it: three fields in three thousand six hundred left that
-        // window on the afternoon this was written, and the row said
-        // "16.66 to 16.66 ms" throughout.
+        // arrived. Two lines is therefore the number that predicts what
+        // somebody sees, and a median in milliseconds cannot show it.
         //
         // The window belongs to sets of that design and has not been measured
         // on any particular television, so what is written here is the count
@@ -1929,19 +2064,35 @@ impl Crt {
         let vtotal = self.modeline.as_ref().map(|m| m.v[3]).unwrap_or(262).max(1) as f64;
         let nominal = self.period().as_micros() as f64;
         let lines_of = |us: f64| us * vtotal / nominal;
+        // Both directions: a field two lines short leaves the window exactly
+        // as a field two lines long does.
         let over = self
             .intervals
             .iter()
-            .filter(|d| lines_of(d.as_micros() as f64) > vtotal + 2.0)
+            .filter(|d| (lines_of(d.as_micros() as f64) - vtotal).abs() > FIELD_WINDOW_LINES)
             .count();
+        // No floor at the mode's own total: clamping it up hides how short
+        // the longest field was.
         let longest_lines = self
             .intervals
             .iter()
             .map(|d| lines_of(d.as_micros() as f64))
-            .fold(0.0f64, f64::max)
-            .max(vtotal);
+            .fold(0.0f64, f64::max);
+        // Counted since the display process started, not over the last five
+        // seconds: a fault every ten seconds does not survive in a five
+        // second window that is rewritten in place.
+        let shortest_ever = if self.shortest_ever == f64::MAX {
+            0.0
+        } else {
+            self.shortest_ever
+        };
+        let since = self
+            .worst_at
+            .map(|t| t.elapsed().as_secs_f64())
+            .unwrap_or(-1.0);
         let line = format!(
-            "{commit_to_scanout:.2} {:.2} {} {:.3} {:.2} {:.2} {:.3} {:.3} {over} {longest_lines:.1}\n",
+            "{commit_to_scanout:.2} {:.2} {} {:.3} {:.2} {:.2} {:.3} {:.3} {over} \
+             {longest_lines:.1} {} {} {:.1} {shortest_ever:.1} {since:.0}\n",
             commit_to_scanout / frame,
             self.latencies.len(),
             1000.0 / frame,
@@ -1949,6 +2100,9 @@ impl Crt {
             at(&self.latencies, 1.0).unwrap_or(commit_to_scanout),
             at(&self.intervals, 0.0).unwrap_or(frame),
             at(&self.intervals, 1.0).unwrap_or(frame),
+            self.fields_out,
+            self.commits_late,
+            self.longest_ever,
         );
         if std::fs::write(&tmp, line).is_ok() && std::fs::rename(&tmp, &path).is_err() {
             let _ = std::fs::remove_file(&tmp);
@@ -2238,8 +2392,15 @@ impl Crt {
         if self.floor_armed || !self.vrr_on || !self.floor_on {
             return;
         }
+        // The longest field this set will follow, and not a moment earlier.
+        // This is a backstop and has to stay one: armed at the length the
+        // field is being aimed at instead, it goes off in the same instant
+        // the client's own frame is due and wins the race about half the
+        // time, so every other field is a repeat and the real frame lands a
+        // field late. Measured at thirty repeats a second on a still menu.
+        //
         // Less the cost of drawing and queueing, because the flip has to be
-        // in the kernel's hands by the floor and not started at it.
+        // in the kernel's hands by then and not started at it.
         let wait = self
             .slowest()
             .saturating_sub(self.render_cost + Duration::from_micros(500));
@@ -2271,10 +2432,9 @@ impl Crt {
             out.with_compositor(|c| c.reset_buffer_ages());
         }
         self.fields_repeated += 1;
-        // Said once, plainly, the first time and then every hundred: whether
-        // this ever fires at all was a question nobody could answer after an
-        // evening of it running, because the only line that said so was
-        // behind the trace flag.
+        // The first time and then every hundred. Not behind the trace flag:
+        // whether the floor fires at all is worth knowing from an ordinary
+        // log.
         if self.fields_repeated == 1 || self.fields_repeated.is_multiple_of(100) {
             println!(
                 "the field reached the floor with no frame to end it: repeating ({} so far)",
@@ -2615,15 +2775,26 @@ impl Crt {
             // different lengths: two frames exactly, on a menu nobody was
             // touching.
             //
-            // Half a frame of slack over the mode's own period is enough to
-            // keep every frame a variable rate can legally stretch to, since
-            // nothing is ever asked for a rate below output.vrr_min_hz, and
-            // to drop anything that skipped a flip.
-            if interval * 2 < self.period() * 3 {
-                self.intervals.push_back(interval);
-                if self.intervals.len() > 300 {
-                    self.intervals.pop_front();
+            // So ask the hardware how many fields really passed. The DRM
+            // event carries the connector's own field counter, and dividing
+            // the gap by the number of fields in it gives the length of one
+            // whether the compositor flipped for every field or not. Fields
+            // that no flip ended are counted rather than discarded.
+            let counted = meta.as_ref().map(|m| m.sequence);
+            let fields = match (counted, self.last_seq) {
+                (Some(now), Some(prev)) => now.wrapping_sub(prev).max(1),
+                _ => 1,
+            };
+            if let Some(now) = counted {
+                self.last_seq = Some(now);
+            }
+            // Without a counter there is no way to tell a long field from a
+            // gap, so the old guard still stands on that path alone.
+            if counted.is_some() || interval * 2 < self.period() * 3 {
+                if fields > 1 {
+                    self.fields_skipped += u64::from(fields - 1);
                 }
+                self.note_field(interval / fields, fields);
             }
             // Close the loop on the frame length that was asked for. Only on
             // frames of a plausible length: the first one after an idle tube
@@ -2645,7 +2816,17 @@ impl Crt {
                 .set((c.cost.get() * 31 / 32).max(Duration::from_micros(300)));
         }
         if let Some(t) = self.showing.take() {
-            self.latencies.push_back(t.elapsed());
+            let took = t.elapsed();
+            // A picture that took longer than a field to get from the client
+            // to the screen was on the screen a field late, and the field
+            // before it showed the one before again. That is the stutter a
+            // person sees, and it is not the same as the hardware repeating a
+            // field on a still picture, which costs nothing and happens all
+            // the time.
+            if took > self.period() {
+                self.commits_late += 1;
+            }
+            self.latencies.push_back(took);
             if self.latencies.len() > 300 {
                 self.latencies.pop_front();
             }

@@ -22,6 +22,16 @@ const TAGLINE: &str = "drive a 15 kHz CRT television from a Hyprland desktop";
 /// Where the configuration lives, said once.
 const CONFIG_NOTE: &str = "~/.config/omacrt/crt.toml, written with defaults on first run";
 
+/// How far the line rate may move to reach a program's own field rate.
+///
+/// Four parts in a thousand: 15.625 kHz becomes 15.563 to 15.687, which is
+/// inside what a set built for one of them follows and far inside the band
+/// `output.hfreq_khz` allows. A field rate is the pixel clock over the two
+/// totals, and an integer number of lines alone lands 0.06 Hz away from a
+/// European console's 49.70; letting the horizontal total move as well brings
+/// that to a hundredth of that.
+const FIELD_RATE_TOLERANCE: f64 = 0.004;
+
 /// Every verb, grouped by what somebody is trying to do.
 ///
 /// One table, two renderings: the lines a script pipes, and the sheet a
@@ -50,14 +60,17 @@ const VERBS: Verbs = &[
                 "put the display back if it dies; started by `on`, ends with `off`",
             ),
             (
-                "mode [ntsc|pal|film|480i|576i] [--lines N] [--shift-x X] [--shift-y Y]",
-                "standard, active lines, picture shift; no args = full frame",
+                "mode [ntsc|pal|film|480i|576i] [--lines N] [--hz H] [--shift-x X] [--shift-y Y]",
+                "standard, active lines, the program's own field rate, picture shift",
             ),
             (
                 "rate [HZ|off]",
                 "the refresh a program wants, followed without a mode change",
             ),
-            ("dac status|reset|csync and|xor|separate|watch", ""),
+            (
+                "dac status|reset|csync and|xor|separate|watch|listen",
+                "listen reports every loss of lock without resetting",
+            ),
             (
                 "audio crt|desktop|all|apps",
                 "games audio to the TV or back; all = whole system",
@@ -302,11 +315,34 @@ fn scummvm_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
 
 /// The value after a `--flag`, when it is there.
 fn value(args: &[String], flag: &str) -> Option<String> {
+    debug_assert!(
+        FLAGS_WITH_A_VALUE.contains(&flag),
+        "{flag} takes a value but is not in FLAGS_WITH_A_VALUE, so positional() \
+         will read that value as an argument"
+    );
     let i = args.iter().position(|a| a == flag)?;
     args.get(i + 1)
         .filter(|v| !v.starts_with("--"))
         .map(|v| v.to_string())
 }
+
+/// The flags that are followed by a value, in one place.
+///
+/// It has to be one place because two readers disagreeing about it is a
+/// silent fault, not a loud one: a flag missing from here has its value read
+/// as a positional argument, and `omacrt mode --hz 59.95` then asks for a
+/// television standard called "59.95" and stops. Nothing prints if the caller
+/// is not watching stderr.
+const FLAGS_WITH_A_VALUE: &[&str] = &[
+    "--lines",
+    "--hz",
+    "--shift-x",
+    "--shift-y",
+    "--connector",
+    "--standard",
+    "--limit",
+    "--system",
+];
 
 /// Arguments that are neither flags nor the value of a flag taking one.
 fn positional(args: &[String]) -> Vec<&String> {
@@ -317,12 +353,7 @@ fn positional(args: &[String]) -> Vec<&String> {
             skip = false;
             continue;
         }
-        if a == "--lines"
-            || a == "--shift-x"
-            || a == "--shift-y"
-            || a == "--connector"
-            || a == "--standard"
-        {
+        if FLAGS_WITH_A_VALUE.contains(&a.as_str()) {
             skip = true;
             continue;
         }
@@ -396,6 +427,13 @@ fn status(cfg: &Config) -> Value {
             if let Some(w) = t.window {
                 st["latency"]["over_window"] = json!(w.over);
                 st["latency"]["longest_lines"] = json!(w.longest_lines);
+                if let Some(r) = w.run {
+                    st["latency"]["out_since_start"] = json!(r.out);
+                    st["latency"]["late_since_start"] = json!(r.skipped);
+                    st["latency"]["longest_lines_ever"] = json!(r.longest_lines);
+                    st["latency"]["shortest_lines_ever"] = json!(r.shortest_lines);
+                    st["latency"]["worst_secs_ago"] = json!(r.worst_secs_ago);
+                }
             }
         }
     }
@@ -640,6 +678,32 @@ fn print_status(st: &Value) {
                 );
             } else {
                 println!("            every frame inside the mode, the longest {longest:.1} lines");
+            }
+        }
+        // The same thing since the tube came up. The row above covers five
+        // seconds, so a fault rarer than that never appears in it.
+        if let (Some(out), Some(skipped), Some(longest), Some(shortest)) = (
+            l["out_since_start"].as_u64(),
+            l["late_since_start"].as_u64(),
+            l["longest_lines_ever"].as_f64(),
+            l["shortest_lines_ever"].as_f64(),
+        ) {
+            let ago = l["worst_secs_ago"].as_f64().unwrap_or(-1.0);
+            let when = if ago < 0.0 {
+                String::new()
+            } else if ago < 90.0 {
+                format!(", the worst {ago:.0} s ago")
+            } else {
+                format!(", the worst {:.0} min ago", ago / 60.0)
+            };
+            if out == 0 && skipped == 0 {
+                println!("            since the tube came up: the field length never jumped");
+            } else {
+                println!(
+                    "            since the tube came up: the field length jumped past the \
+                     window {out} time(s), between {shortest:.0} and {longest:.0} lines, and \
+                     {skipped} picture(s) reached the screen a field late{when}"
+                );
             }
         }
     }
@@ -3021,10 +3085,7 @@ fn cmd_library(args: &[String]) {
                 .filter(|s| !s.starts_with("--"))
                 .copied()
                 .collect();
-            let limit: usize = args
-                .iter()
-                .position(|a| a == "--limit")
-                .and_then(|i| args.get(i + 1))
+            let limit: usize = value(args, "--limit")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(usize::MAX);
             let force = has(args, "--force");
@@ -3556,13 +3617,16 @@ fn main() {
             if !matches!(std, "ntsc" | "pal" | "film" | "480i" | "576i") {
                 die("mode needs ntsc, pal, film, 480i or 576i");
             }
-            let flag = |name: &str| -> Option<i32> {
-                args.iter()
-                    .position(|a| a == name)
-                    .and_then(|i| args.get(i + 1))
-                    .and_then(|v| v.parse().ok())
-            };
+            let flag =
+                |name: &str| -> Option<i32> { value(args, name).and_then(|v| v.parse().ok()) };
             let lines = flag("--lines").map(|v| v.max(0) as u32);
+            // The rate the program actually runs at, which is not the
+            // standard's. A picture produced at one rate and scanned at
+            // another repeats a field whenever the two slip a whole frame
+            // apart, and a European console against PAL does that every 2.6
+            // seconds. Building it into the timing costs nothing: the mode is
+            // being changed for this game anyway.
+            let hz: Option<f64> = value(args, "--hz").and_then(|v| v.parse().ok());
             // A line count is what a system asks for, and it decides the
             // standard on its own: more lines than a progressive 15 kHz frame
             // holds is an interlaced picture, fewer is a progressive one. This
@@ -3591,6 +3655,16 @@ fn main() {
                     // saying 528 for its 480 line picture) gets the whole
                     // frame, not a frame with no blanking left in it.
                     ml = ml.with_lines(l.min(ml.height()));
+                }
+                if let Some(hz) = hz {
+                    match ml.at_field_hz(hz, FIELD_RATE_TOLERANCE) {
+                        Some(m) => ml = m,
+                        None => eprintln!(
+                            "{hz:.3} Hz is not reachable from the {applied} timing without \
+                             moving the line rate further than a television should be asked \
+                             to follow; leaving the mode's own rate"
+                        ),
+                    }
                 }
                 if shift != (0, 0) {
                     let scale = ml.width() as f32 / 320.0;
@@ -4065,6 +4139,13 @@ fn main() {
                     dac.watch(mode, |msg| println!("{msg}"))
                         .unwrap_or_else(|e| die(&e.to_string()));
                 }
+                // The same poll with nothing done about what it finds, for
+                // telling a disturbance that comes from the converter apart
+                // from one that comes from the timing.
+                "listen" => {
+                    dac.watch_only(|msg| println!("{msg}"))
+                        .unwrap_or_else(|e| die(&e.to_string()));
+                }
                 other => die(&format!("unknown dac command {other}")),
             }
         }
@@ -4263,6 +4344,78 @@ fn main() {
 mod tests {
     use super::*;
 
+    fn owned(args: &[&str]) -> Vec<String> {
+        args.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_flags_value_is_never_read_as_an_argument() {
+        // A game already in the standard it wants sends no standard, so the
+        // rate's value is the only thing that looks like one.
+        let args = owned(&["--lines", "480", "--hz", "59.9500"]);
+        assert!(
+            positional(&args).is_empty(),
+            "{:?} were read as arguments",
+            positional(&args)
+        );
+        assert_eq!(value(&args, "--hz").as_deref(), Some("59.9500"));
+        assert_eq!(value(&args, "--lines").as_deref(), Some("480"));
+        assert_eq!(value(&args, "--shift-x"), None);
+    }
+
+    #[test]
+    fn the_standard_is_still_found_when_one_is_given() {
+        let args = owned(&["pal", "--lines", "224", "--hz", "49.7000"]);
+        assert_eq!(
+            positional(&args)
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
+            ["pal"]
+        );
+    }
+
+    #[test]
+    fn every_flag_with_a_value_is_declared() {
+        // The two readers have to agree, and the way they stop agreeing is
+        // somebody adding a flag to one of them. The help text is the third
+        // place the same fact is written, so it is what this checks against.
+        let help = help_plain();
+        for line in help.lines() {
+            for word in line.split_whitespace() {
+                let flag = word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
+                if !flag.starts_with("--") || flag.len() < 4 {
+                    continue;
+                }
+                // A flag written with a placeholder straight after it takes
+                // a value. A placeholder that opens a bracket of its own is
+                // an argument the flag only makes optional, as in
+                // `watch <file> [--later [TITLE]]`, where the title is read
+                // as an argument and not as the flag's value.
+                let after = line
+                    .split_once(flag)
+                    .map(|(_, rest)| rest.trim_start())
+                    .unwrap_or("");
+                let next = after.split_whitespace().next().unwrap_or("");
+                let takes_one = !next.starts_with('[')
+                    && !next
+                        .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+                        .is_empty()
+                    && next
+                        .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase());
+                if takes_one {
+                    assert!(
+                        FLAGS_WITH_A_VALUE.contains(&flag),
+                        "{flag} is written with a value in the help but is missing from \
+                         FLAGS_WITH_A_VALUE, so its value will be read as an argument"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_locale_says_which_half_of_the_world_the_television_is_in() {
         assert_eq!(standard_for("it_IT.UTF-8"), "pal");
@@ -4281,7 +4434,7 @@ mod tests {
     }
 
     #[test]
-    fn a_flag_value_is_read_and_a_following_flag_is_not() {
+    fn a_value_is_read_and_a_following_flag_is_not() {
         let args: Vec<String> = ["--connector", "HDMI-A-1", "--dry-run", "--standard"]
             .iter()
             .map(|s| s.to_string())
