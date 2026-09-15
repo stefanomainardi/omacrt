@@ -10,9 +10,13 @@
 # label drawn on top of every other passes it. This compares the pixels.
 #
 # Determinism: the clock is pinned with `--clock`, the frames are taken at
-# fixed times in the boot sequence, and the library is whatever the runner
-# has, which on CI is nothing. A screen that draws the collection, the weather
-# or a photograph is not deterministic and is deliberately not in here.
+# fixed times in the boot sequence, and the library and configuration come
+# from the fixtures below rather than from whoever is running it. A screen
+# that draws the collection, the weather or a photograph is not deterministic
+# and is deliberately not in here.
+#
+# A frame that differs is written to $FRAMES_OUT when that is set, so a
+# machine that renders differently can be looked at rather than guessed at.
 #
 # The comparison allows sixteen pixels to differ, because a renderer that does
 # any arithmetic in floating point is not obliged to round the same way on
@@ -118,5 +122,15 @@ if differing > allowed:
 print(f"ok   {name}: {differing} of {pixels} pixels differ")
 PY
 done
+
+# What this machine drew, for comparing against what the repository holds
+# when the two disagree.
+if [ "$bad" != 0 ] && [ -n "${FRAMES_OUT:-}" ]; then
+  mkdir -p "$FRAMES_OUT"
+  for f in "$got"/*.ppm; do
+    gzip -9c "$f" > "$FRAMES_OUT/$(basename "$f").gz"
+  done
+  echo "what this machine drew is in $FRAMES_OUT"
+fi
 
 exit "$bad"

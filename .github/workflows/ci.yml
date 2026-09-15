@@ -87,7 +87,17 @@ jobs:
         # the difference between "something was drawn" and "the right thing
         # was drawn": a menu with every label on top of every other passes any
         # test of how much a frame compresses.
+        env:
+          FRAMES_OUT: ${{ runner.temp }}/frames-drawn
         run: scripts/frames-check.sh
+
+      - name: What this machine drew, when it disagreed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frames-drawn
+          path: ${{ runner.temp }}/frames-drawn
+          if-no-files-found: ignore
 
   shell-scripts:
     name: shell scripts parse
