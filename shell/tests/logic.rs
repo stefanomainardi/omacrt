@@ -376,11 +376,10 @@ fn no_system_asks_for_a_window_taller_than_the_frame() {
 /// not for the one the tube happens to be showing.
 ///
 /// The emulator's window is built before the mode changes, so reading the
-/// current output gives the frame the tube is leaving. The height came from
-/// the system's own line count and was right; the width came from the output
-/// and was not, so a European game on a machine sitting in NTSC was given a
-/// 3520 sample window on a 3840 sample line and left 320 samples of the
-/// launcher showing down the side of the picture.
+/// current output gives the frame the tube is leaving, and a European game on
+/// a machine sitting in NTSC was laid out for the wrong one: a strip of the
+/// launcher showed alongside the picture. The two standards now share a width
+/// and differ only in height, so the height is what this holds.
 #[test]
 fn a_european_game_is_laid_out_for_the_european_frame() {
     let frame = |name: &str| {
@@ -391,11 +390,12 @@ fn a_european_game_is_laid_out_for_the_european_frame() {
         let m = Modeline::parse(text).expect("a modeline");
         (m.width(), m.height())
     };
-    let (ntsc_w, _) = frame("ntsc");
+    let ntsc = frame("ntsc");
     let (pal_w, pal_h) = frame("pal");
     assert_ne!(
-        ntsc_w, pal_w,
-        "the two frames are different widths, which is the whole hazard"
+        ntsc,
+        (pal_w, pal_h),
+        "the two frames differ, which is the whole hazard"
     );
 
     use std::path::Path;

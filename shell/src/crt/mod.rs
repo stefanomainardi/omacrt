@@ -226,6 +226,28 @@ pub struct Output {
     /// on; this is what is used.
     #[serde(default = "default_vrr_min_hz")]
     pub vrr_min_hz: f64,
+    /// Whether to let the vertical blanking stretch frame by frame.
+    ///
+    /// Off. A television is not a monitor: its vertical oscillator is locked
+    /// to what it has been given, and a field whose length keeps changing
+    /// makes the picture move. Measured on a BeoCenter 1 on 2026-09-14, the
+    /// same menu with it on and off:
+    ///
+    /// ```text
+    /// on    fields 16.655 to 16.846 ms    three lines of movement
+    /// off   fields 16.654 to 16.657 ms    none
+    /// ```
+    ///
+    /// What it was for was following a program's own field rate without a
+    /// mode change. That is done by building the rate into the timing
+    /// instead - `Modeline::at_field_hz` reaches a European console's 49.70
+    /// to a thousandth of a hertz - which costs one mode change a game and
+    /// leaves the field steady.
+    ///
+    /// It is kept because a multisync monitor is a different room, and
+    /// because turning it on is how the measurement above was taken.
+    #[serde(default)]
+    pub vrr: bool,
 }
 
 fn default_vrr_min_hz() -> f64 {
@@ -256,7 +278,7 @@ fn default_ntsc_i() -> String {
     "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace".into()
 }
 fn default_pal_i() -> String {
-    "74 3840 3966 4314 4736 576 582 588 625 -hsync -vsync interlace".into()
+    "72 3520 3740 4078 4608 576 582 588 625 -hsync -vsync interlace".into()
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -295,6 +317,7 @@ impl Default for Output {
             interlace: false,
             hfreq_khz: default_hfreq_khz(),
             vrr_min_hz: default_vrr_min_hz(),
+            vrr: false,
         }
     }
 }
@@ -303,7 +326,7 @@ impl Default for Modelines {
     fn default() -> Self {
         Self {
             ntsc: "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync".into(),
-            pal: "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync".into(),
+            pal: "72 3520 3740 4078 4608 288 291 294 312 -hsync -vsync".into(),
             film: "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync".into(),
             ntsc_i: default_ntsc_i(),
             pal_i: default_pal_i(),
@@ -350,6 +373,12 @@ position = "auto"
 csync = "xor"
 # Standard used by `omacrt on` without an argument: "ntsc" or "pal".
 standard = "ntsc"
+# Let the vertical blanking stretch frame by frame. Off: a television's
+# vertical oscillator is locked to what it has been given, and a field whose
+# length keeps changing makes the picture move. A program's own field rate is
+# built into the timing instead, which reaches it to a thousandth of a hertz.
+# On is for a multisync monitor, or for measuring the difference.
+vrr = false
 # The band of line rates this display may be given, in kHz. The one setting
 # here that can break hardware: a television's horizontal deflection is tuned
 # for a single rate, and driving it well above that destroys the flyback
@@ -424,7 +453,7 @@ pub const SHIPPED: [(&str, &str); 5] = [
     ),
     (
         "pal",
-        "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync",
+        "72 3520 3740 4078 4608 288 291 294 312 -hsync -vsync",
     ),
     (
         "film",
@@ -436,7 +465,7 @@ pub const SHIPPED: [(&str, &str); 5] = [
     ),
     (
         "pal_i",
-        "74 3840 3966 4314 4736 576 582 588 625 -hsync -vsync interlace",
+        "72 3520 3740 4078 4608 576 582 588 625 -hsync -vsync interlace",
     ),
 ];
 

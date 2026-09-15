@@ -180,6 +180,9 @@ pub const CENTRE_TOLERANCE_US: f64 = 0.3;
 /// holds them to the same porches.
 const NTSC_SHAPED: &[&str] = &["ntsc", "film", "ntsc_i"];
 
+/// And the two that share the PAL line's, for the same reason.
+const PAL_SHAPED: &[&str] = &["pal", "pal_i"];
+
 /// Where a shipped timing is knowingly not the shape of its standard, and
 /// why. An entry here is a decision somebody took, with the reason written
 /// down; anything not listed is a defect and fails the build.
@@ -188,6 +191,36 @@ const NTSC_SHAPED: &[&str] = &["ntsc", "film", "ntsc_i"];
 /// security advisories this project accepts: an allowance is a line of code
 /// with a sentence beside it, not a silence.
 pub const ALLOWED: &[(&[&str], &str, &str)] = &[
+    (
+        PAL_SHAPED,
+        "the picture",
+        "48.89 us against the standard's 52.00, the same choice as the NTSC \
+         line below and for the same reasons: it is the shape of Switchres's \
+         `generic_15`, and holding both standards to one shape means a game \
+         keeps its size across a change of region. \
+         \
+         The clock is 72 MHz and not the 74 this project shipped for months. \
+         Measured on 2026-09-15 with the converter's lock register polled a \
+         thousand times a second, a still menu on a 74 MHz PAL line lost lock \
+         eighty times in sixty seconds and on a 72 MHz one not once. Each \
+         loss is 276 ms with no picture. `docs/rgb-pi-2.md` had a 72 MHz PAL \
+         line listed as validated on this hardware the whole time.",
+    ),
+    (
+        PAL_SHAPED,
+        "the front porch",
+        "3.06 us against 1.50, the other side of the same choice: the picture \
+         is narrower than the standard's, so the blanking it does not use has \
+         to go somewhere. It is split to put the centre of the picture where \
+         a European set puts it, 31.8 us after the end of sync, which is what \
+         a person notices.",
+    ),
+    (
+        PAL_SHAPED,
+        "the back porch",
+        "7.36 us against 5.80, the same. Both porches move together and the \
+         centre lands where the standard wants it.",
+    ),
     (
         NTSC_SHAPED,
         "the picture",
