@@ -1478,9 +1478,7 @@ pub fn remember_picture(system: &str, picture: Picture) {
 }
 
 pub fn pictures() -> BTreeMap<String, Picture> {
-    crate::store::load_string(&pictures_path())
-        .and_then(|t| toml::from_str(&t).ok())
-        .unwrap_or_default()
+    crate::store::load_parsed(&pictures_path(), |t| toml::from_str(t).ok()).unwrap_or_default()
 }
 
 /// The picture remembered for one system.

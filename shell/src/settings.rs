@@ -367,9 +367,9 @@ impl Settings {
     }
 
     pub fn load(config_dir: &Path) -> Self {
-        let mut out: Self = crate::config::read(&Self::path(config_dir))
-            .and_then(|t| toml::from_str(&t).ok())
-            .unwrap_or_default();
+        let mut out: Self =
+            crate::config::read_parsed(&Self::path(config_dir), |t| toml::from_str(t).ok())
+                .unwrap_or_default();
         out.screensaver.migrate();
         out.migrate();
         out
