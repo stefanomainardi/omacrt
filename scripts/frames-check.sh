@@ -9,10 +9,18 @@
 # 1500 bytes, which catches a blank screen and nothing else: a menu with every
 # label drawn on top of every other passes it. This compares the pixels.
 #
-# Determinism: the clock is pinned with `--clock`, the frames are taken at
-# fixed times in the boot sequence, and the library and configuration come
-# from the fixtures below rather than from whoever is running it. A screen
-# that draws the collection, the weather or a photograph is not deterministic
+# Determinism: the clock is pinned with `--clock`, and the configuration and
+# the scanned library are pointed at empty directories, because the home
+# screen prints how many games are in the collection. That line is what made
+# the first run of this differ by 353 pixels between a laptop with twenty
+# thousand games and a runner with none, and it is a line of text eight pixels
+# tall, which is what 353 pixels looks like.
+#
+# `--config-dir` and `--systems` do not cover it: the index is read through
+# `crt::config_dir()` and `index::data_dir()`, which answer to OMACRT_CONFIG
+# and XDG_DATA_HOME and not to those arguments.
+#
+# A screen that draws the weather or a photograph is not deterministic either
 # and is deliberately not in here.
 #
 # A frame that differs is written to $FRAMES_OUT when that is set, so a
@@ -44,9 +52,13 @@ if [ ! -x "$shell_bin" ]; then
 fi
 
 got="$(mktemp -d)"
-trap 'rm -rf "$got"' EXIT
+empty="$(mktemp -d)"
+trap 'rm -rf "$got" "$empty"' EXIT
+mkdir -p "$empty/config" "$empty/data"
 
-SDL_VIDEODRIVER=dummy "$shell_bin" --headless --no-audio \
+SDL_VIDEODRIVER=dummy \
+  OMACRT_CONFIG="$empty/config" XDG_DATA_HOME="$empty/data" \
+  "$shell_bin" --headless --no-audio \
   --clock "$clock" --dump "$times" --dump-dir "$got" >/dev/null || {
   echo "the launcher did not render its frames" >&2
   exit 1
