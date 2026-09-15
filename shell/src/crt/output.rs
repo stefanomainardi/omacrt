@@ -258,6 +258,56 @@ impl Modeline {
         self.hfreq_khz() * 1000.0 / self.v[3] as f64
     }
 
+    /// How long a run of samples lasts, in microseconds.
+    ///
+    /// The unit a television is built in. Everything above this line counts
+    /// pixels, which is what a graphics card deals in; a deflection circuit
+    /// deals in time, and the difference is why a modeline can have exactly
+    /// the right line rate and still put the picture off the edge of the
+    /// screen.
+    fn us(&self, samples: u32) -> f64 {
+        samples as f64 / self.clock_mhz
+    }
+
+    /// The picture itself: how long the beam is drawing.
+    pub fn active_us(&self) -> f64 {
+        self.us(self.h[0])
+    }
+
+    /// Between the end of the picture and the sync pulse.
+    pub fn front_porch_us(&self) -> f64 {
+        self.us(self.h[1] - self.h[0])
+    }
+
+    /// The pulse that tells the set to start the next line.
+    pub fn sync_us(&self) -> f64 {
+        self.us(self.h[2] - self.h[1])
+    }
+
+    /// Between the sync pulse and the start of the picture. This is the one
+    /// that decides where the picture begins on the glass, because a set
+    /// starts its horizontal sweep from the sync and not from the data.
+    pub fn back_porch_us(&self) -> f64 {
+        self.us(self.h[3] - self.h[2])
+    }
+
+    /// The whole line.
+    pub fn line_us(&self) -> f64 {
+        self.us(self.h[3])
+    }
+
+    /// Where the middle of the picture falls, counted from the end of the
+    /// sync pulse.
+    ///
+    /// Two timings with the same line rate, the same width and the same total
+    /// can still put the picture in different places, and this is the number
+    /// that says so. A PAL line and an NTSC line that disagree here cannot be
+    /// served by one picture shift, because the shift is a property of the
+    /// television and this is a property of the timing.
+    pub fn centre_us(&self) -> f64 {
+        self.back_porch_us() + self.active_us() / 2.0
+    }
+
     /// Why this timing must not be given to the television, if it must not.
     ///
     /// A fixed frequency set is not a monitor that shrugs at a signal it
@@ -354,6 +404,70 @@ impl Modeline {
         let mut m = self.clone();
         m.v = [lines, lines + front, lines + front + vsync, self.v[3]];
         m
+    }
+
+    /// The same timing at the field rate a program actually runs at.
+    ///
+    /// A console's frame rate is not the standard's. A European Mega Drive
+    /// runs at 49.70 Hz where PAL is 50.08, and a picture produced at one
+    /// rate and scanned at another repeats a field whenever the two slip a
+    /// whole frame apart: at that pair, once every 2.6 seconds, which is a
+    /// visible stutter.
+    ///
+    /// The field rate is the pixel clock over the product of the two totals,
+    /// so both are moved: the vertical total is chosen first, and the
+    /// horizontal total then trims what an integer number of lines cannot
+    /// reach. Moving the horizontal total moves the line rate, which is the
+    /// one thing a television's deflection is tuned for, so it is held inside
+    /// `tolerance` of the rate this timing already has - a few tenths of a
+    /// percent, where a set does not care and a mistake cannot become a
+    /// dangerous one.
+    ///
+    /// The blanking absorbs the change, never the picture: the active samples
+    /// and lines and the sync widths come out unchanged, so the picture keeps
+    /// its size and its place.
+    ///
+    /// `None` when the rate cannot be reached inside the tolerance, or when
+    /// it is not a rate a 15 kHz set locks to.
+    pub fn at_field_hz(&self, hz: f64, tolerance: f64) -> Option<Self> {
+        if !(40.0..=90.0).contains(&hz) || !hz.is_finite() {
+            return None;
+        }
+        let clock = self.clock_mhz * 1_000_000.0;
+        let line_now = clock / self.h[3] as f64;
+        let (lo, hi) = (line_now * (1.0 - tolerance), line_now * (1.0 + tolerance));
+        // The vertical total that comes closest at the line rate this timing
+        // already has, then the horizontal totals either side of it, and the
+        // pair whose field rate lands nearest wins.
+        let want_v = (line_now / hz).round() as u32;
+        let mut best: Option<(f64, u32, u32)> = None;
+        for v in [want_v.saturating_sub(1), want_v, want_v + 1] {
+            if v < self.v[2] + 1 {
+                continue;
+            }
+            let want_h = (clock / (hz * v as f64)).round() as u32;
+            // The line rate this timing already has is always a candidate, so
+            // a tolerance of nothing still gives the best whole-line answer
+            // rather than no answer at all.
+            for h in [want_h.saturating_sub(1), want_h, want_h + 1, self.h[3]] {
+                if h < self.h[2] + 1 {
+                    continue;
+                }
+                let line = clock / h as f64;
+                if !(lo..=hi).contains(&line) {
+                    continue;
+                }
+                let err = (line / v as f64 - hz).abs();
+                if best.is_none_or(|(b, _, _)| err < b) {
+                    best = Some((err, h, v));
+                }
+            }
+        }
+        let (_, h, v) = best?;
+        let mut m = self.clone();
+        m.h[3] = h;
+        m.v[3] = v;
+        Some(m)
     }
 
     /// Move the picture on the tube: right by `dx` pixels (front porch
@@ -812,16 +926,11 @@ mod guard {
 
     #[test]
     fn every_timing_this_project_ships_is_allowed() {
-        // If one of these ever fails, either the band is wrong or a shipped
-        // modeline is, and both are worth stopping the build for.
-        for text in [
-            "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync",
-            "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync",
-            "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync",
-            "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace",
-            "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace",
-        ] {
-            assert_eq!(ml(text).fault(TV), None, "{text}");
+        // Read from the one list rather than typed out again. They used to be
+        // copied here, and the copy in `tests/logic.rs` had already fallen a
+        // day behind without any test noticing.
+        for (name, text) in crate::crt::SHIPPED {
+            assert_eq!(ml(text).fault(TV), None, "{name}");
         }
     }
 
@@ -870,14 +979,14 @@ mod guard {
     /// to come out as a frame with eleven lines of blanking left in it.
     #[test]
     fn a_request_larger_than_the_frame_gets_the_frame() {
-        let ntsc = ml("72 3520 3695 4033 4577 240 242 245 262");
+        let ntsc = ml("72 3520 3781 4119 4577 240 242 245 262");
         for asked in [480, 528, 576, 1000] {
             let got = ntsc.with_lines(asked);
             assert_eq!(got.height(), 240, "asked for {asked}");
             // And the blanking is the standard's own, untouched.
             assert_eq!(got.v, ntsc.v, "asked for {asked}");
         }
-        let pal = ml("72 3840 3948 4290 4608 288 291 294 312");
+        let pal = ml("74 3840 3966 4314 4736 288 291 294 312");
         assert_eq!(pal.with_lines(576).height(), 288);
     }
 
@@ -885,7 +994,7 @@ mod guard {
     /// works: the picture is centred and the blanking grows around it.
     #[test]
     fn a_request_smaller_than_the_frame_is_centred() {
-        let ntsc = ml("72 3520 3695 4033 4577 240 242 245 262");
+        let ntsc = ml("72 3520 3781 4119 4577 240 242 245 262");
         let got = ntsc.with_lines(224);
         assert_eq!(got.height(), 224);
         assert_eq!(got.v[3], 262, "the frame is unchanged");
@@ -900,8 +1009,8 @@ mod guard {
     #[test]
     fn every_built_in_line_count_is_a_timing_a_set_can_lock_to() {
         let frames = [
-            ml("72 3520 3695 4033 4577 240 242 245 262"),
-            ml("72 3840 3948 4290 4608 288 291 294 312"),
+            ml("72 3520 3781 4119 4577 240 242 245 262"),
+            ml("74 3840 3966 4314 4736 288 291 294 312"),
         ];
         for frame in frames {
             for asked in [224, 240, 288, 480, 528, 576] {
@@ -919,5 +1028,80 @@ mod guard {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod field_rate {
+    use super::Modeline;
+
+    const PAL: &str = "74 3840 3966 4314 4736 288 291 294 312 -hsync -vsync";
+    const NTSC: &str = "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync";
+
+    fn at(text: &str, hz: f64) -> Modeline {
+        Modeline::parse(text)
+            .unwrap()
+            .at_field_hz(hz, 0.004)
+            .unwrap_or_else(|| panic!("{hz} Hz is not reachable from {text}"))
+    }
+
+    #[test]
+    fn a_european_mega_drive_gets_its_own_rate() {
+        // 49.70 against PAL's 50.08 is a repeated field every 2.6 seconds.
+        let m = at(PAL, 49.70);
+        let err = (m.vfreq_hz() - 49.70).abs();
+        assert!(err < 0.01, "{:.4} Hz is {err:.4} off", m.vfreq_hz());
+        // A slip of a whole field takes longer than three minutes.
+        assert!(1.0 / err > 180.0, "a field slips every {:.0} s", 1.0 / err);
+    }
+
+    #[test]
+    fn the_line_rate_barely_moves_and_the_picture_does_not() {
+        let before = Modeline::parse(PAL).unwrap();
+        let after = at(PAL, 49.70);
+        let drift = (after.hfreq_khz() / before.hfreq_khz() - 1.0).abs();
+        assert!(drift < 0.004, "the line rate moved {:.3}%", drift * 100.0);
+        assert_eq!(after.width(), before.width());
+        assert_eq!(after.height(), before.height());
+        // The sync pulses keep their widths; only the blanking absorbs it.
+        assert_eq!(after.h[2] - after.h[1], before.h[2] - before.h[1]);
+        assert_eq!(after.v[2] - after.v[1], before.v[2] - before.v[1]);
+    }
+
+    #[test]
+    fn the_rates_the_consoles_actually_run_at_are_all_reachable() {
+        for (text, hz) in [
+            (NTSC, 59.9227), // Mega Drive
+            (NTSC, 60.0988), // NES
+            (NTSC, 60.0985), // Super Nintendo
+            (PAL, 49.7015),  // any European console
+            (NTSC, 59.8261), // Game Boy Advance
+        ] {
+            let m = at(text, hz);
+            let err = (m.vfreq_hz() - hz).abs();
+            assert!(
+                err < 0.01,
+                "{hz} Hz came out {:.4}, {err:.4} off",
+                m.vfreq_hz()
+            );
+        }
+    }
+
+    #[test]
+    fn a_rate_no_fifteen_kilohertz_set_locks_to_is_refused() {
+        let m = Modeline::parse(NTSC).unwrap();
+        assert!(m.at_field_hz(30.0, 0.004).is_none());
+        assert!(m.at_field_hz(120.0, 0.004).is_none());
+        assert!(m.at_field_hz(f64::NAN, 0.004).is_none());
+    }
+
+    #[test]
+    fn a_rate_that_would_move_the_line_rate_too_far_is_refused() {
+        let m = Modeline::parse(NTSC).unwrap();
+        // With no room to move the horizontal total, only the whole-line
+        // rates are reachable, so an exact 59.9227 is not.
+        let tight = m.at_field_hz(59.9227, 0.0).unwrap();
+        assert!((tight.vfreq_hz() - 59.9227).abs() > 0.01);
+        assert_eq!(tight.h[3], m.h[3], "the line rate must not have moved");
     }
 }

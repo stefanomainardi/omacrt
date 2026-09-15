@@ -21,6 +21,7 @@ pub mod padmap;
 pub mod player;
 pub mod plugin;
 pub mod profile;
+pub mod rates;
 pub mod rumble;
 pub mod scumm;
 pub mod settings;

@@ -5,3 +5,6 @@ demo.mp4
 
 # Python leaves these beside the scripts; they are build output, not source.
 __pycache__/
+
+# A vendor image unpacked for study; 5 GB and not ours to redistribute.
+.rgbpi-image/

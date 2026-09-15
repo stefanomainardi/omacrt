@@ -395,15 +395,28 @@ struct Launch {
 }
 
 /// Per program picture geometry handed to the host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Geometry {
     pub lines: Option<u32>,
-    pub shift_x: i32,
-    pub shift_y: i32,
+    /// The picture shift this program wants, or `None` for "nothing to say".
+    ///
+    /// It was two plain numbers, so every caller had to name a shift whether
+    /// it had one or not, and the ones that had none named zero. That zero
+    /// went to the CLI, which saved it, and it then became the default for
+    /// every later call: a console's own centring survived exactly until the
+    /// first time its core reported a resolution.
+    pub shift: Option<(i32, i32)>,
     /// Whether to follow the resolution the core reports while it runs. A
     /// pinned frame is a deliberate choice for the whole session, so a core
     /// that changes its mind about its own size is scaled into it instead.
     pub follow: bool,
+    /// The television standard to put the tube in, when something knows it.
+    /// `None` leaves whatever is already there.
+    pub standard: Option<&'static str>,
+    /// The field rate the program itself runs at, when its core has said so.
+    /// The timing is built to match it, so the two do not slip a whole field
+    /// apart every few seconds. `None` keeps the standard's own rate.
+    pub hz: Option<f32>,
 }
 
 const LAUNCH_SECS: f32 = 1.15;

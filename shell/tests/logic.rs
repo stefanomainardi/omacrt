@@ -76,9 +76,18 @@ fn every_system_label_is_a_thumbnail_set_name() {
 
 // ------------------------------------------------------------- modelines
 
+/// The shipped NTSC timing, read from the one list rather than typed out.
+///
+/// It used to be typed out, and it fell a day behind the line this project
+/// actually ships: the porches had moved to put the picture where a set puts
+/// it, and every assertion here passed anyway, because a rate and a size
+/// cannot see where a picture sits.
 fn ntsc() -> Modeline {
-    Modeline::parse("72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync")
-        .expect("the shipped NTSC modeline parses")
+    let (_, text) = omacrt_shell::crt::SHIPPED
+        .iter()
+        .find(|(name, _)| *name == "ntsc")
+        .expect("ntsc is shipped");
+    Modeline::parse(text).expect("the shipped NTSC modeline parses")
 }
 
 #[test]
@@ -101,8 +110,11 @@ fn fewer_active_lines_keep_the_line_rate_and_the_refresh() {
 
 #[test]
 fn an_interlaced_modeline_keeps_its_flag() {
-    let m = Modeline::parse("72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace")
-        .expect("480i parses");
+    let (_, text) = omacrt_shell::crt::SHIPPED
+        .iter()
+        .find(|(name, _)| *name == "ntsc_i")
+        .expect("ntsc_i is shipped");
+    let m = Modeline::parse(text).expect("480i parses");
     assert!(m.flags.contains("interlace"));
     assert_eq!(m.height(), 480);
 }
@@ -290,4 +302,116 @@ fn every_shader_the_pause_menu_offers_is_installed_and_off_comes_first() {
     }
     assert_eq!(shader_path(""), None);
     assert_eq!(shader_path("nothing/at-all.slangp"), None);
+}
+
+// ------------------------------------------------- the frame a game gets
+
+/// For every system in the built-in catalogue and both standards, the window
+/// the emulator is given is never taller than the frame the tube receives.
+///
+/// The case this exists for: a Dreamcast asks for 480 lines and a GameCube's
+/// core reports 528, neither of which a progressive 15 kHz frame can draw.
+/// The mode is capped at the standard's own frame; a window built from the
+/// raw number lays the picture out for a screen twice the size of the one it
+/// lands on, and the player sees the top half of it at twice the size.
+#[test]
+fn no_system_asks_for_a_window_taller_than_the_frame() {
+    let frames: Vec<(&str, Modeline)> = omacrt_shell::crt::SHIPPED
+        .iter()
+        .filter(|(name, _)| *name == "ntsc" || *name == "pal")
+        .map(|(name, text)| (*name, Modeline::parse(text).expect("a shipped modeline")))
+        .collect();
+    // Every console the catalogue knows a line count for, which is the set
+    // that can be wrong: a system with no entry asks for nothing.
+    let systems = [
+        "nes",
+        "snes",
+        "megadrive",
+        "mastersystem",
+        "gamegear",
+        "pcengine",
+        "pcenginecd",
+        "megacd",
+        "32x",
+        "neogeo",
+        "arcade",
+        "saturn",
+        "mame",
+        "psx",
+        "n64",
+        "dreamcast",
+        "naomi",
+        "ps2",
+        "gamecube",
+        "wii",
+        "xbox",
+        "gb",
+        "gbc",
+        "gba",
+        "nds",
+        "psp",
+        "ngp",
+        "wonderswan",
+        "lynx",
+    ];
+    for system in systems {
+        let asked = omacrt_shell::library::default_lines(system);
+        for (standard, frame) in &frames {
+            let got = frame.with_lines(asked.unwrap_or(frame.height()));
+            assert!(
+                got.height() <= frame.height(),
+                "{system} on {standard}: asked {asked:?}, got {} in a {} line frame",
+                got.height(),
+                frame.height()
+            );
+            assert!(
+                got.fault([15.0, 16.5]).is_none(),
+                "{system} on {standard} is not a timing a set can lock to"
+            );
+        }
+    }
+}
+
+/// A game whose file name says Europe is laid out for the European frame,
+/// not for the one the tube happens to be showing.
+///
+/// The emulator's window is built before the mode changes, so reading the
+/// current output gives the frame the tube is leaving, and a European game on
+/// a machine sitting in NTSC was laid out for the wrong one: a strip of the
+/// launcher showed alongside the picture. The two standards now share a width
+/// and differ only in height, so the height is what this holds.
+#[test]
+fn a_european_game_is_laid_out_for_the_european_frame() {
+    let frame = |name: &str| {
+        let (_, text) = omacrt_shell::crt::SHIPPED
+            .iter()
+            .find(|(n, _)| *n == name)
+            .expect("shipped");
+        let m = Modeline::parse(text).expect("a modeline");
+        (m.width(), m.height())
+    };
+    let ntsc = frame("ntsc");
+    let (pal_w, pal_h) = frame("pal");
+    assert_ne!(
+        ntsc,
+        (pal_w, pal_h),
+        "the two frames differ, which is the whole hazard"
+    );
+
+    use std::path::Path;
+    let european = Path::new("/roms/Sonic Compilation (Europe).md");
+    let std = omacrt_shell::library::standard_for_path(european).expect("a standard");
+    assert_eq!(std, "pal");
+    assert_eq!(
+        frame(std),
+        (pal_w, pal_h),
+        "laid out for the frame it asks for"
+    );
+
+    // And an American release is not moved.
+    let american = Path::new("/roms/Sonic the Hedgehog (USA).md");
+    assert_eq!(
+        omacrt_shell::library::standard_for_path(american),
+        Some("ntsc")
+    );
 }

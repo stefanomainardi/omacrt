@@ -1631,10 +1631,27 @@ impl Scene {
             let mut keys = self.profile.retroarch_keys();
             if self.wide_output() {
                 // Fill the frame (aspect 24 = Full): the tube turns the wide frame back into 4:3.
-                // The window is as tall as the mode the tube switches to for
-                // this system, not as the mode showing right now.
-                let (w, mut h) = self.output_size;
-                if !system.is_video() {
+                // The window is the size of the mode the tube is about to be
+                // put in, never the one showing now. Those are different
+                // whenever the standard changes with the game: a European
+                // release moves the tube from a 3520 sample line to a 3840
+                // one, and a window built from the old width left 320 samples
+                // of the launcher showing down the side of the picture.
+                //
+                // The height has been read from the system's own line count
+                // all along, which is why only the width was wrong; both come
+                // from the same place now.
+                let frame = crate::library::standard_for_path(&entry.game.path)
+                    .and_then(|std| {
+                        let cfg = omacrt_shell::crt::Config::load();
+                        omacrt_shell::crt::output::Modeline::parse(cfg.modeline(std)?)
+                            .map(|m| (m.width(), m.height()))
+                    })
+                    .unwrap_or(self.output_size);
+                let (w, mut h) = frame;
+                // `frame` leaves the window the height of the tube's own
+                // frame, which is what asks the emulator to scale into it.
+                if !system.is_video() && system.aspect != "frame" {
                     let pinned = match crate::library::VideoPolicy::parse(&system.video) {
                         crate::library::VideoPolicy::Fixed(_, ph) => Some(ph),
                         _ => None,
@@ -1689,13 +1706,37 @@ impl Scene {
                 crate::library::VideoPolicy::Fixed(_, h) => Some(h),
                 _ => None,
             };
-            let l = system.lines.or(pinned);
-            if l.is_some() || system.shift_x != 0 || system.shift_y != 0 {
+            // `frame` asks the tube for its whole frame rather than the
+            // console's own line count, which is what fills a European
+            // screen with an American game's 224 lines. Nothing else here
+            // changes: the emulator's window follows the frame, and the
+            // scaling is the emulator's to do.
+            let l = if system.aspect == "frame" {
+                None
+            } else {
+                system.lines.or(pinned)
+            };
+            // The standard the file name claims, so the tube is already in it
+            // when the emulator opens. The core says the same thing a second
+            // later, and acting on it then means changing the mode under a
+            // program that is still starting.
+            let standard = crate::library::standard_for_path(&entry.game.path);
+            // And the rate this core ran at the last time it was in this
+            // standard, so the timing is right before the emulator opens
+            // rather than one mode change later.
+            let hz = standard.and_then(|s| crate::rates::known(&system.core, s));
+            if l.is_some()
+                || standard.is_some()
+                || hz.is_some()
+                || system.shift_x != 0
+                || system.shift_y != 0
+            {
                 Some(Geometry {
                     lines: l,
-                    shift_x: system.shift_x,
-                    shift_y: system.shift_y,
+                    shift: Some((system.shift_x, system.shift_y)),
                     follow: pinned.is_none(),
+                    standard,
+                    hz,
                 })
             } else {
                 None

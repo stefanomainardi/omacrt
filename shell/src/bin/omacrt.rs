@@ -7,6 +7,7 @@
 
 use omacrt_shell::crt::dac::{Csync, Dac, Lock};
 use omacrt_shell::crt::output::{self, Connector, Modeline};
+use omacrt_shell::crt::standards;
 use omacrt_shell::crt::{self, Config, State, audio, bios, display, launcher, roms, watchdog};
 use omacrt_shell::index::Index;
 use omacrt_shell::library::{self, Library};
@@ -20,6 +21,16 @@ const TAGLINE: &str = "drive a 15 kHz CRT television from a Hyprland desktop";
 
 /// Where the configuration lives, said once.
 const CONFIG_NOTE: &str = "~/.config/omacrt/crt.toml, written with defaults on first run";
+
+/// How far the line rate may move to reach a program's own field rate.
+///
+/// Four parts in a thousand: 15.625 kHz becomes 15.563 to 15.687, which is
+/// inside what a set built for one of them follows and far inside the band
+/// `output.hfreq_khz` allows. A field rate is the pixel clock over the two
+/// totals, and an integer number of lines alone lands 0.06 Hz away from a
+/// European console's 49.70; letting the horizontal total move as well brings
+/// that to a hundredth of that.
+const FIELD_RATE_TOLERANCE: f64 = 0.004;
 
 /// Every verb, grouped by what somebody is trying to do.
 ///
@@ -49,14 +60,17 @@ const VERBS: Verbs = &[
                 "put the display back if it dies; started by `on`, ends with `off`",
             ),
             (
-                "mode [ntsc|pal|film|480i|576i] [--lines N] [--shift-x X] [--shift-y Y]",
-                "standard, active lines, picture shift; no args = full frame",
+                "mode [ntsc|pal|film|480i|576i] [--lines N] [--hz H] [--shift-x X] [--shift-y Y]",
+                "standard, active lines, the program's own field rate, picture shift",
             ),
             (
                 "rate [HZ|off]",
                 "the refresh a program wants, followed without a mode change",
             ),
-            ("dac status|reset|csync and|xor|separate|watch", ""),
+            (
+                "dac status|reset|csync and|xor|separate|watch|listen",
+                "listen reports every loss of lock without resetting",
+            ),
             (
                 "audio crt|desktop|all|apps",
                 "games audio to the TV or back; all = whole system",
@@ -72,6 +86,10 @@ const VERBS: Verbs = &[
         &[
             ("shell start|stop|restart|focus", ""),
             ("focus", "keyboard focus to the launcher"),
+            (
+                "shell safe N",
+                "black border the TV eats, in percent a side; scripts/overscan-test.sh measures it",
+            ),
             (
                 "shell key <input>...",
                 "drive the launcher: home menu up down left right fire back fav alt search osk del next prev first last",
@@ -297,11 +315,34 @@ fn scummvm_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
 
 /// The value after a `--flag`, when it is there.
 fn value(args: &[String], flag: &str) -> Option<String> {
+    debug_assert!(
+        FLAGS_WITH_A_VALUE.contains(&flag),
+        "{flag} takes a value but is not in FLAGS_WITH_A_VALUE, so positional() \
+         will read that value as an argument"
+    );
     let i = args.iter().position(|a| a == flag)?;
     args.get(i + 1)
         .filter(|v| !v.starts_with("--"))
         .map(|v| v.to_string())
 }
+
+/// The flags that are followed by a value, in one place.
+///
+/// It has to be one place because two readers disagreeing about it is a
+/// silent fault, not a loud one: a flag missing from here has its value read
+/// as a positional argument, and `omacrt mode --hz 59.95` then asks for a
+/// television standard called "59.95" and stops. Nothing prints if the caller
+/// is not watching stderr.
+const FLAGS_WITH_A_VALUE: &[&str] = &[
+    "--lines",
+    "--hz",
+    "--shift-x",
+    "--shift-y",
+    "--connector",
+    "--standard",
+    "--limit",
+    "--system",
+];
 
 /// Arguments that are neither flags nor the value of a flag taking one.
 fn positional(args: &[String]) -> Vec<&String> {
@@ -312,12 +353,7 @@ fn positional(args: &[String]) -> Vec<&String> {
             skip = false;
             continue;
         }
-        if a == "--lines"
-            || a == "--shift-x"
-            || a == "--shift-y"
-            || a == "--connector"
-            || a == "--standard"
-        {
+        if FLAGS_WITH_A_VALUE.contains(&a.as_str()) {
             skip = true;
             continue;
         }
@@ -391,6 +427,13 @@ fn status(cfg: &Config) -> Value {
             if let Some(w) = t.window {
                 st["latency"]["over_window"] = json!(w.over);
                 st["latency"]["longest_lines"] = json!(w.longest_lines);
+                if let Some(r) = w.run {
+                    st["latency"]["out_since_start"] = json!(r.out);
+                    st["latency"]["late_since_start"] = json!(r.skipped);
+                    st["latency"]["longest_lines_ever"] = json!(r.longest_lines);
+                    st["latency"]["shortest_lines_ever"] = json!(r.shortest_lines);
+                    st["latency"]["worst_secs_ago"] = json!(r.worst_secs_ago);
+                }
             }
         }
     }
@@ -403,15 +446,31 @@ fn status(cfg: &Config) -> Value {
         });
         if leased {
             if display::running() {
+                // What the compositor programmed, from the file it writes
+                // after the modeset lands. This used to be rebuilt here out
+                // of the configuration and the saved state, which is how a
+                // 251 line mode that had never existed came to be reported
+                // for ten minutes of a diagnosis. Only if that file is
+                // missing - an older display process - is the arithmetic
+                // used, and then it is a guess and says so.
                 let standard = st["standard"].as_str().unwrap_or("ntsc").to_string();
                 let applied =
                     crt::applied_standard_with(&standard, state.lines, cfg.output.interlace);
-                if let Some(ml) = cfg.modeline(applied).and_then(Modeline::parse) {
-                    let ml = if state.lines > 0 && state.lines != ml.height() {
-                        ml.with_lines(state.lines)
-                    } else {
-                        ml
-                    };
+                let real = display::current_mode();
+                st["mode_source"] = json!(if real.is_some() {
+                    "compositor"
+                } else {
+                    "guess"
+                });
+                if let Some(ml) = real.or_else(|| {
+                    cfg.modeline(applied).and_then(Modeline::parse).map(|ml| {
+                        if state.lines > 0 && state.lines != ml.height() {
+                            ml.with_lines(state.lines)
+                        } else {
+                            ml
+                        }
+                    })
+                }) {
                     st["active"] = json!(true);
                     st["mode"] = json!({
                         "width": ml.width(), "height": ml.height(), "refresh_hz": ml.field_hz(), "disabled": false,
@@ -619,6 +678,32 @@ fn print_status(st: &Value) {
                 );
             } else {
                 println!("            every frame inside the mode, the longest {longest:.1} lines");
+            }
+        }
+        // The same thing since the tube came up. The row above covers five
+        // seconds, so a fault rarer than that never appears in it.
+        if let (Some(out), Some(skipped), Some(longest), Some(shortest)) = (
+            l["out_since_start"].as_u64(),
+            l["late_since_start"].as_u64(),
+            l["longest_lines_ever"].as_f64(),
+            l["shortest_lines_ever"].as_f64(),
+        ) {
+            let ago = l["worst_secs_ago"].as_f64().unwrap_or(-1.0);
+            let when = if ago < 0.0 {
+                String::new()
+            } else if ago < 90.0 {
+                format!(", the worst {ago:.0} s ago")
+            } else {
+                format!(", the worst {:.0} min ago", ago / 60.0)
+            };
+            if out == 0 && skipped == 0 {
+                println!("            since the tube came up: the field length never jumped");
+            } else {
+                println!(
+                    "            since the tube came up: the field length jumped past the \
+                     window {out} time(s), between {shortest:.0} and {longest:.0} lines, and \
+                     {skipped} picture(s) reached the screen a field late{when}"
+                );
             }
         }
     }
@@ -883,6 +968,14 @@ fn apply_mode(
     } else {
         ml
     };
+    // The same guard the leased path has had all along. This one goes to the
+    // card through Hyprland instead of through our own compositor, and it
+    // had none: a line rate typed wrong in `crt.toml` reached the deflection
+    // circuit with nothing in the way. It is the only check in this project
+    // that exists to keep hardware alive, and it belongs on both roads.
+    if let Some(why) = ml.fault(cfg.output.hfreq_khz) {
+        return Err(format!("that timing asks the television for {why}"));
+    }
     let (ok, out) = output::apply_modeline(&conn.name, &ml, &cfg.output.position);
     if !ok {
         return Err(format!("modeline refused: {out}"));
@@ -1033,7 +1126,14 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
 fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
     let mut state = State::load();
     state.standard = standard.into();
-    state.lines = 0;
+    // The full frame of that standard, which is what the display process is
+    // about to program. Zero used to go here and meant "no line count", a
+    // third meaning for a field that already had two.
+    state.lines = cfg
+        .modeline(standard)
+        .and_then(Modeline::parse)
+        .map(|m| m.height())
+        .unwrap_or(0);
     state.save();
     match display::start_with_sink(&conn.name, crt_sink(cfg, conn).as_deref()) {
         Ok(note) => term::sheet::step("display", &note),
@@ -1149,8 +1249,46 @@ fn cmd_watchdog(cfg: &Config) -> i32 {
             return 1;
         }
         let Some(conn) = output::pick(cfg) else {
-            eprintln!("no CRT output to restart on");
-            continue;
+            // Two very different situations, and this used to print one line
+            // for both and then go round again for ever.
+            //
+            // The one that actually happens: the connector is still there and
+            // still connected, and has gone back to being a desktop monitor,
+            // because the display process gave up its lease and nothing holds
+            // the non-desktop mark any more. Watching for a display process
+            // to come back is then pointless - the tube cannot be taken until
+            // somebody with root hands the connector over again - so say what
+            // to run and stop, rather than sit in a loop pretending to guard
+            // something.
+            //
+            // 2026-09-14, and the reason this is written down: the card's
+            // display block timed out on a register write, ten page flips
+            // were refused, the lease was surrendered, the desktop took the
+            // output, the launcher died with it, and the watchdog printed
+            // "no CRT output to restart on" every second afterwards while a
+            // person watched a television flicker.
+            let stray = output::connectors()
+                .into_iter()
+                .find(|c| c.connected && c.name.contains("HDMI") && !display::leaseable(&c.name));
+            match stray {
+                Some(c) => eprintln!(
+                    "{} is connected and back under the desktop: the lease was \
+                     given up, and once Hyprland has taken a connector as a \
+                     monitor it does not offer it for leasing again. Restoring \
+                     the non-desktop mark is not enough - measured on 0.56.2, \
+                     the unit restarts, the mark comes back and nothing is \
+                     offered. Log out and back in, or reboot, and the tube is \
+                     there again. Nothing here can do it, so this watchdog is \
+                     standing down.",
+                    c.name
+                ),
+                None => eprintln!(
+                    "no CRT output to restart on: nothing connected that this \
+                     could drive. Standing down."
+                ),
+            }
+            let _ = std::fs::remove_file(watchdog::pid_path());
+            return 1;
         };
         let state = State::load();
         let standard = if state.standard.is_empty() {
@@ -1193,6 +1331,16 @@ fn cmd_off(cfg: &Config) {
     let mut state = State::load();
     if cfg.audio.route {
         println!("audio:      {}", audio::route_back(&mut state));
+    }
+    // A standard the launcher chose for a European game must not outlive the
+    // game. It writes `pal` while one runs and puts the configured one back
+    // when it ends; taking the tube down from underneath skips that, and the
+    // next `omacrt on` came up at 50 Hz with the launcher flickering on it.
+    // Whatever the reason the tube is going down, this is where the machine
+    // goes back to what it is configured for.
+    if state.standard != cfg.output.standard {
+        state.standard = cfg.output.standard.clone();
+        state.lines = 0;
     }
     if display::running() {
         println!("display:    {}", display::stop());
@@ -1726,6 +1874,35 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             ),
         },
     ));
+    // The card's own display block, which on this one sometimes stops
+    // answering. It is not our fault and not the television's, but a picture
+    // that dies mid-game sends everybody to look at their cable first, so the
+    // count is put where they will see it. See docs/15khz.md.
+    probes.push(Probe::new(MACHINE, "display block", || {
+        let out = std::process::Command::new("journalctl")
+            .args(["-k", "-b", "-g", "dcn32_program_compbuf_size", "--no-pager"])
+            .output();
+        let Ok(out) = out else {
+            return (Level::Ok, "no journal to read".into());
+        };
+        let text = String::from_utf8_lossy(&out.stdout);
+        let faults = text
+            .lines()
+            .filter(|l| l.contains("REG_WAIT timeout"))
+            .count();
+        match faults {
+            0 => (Level::Ok, "no register timeouts this boot".into()),
+            n => (
+                Level::Warn,
+                format!(
+                    "{n} REG_WAIT timeout{} in dcn32_program_compbuf_size this boot: the card's \
+                     display block, not the tube. A picture lost mid-game may be one of these; \
+                     see docs/15khz.md",
+                    if n == 1 { "" } else { "s" }
+                ),
+            ),
+        }
+    }));
     probes.push(Probe::new(MACHINE, "compositor", move || {
         match compositor_version() {
             Some(v) => {
@@ -1756,9 +1933,25 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         MACHINE,
         "DRM leasing offered",
         || match leasing_offered() {
+            // An empty list has two causes with two different answers. If
+            // nothing is marked non-desktop, nothing has been set up. If
+            // something is and it is still not offered, the mark arrived
+            // after this session started, and Hyprland decides what a
+            // connector is when it adds it.
             Ok(Some(names)) if names.is_empty() => (
                 Level::Fail,
-                "the compositor offers the protocol and no connector: mark one non-desktop".into(),
+                if output::connectors()
+                    .iter()
+                    .any(|c| c.connected && display::leaseable(&c.name))
+                {
+                    "a connector is marked non-desktop and the compositor is offering \
+                     none: the mark was not there when this session started. Log out and \
+                     back in, or reboot"
+                        .into()
+                } else {
+                    "the compositor offers the protocol and no connector: mark one non-desktop"
+                        .to_string()
+                },
             ),
             Ok(Some(names)) => (Level::Ok, names.join(" ")),
             Ok(None) => (
@@ -1919,7 +2112,27 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                 .map(|m| !m["disabled"].as_bool().unwrap_or(true))
                 .unwrap_or(false);
             match (marked, held) {
-                (true, false) => (Level::Ok, "offered for leasing".into()),
+                // Marked, and the desktop is not using it. That is not the
+                // same as being leasable: ask the compositor rather than
+                // reason about it, because the case where the two disagree is
+                // exactly the one somebody is running this to understand.
+                (true, false) => match leasing_offered() {
+                    Ok(Some(names)) if names.contains(&handed.name) => {
+                        (Level::Ok, "offered for leasing".into())
+                    }
+                    Ok(Some(_)) => (
+                        Level::Fail,
+                        "marked non-desktop, the desktop is not using it, and the \
+                         compositor still offers no connector for leasing. Hyprland \
+                         decides what a connector is when it adds it and keeps the \
+                         answer, so one it has already taken as a monitor is never \
+                         offered again: log out and back in, or reboot"
+                            .into(),
+                    ),
+                    // Nothing to ask, or nothing that answers: say what is
+                    // known and leave the verdict to the row above.
+                    _ => (Level::Ok, "marked non-desktop".into()),
+                },
                 (true, true) => (
                     Level::Fail,
                     concat!(
@@ -1929,13 +2142,106 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
                     )
                     .into(),
                 ),
+                // Not marked. Either it was never set up, or it was and the
+                // mark has gone with a lease that was given up. The two want
+                // different answers, and the second one is worse than it
+                // looks: putting the mark back does not bring the tube back,
+                // because Hyprland reads non-desktop when it builds the
+                // output object and keeps that answer for the life of the
+                // session. Verified on 0.56.2 on 2026-09-14: the unit
+                // restarted, the mark returned, and no connector was offered
+                // for leasing until the session was restarted. Saying
+                // "restart the unit" here sent somebody round in circles in
+                // front of a dead television, so it says the truth instead.
                 _ => (
                     Level::Fail,
-                    "not marked non-desktop: sudo bin/omacrt-install --system".into(),
+                    if std::path::Path::new("/etc/systemd/system/omacrt-lease.service").is_file() {
+                        "not marked non-desktop, and the unit that marks it is \
+                         installed: the lease was given up and the desktop took \
+                         the connector. Restoring the mark is not enough, \
+                         Hyprland will not offer a connector it has already \
+                         taken: log out and back in, or reboot"
+                            .into()
+                    } else {
+                        "not marked non-desktop: sudo bin/omacrt-install --system".to_string()
+                    },
                 ),
             }
         }));
     }
+    // The shape of the line, in the unit a television is built in. Every
+    // other check here reads a rate, and a rate cannot see where a picture
+    // sits: the PAL timing this project shipped for months summed to the
+    // right 15.625 kHz and still ran off the left of the screen.
+    let shape_standard = {
+        let state = State::load();
+        if state.standard.is_empty() {
+            cfg.output.standard.clone()
+        } else {
+            state.standard.clone()
+        }
+    };
+    let shape_text = cfg.modeline(&shape_standard).map(str::to_string);
+    probes.push(Probe::new(TELEVISION, "shape of the line", move || {
+        let Some(ml) = shape_text.as_deref().and_then(Modeline::parse) else {
+            return (Level::Warn, format!("no modeline for {shape_standard}"));
+        };
+        let Some(std) = standards::Standard::of(&ml) else {
+            return (
+                Level::Ok,
+                format!(
+                    "{:.3} kHz is neither television standard, so there is no \
+                     shape to hold it to",
+                    ml.hfreq_khz()
+                ),
+            );
+        };
+        // A timing this project ships carries the allowances this project
+        // took, with their reasons; one somebody wrote themselves carries
+        // none, because we have no idea what they meant by it.
+        let shipped_as = crt::SHIPPED
+            .iter()
+            .find(|(_, text)| Modeline::parse(text).as_ref() == Some(&ml))
+            .map(|(name, _)| *name);
+        let out: Vec<_> = standards::deviation(&ml, std, standards::TOLERANCE_US)
+            .into_iter()
+            .filter(|d| {
+                !shipped_as.is_some_and(|name| {
+                    standards::ALLOWED
+                        .iter()
+                        .any(|(names, what, _)| names.contains(&name) && *what == d.what)
+                })
+            })
+            .collect();
+        let centre = ml.centre_us() - std.shape().centre_us();
+        if centre.abs() > standards::CENTRE_TOLERANCE_US {
+            return (
+                Level::Warn,
+                format!(
+                    "{}: the picture sits {centre:+.2} us from where a set puts \
+                     it, which is about {} of the launcher's pixels",
+                    std.name(),
+                    (centre * ml.clock_mhz / (ml.width() as f64 / 320.0))
+                        .abs()
+                        .round() as i64
+                ),
+            );
+        }
+        match out.first() {
+            Some(d) => (Level::Warn, format!("{}: {d}", std.name())),
+            None => (
+                Level::Ok,
+                format!(
+                    "{}: picture {:.1} us, centre at {:.1} (the standard puts it at {:.1})",
+                    std.name(),
+                    ml.active_us(),
+                    ml.centre_us(),
+                    std.shape().centre_us()
+                ),
+            ),
+        }
+    }));
+
     let interlace = cfg.output.interlace;
     probes.push(Probe::new(TELEVISION, "interlaced modes", move || {
         if interlace {
@@ -2134,6 +2440,12 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
     for (what, path) in [
         ("launcher log", launcher::log_path()),
         ("display log", display::log_path()),
+        // The emulator's own log was not watched, and a game that ran at a
+        // third of speed while writing the same complaint twenty-six times
+        // went unnoticed by every check here until somebody watched the
+        // television. It is the log of a program this project starts, so it
+        // is this project's to read.
+        ("game log", library::game_log_path()),
     ] {
         probes.push(Probe::new(HOUSEKEEPING, what, move || {
             if !path.is_file() {
@@ -2247,10 +2559,15 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
             term::sheet::step(&m.what, format!("{}: {done}", m.detail));
         }
     }
-    if checks.iter().all(|c| c.level.ok()) {
-        0
-    } else {
+    // A warning does not make the exit status non-zero. Some of these rows
+    // report something true that nobody can act on: an untested graphics
+    // driver, or the count of the card's own register timeouts. A `doctor`
+    // that can never come back green on a working machine is a `doctor`
+    // nobody reads.
+    if checks.iter().any(|c| c.level == term::Level::Fail) {
         1
+    } else {
+        0
     }
 }
 
@@ -2768,10 +3085,7 @@ fn cmd_library(args: &[String]) {
                 .filter(|s| !s.starts_with("--"))
                 .copied()
                 .collect();
-            let limit: usize = args
-                .iter()
-                .position(|a| a == "--limit")
-                .and_then(|i| args.get(i + 1))
+            let limit: usize = value(args, "--limit")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(usize::MAX);
             let force = has(args, "--force");
@@ -3246,7 +3560,19 @@ fn main() {
         }
         "on" => cmd_on(&cfg, positional(args).first().map(|s| s.as_str())),
         "off" => cmd_off(&cfg),
-        "watchdog" => exit(cmd_watchdog(&cfg)),
+        // Nothing to pass. It used to ignore whatever came after it, so
+        // `omacrt watchdog --stop` - a reasonable guess, and one that was
+        // made - started a second watchdog instead of stopping the first.
+        "watchdog" => {
+            if let Some(bad) = args.first() {
+                eprintln!(
+                    "watchdog takes no arguments, and `{bad}` is not one. It is started by \
+                     `omacrt on` and stopped by `omacrt off`."
+                );
+                exit(2);
+            }
+            exit(cmd_watchdog(&cfg))
+        }
         "setup" => exit(cmd_setup(&cfg, args)),
         "boot" => cmd_boot(&cfg),
         "toggle" => {
@@ -3291,13 +3617,16 @@ fn main() {
             if !matches!(std, "ntsc" | "pal" | "film" | "480i" | "576i") {
                 die("mode needs ntsc, pal, film, 480i or 576i");
             }
-            let flag = |name: &str| -> Option<i32> {
-                args.iter()
-                    .position(|a| a == name)
-                    .and_then(|i| args.get(i + 1))
-                    .and_then(|v| v.parse().ok())
-            };
+            let flag =
+                |name: &str| -> Option<i32> { value(args, name).and_then(|v| v.parse().ok()) };
             let lines = flag("--lines").map(|v| v.max(0) as u32);
+            // The rate the program actually runs at, which is not the
+            // standard's. A picture produced at one rate and scanned at
+            // another repeats a field whenever the two slip a whole frame
+            // apart, and a European console against PAL does that every 2.6
+            // seconds. Building it into the timing costs nothing: the mode is
+            // being changed for this game anyway.
+            let hz: Option<f64> = value(args, "--hz").and_then(|v| v.parse().ok());
             // A line count is what a system asks for, and it decides the
             // standard on its own: more lines than a progressive 15 kHz frame
             // holds is an interlaced picture, fewer is a progressive one. This
@@ -3327,14 +3656,32 @@ fn main() {
                     // frame, not a frame with no blanking left in it.
                     ml = ml.with_lines(l.min(ml.height()));
                 }
+                if let Some(hz) = hz {
+                    match ml.at_field_hz(hz, FIELD_RATE_TOLERANCE) {
+                        Some(m) => ml = m,
+                        None => eprintln!(
+                            "{hz:.3} Hz is not reachable from the {applied} timing without \
+                             moving the line rate further than a television should be asked \
+                             to follow; leaving the mode's own rate"
+                        ),
+                    }
+                }
                 if shift != (0, 0) {
                     let scale = ml.width() as f32 / 320.0;
                     ml = ml.shifted((shift.0 as f32 * scale) as i32, shift.1);
                 }
-                display::mode(&ml.to_hypr());
+                if !display::mode(&ml.to_hypr()) {
+                    die("the display process did not take that timing: see the display log");
+                }
+                // Saved after the tube has it, and saved as what it got: the
+                // applied standard rather than the base, and the height the
+                // timing actually carries rather than the number asked for.
+                // `state.lines` used to mean three things depending on which
+                // path wrote it, and a request of 528 lines saved as 528 is
+                // what made `status` report a mode that had never existed.
                 let mut state = State::load();
-                state.standard = std.into();
-                state.lines = lines.unwrap_or(0);
+                state.standard = applied.into();
+                state.lines = ml.height();
                 state.shift_x = shift.0;
                 state.shift_y = shift.1;
                 state.save();
@@ -3563,6 +3910,26 @@ fn main() {
                         .unwrap_or_else(|| die("shell screen needs a screen name"));
                     crt::control::send_screen(name).unwrap_or_else(|e| die(&e.to_string()));
                 }
+                // The dial for the black border the television eats. It takes
+                // effect on the next frame, so a person can watch the picture
+                // and stop when the writing reaches the edge of the glass.
+                // The number that suits this set belongs in `--safe` in the
+                // config's shell arguments, or the next start forgets it.
+                "safe" => {
+                    let pos = positional(args);
+                    let n: u32 = pos
+                        .get(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or_else(|| die("shell safe needs a percentage, 0 to 20"));
+                    if n > 20 {
+                        die("shell safe: a television does not eat a fifth of each side");
+                    }
+                    crt::control::send_safe(n).unwrap_or_else(|e| die(&e.to_string()));
+                    term::sheet::step(
+                        "safe",
+                        format!("{n}% a side; put --safe {n} in [shell] args to keep it"),
+                    );
+                }
                 "type" => {
                     let words: Vec<&str> = positional(args)
                         .iter()
@@ -3772,6 +4139,13 @@ fn main() {
                     dac.watch(mode, |msg| println!("{msg}"))
                         .unwrap_or_else(|e| die(&e.to_string()));
                 }
+                // The same poll with nothing done about what it finds, for
+                // telling a disturbance that comes from the converter apart
+                // from one that comes from the timing.
+                "listen" => {
+                    dac.watch_only(|msg| println!("{msg}"))
+                        .unwrap_or_else(|e| die(&e.to_string()));
+                }
                 other => die(&format!("unknown dac command {other}")),
             }
         }
@@ -3970,6 +4344,78 @@ fn main() {
 mod tests {
     use super::*;
 
+    fn owned(args: &[&str]) -> Vec<String> {
+        args.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_flags_value_is_never_read_as_an_argument() {
+        // A game already in the standard it wants sends no standard, so the
+        // rate's value is the only thing that looks like one.
+        let args = owned(&["--lines", "480", "--hz", "59.9500"]);
+        assert!(
+            positional(&args).is_empty(),
+            "{:?} were read as arguments",
+            positional(&args)
+        );
+        assert_eq!(value(&args, "--hz").as_deref(), Some("59.9500"));
+        assert_eq!(value(&args, "--lines").as_deref(), Some("480"));
+        assert_eq!(value(&args, "--shift-x"), None);
+    }
+
+    #[test]
+    fn the_standard_is_still_found_when_one_is_given() {
+        let args = owned(&["pal", "--lines", "224", "--hz", "49.7000"]);
+        assert_eq!(
+            positional(&args)
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>(),
+            ["pal"]
+        );
+    }
+
+    #[test]
+    fn every_flag_with_a_value_is_declared() {
+        // The two readers have to agree, and the way they stop agreeing is
+        // somebody adding a flag to one of them. The help text is the third
+        // place the same fact is written, so it is what this checks against.
+        let help = help_plain();
+        for line in help.lines() {
+            for word in line.split_whitespace() {
+                let flag = word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
+                if !flag.starts_with("--") || flag.len() < 4 {
+                    continue;
+                }
+                // A flag written with a placeholder straight after it takes
+                // a value. A placeholder that opens a bracket of its own is
+                // an argument the flag only makes optional, as in
+                // `watch <file> [--later [TITLE]]`, where the title is read
+                // as an argument and not as the flag's value.
+                let after = line
+                    .split_once(flag)
+                    .map(|(_, rest)| rest.trim_start())
+                    .unwrap_or("");
+                let next = after.split_whitespace().next().unwrap_or("");
+                let takes_one = !next.starts_with('[')
+                    && !next
+                        .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+                        .is_empty()
+                    && next
+                        .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase());
+                if takes_one {
+                    assert!(
+                        FLAGS_WITH_A_VALUE.contains(&flag),
+                        "{flag} is written with a value in the help but is missing from \
+                         FLAGS_WITH_A_VALUE, so its value will be read as an argument"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_locale_says_which_half_of_the_world_the_television_is_in() {
         assert_eq!(standard_for("it_IT.UTF-8"), "pal");
@@ -3988,7 +4434,7 @@ mod tests {
     }
 
     #[test]
-    fn a_flag_value_is_read_and_a_following_flag_is_not() {
+    fn a_value_is_read_and_a_following_flag_is_not() {
         let args: Vec<String> = ["--connector", "HDMI-A-1", "--dry-run", "--standard"]
             .iter()
             .map(|s| s.to_string())

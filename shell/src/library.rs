@@ -1250,10 +1250,21 @@ input_max_users = "4"
 /// launcher turns the choice into a viewport at the next start, because
 /// RetroArch reads its aspect from the config and nothing can change it in a
 /// running game.
-pub const ASPECTS: [(&str, &str); 3] = [
+pub const ASPECTS: [(&str, &str); 4] = [
     ("fill", "fill the screen"),
     ("core", "as the core asks"),
     ("pixel", "square pixels"),
+    // The one that changes the television rather than the emulator: give the
+    // tube its whole frame and let the picture be scaled into it.
+    //
+    // It exists for a European game on a European frame. A Mega Drive game
+    // made in America draws 224 lines, and a PAL television draws 288, so the
+    // console sent 224 into a 288 line raster and left a black band above and
+    // below. That is what the hardware did and it is what this project does
+    // by default. Somebody who would rather have the screen full can say so,
+    // and pay for it in a picture magnified by 1.29 whose lines no longer
+    // land one on one.
+    ("frame", "fill the tube's frame"),
 ];
 
 /// Shader presets worth offering, in the order the pause menu cycles them.
@@ -1339,6 +1350,71 @@ pub fn game_log_tail() -> String {
 /// The picture RetroArch last logged for the running game.
 pub fn logged_picture() -> Option<Picture> {
     picture_in(&game_log_tail())
+}
+
+/// The frame rate the core told RetroArch it runs at, from the same line the
+/// geometry comes on: `Geometry: 320x224, Aspect: 1.584, FPS: 49.70`.
+///
+/// This is what a game is, rather than what a file name claims: a European
+/// release runs at very nearly 50 and an American one at very nearly 60,
+/// whatever the folder it was found in says. The last line wins, because a
+/// core that changes its mind writes another.
+pub fn core_hz(log: &str) -> Option<f32> {
+    let mut found = None;
+    for line in log.lines() {
+        let Some((_, rest)) = line.split_once("FPS:") else {
+            continue;
+        };
+        let hz = rest
+            .split(',')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|v| (1.0..=1000.0).contains(v));
+        if hz.is_some() {
+            found = hz;
+        }
+    }
+    found
+}
+
+/// The television standard a game's own file name claims, from the region
+/// tag a No-Intro or Redump name carries: `Sonic Compilation (Europe).md`.
+///
+/// Known before the emulator is even started, which is the whole value of it.
+/// The core says the same thing a second or two later and says it with more
+/// authority, but by then it is drawing, and changing the mode under a core
+/// that is still opening its graphics context is what wedges it.
+///
+/// Only the regions that decide a standard answer. A file with no tag, or one
+/// tagged World, is left to the core.
+pub fn standard_for_path(path: &std::path::Path) -> Option<&'static str> {
+    let stem = path.file_stem()?.to_str()?;
+    let (_, _, region, _) = crate::index::parse_name(stem);
+    match region.as_str() {
+        "Europe" | "Australia" | "Germany" | "France" | "Italy" | "Spain" | "Netherlands"
+        | "Sweden" | "UK" => Some("pal"),
+        "USA" | "Japan" | "Brazil" | "Korea" | "Canada" | "Taiwan" => Some("ntsc"),
+        _ => None,
+    }
+}
+
+/// Which television standard a frame rate belongs to, or None when it is
+/// neither and a mode change would be a guess.
+///
+/// The two are far apart, 50 against 60, so the line between them is wide and
+/// anything outside the band is left alone: a core reporting 30 or 75 is
+/// asking for something this project has no answer for, and changing the
+/// standard under it would only cost a fifth of a second of darkness for
+/// nothing.
+pub fn standard_for_hz(hz: f32) -> Option<&'static str> {
+    match hz {
+        h if (47.0..=53.0).contains(&h) => Some("pal"),
+        h if (57.0..=63.0).contains(&h) => Some("ntsc"),
+        _ => None,
+    }
 }
 
 /// `Geometry: 256x240, Aspect: 1.067` in either of the two lines RetroArch
@@ -1539,6 +1615,78 @@ pub fn installed_cores(core_dir: &Path) -> Vec<String> {
 /// emulator often enough to be worth avoiding.
 pub fn core_geometry(log: &str) -> Option<(u32, u32)> {
     picture_in(log).map(|p| (p.width, p.height))
+}
+
+#[cfg(test)]
+mod standard_tests {
+    use super::{core_hz, standard_for_hz};
+
+    /// The line RetroArch writes when a core starts, and the one it writes
+    /// again if the core changes its mind.
+    const EUROPEAN: &str = "\
+[INFO] [Core] Geometry: 320x224, Aspect: 1.584, FPS: 49.70, Sample rate: 44100.00 Hz.
+[INFO] [Video] Set video size to: 3840x224.";
+
+    const AMERICAN: &str = "\
+[INFO] [Core] Geometry: 320x224, Aspect: 1.584, FPS: 59.92, Sample rate: 44100.00 Hz.";
+
+    #[test]
+    fn the_rate_comes_off_the_core_s_own_line() {
+        assert_eq!(core_hz(EUROPEAN), Some(49.70));
+        assert_eq!(core_hz(AMERICAN), Some(59.92));
+        assert_eq!(core_hz("[INFO] nothing of the sort"), None);
+    }
+
+    #[test]
+    fn a_core_that_changes_its_mind_wins_with_the_last_line() {
+        let both = format!("{AMERICAN}\n{EUROPEAN}");
+        assert_eq!(core_hz(&both), Some(49.70));
+    }
+
+    /// The two standards are ten hertz apart, so the band around each is
+    /// wide and everything else is left alone rather than guessed at.
+    #[test]
+    fn a_rate_belongs_to_a_standard_or_to_neither() {
+        for hz in [49.70, 50.0, 50.08, 47.5, 52.9] {
+            assert_eq!(standard_for_hz(hz), Some("pal"), "{hz}");
+        }
+        for hz in [59.92, 60.0, 60.04, 57.1, 62.9] {
+            assert_eq!(standard_for_hz(hz), Some("ntsc"), "{hz}");
+        }
+        // A core at half rate, a core at a PC rate, and the gap between the
+        // two standards: none of them is worth a fifth of a second of
+        // darkness.
+        for hz in [25.0, 30.0, 55.0, 75.0, 120.0] {
+            assert_eq!(standard_for_hz(hz), None, "{hz}");
+        }
+    }
+
+    /// A file name that carries its region answers before the emulator is
+    /// started, which is what keeps the mode from changing under a core that
+    /// is still opening.
+    #[test]
+    fn a_file_name_that_carries_its_region_answers_first() {
+        use std::path::Path;
+        let pal = Path::new("/roms/Sonic Compilation (Europe).md");
+        assert_eq!(super::standard_for_path(pal), Some("pal"));
+        let ntsc = Path::new("/roms/Sonic the Hedgehog 2 (USA, Europe).md");
+        // The first region tag in the name wins, and here it is the American.
+        assert_eq!(super::standard_for_path(ntsc), Some("ntsc"));
+        // Nothing to go on: left to the core rather than guessed at.
+        for name in ["/roms/homebrew demo.md", "/roms/Some Game (World).md"] {
+            assert_eq!(super::standard_for_path(Path::new(name)), None, "{name}");
+        }
+    }
+
+    /// The whole point, end to end: a European Mega Drive game asks for the
+    /// European standard, an American one for the American.
+    #[test]
+    fn a_european_release_asks_for_the_european_standard() {
+        let hz = core_hz(EUROPEAN).expect("a rate");
+        assert_eq!(standard_for_hz(hz), Some("pal"));
+        let hz = core_hz(AMERICAN).expect("a rate");
+        assert_eq!(standard_for_hz(hz), Some("ntsc"));
+    }
 }
 
 #[cfg(test)]

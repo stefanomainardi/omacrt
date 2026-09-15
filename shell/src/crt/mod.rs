@@ -10,6 +10,7 @@ pub mod display;
 pub mod launcher;
 pub mod output;
 pub mod roms;
+pub mod standards;
 pub mod tidy;
 pub mod watchdog;
 
@@ -225,6 +226,28 @@ pub struct Output {
     /// on; this is what is used.
     #[serde(default = "default_vrr_min_hz")]
     pub vrr_min_hz: f64,
+    /// Whether to let the vertical blanking stretch frame by frame.
+    ///
+    /// Off. A television is not a monitor: its vertical oscillator is locked
+    /// to what it has been given, and a field whose length keeps changing
+    /// makes the picture move. Measured on a BeoCenter 1 on 2026-09-14, the
+    /// same menu with it on and off:
+    ///
+    /// ```text
+    /// on    fields 16.655 to 16.846 ms    three lines of movement
+    /// off   fields 16.654 to 16.657 ms    none
+    /// ```
+    ///
+    /// What it was for was following a program's own field rate without a
+    /// mode change. That is done by building the rate into the timing
+    /// instead - `Modeline::at_field_hz` reaches a European console's 49.70
+    /// to a thousandth of a hertz - which costs one mode change a game and
+    /// leaves the field steady.
+    ///
+    /// It is kept because a multisync monitor is a different room, and
+    /// because turning it on is how the measurement above was taken.
+    #[serde(default)]
+    pub vrr: bool,
 }
 
 fn default_vrr_min_hz() -> f64 {
@@ -252,10 +275,10 @@ pub struct Modelines {
 }
 
 fn default_ntsc_i() -> String {
-    "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace".into()
+    "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace".into()
 }
 fn default_pal_i() -> String {
-    "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace".into()
+    "72 3520 3740 4078 4608 576 582 588 625 -hsync -vsync interlace".into()
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -294,6 +317,7 @@ impl Default for Output {
             interlace: false,
             hfreq_khz: default_hfreq_khz(),
             vrr_min_hz: default_vrr_min_hz(),
+            vrr: false,
         }
     }
 }
@@ -301,9 +325,9 @@ impl Default for Output {
 impl Default for Modelines {
     fn default() -> Self {
         Self {
-            ntsc: "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync".into(),
-            pal: "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync".into(),
-            film: "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync".into(),
+            ntsc: "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync".into(),
+            pal: "72 3520 3740 4078 4608 288 291 294 312 -hsync -vsync".into(),
+            film: "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync".into(),
             ntsc_i: default_ntsc_i(),
             pal_i: default_pal_i(),
         }
@@ -334,7 +358,7 @@ impl Default for Audio {
     }
 }
 
-pub const DEFAULT_CONFIG: &str = r#"# omacrt configuration. Every key is optional.
+const DEFAULT_CONFIG_TEMPLATE: &str = r#"# omacrt configuration. Every key is optional.
 
 [output]
 # DRM connector of the CRT DAC (HDMI-A-1 or card1-HDMI-A-1). Empty = the first
@@ -349,6 +373,12 @@ position = "auto"
 csync = "xor"
 # Standard used by `omacrt on` without an argument: "ntsc" or "pal".
 standard = "ntsc"
+# Let the vertical blanking stretch frame by frame. Off: a television's
+# vertical oscillator is locked to what it has been given, and a field whose
+# length keeps changing makes the picture move. A program's own field rate is
+# built into the timing instead, which reaches it to a thousandth of a hertz.
+# On is for a multisync monitor, or for measuring the difference.
+vrr = false
 # The band of line rates this display may be given, in kHz. The one setting
 # here that can break hardware: a television's horizontal deflection is tuned
 # for a single rate, and driving it well above that destroys the flyback
@@ -362,16 +392,38 @@ vrr_min_hz = 55.0
 
 [modelines]
 # Hyprland modelines. Clocks must be whole MHz, Hyprland truncates them.
-ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"
-pal = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"
+#
+# The PAL line is at 74 MHz rather than 72 so that 3840 samples come to the
+# 51.9 microseconds a PAL line is supposed to carry, with the 5.7 of back
+# porch that decides where the picture starts. At 72 MHz the same 3840 was
+# 53.3 microseconds with 4.4 of back porch: wider than the standard and
+# starting too early, so the picture ran off the left of the screen and no
+# amount of picture shift brought it back.
+#
+# The three NTSC shaped lines carry 261 of front porch and 458 of back where
+# they used to carry 175 and 544. The width and the totals are untouched, so
+# every rate and every measurement taken on them still holds; what moves is
+# where the picture sits in the line. It was 1.2 microseconds right of where
+# a set puts the centre, about seven of the launcher's own pixels, which is
+# what `h_shift` was being spent on. They move together because a picture
+# that jumps sideways when the tube goes to 480i is worse than one that is
+# off centre in all three.
+ntsc = "{ntsc}"
+pal = "{pal}"
 # 240p at exactly 60.00 Hz, for filming the tube with a 60 fps camera.
-film = "72 3520 3695 4033 4580 240 242 245 262 -hsync -vsync"
+film = "{film}"
 # Interlaced frames for video (omacrt mode 480i | 576i).
-ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
-pal_i = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
+ntsc_i = "{ntsc_i}"
+pal_i = "{pal_i}"
 
 [shell]
 bin = "omacrt-shell"
+# --safe N leaves N% of the width black on each side, for a set that hides
+# more than the timings already allow for. Zero by default: the shipped 15 kHz
+# lines are shaped like Switchres's `generic_15`, whose blanking already keeps
+# the picture inside a television's glass. `omacrt shell safe N` turns the
+# dial while the menu is up; the 240p Test Suite's overscan screen and
+# `scripts/overscan-test.sh` both measure how much a given set hides.
 args = ["--fullscreen", "--stretch", "--auto-boot"]
 # Light the tube at login when the DAC is connected (`omacrt boot`).
 autostart = false
@@ -387,6 +439,54 @@ system_default = false
 volume = 125
 "#;
 
+/// The timings this project ships, and the one place they are written.
+///
+/// They used to be typed out in three: the default configuration text, and
+/// two lists inside tests. The list in `tests/logic.rs` had already fallen a
+/// day behind and its test passed anyway, because line rate, field rate,
+/// width and height are identical either side of the change that fixed the
+/// picture. Everything that needs to know a shipped timing reads this.
+pub const SHIPPED: [(&str, &str); 5] = [
+    (
+        "ntsc",
+        "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync",
+    ),
+    (
+        "pal",
+        "72 3520 3740 4078 4608 288 291 294 312 -hsync -vsync",
+    ),
+    (
+        "film",
+        "72 3520 3781 4119 4580 240 242 245 262 -hsync -vsync",
+    ),
+    (
+        "ntsc_i",
+        "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace",
+    ),
+    (
+        "pal_i",
+        "72 3520 3740 4078 4608 576 582 588 625 -hsync -vsync interlace",
+    ),
+];
+
+/// The commented file written to a machine that has none, with the shipped
+/// timings filled in from [`SHIPPED`] rather than typed out again.
+pub fn default_config() -> String {
+    let of = |want: &str| {
+        SHIPPED
+            .iter()
+            .find(|(name, _)| *name == want)
+            .map(|(_, text)| *text)
+            .unwrap_or_default()
+    };
+    DEFAULT_CONFIG_TEMPLATE
+        .replace("{ntsc}", of("ntsc"))
+        .replace("{pal}", of("pal"))
+        .replace("{film}", of("film"))
+        .replace("{ntsc_i}", of("ntsc_i"))
+        .replace("{pal_i}", of("pal_i"))
+}
+
 impl Config {
     pub fn path() -> PathBuf {
         config_dir().join("crt.toml")
@@ -397,7 +497,7 @@ impl Config {
         let path = Self::path();
         if !path.exists() {
             let _ = std::fs::create_dir_all(config_dir());
-            let _ = std::fs::write(&path, DEFAULT_CONFIG);
+            let _ = std::fs::write(&path, default_config());
         }
         std::fs::read_to_string(&path)
             .ok()

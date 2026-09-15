@@ -203,6 +203,40 @@ impl Framebuffer {
         }
     }
 
+    /// The same bytes, but as rows `pad` pixels wider on each side, the
+    /// padding black.
+    ///
+    /// This is the safe area, and it exists because a television is not a
+    /// monitor: it scans a picture wider than the glass and the tube's own
+    /// mask cuts the rest off. Measured on the BeoCenter 1 on 2026-09-14 with
+    /// `scripts/overscan-test.sh`: the rectangle at 88% of the frame shows
+    /// all four sides, the one at 92% is cut. So about six percent of the
+    /// width goes, and writing to the edge of the frame means writing where
+    /// nobody can read it.
+    ///
+    /// The picture stays the size it was - these are the same pixels, not
+    /// smaller ones - it is only drawn into a narrower frame with black
+    /// either side, which is exactly what the tube throws away.
+    pub fn to_bgra_padded(&self, out: &mut Vec<u8>, pad: usize) {
+        if pad == 0 {
+            return self.to_bgra(out);
+        }
+        let black = 0xff00_0000u32.to_le_bytes();
+        out.clear();
+        out.reserve((self.w + 2 * pad) * self.h * 4);
+        for row in self.px.chunks(self.w) {
+            for _ in 0..pad {
+                out.extend_from_slice(&black);
+            }
+            for p in row {
+                out.extend_from_slice(&(*p | 0xff00_0000).to_le_bytes());
+            }
+            for _ in 0..pad {
+                out.extend_from_slice(&black);
+            }
+        }
+    }
+
     /// Debug dump as binary PPM.
     pub fn write_ppm(&self, path: &std::path::Path) -> std::io::Result<()> {
         let mut data = format!("P6\n{} {}\n255\n", self.w, self.h).into_bytes();
@@ -335,5 +369,42 @@ mod reflection_scene_numbers {
             (Some(171), Some(191)),
             "{drawn:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod safe_area {
+    use super::*;
+
+    #[test]
+    fn the_padding_is_black_and_the_picture_is_not_moved() {
+        let mut fb = Framebuffer::new(4, 2);
+        fb.clear(0x00ff_0000);
+        let mut out = Vec::new();
+        fb.to_bgra_padded(&mut out, 3);
+        // Ten pixels a row now, not four, and the texture reads them as rows
+        // of ten: a padding written per buffer instead of per row would put
+        // the second row's black in the middle of the first.
+        assert_eq!(out.len(), 10 * 2 * 4);
+        let px = |i: usize| u32::from_le_bytes(out[i * 4..i * 4 + 4].try_into().unwrap());
+        for row in 0..2 {
+            for x in 0..3 {
+                assert_eq!(px(row * 10 + x), 0xff00_0000, "left pad, row {row}");
+                assert_eq!(px(row * 10 + 7 + x), 0xff00_0000, "right pad, row {row}");
+            }
+            for x in 3..7 {
+                assert_eq!(px(row * 10 + x), 0xffff_0000, "picture, row {row}");
+            }
+        }
+    }
+
+    #[test]
+    fn no_safe_area_is_the_same_bytes_as_before() {
+        let mut fb = Framebuffer::new(3, 3);
+        fb.clear(0x0012_3456);
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        fb.to_bgra(&mut a);
+        fb.to_bgra_padded(&mut b, 0);
+        assert_eq!(a, b);
     }
 }

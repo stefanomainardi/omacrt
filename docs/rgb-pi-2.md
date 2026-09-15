@@ -72,18 +72,44 @@ Modelines validated on the RGB-Pi 2 (negative sync on both, positive sync
 breaks the horizontal lock):
 
 ```text
-# 240p 60 Hz, 15.73 kHz, 48.9 us active, standard porches
-modeline 72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync
-# 288p 50 Hz, 15.625 kHz
-modeline 72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync
+# 240p 60 Hz, 15.731 kHz, 48.9 us of picture
+modeline 72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync
+# 288p 50 Hz, 15.625 kHz, the same 48.9 us
+modeline 72 3520 3740 4078 4608 288 291 294 312 -hsync -vsync
 # 240p 60 Hz at 48 MHz
 modeline 48 2560 2632 2860 3051 240 244 247 262 -hsync -vsync
 ```
 
+The picture is 48.9 us of the 63.556 line rather than the standard's 52.66,
+and that is deliberate: it is the shape of Switchres's `generic_15` preset,
+which is what both RGB-Pi OS and ReplayOS select for this DAC. See
+[`docs/15khz.md`](15khz.md) for the three timing tables side by side.
+
 The wide "super resolution" horizontals keep the HDMI pixel clock above the
-TMDS floor and let the shell stretch its 320 pixel wide framebuffer with
-integer factors (11x at 3520, 12x at 3840). The CH7101 locks at 48 and
-72 MHz alike, and the higher clock gives the steadier picture.
+TMDS floor and let the shell stretch its 320 pixel wide framebuffer by an
+integer factor, eleven at 3520 samples.
+
+### The pixel clock is a limit of the converter, not a preference
+
+The CH7101 holds 48 and 72 MHz. **It does not hold 74.** Reading the
+converter's lock register (page 0, `0x61`) a thousand times a second on a
+still menu with nothing else running:
+
+| pixel clock | timing | losses of lock |
+| --- | --- | --- |
+| 72 MHz | `72 3520 3781 4119 4577 240 242 245 262` | 0 in 60 s |
+| 74 MHz | `74 3840 3966 4314 4736 288 291 294 312` | **80 in 60 s** |
+| 72 MHz | `72 3840 3948 4290 4608 288 291 294 312` | 0 in 60 s |
+| 72 MHz | `72 3520 3740 4078 4608 288 291 294 312` | 0 in 90 s |
+
+Every loss lasted 276 to 281 ms, which is 276 ms of no picture. The only
+variable between the second and third rows is the clock.
+
+`omacrt dac listen` takes this reading: it polls the lock register at 1 kHz,
+timestamps every change and resets nothing, so it can be left running while
+somebody watches the screen. `omacrt dac watch` is the same poll with the
+vendor's workaround attached, which resets the converter on a loss and costs
+2.3 seconds of black each time.
 
 ## Audio routing
 
@@ -101,6 +127,10 @@ the desktop monitor on the same GPU loses HDMI audio while the CRT has it.
   DAC keeps its lock on them. The picture does not arrive: a stock `amdgpu`
   scans interlaced timings out progressively. See
   [`docs/15khz.md`](15khz.md).
+- 74 MHz is outside what this converter holds, and a timing that uses it
+  loses lock about once a second. Nothing in the picture says so: it looks
+  like an intermittent fault somewhere else, which is where this project
+  looked for two days. Keep the clock at 72.
 - The device is an HDMI tier option: progressive 15 kHz modes from a stock
   kernel, no patching. Native 320x240 timings and interlace belong to the
   DisplayPort DAC tier instead.

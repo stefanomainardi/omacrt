@@ -91,6 +91,13 @@ pub fn send_screen(name: &str) -> std::io::Result<()> {
     send(&[line.as_str()])
 }
 
+/// Set the launcher's safe area, in percent of the width per side, while it
+/// is running. How much a television throws away is a property of that
+/// television, so this is a dial to be turned while watching the screen.
+pub fn send_safe(percent: u32) -> std::io::Result<()> {
+    send(&[format!("safe {percent}").as_str()])
+}
+
 /// Ask the running launcher to start a game, by a path the scan has seen.
 pub fn send_play(path: &str) -> std::io::Result<()> {
     let line = format!("play {}", path.trim().replace(['\n', '\r'], ""));

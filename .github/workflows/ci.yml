@@ -164,3 +164,21 @@ jobs:
         with:
           python-version: "3.x"
       - run: python -m compileall -q scripts
+
+  # The one check `main` is protected by. A branch protection names the
+  # contexts it requires, and a context is a job's name, not the workflow's:
+  # requiring "CI" while the jobs are called "build, lint and test" and the
+  # rest means requiring something that is never reported, and nothing can be
+  # merged. This job is that name, and it passes only when every job above
+  # did, so adding a job to the workflow does not quietly stop being required.
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    needs: [rust, shell-scripts, advisories, qml, python]
+    if: always()
+    steps:
+      - name: every job above succeeded
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "a job above did not succeed" >&2
+          exit 1

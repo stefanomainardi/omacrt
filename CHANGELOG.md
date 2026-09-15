@@ -7,6 +7,90 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-15
+
+### Added
+
+- `omacrt dac listen` polls the converter's lock register at 1 kHz and
+  timestamps every loss without resetting anything, for telling a disturbance
+  that comes from the converter apart from one that comes from the timing.
+- `doctor` counts the `dcn32_program_compbuf_size` register timeouts in the
+  current boot's journal. They are the card's display block, not the tube, and
+  a picture that dies mid-game sends everybody to suspect their own cable
+  first.
+- **A safe area for the launcher.** `--safe N` leaves N percent of the width
+  black on each side, for a set that hides more than the timings already allow
+  for. `omacrt shell safe N` turns the dial while the menu is up, so the
+  number is found by watching the screen. Zero by default: the shipped 15 kHz
+  lines already carry the blanking that keeps a picture inside the glass.
+- `scripts/overscan-test.sh` measures the same thing without a ROM: five
+  nested rectangles at 100, 96, 92, 88 and 84 percent of the frame.
+- `scripts/after-reboot.sh` runs the three checks that only a cold boot can
+  answer, and says which of them the machine is too warm to answer.
+
+### Changed
+
+- **Why the picture is 48.9 us and not the standard's 52.66 is now written
+  down, with the evidence.** Both reference systems for this DAC were read
+  from the images their vendors ship: RGB-Pi OS V4 sends 76.7% of the line as
+  picture, ReplayOS asks libswitchres for its `generic_15` preset which sends
+  76.9%, and this project sends 76.9%. All three are about seven percent
+  narrower than the standard, because the standard's width is what a
+  broadcaster transmits and a set shows about ninety percent of it. The
+  standard's width was tried on the tube and the launcher's own writing ran
+  off the sides.
+- The display process no longer gives up its lease when the connector refuses
+  page flips. It resets the buffers, asks for the timing again and retries,
+  waiting 200 ms and then doubling to a ceiling of 5 s. Surrendering was a
+  one-way door: Hyprland reads `non-desktop` when it builds the output object
+  and keeps that answer, so a connector the desktop has taken back is not
+  offered for leasing again until the session restarts.
+
+### Fixed
+
+- **The shipped PAL timing ran at a pixel clock the converter cannot hold.**
+  With the RGB-Pi 2's lock register polled a thousand times a second, a still
+  menu on the 74 MHz PAL line lost lock eighty times in sixty seconds, each
+  loss 276 ms with no picture; the same menu at 72 MHz lost it not once in
+  ninety. PAL and PAL interlace now run at 72 MHz and carry the same width and
+  shape as the NTSC line, so a game keeps its size across a change of region.
+- **A program's field rate is built into the timing instead of chased.** A
+  picture produced at one rate and scanned at another repeats a field whenever
+  the two slip a frame apart: a European console against PAL does that every
+  2.6 seconds. Moving both totals reaches the console's own rate to within
+  0.003 Hz, and the rate is remembered against the core so it is in place
+  before the emulator opens.
+- **The adaptive sync that used to do that job is off on a television.** It
+  reaches a rate by moving the length of every field, and a set's vertical
+  oscillator is locked to what it has been given: the same still menu measured
+  16.655 to 16.846 ms a field with it on and 16.654 to 16.657 with it off.
+  `output.vrr` turns it back on for a multisync monitor.
+- **The frame statistics could not report the faults they existed for.** Gaps
+  longer than one and a half fields were discarded, which is every skipped
+  field; the longest field was clamped up to the mode's own total; only long
+  fields were counted; and the history was five seconds rewritten in place. A
+  field's length now comes from the hardware's field counter, and the counts
+  are kept for the life of the display process.
+- A flag's value could be read as a positional argument. The list of flags
+  taking a value was written by hand in one place and `--hz` was missing, so
+  `omacrt mode --hz 59.95` asked for a television standard called "59.95" and
+  stopped with its stderr discarded.
+- The recovery advice in `doctor` and the watchdog said to restart the lease
+  unit and run `omacrt on`. That does not work after a lease is lost: the mark
+  comes back and nothing is offered. Both now say the session has to be
+  restarted, which is what actually brings the tube back.
+- `omacrt watchdog --stop` started a second watchdog instead of rejecting an
+  argument it does not take.
+- After a lost lease, `doctor` said "connector handed over: offered for
+  leasing" while the row above it said no connector was offered at all. It
+  now asks the compositor instead of reasoning from the mark, and both rows
+  say the session has to be restarted.
+- A warning read as `FAIL` in the plain report, and any warning made `doctor`
+  exit non-zero. Only a failure does now.
+- A game whose compositor died was logged as `game exited: exit status: 1`,
+  the same as a game that crashed on its own. It now says the display process
+  went with it and where to read why.
+
 ## [0.7.1] - 2026-09-13
 
 ### Added
@@ -1130,7 +1214,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.0
 [0.7.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.7.1
 [0.7.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.7.0
 [0.6.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.6.0

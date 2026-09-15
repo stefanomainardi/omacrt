@@ -48,6 +48,29 @@ pub fn latency_path() -> PathBuf {
     super::state_dir().join("display.latency")
 }
 
+/// Written by the display process every time it programs a timing, and
+/// removed when it stops.
+///
+/// The compositor is the only thing that knows what the television is being
+/// given: it holds the lease, it makes the atomic commit, and the kernel
+/// tells it whether the commit landed. Everything else was guessing, and
+/// guessing wrong - `status` used to rebuild a timing from the configuration
+/// and the saved state and once reported a 251 line mode that had never been
+/// programmed, which cost ten minutes of a diagnosis.
+pub fn mode_path() -> PathBuf {
+    super::state_dir().join("display.mode")
+}
+
+/// The timing the tube is actually running, as the compositor last wrote it.
+///
+/// `None` when the file is missing, which means the display process is not
+/// up or is older than this: a caller should say it does not know rather
+/// than fall back on arithmetic.
+pub fn current_mode() -> Option<super::output::Modeline> {
+    let text = std::fs::read_to_string(mode_path()).ok()?;
+    super::output::Modeline::parse(text.trim())
+}
+
 /// What the display process last measured about itself.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Latency {
@@ -92,10 +115,35 @@ pub struct Tail {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Window {
-    /// Frames that ran more than two lines past the mode's vertical total.
+    /// Frames more than two lines from the mode's vertical total, either way.
     pub over: usize,
     /// The longest frame, in lines.
     pub longest_lines: f64,
+    /// The same thing counted since the display process started. The rolling
+    /// window is five seconds of samples rewritten in place, so a fault rarer
+    /// than that never appears in it.
+    ///
+    /// `None` when reading a file written by a display process older than
+    /// these fields.
+    pub run: Option<Run>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Run {
+    /// Fields whose length jumped more than two lines from the field before,
+    /// since the display process started. A rate held steady is not one of
+    /// these; a rate that keeps changing is every time it does.
+    pub out: usize,
+    /// Pictures that reached the screen a field or more after the client
+    /// committed them. This is the count that means somebody saw a stutter;
+    /// a still picture that simply has nothing new to show is not one of
+    /// these.
+    pub skipped: usize,
+    /// The longest and shortest field ever seen, in lines, and how long ago
+    /// the longest one was.
+    pub longest_lines: f64,
+    pub shortest_lines: f64,
+    pub worst_secs_ago: f64,
 }
 
 /// The last figure the display process wrote. `None` when the tube is not up,
@@ -131,6 +179,13 @@ fn latency_in(text: &str) -> Option<Latency> {
             window,
         })
     };
+    let window = |over: f64, longest_lines: f64, run| {
+        Some(Window {
+            over: over.max(0.0) as usize,
+            longest_lines,
+            run,
+        })
+    };
     out.tail = match rest[..] {
         [p95, worst, frame_min, frame_max] => tail(p95, worst, frame_min, frame_max, None),
         [p95, worst, frame_min, frame_max, over, longest_lines] => tail(
@@ -138,10 +193,36 @@ fn latency_in(text: &str) -> Option<Latency> {
             worst,
             frame_min,
             frame_max,
-            Some(Window {
-                over: over.max(0.0) as usize,
+            window(over, longest_lines, None),
+        ),
+        [
+            p95,
+            worst,
+            frame_min,
+            frame_max,
+            over,
+            longest_lines,
+            out_run,
+            skipped,
+            longest_ever,
+            shortest_ever,
+            worst_ago,
+        ] => tail(
+            p95,
+            worst,
+            frame_min,
+            frame_max,
+            window(
+                over,
                 longest_lines,
-            }),
+                Some(Run {
+                    out: out_run.max(0.0) as usize,
+                    skipped: skipped.max(0.0) as usize,
+                    longest_lines: longest_ever,
+                    shortest_lines: shortest_ever,
+                    worst_secs_ago: worst_ago,
+                }),
+            ),
         ),
         _ => None,
     };
@@ -390,9 +471,39 @@ pub fn raise(app_id: &str) -> bool {
     send(&format!("top {app_id}")).is_ok()
 }
 
-/// Switch the tube to another modeline, live.
+/// Switch the tube to another modeline, live, and say whether it happened.
+///
+/// The pipe carries no reply, so the answer comes from the file the
+/// compositor writes after a modeset lands. Waiting for it is the difference
+/// between reporting a request and reporting an outcome: this used to return
+/// whether the *write to the pipe* succeeded, which is true even when the
+/// compositor refuses the timing, and the caller then saved the new mode to
+/// the state file and printed a confirmation for something that never
+/// happened.
+///
+/// A compositor that already has the timing writes nothing, so an unchanged
+/// mode is a success as soon as the file says what was asked for.
 pub fn mode(modeline: &str) -> bool {
-    send(&format!("mode {modeline}")).is_ok()
+    let Some(want) = super::output::Modeline::parse(modeline) else {
+        return false;
+    };
+    if send(&format!("mode {modeline}")).is_err() {
+        return false;
+    }
+    // A modeset on this chain takes 180 to 230 ms inside the kernel's own
+    // call, so half a second is several times what it needs and still short
+    // enough not to be felt by anything waiting on it.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+    while std::time::Instant::now() < deadline {
+        if current_mode().as_ref() == Some(&want) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    // An older display process writes no such file, and refusing to work
+    // with one would be worse than trusting it: the pipe was written, so
+    // report what the pipe can report.
+    !mode_path().exists()
 }
 
 /// Environment for a program that should appear on the tube.

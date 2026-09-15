@@ -58,17 +58,21 @@ which then produces the 15 kHz analogue signal on the other side. The mode the
 GPU programs is wide, with a high clock and a long line:
 
 ```
-NTSC   72 3520 3695 4033 4577  240 242 245 262  -hsync -vsync
-PAL    72 3840 3948 4290 4608  288 291 294 312  -hsync -vsync
+NTSC   72 3520 3781 4119 4577  240 242 245 262  -hsync -vsync
+PAL    72 3520 3740 4078 4608  288 291 294 312  -hsync -vsync
 ```
 
 72 MHz over 4577 pixels of total line length is 15.731 kHz, and 262 lines of
 that is 60.04 Hz. The clock is high, the line rate is a television's. The
-active width, 3520 pixels for a 240 line frame, is the arcade world's
-"super resolution" trick: horizontal resolution to spare, so a console's 256
-or 320 pixels land on a whole number of them and the television, which only
-ever draws 4:3, does the rest. One game line on one television line, no
-scaling anywhere.
+active width, 3520 pixels, is the arcade world's "super resolution" trick:
+horizontal resolution to spare, so a console's 256 or 320 pixels land on a
+whole number of them and the television, which only ever draws 4:3, does the
+rest. One game line on one television line, no scaling anywhere.
+
+Both standards carry the same clock and the same active width, so a game keeps
+its size across a change of region and only the number of lines differs. The
+clock is 72 and not more because that is what the converter holds; see
+[`docs/rgb-pi-2.md`](rgb-pi-2.md).
 
 A mode change for each game, which no desktop protocol can express, is answered
 by **DRM leasing**. It is a Wayland protocol built for virtual reality headsets,
@@ -231,16 +235,65 @@ The variable refresh rate below is on the other axis and cannot do this: it
 stretches the vertical blanking and never moves the line rate by a single
 hertz. That is why the worst seen from it is a picture that loses height.
 
-## A variable refresh rate
+## A program's own field rate
 
 A television's horizontal rate must not move: the flyback transformer and the
 deflection circuit are tuned for one. The vertical rate is another matter,
 because the vertical oscillator re-triggers on sync. So every refresh
 emulation asks for - 49.70 for PAL, 59.92 for a Mega Drive, 60.0988 for a
 NES, 57.5 for one arcade board or another - is reachable by changing the
-vertical total alone and leaving the line rate at 15.731 kHz. That is exactly
-what adaptive sync does in hardware: it stretches the vertical blanking and
-touches nothing else.
+vertical total alone and leaving the line rate where it is.
+
+It matters because a picture produced at one rate and scanned at another
+repeats a field whenever the two slip a whole frame apart. A European Mega
+Drive at 49.70 on a 50.08 PAL frame does that **every 2.6 seconds**, which is
+a stutter a person sees and complains about.
+
+Two ways to reach it. This project uses the first and ships with the second
+switched off.
+
+### In the timing
+
+The field rate is the pixel clock over the product of the two totals, so both
+are moved: the vertical total is chosen first, and the horizontal total then
+trims what an integer number of lines cannot reach. Moving the horizontal
+total moves the line rate, which is the one thing a set's deflection is tuned
+for, so it is held inside four parts in a thousand of the rate the timing
+already has - 15.625 kHz becomes 15.605, where a set does not care. The active
+samples and lines and the sync widths come out unchanged, so the picture keeps
+its size and its place; the blanking absorbs it.
+
+That reaches a European console's 49.70 Hz to within **0.003 Hz**, which is a
+repeated field every five minutes instead of every 2.6 seconds.
+
+It costs a mode change, and a core only says its rate in its log a second or
+two after it starts, so acting on it then would cost a second one. The rate is
+remembered against the core and the standard - two lines a core rather than
+one a game - and applied before the emulator opens. The first launch of a core
+costs two mode changes and every later one costs a single change.
+
+### By stretching the blanking, which is off
+
+Adaptive sync does the same job in hardware and without a mode change: it
+stretches the vertical blanking frame by frame and touches nothing else. On a
+monitor that is the better answer. On a television it is not, because it
+reaches the rate by **moving the length of every field**, and a set's vertical
+oscillator is locked to what it has been given. The same still menu, measured
+from the compositor's own vblank events:
+
+| adaptive sync | field length |
+| --- | --- |
+| on | 16.655 to 16.846 ms |
+| off | 16.654 to 16.657 ms |
+
+Three lines of movement against none. A locked set follows a steady field and
+moves the picture for one that changes, so the mechanism meant to remove a
+stutter every 2.6 seconds introduced a smaller disturbance continuously.
+
+So `output.vrr` is off by default. Everything below is what it took to make
+the driver offer it at all, and it stands: the feature works, it is reached
+the way this says, and a multisync monitor is a different room. On a
+television, put the rate in the timing.
 
 Today a change of refresh costs a mode change. Measured through the leased
 connector on Navi 32, from the moment the modeline is asked for to the first
@@ -406,12 +459,17 @@ refresh emulation asks for on this side of the world - 60.0988 for a NES,
 Flyback, the compositor itself, has a document of its own:
 [`flyback.md`](flyback.md).
 
-A variable refresh rate turns the scheduling problem inside out. With a fixed
-one, a frame that misses the deadline is shown a whole frame late, so the
-compositor draws at the last safe moment and no later. With a variable one
-there is no deadline at all: a flip that arrives after the frame's minimum
-length simply makes that frame longer. Nothing is dropped and nothing
-judders.
+A variable refresh rate turns the scheduling problem inside out, and what
+follows describes Flyback under one. It is off by default on a television for
+the reason given above; the machinery is still here and `output.vrr` switches
+it on.
+
+With a fixed rate, a frame that misses the deadline is shown a whole frame
+late, so the compositor draws at the last safe moment and no later. With a
+variable one there is no deadline at all: a flip that arrives after the
+frame's minimum length simply makes that frame longer. Nothing is dropped and
+nothing judders - at the price of a field whose length moves, which is the
+price a television will not pay.
 
 So under a variable rate Flyback gives a client the whole frame instead of the
 frame less a margin, and halves the slack it holds back. It also stops counting
@@ -525,9 +583,128 @@ to be asked for: the launcher knows which system is
 running and what that system's refresh is, and telling the compositor is one
 line on the control pipe it already has.
 
-Asking for the range in the EDID is the switch. There is nothing else a
-television leased to this compositor would want a variable refresh rate for,
-so when the kernel says the connector is capable, Flyback turns it on.
+Asking for the range in the EDID is what makes the kernel offer it at all.
+Flyback then uses it only when `output.vrr` is set, because on a television
+the steadier field is worth more than the exact rate, and the rate is reached
+in the timing instead.
+
+## Measuring a field
+
+Three of the faults in this document were invisible to the instrument that
+was supposed to find them, and each time the instrument was wrong in a way
+that looked reasonable. What follows is the method that works and why the
+obvious alternative does not.
+
+**Take the length of a field from the hardware's field counter, not from the
+gap between two flips.** A compositor does not flip for a field with nothing
+new in it, so on a still picture the gap between flips is two fields, or ten.
+The tempting fix is to discard any gap longer than about one and a half
+fields as "not a field" - and that discards exactly the skipped fields, which
+are the most visible disturbance there is. The DRM vblank event carries the
+connector's own field counter: dividing the gap by the number of fields in it
+gives the length of one whether a flip happened for each or not, and the
+fields that no flip ended are then countable instead of thrown away.
+
+**Compare a field against the field before it, not against the mode's
+vertical total.** A set's vertical countdown accepts sync inside a narrow
+window once it has locked - a Philips jungle datasheet gives 261 to 264 lines
+a field for the 60 Hz standard - and a pulse outside that window starts the
+retrace at the edge of the window rather than on the sync that arrived. The
+window belongs to what the set is locked to, not to what the modeline says: a
+picture held steadily at 286 lines is still, and one alternating between 262
+and 286 moves every time it changes. Measured against the mode's total
+instead, a deliberately held rate reads as a fault sixty times a second.
+
+**A field with nothing new in it is not a fault; a picture that arrives a
+field late is.** On a still menu the hardware repeats a field constantly and
+nothing is wrong. What a person sees is a picture that took longer than a
+field to get from the client's commit to the screen, and that is a different
+count.
+
+**Keep a total, not a window.** A rolling window of three hundred samples is
+five seconds at 60 Hz. A fault every ten seconds does not survive in it, and a
+maximum clamped up to the mode's own total reads as "every frame inside the
+mode" whether the longest field was 262 lines or 200. `omacrt status` prints
+both: the last five seconds, and the counts since the display process started.
+
+**For anything downstream of the connector, read the converter.** A
+disturbance that comes from the DAC and one that comes from the timing look
+the same on the glass. `omacrt dac listen` polls the lock register at 1 kHz
+and timestamps every change, which is what tells the two apart: every loss
+lining up with a mode change is one thing, and losses arriving on a timing
+nobody touched is another.
+
+## What the two systems built for this DAC actually send
+
+Both reference systems for the RGB-Pi 2 were read on 2026-09-14, from the
+images their vendors ship.
+
+**RGB-Pi OS V4** (`/opt/rgbpi/ui/data/timings.dat`) writes its modes out in
+full. Its 320x240 line is 320 samples of picture in a total of 417, and its
+super resolution line 2624 of 3411:
+
+| | active / total | picture |
+| --- | --- | --- |
+| RGB-Pi OS, 320x240 | 320/417 = 76.7% | 49.1 us |
+| RGB-Pi OS, super resolution | 2624/3411 = 76.9% | 49.2 us |
+| this project | 3520/4577 = 76.9% | 48.89 us |
+| the NTSC standard | 52.66/63.556 = 82.9% | 52.66 us |
+
+**ReplayOS** carries `libswitchres.so` and its configuration says which preset
+to ask it for: `video_crt_type = "generic_15"`. That preset is in the library
+itself, as `15625-15750, 49.50-65.00, 2.000, 4.700, 8.000, ...`: two
+microseconds of front porch, 4.7 of sync and eight of back porch, so 48.86 of
+picture on a 63.556 line. RGB-Pi OS names the same preset in its own
+configuration (`crt_type = generic_15`).
+
+So the two systems agree with each other and with this project to within a
+twentieth of a microsecond, and all three are about seven percent narrower
+than the standard. That is not a mistake in any of the three. The standard's
+52.66 microseconds is what a broadcaster transmits, of which a set shows
+around ninety percent; a console or an emulator has no broadcaster's margin to
+spare, so the 15 kHz world shrinks the picture up front and puts the whole
+frame inside the glass.
+
+Where the three differ is not the width but where the picture sits.
+`generic_15` splits its blanking 2.00 in front and 8.00 behind, which centres
+the picture 32.43 microseconds after the end of sync. This project splits it
+3.63 and 6.36, which centres at 30.81, and the standard puts it at 31.03.
+ReplayOS ships a `video_crt_h_shift` for exactly this, and this project has
+`omacrt mode --shift-x`: a set's own centring is a property of that set, and
+no timing can be right for all of them.
+
+## A fault in the display block
+
+On this card the display engine sometimes stops answering a register write:
+
+```
+amdgpu 0000:03:00.0: [drm] REG_WAIT timeout 1us * 100 tries
+                          - dcn32_program_compbuf_size line:148
+```
+
+`dcn32_program_compbuf_size` sets the size of the compressed frame buffer in
+DCN 3.2, and it runs on every mode set. Twenty-three of these in one uptime,
+five of them on 2026-09-14 alone: 07:18, 09:33, 10:17, 10:29 and 10:57. The
+first four fell inside a tube being switched off and on again, so no picture
+was up and nobody noticed. The fifth landed on a live pipe, and every page
+flip after it came back `EINVAL`.
+
+Nothing about the television, the DAC or the timing is involved. A rate that
+had been on the air for four minutes stopped being flippable in the middle of
+a game. What the count does correlate with is the number of mode sets: the day
+of the five faults carried 52 of them, against a handful on a normal evening,
+which is one more argument for deciding the standard once per game instead of
+switching back and forth.
+
+`omacrt doctor` counts the occurrences in the current boot's journal and says
+so, because the first thing anybody suspects on a picture that dies mid-game
+is their own cable, DAC or modeline.
+
+What this project can do about it is not go down with it. The display process
+does not surrender the lease when flips are refused - see
+[`docs/troubleshooting.md`](troubleshooting.md) for why surrendering is a
+one-way door - it resets the buffers, asks for the timing again, and retries
+with growing pauses.
 
 ## Modelines and interlace in Hyprland
 
