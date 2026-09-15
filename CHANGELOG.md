@@ -7,6 +7,30 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A configuration file that is readable but not valid no longer loses the
+  settings behind it.** The store fell back to the backup only when the main
+  file was missing or unreadable, so a corrupt but readable one was handed to
+  a caller that answered a parse failure with the defaults, in silence. The
+  next save then copied the corrupt file over the last good backup. A file
+  that does not parse is now moved to `<name>.bad`, the backup is read
+  instead, and the recovery is reported.
+- A failed `sync_all()` no longer lets the rename go ahead.
+- `omacrt mode` reported success when it could not tell. A display process
+  older than the file it reads writes nothing, and the absence of that file
+  counted as confirmation; it is now reported as sent but unconfirmed.
+
+### Changed
+
+- CI runs the tests unoptimised as well as in release, because
+  `debug_assert!` is compiled out of a release build and a contract asserted
+  there was not being checked by anything.
+- The headless render check compares the launcher's frames with the ones kept
+  in `shell/tests/frames`, pixel for pixel, instead of asking only whether a
+  frame compresses to more than 1500 bytes. `scripts/frames-check.sh --bless`
+  accepts a change that is meant.
+
 ## [0.8.0] - 2026-09-15
 
 ### Added
