@@ -7,6 +7,42 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The shipped PAL timing ran at a pixel clock the converter cannot hold.**
+  With the RGB-Pi 2's lock register polled a thousand times a second, a still
+  menu on the 74 MHz PAL line lost lock eighty times in sixty seconds, each
+  loss 276 ms with no picture; the same menu at 72 MHz lost it not once in
+  ninety. PAL and PAL interlace now run at 72 MHz and carry the same width and
+  shape as the NTSC line, so a game keeps its size across a change of region.
+- **A program's field rate is built into the timing instead of chased.** A
+  picture produced at one rate and scanned at another repeats a field whenever
+  the two slip a frame apart: a European console against PAL does that every
+  2.6 seconds. Moving both totals reaches the console's own rate to within
+  0.003 Hz, and the rate is remembered against the core so it is in place
+  before the emulator opens.
+- **The adaptive sync that used to do that job is off on a television.** It
+  reaches a rate by moving the length of every field, and a set's vertical
+  oscillator is locked to what it has been given: the same still menu measured
+  16.655 to 16.846 ms a field with it on and 16.654 to 16.657 with it off.
+  `output.vrr` turns it back on for a multisync monitor.
+- **The frame statistics could not report the faults they existed for.** Gaps
+  longer than one and a half fields were discarded, which is every skipped
+  field; the longest field was clamped up to the mode's own total; only long
+  fields were counted; and the history was five seconds rewritten in place. A
+  field's length now comes from the hardware's field counter, and the counts
+  are kept for the life of the display process.
+- A flag's value could be read as a positional argument. The list of flags
+  taking a value was written by hand in one place and `--hz` was missing, so
+  `omacrt mode --hz 59.95` asked for a television standard called "59.95" and
+  stopped with its stderr discarded.
+
+### Added
+
+- `omacrt dac listen` polls the converter's lock register at 1 kHz and
+  timestamps every loss without resetting anything, for telling a disturbance
+  that comes from the converter apart from one that comes from the timing.
+
 ### Added
 
 - `doctor` counts the `dcn32_program_compbuf_size` register timeouts in the
