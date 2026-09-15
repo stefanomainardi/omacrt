@@ -48,8 +48,7 @@ impl Profile {
     }
 
     pub fn load(config_dir: &Path) -> Self {
-        crate::store::load_string(&Self::path(config_dir))
-            .and_then(|t| toml::from_str(&t).ok())
+        crate::store::load_parsed(&Self::path(config_dir), |t| toml::from_str(t).ok())
             .unwrap_or_default()
     }
 

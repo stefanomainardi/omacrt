@@ -3670,8 +3670,20 @@ fn main() {
                     let scale = ml.width() as f32 / 320.0;
                     ml = ml.shifted((shift.0 as f32 * scale) as i32, shift.1);
                 }
-                if !display::mode(&ml.to_hypr()) {
-                    die("the display process did not take that timing: see the display log");
+                match display::mode_outcome(&ml.to_hypr()) {
+                    display::Outcome::Done => {}
+                    display::Outcome::Refused => {
+                        die("the display process did not take that timing: see the display log")
+                    }
+                    // Said and not swallowed: everything below saves this
+                    // timing as the one the television has, and here that is
+                    // a reasonable belief rather than something observed.
+                    display::Outcome::Unverified => eprintln!(
+                        "omacrt: the timing was sent but this display process does not report \
+                         what it programmed, so it is saved without being confirmed. An \
+                         installed copy older than the command line is the usual reason: \
+                         bin/omacrt-install"
+                    ),
                 }
                 // Saved after the tube has it, and saved as what it got: the
                 // applied standard rather than the base, and the height the
@@ -4441,7 +4453,11 @@ mod tests {
             .collect();
         assert_eq!(value(&args, "--connector").as_deref(), Some("HDMI-A-1"));
         assert_eq!(value(&args, "--standard"), None, "no value after it");
-        assert_eq!(value(&args, "--force"), None);
+        // A flag that takes a value and is not on the line at all. It has to
+        // be one of those: `value` asserts that what it is asked for is a
+        // flag with a value, because a flag missing from that list has its
+        // value read as a positional argument.
+        assert_eq!(value(&args, "--lines"), None, "not on the line");
     }
 
     /// A hint that says `pacman` on Fedora is worse than no hint, and this is

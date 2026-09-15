@@ -483,12 +483,45 @@ pub fn raise(app_id: &str) -> bool {
 ///
 /// A compositor that already has the timing writes nothing, so an unchanged
 /// mode is a success as soon as the file says what was asked for.
+///
+/// Three answers and not two. A display process older than the file it reads
+/// writes none, and refusing to work with one would be worse than saying so,
+/// but calling that a success is how a request comes to be reported as an
+/// outcome. [`Outcome::Unverified`] is the honest third.
 pub fn mode(modeline: &str) -> bool {
+    mode_outcome(modeline) != Outcome::Refused
+}
+
+/// What came of asking for a timing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The compositor reported the timing on the connector.
+    Done,
+    /// It did not, within the time a modeset takes several times over.
+    Refused,
+    /// There is nothing that reports it: the display process is older than
+    /// the file this reads. The request went down the pipe and what became of
+    /// it is not knowable from here.
+    Unverified,
+}
+
+impl Outcome {
+    pub fn label(self) -> &'static str {
+        match self {
+            Outcome::Done => "done",
+            Outcome::Refused => "refused",
+            Outcome::Unverified => "asked for, but this display process does not report the mode",
+        }
+    }
+}
+
+/// [`mode`], with the third answer kept.
+pub fn mode_outcome(modeline: &str) -> Outcome {
     let Some(want) = super::output::Modeline::parse(modeline) else {
-        return false;
+        return Outcome::Refused;
     };
     if send(&format!("mode {modeline}")).is_err() {
-        return false;
+        return Outcome::Refused;
     }
     // A modeset on this chain takes 180 to 230 ms inside the kernel's own
     // call, so half a second is several times what it needs and still short
@@ -496,14 +529,15 @@ pub fn mode(modeline: &str) -> bool {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
     while std::time::Instant::now() < deadline {
         if current_mode().as_ref() == Some(&want) {
-            return true;
+            return Outcome::Done;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    // An older display process writes no such file, and refusing to work
-    // with one would be worse than trusting it: the pipe was written, so
-    // report what the pipe can report.
-    !mode_path().exists()
+    if mode_path().exists() {
+        Outcome::Refused
+    } else {
+        Outcome::Unverified
+    }
 }
 
 /// Environment for a program that should appear on the tube.

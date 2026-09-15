@@ -67,29 +67,37 @@ jobs:
         working-directory: shell
         run: cargo test --release
 
+      # And again unoptimised, because `debug_assert!` is compiled out of a
+      # release build. A contract asserted there is not checked by a release
+      # run, so running only that profile means the assertions are decoration:
+      # one went in and broke a test that no release run could fail on.
+      - name: Tests, with the debug assertions compiled in
+        working-directory: shell
+        run: cargo test
+
       - name: A machine that is not Omarchy
         working-directory: .
         # The runner has no Omarchy, no Arch, no graphics card and no
         # television, which is the machine the README makes promises about.
         run: bash scripts/plain-machine.sh
 
-      - name: The launcher draws its own frames
-        working-directory: shell
+      - name: The launcher draws the frames it drew last time
+        working-directory: .
+        # Pixel for pixel against the frames kept in the repository, which is
+        # the difference between "something was drawn" and "the right thing
+        # was drawn": a menu with every label on top of every other passes any
+        # test of how much a frame compresses.
         env:
-          SDL_VIDEODRIVER: dummy
-        run: |
-          # A headless boot must produce frames that are not a blank screen.
-          ./target/release/omacrt-shell --headless \
-            --dump 6.0,11.0,12.5 --dump-dir "$RUNNER_TEMP/frames" --no-audio
-          ls -l "$RUNNER_TEMP/frames"
-          test "$(ls "$RUNNER_TEMP/frames" | wc -l)" -ge 3
-          # Not a blank screen: a frame of one flat colour compresses to
-          # almost nothing, so a real picture is bigger than that.
-          for f in "$RUNNER_TEMP/frames"/*.ppm; do
-            size=$(gzip -c "$f" | wc -c)
-            echo "$f compresses to $size bytes"
-            test "$size" -gt 1500 || { echo "blank frame: $f" >&2; exit 1; }
-          done
+          FRAMES_OUT: ${{ runner.temp }}/frames-drawn
+        run: scripts/frames-check.sh
+
+      - name: What this machine drew, when it disagreed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frames-drawn
+          path: ${{ runner.temp }}/frames-drawn
+          if-no-files-found: ignore
 
   shell-scripts:
     name: shell scripts parse

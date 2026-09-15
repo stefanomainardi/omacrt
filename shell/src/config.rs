@@ -72,6 +72,10 @@ fn keep_newer(path: &Path, found: u32) -> Option<std::path::PathBuf> {
 
 /// Read a config file through the durable store, run the migration ladder and
 /// hand back the text to parse. A file from the future is copied aside first.
+///
+/// Prefer [`read_parsed`]: this hands back text that may not be a config at
+/// all, and a caller that answers that with `unwrap_or_default()` throws a
+/// person's settings away without saying so.
 pub fn read(path: &Path) -> Option<String> {
     let mut text = crate::store::load_string(path)?;
     let found = version_of(&text);
@@ -88,6 +92,40 @@ pub fn read(path: &Path) -> Option<String> {
         let _ = crate::store::save(path, &text);
     }
     Some(text)
+}
+
+/// The same, but the file has to parse into something: one that does not is
+/// moved aside and the backup is used, rather than the caller being handed
+/// text it will silently replace with defaults.
+pub fn read_parsed<T>(path: &Path, parse: impl Fn(&str) -> Option<T>) -> Option<T> {
+    // The migrated text of whichever copy was accepted, to be written back
+    // after the read rather than during it.
+    let mut migrated: Option<String> = None;
+    let value = crate::store::load_parsed(path, |raw| {
+        let mut text = raw.to_string();
+        let found = version_of(&text);
+        if found > VERSION {
+            if let Some(aside) = keep_newer(path, found) {
+                eprintln!(
+                    "omacrt: {} was written by a newer version ({found}); \
+                     a copy is kept at {}",
+                    path.display(),
+                    aside.display()
+                );
+            }
+            return parse(&text);
+        }
+        let moved = migrate(&mut text, found);
+        let value = parse(&text)?;
+        if moved {
+            migrated = Some(text);
+        }
+        Some(value)
+    })?;
+    if let Some(text) = migrated {
+        let _ = crate::store::save(path, &text);
+    }
+    Some(value)
 }
 
 #[cfg(test)]

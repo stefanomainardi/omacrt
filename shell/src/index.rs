@@ -55,9 +55,7 @@ impl LibraryConfig {
     }
 
     pub fn load() -> Self {
-        crate::store::load_string(&Self::path())
-            .and_then(|t| toml::from_str(&t).ok())
-            .unwrap_or_default()
+        crate::store::load_parsed(&Self::path(), |t| toml::from_str(t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self) -> std::io::Result<()> {

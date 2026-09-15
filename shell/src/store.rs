@@ -89,8 +89,10 @@ fn save_with_mode(
         f.write_all(contents)?;
         f.flush()?;
         // Ask the filesystem to put the bytes on the disk before the rename,
-        // so a power cut cannot leave a renamed but empty file.
-        let _ = f.sync_all();
+        // so a power cut cannot leave a renamed but empty file. The error is
+        // returned rather than dropped: a sync that fails is the one case
+        // where the rename should not go ahead.
+        f.sync_all()?;
     }
     match fs::rename(&tmp, path) {
         Ok(()) => Ok(()),
@@ -99,6 +101,63 @@ fn save_with_mode(
             Err(e)
         }
     }
+}
+
+/// Where a file that could not be understood is kept.
+fn rejected_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".bad");
+    path.with_file_name(name)
+}
+
+/// Read and parse, falling back to the backup when the main file cannot be
+/// used for any reason: missing, unreadable, empty, or there and readable but
+/// not something `parse` accepts.
+///
+/// [`load`] cannot do this on its own, because whether a file makes sense is
+/// the caller's question and not the store's. Reading a corrupt file and
+/// handing it back to a caller that answers a parse failure with
+/// `unwrap_or_default()` loses somebody's settings silently, and then the
+/// next save copies the corrupt file over the last good backup and loses them
+/// for real.
+///
+/// A main file that does not parse is moved to `<name>.bad` rather than left
+/// in place. That keeps it for anybody who wants to look, and it means the
+/// next save has nothing to promote, so the good backup stays the good backup
+/// until a file that parses has replaced it.
+pub fn load_parsed<T>(path: &Path, mut parse: impl FnMut(&str) -> Option<T>) -> Option<T> {
+    let main = fs::read_to_string(path).ok().filter(|t| !t.is_empty());
+    let had_main = main.is_some();
+    if let Some(value) = main.as_deref().and_then(&mut parse) {
+        return Some(value);
+    }
+    let backup = fs::read_to_string(backup_path(path))
+        .ok()
+        .filter(|t| !t.is_empty())
+        .as_deref()
+        .and_then(&mut parse);
+    // Only once it is known that the main file is no good: moving it aside
+    // before trying the backup would throw away the only copy there is when
+    // the backup is no good either.
+    if had_main {
+        let aside = rejected_path(path);
+        let moved = fs::rename(path, &aside).is_ok();
+        eprintln!(
+            "omacrt: {} could not be understood{}{}",
+            path.display(),
+            if moved {
+                format!(", it is kept at {}", aside.display())
+            } else {
+                String::new()
+            },
+            if backup.is_some() {
+                "; the backup is used instead"
+            } else {
+                " and neither could its backup; starting from the defaults"
+            }
+        );
+    }
+    backup
 }
 
 /// Read a file, falling back to its backup when the file is missing or
@@ -192,5 +251,114 @@ mod tests {
         assert_eq!(mode_of(&file), 0o600);
         assert_eq!(mode_of(&backup_path(&file)), 0o600, "the backup is open");
         let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod recovery {
+    use super::*;
+
+    fn parse(t: &str) -> Option<String> {
+        t.strip_prefix("good:").map(str::to_string)
+    }
+
+    fn dir() -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "omacrt-store-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_file_that_does_not_parse_falls_back_to_the_backup() {
+        let d = dir();
+        let p = d.join("settings.toml");
+        save(&p, "good:one").unwrap();
+        save(&p, "good:two").unwrap();
+        // The backup now holds "one" and the main file "two". Corrupt the
+        // main file the way a half written save or a bad edit would.
+        fs::write(&p, "this is not a config").unwrap();
+        assert_eq!(load_parsed(&p, parse).as_deref(), Some("one"));
+    }
+
+    #[test]
+    fn a_saving_after_a_recovery_does_not_destroy_the_good_copy() {
+        // The whole point. Reading a corrupt main file and then saving used
+        // to copy the corrupt file over the last good backup, so two saves
+        // after a corruption left nothing to recover from.
+        let d = dir();
+        let p = d.join("settings.toml");
+        save(&p, "good:one").unwrap();
+        save(&p, "good:two").unwrap();
+        fs::write(&p, "rubbish").unwrap();
+
+        assert_eq!(load_parsed(&p, parse).as_deref(), Some("one"));
+        save(&p, "good:three").unwrap();
+        assert_eq!(
+            load_parsed(&p, parse).as_deref(),
+            Some("three"),
+            "the new file is read back"
+        );
+        // And the backup is still something that parses, not the rubbish.
+        let backup = fs::read_to_string(backup_path(&p)).unwrap_or_default();
+        assert!(
+            parse(&backup).is_some(),
+            "the backup is {backup:?}, which does not parse"
+        );
+    }
+
+    #[test]
+    fn the_file_that_could_not_be_understood_is_kept() {
+        let d = dir();
+        let p = d.join("settings.toml");
+        save(&p, "good:one").unwrap();
+        fs::write(&p, "rubbish").unwrap();
+        let _ = load_parsed(&p, parse);
+        assert_eq!(
+            fs::read_to_string(rejected_path(&p)).unwrap_or_default(),
+            "rubbish",
+            "kept for somebody to look at"
+        );
+    }
+
+    #[test]
+    fn neither_copy_parsing_gives_nothing_and_keeps_both() {
+        let d = dir();
+        let p = d.join("settings.toml");
+        save(&p, "good:one").unwrap();
+        save(&p, "good:two").unwrap();
+        fs::write(&p, "rubbish").unwrap();
+        fs::write(backup_path(&p), "also rubbish").unwrap();
+        assert_eq!(load_parsed(&p, parse), None);
+        // Nothing here was a config, so nothing here is thrown away.
+        assert_eq!(
+            fs::read_to_string(rejected_path(&p)).unwrap_or_default(),
+            "rubbish"
+        );
+        assert_eq!(
+            fs::read_to_string(backup_path(&p)).unwrap_or_default(),
+            "also rubbish"
+        );
+    }
+
+    #[test]
+    fn a_file_that_parses_is_read_and_nothing_is_moved() {
+        let d = dir();
+        let p = d.join("settings.toml");
+        save(&p, "good:one").unwrap();
+        assert_eq!(load_parsed(&p, parse).as_deref(), Some("one"));
+        assert!(!rejected_path(&p).exists());
+    }
+
+    #[test]
+    fn a_missing_file_is_not_an_error_and_leaves_no_trace() {
+        let d = dir();
+        let p = d.join("never-written.toml");
+        assert_eq!(load_parsed(&p, parse), None);
+        assert!(!rejected_path(&p).exists());
     }
 }
