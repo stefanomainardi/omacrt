@@ -7,6 +7,31 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
+### Added
+
+- **The panel offers the restart it asks for.** An install writes new binaries
+  and leaves the running ones alone, so after every upgrade the bar's panel
+  showed a red line and nothing to press. It now says an update is waiting, in
+  amber rather than the red that means something is broken, names which of the
+  two processes is behind, and carries the buttons that put it on the air. It
+  also says when a restart would close a running game.
+- `omacrt restart`: off and on again in one word.
+- `bin/omacrt-install --restart` takes the tube off and on when the install is
+  finished. Without it, the installer says which process is still on the old
+  build and what to run.
+
+### Fixed
+
+- Whether a running process is on an older build is decided by comparing the
+  bytes rather than by the ` (deleted)` that `/proc/<pid>/exe` grows once its
+  file is replaced. An install that writes a byte-identical binary marks it
+  too, so the panel used to report an update waiting after every install
+  whether anything had changed or not.
+- The panel never looked at the launcher, only at the display process, so an
+  upgrade that touched only the launcher said nothing at all.
+
 ## [0.8.1] - 2026-09-15
 
 ### Fixed
@@ -1240,7 +1265,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.2
 [0.8.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.1
 [0.8.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.0
 [0.7.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.7.1

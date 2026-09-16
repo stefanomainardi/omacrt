@@ -50,6 +50,10 @@ const VERBS: Verbs = &[
                 "15 kHz modeline, DAC csync, audio to the TV, launcher",
             ),
             ("off", "launcher closed, audio back, output disabled"),
+            (
+                "restart",
+                "off and on again, which is what puts a new build on the air",
+            ),
             ("toggle", ""),
             (
                 "boot",
@@ -561,12 +565,18 @@ fn status(cfg: &Config) -> Value {
         "pid": display::pid(),
         "binary": display::binary_in_use(),
         "socket": display::SOCKET,
+        // On a different build from the file on disk, so an update is
+        // installed and not yet running.
+        "stale": display::is_stale(display::pid(), &display::binary()),
     });
     let pids = launcher::pids();
     st["shell"] = json!({
         "running": !pids.is_empty(),
         "pid": pids.first(),
         "binary": launcher::binary(cfg),
+        "stale": launcher::binary(cfg)
+            .as_deref()
+            .is_some_and(|b| display::is_stale(pids.first().map(|p| *p as i32), b)),
     });
     let names: Vec<String> = lib
         .systems
@@ -3581,6 +3591,17 @@ fn main() {
             } else {
                 cmd_on(&cfg, None)
             }
+        }
+        // Off and on again, in one word. An install writes new binaries and
+        // leaves the running ones alone: a lease cannot be handed to a new
+        // process while the old one holds it, and the timing is programmed at
+        // start-up, so nothing short of this puts an update on the air.
+        "restart" => {
+            if status(&cfg)["active"].as_bool().unwrap_or(false) {
+                cmd_off(&cfg);
+                std::thread::sleep(std::time::Duration::from_millis(600));
+            }
+            cmd_on(&cfg, positional(args).first().map(|s| s.as_str()))
         }
         // The refresh a program on the tube wants. Where a mode change moves
         // the whole timing and blanks the television for a fifth of a second,

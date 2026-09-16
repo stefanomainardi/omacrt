@@ -5,6 +5,8 @@
 #
 #   bin/omacrt-install            build and install
 #   bin/omacrt-install --no-build install the binaries already built
+#   bin/omacrt-install --restart  and take the tube off and on afterwards, so
+#                                 the new build is the one running
 #   bin/omacrt-install --uninstall
 #                                      remove the binaries and the plugins
 #   sudo bin/omacrt-install --uninstall-system
@@ -54,6 +56,9 @@ bin_dir="${HOME}/.local/bin"
 plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
 library_dir="${HOME}/.config/omarchy/plugins/${library_id}"
 build=1
+# Take the tube off and on at the end, rather than leaving the running
+# processes on the old binaries and the panel saying an update is waiting.
+restart=0
 # The status line the run ends on, from wherever the binary actually is.
 say_status() {
   if [ "$packaged" = 1 ]; then
@@ -205,6 +210,7 @@ for arg in "$@"; do
       exit 0
       ;;
     --no-build) build=0 ;;
+    --restart) restart=1 ;;
     --uninstall)
       # Everything this installer put in place, taken back out. The user's
       # games, configuration and cache are never touched.
@@ -381,6 +387,58 @@ sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
   enabled "$plugin_id" || omarchy plugin enable "$plugin_id" right
   enabled "$library_id" || omarchy plugin enable "$library_id"
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+fi
+
+# An install replaces the files and leaves the running processes alone: a
+# lease cannot be handed to a new process while the old one holds it, and the
+# timing is programmed at start-up. So the tube keeps running yesterday's
+# build until somebody takes it off and on, and the only sign is a line in the
+# bar's panel.
+#
+# Not done automatically without asking, because it closes whatever is
+# playing. With nothing playing there is nothing to lose and --restart says so
+# in advance.
+running_omacrt() { if [ "$packaged" = 1 ]; then "$built_dir/omacrt" "$@"; else "$bin_dir/omacrt" "$@"; fi; }
+stale_processes() {
+  running_omacrt status --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+old = [
+    name
+    for name, key in (("the tube", "display"), ("the launcher", "shell"))
+    if (d.get(key) or {}).get("running") and (d.get(key) or {}).get("stale")
+]
+if not old:
+    sys.exit(1)
+print(" and ".join(old))
+print("playing" if d.get("playing") else "idle")
+' 2>/dev/null
+}
+
+stale="$(stale_processes || true)"
+if [ -n "$stale" ]; then
+  what="$(printf '%s
+' "$stale" | head -1)"
+  busy="$(printf '%s
+' "$stale" | tail -1)"
+  echo
+  if [ "$restart" = 1 ] && [ "$busy" = idle ]; then
+    echo "== $what still on the old build: taking the tube off and on"
+    running_omacrt restart || true
+  elif [ "$restart" = 1 ]; then
+    echo "!! $what still on the old build, and something is playing."
+    echo "   Not restarting under it. When you are done: omacrt restart"
+  elif [ "$busy" = idle ]; then
+    echo "!! $what still on the old build. Nothing is playing, so:  omacrt restart"
+    echo "   (or pass --restart next time and this does it)"
+  else
+    echo "!! $what still on the old build, and something is playing."
+    echo "   When you are done:  omacrt restart"
+  fi
+  echo
 fi
 
 say_status
