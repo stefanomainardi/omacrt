@@ -7,6 +7,8 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-09-16
+
 ### Added
 
 - **The panel offers the restart it asks for.** An install writes new binaries
@@ -1263,7 +1265,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.2
 [0.8.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.1
 [0.8.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.0
 [0.7.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.7.1
