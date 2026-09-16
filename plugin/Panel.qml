@@ -29,6 +29,10 @@ Panel {
   readonly property color urgent: root.bar ? root.bar.urgent : Color.urgent
   readonly property color muted: Qt.darker(root.fg, 1.6)
   readonly property color phosphor: "#7ee787"
+  // Something waiting to be done, which is not the same as something wrong.
+  // An update sitting on disk had the same red as a converter that has lost
+  // lock, and a panel that shows red after every upgrade reads as broken.
+  readonly property color waiting: "#e3b341"
   readonly property string mono: root.bar ? root.bar.fontFamily : Style.font.family
 
   readonly property var conn: status.connector || null
@@ -50,13 +54,18 @@ Panel {
   readonly property bool audioAll: !!(audio && audio["default"])
   readonly property bool shellRunning: shell.running === true
   readonly property bool displayRunning: display.running === true
-  // `/proc/<pid>/exe` says `(deleted)` once the file the process was started
-  // from has been replaced, which is all it proves: the file on disk is a
-  // different one, not necessarily a newer one. Either way the compositor on
-  // the air is not the file an install just wrote, and nothing but taking the
-  // tube off and on changes that.
-  readonly property bool displayStale: root.displayRunning
-    && String(root.display.binary || "").indexOf(" (deleted)") >= 0
+  // Whether what is running is a different build from what is installed.
+  // `omacrt status` compares the bytes rather than looking for the
+  // ` (deleted)` that `/proc/<pid>/exe` grows once its file is replaced: an
+  // install that writes a byte-identical binary marks it too, so the marker
+  // alone says an update is waiting after every install whether anything
+  // changed or not.
+  readonly property bool displayStale: root.displayRunning && root.display.stale === true
+  readonly property bool shellStale: root.shellRunning && root.shell.stale === true
+  readonly property bool updateWaiting: root.displayStale || root.shellStale
+  // What taking it up again would cost. Nothing to lose when nothing is
+  // playing, and a game otherwise.
+  readonly property bool playing: String(status.playing || "") !== ""
   // A number of one decimal, the way the command line prints it.
   function ms(v) { return (Math.round(Number(v) * 10) / 10).toFixed(1) }
   // The two ends of the frames the tube was given. Only worth a line when
@@ -467,15 +476,42 @@ Panel {
               ? (String(root.display.name || "flyback") + ", pid " + root.display.pid
                  + " on " + String(root.display.socket || ""))
               : (String(root.display.name || "flyback") + " not running")
-            valueColor: root.displayStale ? root.urgent : (root.displayRunning ? root.fg : root.muted)
+            valueColor: root.displayStale ? root.waiting : (root.displayRunning ? root.fg : root.muted)
           }
           // Its own row rather than a clause on the one above, which the
-          // panel is not wide enough to show the end of.
+          // panel is not wide enough to show the end of. An update writes the
+          // new files and leaves the running ones alone, so this says which
+          // of the two is behind and offers the only thing that changes it.
           Row2 {
-            visible: root.displayStale
-            label: "Restart"
-            value: "its binary has been replaced"
-            valueColor: root.urgent
+            visible: root.updateWaiting
+            label: "Update"
+            value: root.displayStale && root.shellStale
+              ? "waiting: the tube and the launcher are on older builds"
+              : (root.displayStale
+                 ? "waiting: the tube is on an older build"
+                 : "waiting: the launcher is on an older build")
+            valueColor: root.waiting
+          }
+          Row {
+            visible: root.updateWaiting
+            width: parent.width
+            spacing: Style.space(6)
+            Act {
+              width: root.displayStale ? (parent.width - Style.space(6)) / 2 : parent.width
+              text: root.playing ? "↻  Restart the launcher (quits the game)" : "↻  Restart the launcher"
+              enabled: !actionProc.running
+              onClicked: root.runAction(["shell", "restart"])
+            }
+            Act {
+              visible: root.displayStale
+              width: (parent.width - Style.space(6)) / 2
+              // Off and on again: a lease cannot be handed to a new process
+              // while the old one holds it, and the timing is programmed at
+              // start-up. Says what it costs when something is playing.
+              text: root.playing ? "⏻  Take the tube up again (quits the game)" : "⏻  Take the tube up again"
+              enabled: !actionProc.running
+              onClicked: root.runAction(["restart"])
+            }
           }
           // Commit to the start of scanout, which on a set with no panel and
           // no scaler is very nearly to the phosphor. Nothing else on the

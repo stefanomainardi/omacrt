@@ -364,6 +364,26 @@ pub fn binary_in_use() -> PathBuf {
         .unwrap_or_else(binary)
 }
 
+/// Is a running process on a different build from the file it was started
+/// from?
+///
+/// The link at `/proc/<pid>/exe` ends in ` (deleted)` once that file has been
+/// replaced, which is a weaker claim than it looks: an install that copies a
+/// byte-identical binary over the old one also marks it, so trusting the
+/// marker means saying an update is waiting after every install whether
+/// anything changed or not. The bytes are compared instead.
+pub fn is_stale(pid: Option<i32>, installed: &std::path::Path) -> bool {
+    let Some(pid) = pid else {
+        return false;
+    };
+    let running = format!("/proc/{pid}/exe");
+    let (Ok(a), Ok(b)) = (std::fs::read(&running), std::fs::read(installed)) else {
+        // Nothing to compare: say no rather than cry wolf.
+        return false;
+    };
+    a != b
+}
+
 /// Start the display process on `connector` and wait for its socket.
 pub fn start(connector: &str) -> Result<String, String> {
     start_with_sink(connector, None)
