@@ -210,9 +210,7 @@ impl Bluetooth {
         static FOUND: OnceLock<bool> = OnceLock::new();
         *FOUND.get_or_init(|| {
             std::env::var_os("PATH")
-                .map(|p| {
-                    std::env::split_paths(&p).any(|d| d.join("bluetoothctl").is_file())
-                })
+                .map(|p| std::env::split_paths(&p).any(|d| d.join("bluetoothctl").is_file()))
                 .unwrap_or(false)
         })
     }
@@ -344,18 +342,9 @@ impl Bluetooth {
     }
 
     /// One step has finished: either the next one starts or the run ends.
-    fn advance(
-        &mut self,
-        phase: Phase,
-        target: Option<(String, String)>,
-        ok: bool,
-        text: &str,
-    ) {
+    fn advance(&mut self, phase: Phase, target: Option<(String, String)>, ok: bool, text: &str) {
         let said = reason(text);
-        let name = target
-            .as_ref()
-            .map(|(_, n)| n.clone())
-            .unwrap_or_default();
+        let name = target.as_ref().map(|(_, n)| n.clone()).unwrap_or_default();
         let mac = target.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
         match phase {
             // Powering on is allowed to fail: an adapter that is already on
@@ -475,7 +464,10 @@ Device AA:BB:CC:DD:EE:FF
     #[test]
     fn a_step_is_given_a_deadline_and_pairing_the_longest_one() {
         assert!(Phase::Pair.deadline() > Phase::List.deadline());
-        assert!(Phase::Scan.deadline() >= Duration::from_secs(8), "the scan itself is 8 s");
+        assert!(
+            Phase::Scan.deadline() >= Duration::from_secs(8),
+            "the scan itself is 8 s"
+        );
         assert_eq!(Phase::Pair.step(), Some(1));
         assert_eq!(Phase::Connect.step(), Some(3));
         assert_eq!(Phase::Scan.step(), None);

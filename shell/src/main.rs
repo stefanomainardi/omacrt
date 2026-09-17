@@ -1200,10 +1200,7 @@ fn run(args: &Args) -> Result<(), String> {
             if scene.pad_list().order != pads.order && !scene.pad_list().order.is_empty() {
                 pads = scene.pad_list().clone();
             }
-            scene.set_pad_list(
-                pads.clone(),
-                here.iter().map(|(_, p)| p.clone()).collect(),
-            );
+            scene.set_pad_list(pads.clone(), here.iter().map(|(_, p)| p.clone()).collect());
         }
         // bluetoothctl is polled wherever the launcher is: a search left
         // running behind a screen that has gone used to sit there for ever

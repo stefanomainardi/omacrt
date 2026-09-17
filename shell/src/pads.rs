@@ -80,10 +80,9 @@ impl Pads {
     /// aside rather than starting empty: an order thrown away is an evening
     /// of rearranging pads.
     pub fn load_from(p: &Path) -> Self {
-        let order = crate::store::load_parsed(p, |text| {
-            toml::from_str::<File>(text).ok().map(|f| f.pad)
-        })
-        .unwrap_or_default();
+        let order =
+            crate::store::load_parsed(p, |text| toml::from_str::<File>(text).ok().map(|f| f.pad))
+                .unwrap_or_default();
         Self { order }
     }
 
@@ -260,7 +259,10 @@ pub fn devices_under(root: &Path) -> Vec<Device> {
     for e in entries.flatten() {
         let file = e.file_name();
         let Some(name) = file.to_str() else { continue };
-        let Some(n) = name.strip_prefix("event").and_then(|n| n.parse::<u32>().ok()) else {
+        let Some(n) = name
+            .strip_prefix("event")
+            .and_then(|n| n.parse::<u32>().ok())
+        else {
             continue;
         };
         let dev = e.path().join("device");

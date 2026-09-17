@@ -1205,7 +1205,12 @@ impl Scene {
         self.chime_played = true;
         match system {
             Some("profile") => self.screen = Screen::Profile { sel: 0 },
-            Some("pair") => self.screen = Screen::Pads { sel: 0, scan: false },
+            Some("pair") => {
+                self.screen = Screen::Pads {
+                    sel: 0,
+                    scan: false,
+                }
+            }
             Some("settings") => self.screen = Screen::Settings { sel: 0 },
             Some("about") => self.screen = Screen::About { top: 0 },
             Some("saver") => self.screen = Screen::Saver { sel: 0 },
@@ -1295,7 +1300,10 @@ impl Scene {
             "settings" => self.go(Screen::Settings { sel: 0 }),
             "profile" | "picture" => self.go(Screen::Profile { sel: 0 }),
             "style" | "theme" => self.go(Screen::Style { sel: 0 }),
-            "pads" | "pair" => self.go(Screen::Pads { sel: 0, scan: false }),
+            "pads" | "pair" => self.go(Screen::Pads {
+                sel: 0,
+                scan: false,
+            }),
             "diagnostics" | "diag" => {
                 self.diag = self.gather_diagnostics();
                 self.go(Screen::Diag { top: 0 });

@@ -214,7 +214,13 @@ impl Scene {
         }
         if !on {
             let w = Framebuffer::text_width("off", 1);
-            fb.text(x + TILE_W - 6 - w, y + TILE_H - 14, "off", self.theme.dim, 1);
+            fb.text(
+                x + TILE_W - 6 - w,
+                y + TILE_H - 14,
+                "off",
+                self.theme.dim,
+                1,
+            );
         } else if self.identify_until > self.now {
             // Shaking: the only way to tell two of one model apart.
             let n = ((self.now * 8.0) as i32) % 2;
@@ -494,10 +500,7 @@ impl Scene {
     pub(super) fn pads_search(&mut self, sel: &mut usize, scan: &mut bool) {
         if !Bluetooth::available() {
             self.pending.push(Sound::Crunch);
-            self.message = Some((
-                "bluetoothctl is not on this machine".into(),
-                self.now + 4.0,
-            ));
+            self.message = Some(("bluetoothctl is not on this machine".into(), self.now + 4.0));
             return;
         }
         *scan = true;
@@ -544,7 +547,11 @@ impl Scene {
     /// Whether the search is open, so the main loop keeps polling bluetoothctl
     /// even when another screen is drawn.
     pub fn bt_poll(&mut self) -> bool {
-        if self.bt.busy() { self.bt.poll() } else { false }
+        if self.bt.busy() {
+            self.bt.poll()
+        } else {
+            false
+        }
     }
 }
 

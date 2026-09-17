@@ -12,7 +12,10 @@ impl Scene {
             // The sockets open whether or not there is a Bluetooth adapter:
             // a pad on a cable is still a pad, and the screen that shows the
             // ports used to be unreachable without bluetoothctl.
-            Page::Pads => self.go(Screen::Pads { sel: 0, scan: false }),
+            Page::Pads => self.go(Screen::Pads {
+                sel: 0,
+                scan: false,
+            }),
             Page::Saver => self.go(Screen::Saver { sel: 0 }),
             Page::Style => {
                 let cur = self.settings.theme.clone();
@@ -613,11 +616,7 @@ impl Scene {
         {
             // A queue, not a slot: two unknown pads at boot and the second
             // used to cancel the first, which then never got mapped at all.
-            if !self
-                .pending_wizards
-                .iter()
-                .any(|(_, _, w)| *w == which)
-            {
+            if !self.pending_wizards.iter().any(|(_, _, w)| *w == which) {
                 self.pending_wizards
                     .push((name.to_string(), guid.to_string(), which));
             }
