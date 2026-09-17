@@ -2593,6 +2593,67 @@ fn bios_report() -> bios::Report {
     bios::report(&names)
 }
 
+/// The pads: the order that decides the ports, and what the kernel has now.
+///
+/// `omacrt pads` is the order. `omacrt pads devices` is what the kernel shows,
+/// in the order RetroArch's udev driver builds its own list in, which is what
+/// the port numbers are worked out from.
+fn cmd_pads(args: &[String]) {
+    use omacrt_shell::pads;
+    let sub = positional(args)
+        .first()
+        .map(|s| s.as_str())
+        .unwrap_or("list")
+        .to_string();
+    let devices = pads::devices();
+    if sub == "devices" {
+        if devices.is_empty() {
+            println!("no pads on this machine");
+            return;
+        }
+        for (i, d) in devices.iter().enumerate() {
+            println!(
+                "{i}  {:<40} {:04x}:{:04x}  {}  {}",
+                d.name,
+                d.vendor,
+                d.product,
+                if d.unit.is_empty() { "-" } else { &d.unit },
+                d.event.display()
+            );
+        }
+        println!();
+        println!("The number on the left is what input_playerN_joypad_index takes.");
+        return;
+    }
+    let list = pads::Pads::load();
+    if list.order.is_empty() {
+        println!("no pads remembered yet ({})", pads::path().display());
+        println!("The launcher writes this file the first time it sees a pad.");
+        return;
+    }
+    for (i, p) in list.order.iter().enumerate() {
+        let here = devices
+            .iter()
+            .any(|d| !p.unit.is_empty() && d.unit == p.unit);
+        println!(
+            "P{}  {:<28} {}  {}",
+            i + 1,
+            p.name,
+            if here { "connected" } else { "absent   " },
+            if p.unit.is_empty() {
+                "(no serial: a second of this model cannot be told apart)"
+            } else {
+                &p.unit
+            }
+        );
+    }
+    if list.ambiguous() {
+        println!();
+        println!("Two pads of one model report no serial, so the order between");
+        println!("them is whatever the kernel numbered them, not what is here.");
+    }
+}
+
 fn cmd_bios(args: &[String]) {
     let lib = library();
     let names: Vec<String> = lib
@@ -4297,6 +4358,7 @@ fn main() {
                 }
             }
         }
+        "pads" => cmd_pads(args),
         "bios" => cmd_bios(args),
         "library" => cmd_library(args),
         "play" => cmd_play(args),

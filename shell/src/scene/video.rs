@@ -39,8 +39,8 @@ impl Scene {
     /// converting the selected video for the CRT.
     pub fn convert_selected(&mut self) {
         match self.screen {
-            Screen::Pair { .. } => {
-                self.remap_request = true;
+            Screen::Pads { sel, scan } => {
+                self.pads_alt(sel, scan);
                 return;
             }
             Screen::NowPlaying => {

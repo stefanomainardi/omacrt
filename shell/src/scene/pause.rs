@@ -67,10 +67,19 @@ impl Scene {
     }
 
     /// Pad and keyboard while the pause menu is up.
-    pub fn pause_input(&mut self, nav: Option<Nav>, fire: bool) -> PauseOutcome {
-        let Some(sel) = self.paused else {
+    ///
+    /// `jump` is the shoulders. The menu is one page, so there is nothing to
+    /// page through: they go to the first and the last row, which is the fast
+    /// way to Resume at the top and Back to launcher at the bottom.
+    pub fn pause_input(&mut self, nav: Option<Nav>, fire: bool, jump: i32) -> PauseOutcome {
+        let Some(mut sel) = self.paused else {
             return PauseOutcome::None;
         };
+        if let Some(to) = pause_jump(sel, jump, PAUSE_ROWS.len()) {
+            sel = to;
+            self.paused = Some(sel);
+            self.pending.push(Sound::Move);
+        }
         let row = PAUSE_ROWS[sel.min(PAUSE_ROWS.len() - 1)].0;
         match nav {
             Some(Nav::Up) if sel > 0 => {
@@ -137,8 +146,8 @@ impl Scene {
                 self.resume_game()
             }
             PauseRow::Quit => {
-                // Escape quits RetroArch (quit_press_twice is off).
-                let _ = omacrt_shell::game::quit();
+                // The launcher started the emulator and stops it itself: see
+                // the main loop's handling of PauseOutcome::Quit.
                 self.paused = None;
                 self.pending.push(Sound::Select);
                 PauseOutcome::Quit
@@ -334,6 +343,16 @@ impl Scene {
     }
 }
 
+/// Where a shoulder press takes the selection, or nothing when it is already
+/// there. Backward goes to the first row, forward to the last.
+fn pause_jump(sel: usize, jump: i32, rows: usize) -> Option<usize> {
+    if jump == 0 || rows == 0 {
+        return None;
+    }
+    let to = if jump < 0 { 0 } else { rows - 1 };
+    (to != sel).then_some(to)
+}
+
 /// The next name in a list after the one held now, wrapping either way. An
 /// empty or unknown name starts from the first.
 fn step<'a>(names: &[&'a str], now: &str, dir: i32) -> &'a str {
@@ -346,7 +365,19 @@ fn step<'a>(names: &[&'a str], now: &str, dir: i32) -> &'a str {
 
 #[cfg(test)]
 mod tests {
-    use super::step;
+    use super::{pause_jump, step};
+
+    #[test]
+    fn the_shoulders_go_to_the_ends_of_the_pause_menu() {
+        assert_eq!(pause_jump(4, -1, 10), Some(0));
+        assert_eq!(pause_jump(4, 1, 10), Some(9));
+        // Already there, and no press at all, both move nothing: a menu that
+        // plays its move sound without moving is a menu that feels broken.
+        assert_eq!(pause_jump(0, -1, 10), None);
+        assert_eq!(pause_jump(9, 1, 10), None);
+        assert_eq!(pause_jump(4, 0, 10), None);
+        assert_eq!(pause_jump(0, 1, 0), None);
+    }
 
     #[test]
     fn a_choice_cycles_both_ways_and_wraps() {

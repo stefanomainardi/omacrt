@@ -69,8 +69,11 @@ enum Screen {
     Profile {
         sel: usize,
     },
-    Pair {
+    /// The four ports, as sockets, and the search for a new pad over the two
+    /// lower ones.
+    Pads {
         sel: usize,
+        scan: bool,
     },
     Settings {
         sel: usize,
@@ -671,8 +674,17 @@ pub struct Scene {
     sleep_set_at: f64,
     rumble_pending: bool,
     wizard: Option<Wizard>,
-    /// A pad that arrived while the wizard could not show: name, guid, id.
-    pending_wizard: Option<(String, String, u32)>,
+    /// The pads the launcher remembers, and which of them are switched on.
+    pad_list: omacrt_shell::pads::Pads,
+    pads_here: Vec<omacrt_shell::pads::Pad>,
+    /// A pad the screen has asked to be shaken, and how long the drawing of
+    /// it shakes for.
+    identify: Option<omacrt_shell::pads::Pad>,
+    identify_until: f64,
+    /// Pads that arrived while the wizard could not show: name, guid, id.
+    /// A queue rather than one slot, so two unknown pads at boot both get
+    /// their turn instead of the second cancelling the first.
+    pending_wizards: Vec<(String, String, u32)>,
     /// The game waiting for an answer on the resume screen, and the screen
     /// the question was asked from.
     pending_entry: Option<(Entry, Box<Screen>)>,
@@ -715,6 +727,7 @@ mod frame;
 mod hifi;
 mod idle;
 mod monitor;
+mod padscreen;
 mod pause;
 mod settings;
 mod video;
@@ -809,7 +822,11 @@ impl Scene {
             sleep_set_at: 0.0,
             rumble_pending: false,
             wizard: None,
-            pending_wizard: None,
+            pad_list: omacrt_shell::pads::Pads::default(),
+            pads_here: Vec::new(),
+            identify: None,
+            identify_until: 0.0,
+            pending_wizards: Vec::new(),
             pending_entry: None,
             remap_request: false,
             music: Music::new(std::env::var("PULSE_SINK").ok()),
@@ -1188,7 +1205,7 @@ impl Scene {
         self.chime_played = true;
         match system {
             Some("profile") => self.screen = Screen::Profile { sel: 0 },
-            Some("pair") => self.screen = Screen::Pair { sel: 0 },
+            Some("pair") => self.screen = Screen::Pads { sel: 0, scan: false },
             Some("settings") => self.screen = Screen::Settings { sel: 0 },
             Some("about") => self.screen = Screen::About { top: 0 },
             Some("saver") => self.screen = Screen::Saver { sel: 0 },
@@ -1278,7 +1295,7 @@ impl Scene {
             "settings" => self.go(Screen::Settings { sel: 0 }),
             "profile" | "picture" => self.go(Screen::Profile { sel: 0 }),
             "style" | "theme" => self.go(Screen::Style { sel: 0 }),
-            "pads" | "pair" => self.go(Screen::Pair { sel: 0 }),
+            "pads" | "pair" => self.go(Screen::Pads { sel: 0, scan: false }),
             "diagnostics" | "diag" => {
                 self.diag = self.gather_diagnostics();
                 self.go(Screen::Diag { top: 0 });
@@ -1399,14 +1416,14 @@ impl Scene {
         self.tick_conversion();
         self.tick_music(now);
         self.yt_poll();
-        if self.pending_wizard.is_some()
+        if !self.pending_wizards.is_empty()
             && self.menu_live
             && self.running.is_none()
             && self.launching.is_none()
             && self.wizard.is_none()
             && self.saver.is_none()
-            && let Some((name, guid, which)) = self.pending_wizard.take()
         {
+            let (name, guid, which) = self.pending_wizards.remove(0);
             self.pad_wizard_start(&name, &guid, which);
         }
         fb.clear(self.theme.bg);
@@ -1442,7 +1459,7 @@ impl Scene {
             return;
         }
         if self.menu_live && !matches!(self.screen, Screen::Menu) {
-            if matches!(self.screen, Screen::Pair { .. }) && self.bt.poll() {
+            if self.bt.poll() {
                 self.pending.push(Sound::Lock);
             }
             self.draw_browser(fb);
@@ -1511,6 +1528,11 @@ impl Scene {
             }
         }
         self.band_y.round() as i32
+    }
+
+    /// The game running now, by the path it was launched from.
+    pub fn running_game_path(&self) -> Option<PathBuf> {
+        self.running_path.as_ref().map(|(_, p)| p.clone())
     }
 
     pub fn take_rumble(&mut self) -> bool {

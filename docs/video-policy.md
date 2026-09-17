@@ -62,6 +62,22 @@ television draws, the whole point of the exercise: 640x480 squeezed into 240
 lines is how text becomes unreadable, and it happens when the mode is left
 alone.
 
+**Each game's own height is remembered.** A console draws what its system
+draws, but an arcade board draws whatever that board drew, and one default
+cannot be right for both Double Dragon at 240 lines and Out Run at 224. The
+height a core reports is written down against that game in
+`lines.tsv`, and the next launch asks the tube for it before the emulator
+opens. Nothing to configure; the file fills itself as games are played.
+
+**A frame the emulator was laid out for is not moved under it.** The emulator
+is told the size of its picture once, when it starts, and cannot be told
+again while it runs. Following a core into a taller frame after that left the
+emulator drawing the old height at the top of the new one: a band of black at
+the bottom and the top of the picture pushed up under the overscan. Where the
+launch named a height, a core that turns out to draw another one is scaled
+into the frame it was given, the log says so, and the height is written down
+so the next launch has neither problem.
+
 ## Interlace
 
 Systems that draw 480 or 576 lines (Dreamcast, Naomi, PlayStation 2, some

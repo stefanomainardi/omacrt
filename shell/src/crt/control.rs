@@ -104,6 +104,15 @@ pub fn send_play(path: &str) -> std::io::Result<()> {
     send(&[line.as_str()])
 }
 
+/// Ask the running launcher to stop the game it started.
+///
+/// The launcher owns the emulator process, so stopping it is its job rather
+/// than a key press: a core that reads the keyboard takes the exit key for
+/// itself.
+pub fn send_quit_game() -> std::io::Result<()> {
+    send(&["quit-game"])
+}
+
 /// Send inputs to the running launcher. Fails when nothing listens.
 pub fn send(inputs: &[&str]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
