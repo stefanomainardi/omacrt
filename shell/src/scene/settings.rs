@@ -9,16 +9,13 @@ impl Scene {
         match settings_page(sel) {
             Page::Profile => self.go(Screen::Profile { sel: 0 }),
             Page::Fit => self.go(Screen::VideoFit { sel: 0 }),
-            Page::Pads => {
-                if Bluetooth::available() {
-                    self.go(Screen::Pair { sel: 0 });
-                    if self.bt.devices.is_empty() {
-                        self.bt.start_scan();
-                    }
-                } else {
-                    self.message = Some(("bluetoothctl not found".into(), self.now + 4.0));
-                }
-            }
+            // The sockets open whether or not there is a Bluetooth adapter:
+            // a pad on a cable is still a pad, and the screen that shows the
+            // ports used to be unreachable without bluetoothctl.
+            Page::Pads => self.go(Screen::Pads {
+                sel: 0,
+                scan: false,
+            }),
             Page::Saver => self.go(Screen::Saver { sel: 0 }),
             Page::Style => {
                 let cur = self.settings.theme.clone();
@@ -617,12 +614,34 @@ impl Scene {
             || self.wizard.is_some()
             || self.saver.is_some()
         {
-            self.pending_wizard = Some((name.to_string(), guid.to_string(), which));
+            // A queue, not a slot: two unknown pads at boot and the second
+            // used to cancel the first, which then never got mapped at all.
+            if !self.pending_wizards.iter().any(|(_, _, w)| *w == which) {
+                self.pending_wizards
+                    .push((name.to_string(), guid.to_string(), which));
+            }
             return;
         }
         self.wizard = Some(Wizard::new(name, guid, which));
         self.pending.push(Sound::Insert);
         self.go(Screen::PadWizard);
+    }
+
+    /// A pad has been unplugged. A wizard waiting on that one is closed, and
+    /// a pad queued to be mapped later is dropped: both sat there refusing
+    /// every button, the first until B was pressed and the second for ever.
+    pub fn pad_wizard_unplugged(&mut self, which: u32) {
+        self.pending_wizards.retain(|(_, _, w)| *w != which);
+        if self.wizard.as_ref().is_some_and(|w| w.which == which) {
+            let name = self.wizard.take().map(|w| w.name).unwrap_or_default();
+            if matches!(self.screen, Screen::PadWizard) {
+                self.screen = Screen::Settings {
+                    sel: settings_row(Page::Pads),
+                };
+            }
+            self.pending.push(Sound::Crunch);
+            self.message = Some((format!("{name} was unplugged"), self.now + 4.0));
+        }
     }
 
     /// A raw joystick input while the wizard runs. Returns the finished

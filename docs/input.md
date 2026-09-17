@@ -120,24 +120,67 @@ autodetection and points at the profiles RetroArch ships in
 mapping without any menu. Leaving a game is `Select` plus `Start` on the pad or
 `Esc` on the keyboard; the RetroArch menu itself is unreachable.
 
+"Back to launcher" in the pause menu is not a key press. The launcher started
+the emulator and stops the process itself, giving it five seconds before
+insisting. A key would go through the core first, and a core that reads the
+keyboard keeps it: ScummVM closes itself on `Esc` and leaves RetroArch up on an
+empty menu with nothing listening.
+
 Per system, `systems.toml` controls two things:
 
 - **`analog_dpad`.** Left stick as d-pad inside the game, `1` by default so
   8 and 16 bit systems play on the stick too. Set to `0` on systems with a real
   analog stick; the defaults do this for PlayStation, Nintendo 64 and
-  Dreamcast.
+  Dreamcast. It is written as `input_playerN_analog_dpad_mode` for all four
+  ports.
 - **`devices`.** RetroArch `--device=PORT:TYPE` pairs to pick the emulated
   controller type (a light gun, a mouse, a six button pad).
 
+## Which pad is P1
+
+Four ports are drawn as sockets, two by two, whether they are filled or not. A
+pad the launcher remembers but which is switched off keeps its socket, greyed:
+the order is a thing you arranged and it does not disappear when a battery
+does.
+
+- **The order decides.** The shoulders move the selected pad one port along.
+  The order is saved in `pads.toml` and nothing else has a say in who is P1.
+- **Ports are handed out when a game starts**, to the pads on that list that
+  are connected then, skipping the ones that are not. A list of two with only
+  the second switched on gives the second port one. Nothing moves while a game
+  is running: RetroArch fixes the ports as it opens, and its command interface
+  is off because a datagram crashes it.
+- **A pad is identified** by the model, from SDL's GUID, plus the individual:
+  a Bluetooth address over the air, a USB serial on a cable, read from sysfs.
+  Two of one model that report neither cannot be told apart, and the screen
+  says so rather than pretending the order between them means anything.
+- **`A` shakes the pad in the selected port**, which is the only way to tell
+  two of a model apart when both are in front of you. `X` maps it button by
+  button, `Y` forgets it, `A` on an empty socket looks for a new one.
+
+`input_playerN_joypad_index` is written into every launch. That is an
+assertion about what RetroArch will do, so the udev lines in its log are read
+back afterwards: if a pad landed somewhere other than where it was sent, the
+launcher says which port it meant and what happened instead.
+
+From the terminal, `omacrt pads` prints the order and what is connected, and
+`omacrt pads devices` prints what the kernel shows in the order RetroArch
+enumerates them, with the index each one gets.
+
 ## Bluetooth pairing
 
-`pair-pad` in the menu drives `bluetoothctl` without leaving the shell:
+`A` on an empty socket drives `bluetoothctl` without leaving the shell:
 
-1. Opening the screen powers the adapter and scans for eight seconds. Put the
-   pad in pairing mode meanwhile.
+1. The adapter is powered and a search runs for eight seconds. Put the pad in
+   pairing mode meanwhile.
 2. Found devices are listed by name; the address tail helps tell twins apart.
-3. Selecting one runs pair, trust and connect. The status line reports the
-   result; a failure usually means the pad left pairing mode, so retry.
+3. Selecting one runs pair, then trust, then connect, in that order, stopping
+   at the first that fails.
+
+Every step has a deadline and every step's output is read, so the screen says
+which step failed and quotes the reason bluetoothctl gave. `B` stops whatever
+is running, `X` looks again with a list already on screen, and a search carries
+on if you leave the screen rather than stalling behind it.
 
 Paired pads reconnect on their own next time they are switched on, and SDL
 picks them up while the shell is running.

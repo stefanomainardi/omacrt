@@ -59,6 +59,14 @@ pub fn reset() -> std::io::Result<()> {
     act("reset")
 }
 
+/// Stop the running game.
+///
+/// Not a key press. RetroArch's exit key goes through the core first, and a
+/// core that reads the keyboard takes it: ScummVM closes itself on Escape and
+/// leaves RetroArch running its own menu with no content, deaf to the next
+/// press. The launcher started the emulator and owns the process, so it is
+/// the one asked to stop it, and it runs the same shutdown a window close
+/// would - the automatic save state is written and the core is unloaded.
 pub fn quit() -> std::io::Result<()> {
-    act("quit")
+    crate::crt::control::send_quit_game()
 }

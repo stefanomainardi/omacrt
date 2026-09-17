@@ -38,6 +38,33 @@ pub enum State {
     Paused,
 }
 
+/// Give a track an artist and an album even when it has neither, so what the
+/// desktop shows is this track rather than the last one.
+///
+/// cliamp publishes MPRIS for the whole machine, and its metadata is
+/// overwritten field by field: a field the new track does not carry keeps the
+/// previous track's value, and an empty string counts as not carrying it.
+/// Measured on cliamp 2.0.1 on 2026-09-17: a radio stream played after a
+/// Spotify album showed the stream's title with the album's artist and album
+/// still beside it on the desktop's media widget.
+///
+/// A station's own name is the truthful answer for a stream, and where there
+/// is no answer at all a blank is sent, which claims nothing. Nothing here
+/// invents a name.
+fn fill_blanks(m: &mut Value, station: &str) {
+    let blank = |v: Option<&Value>| v.and_then(Value::as_str).unwrap_or("").trim().is_empty();
+    if blank(m.get("artist")) {
+        m["artist"] = json!(if station.trim().is_empty() {
+            " "
+        } else {
+            station.trim()
+        });
+    }
+    if blank(m.get("album")) {
+        m["album"] = json!(" ");
+    }
+}
+
 /// A playable thing as cliamp describes it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Track {
@@ -79,7 +106,9 @@ impl Track {
 
     fn to_json(&self) -> Value {
         if self.raw.is_object() {
-            return self.raw.clone();
+            let mut m = self.raw.clone();
+            fill_blanks(&mut m, &self.station);
+            return m;
         }
         let mut m = json!({ "title": self.title, "path": self.path });
         if !self.artist.is_empty() {
@@ -88,6 +117,7 @@ impl Track {
         if !self.album.is_empty() {
             m["album"] = json!(self.album);
         }
+        fill_blanks(&mut m, &self.station);
         if self.stream {
             m["stream"] = json!(true);
         }
@@ -1428,6 +1458,61 @@ fn country_name(code: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_track_with_no_artist_still_says_so_to_the_desktop() {
+        // cliamp overwrites its MPRIS metadata field by field and treats an
+        // empty string as nothing to write, so a field left out keeps the
+        // previous track's value and the desktop shows the wrong artist.
+        let station = Track {
+            title: "night shift".into(),
+            station: "Lofi Radio".into(),
+            path: "http://radio.example.invalid/lofi/stream".into(),
+            stream: true,
+            ..Default::default()
+        };
+        let j = station.to_json();
+        assert_eq!(j["artist"], "Lofi Radio", "the station is the artist");
+        assert_eq!(j["album"], " ", "nothing to say, and it says nothing");
+
+        // A track that does have them keeps them.
+        let song = Track {
+            title: "Miele".into(),
+            artist: "Franco Micalizzi".into(),
+            album: "Miele".into(),
+            path: "spotify:track:1".into(),
+            ..Default::default()
+        };
+        let j = song.to_json();
+        assert_eq!(j["artist"], "Franco Micalizzi");
+        assert_eq!(j["album"], "Miele");
+
+        // Nothing at all: blanks, never a name invented for it.
+        let bare = Track {
+            title: "a stream".into(),
+            path: "http://example.invalid/s".into(),
+            stream: true,
+            ..Default::default()
+        };
+        let j = bare.to_json();
+        assert_eq!(j["artist"], " ");
+        assert_eq!(j["album"], " ");
+    }
+
+    #[test]
+    fn a_provider_track_is_handed_back_whole_and_filled_in() {
+        // A provider's own object goes back untouched so the track keeps its
+        // identity, but a missing artist would still leave the last one up.
+        let t = Track {
+            station: "Some Station".into(),
+            raw: serde_json::json!({ "path": "x", "title": "t", "provider_meta": { "k": 1 } }),
+            ..Default::default()
+        };
+        let j = t.to_json();
+        assert_eq!(j["provider_meta"]["k"], 1, "the provider's own fields stay");
+        assert_eq!(j["artist"], "Some Station");
+        assert_eq!(j["album"], " ");
+    }
     use super::*;
 
     #[test]

@@ -961,6 +961,30 @@ impl Library {
             } else {
                 kv("run_ahead_enabled", "false");
             }
+            // Which pad plays in which port, from the order in pads.toml,
+            // skipping the pads that are not connected right now. Written
+            // nowhere before this, so the port a pad landed in was whatever
+            // RetroArch's own enumeration produced.
+            for line in crate::pads::port_keys().lines() {
+                if let Some((k, v)) = line.split_once(" = ") {
+                    kv(k, v.trim_matches('"'));
+                }
+            }
+            // Four players. It lived only in the base config, which is
+            // written once and never rewritten, so an installation from
+            // before it was added never got it.
+            kv("input_max_users", "4");
+            // The left stick as a d-pad, per port. `analog_dpad` has been
+            // read from systems.toml and written up in docs/input.md since it
+            // was added, and produced no key at all: on an 8 or 16 bit system
+            // the stick did nothing in the game.
+            let mode = system.analog_dpad.unwrap_or(1).min(2);
+            for port in 1..=4 {
+                kv(
+                    &format!("input_player{port}_analog_dpad_mode"),
+                    &mode.to_string(),
+                );
+            }
             // No network command interface: processing a datagram crashes
             // RetroArch 1.22 (SIGSEGV in the input poll). The launcher
             // presses hotkeys through the tube's compositor instead.

@@ -37,7 +37,7 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 struct Args {
     w: usize,
@@ -483,10 +483,23 @@ fn run(args: &Args) -> Result<(), String> {
     // Pads without a mapping stay open as bare joysticks so the wizard can
     // read their buttons.
     let mut raw_joys: Vec<sdl2::joystick::Joystick> = Vec::new();
+    // Every pad the launcher has met, in the order that decides the ports,
+    // and the ones switched on right now with the controller each belongs to.
+    let mut pads = omacrt_shell::pads::Pads::load();
+    let mut here: Vec<(u32, omacrt_shell::pads::Pad)> = Vec::new();
+    let mut pads_dirty = true;
     for i in 0..gcs.num_joysticks()? {
         if gcs.is_game_controller(i) {
             if let Ok(c) = gcs.open(i) {
                 teach_retroarch(&gcs, &js, i, &c.name());
+                // A pad already plugged in when the launcher starts is opened
+                // here rather than from an event, so it has to be written
+                // down here too: without this the pads screen showed four
+                // empty sockets with a pad in hand.
+                here.push((
+                    c.instance_id(),
+                    remember_pad(&mut pads, &js, &c, i, &controllers),
+                ));
                 controllers.push(c);
             }
         } else if let Ok(j) = js.open(i) {
@@ -547,6 +560,17 @@ fn run(args: &Args) -> Result<(), String> {
         eprintln!("stopped a video left over from an earlier launcher");
     }
     let mut child: Option<std::process::Child> = None;
+    // When the game was asked to stop, so that one that does not go can be
+    // made to.
+    let mut stop_asked: Option<Instant> = None;
+    // Which pad each port was meant for, and whether RetroArch has been asked
+    // about it yet. Written before the emulator opens, read back from its log
+    // once it has said what it did.
+    // The game running now, so the height its core reports can be written
+    // down against it.
+    let mut playing_path: Option<PathBuf> = None;
+    let mut port_plan: Vec<omacrt_shell::pads::Device> = Vec::new();
+    let mut ports_checked = false;
     let mut lines_changed = false;
     // The tube follows the core's own picture: the emulator's log says how
     // many lines it is drawing, and a game that changes it (a PlayStation
@@ -570,6 +594,10 @@ fn run(args: &Args) -> Result<(), String> {
     let mut index_reload: Option<std::sync::mpsc::Receiver<library::Library>> = None;
     let mut follow_at = 0.0f64;
     let mut following: Option<u32> = None;
+    // Whether this game's frame may still be moved. The log is read either
+    // way, because a height the launcher does not act on now is the height it
+    // asks for before the emulator opens next time.
+    let mut may_move_frame = true;
     // The television standard the tube is in, and whether this game has
     // already moved it. A European release runs at 50 and an American one at
     // 60, and putting the tube in the wrong one costs the picture: the frame
@@ -615,6 +643,9 @@ fn run(args: &Args) -> Result<(), String> {
             match c.try_wait() {
                 Ok(Some(status)) => {
                     child = None;
+                    stop_asked = None;
+                    port_plan.clear();
+                    playing_path = None;
                     // A game that ends badly is usually a game that ended
                     // badly, but not always: when the display process goes
                     // the Wayland connection goes with it and every client on
@@ -684,6 +715,20 @@ fn run(args: &Args) -> Result<(), String> {
                 }
                 Ok(None) => {
                     crt_mode_reap();
+                    // Asked to stop and still here. RetroArch's own shutdown
+                    // is a second or two; past the grace it is wedged, and a
+                    // launcher that waits for it is a television showing a
+                    // dead game.
+                    if let Some(at) = stop_asked
+                        && at.elapsed() >= STOP_GRACE
+                    {
+                        stop_asked = None;
+                        eprintln!(
+                            "the game did not stop in {} s: killing it",
+                            STOP_GRACE.as_secs()
+                        );
+                        let _ = c.kill();
+                    }
                     // While it runs: read the tail of its log and follow the
                     // resolution the core reports.
                     // Not while the pause menu is up: the tube is showing the
@@ -691,6 +736,24 @@ fn run(args: &Args) -> Result<(), String> {
                     if now() >= follow_at && !scene.is_paused() {
                         follow_at = now() + 0.75;
                         let log = tail_of_game_log();
+                        if !ports_checked && !port_plan.is_empty() {
+                            let got = omacrt_shell::pads::ports_in_log(&log);
+                            if !got.is_empty() {
+                                ports_checked = true;
+                                match omacrt_shell::pads::disagreement(&port_plan, &log) {
+                                    Some(what) => eprintln!("pad ports: {what}"),
+                                    None => eprintln!(
+                                        "pad ports: {} as asked for",
+                                        port_plan
+                                            .iter()
+                                            .enumerate()
+                                            .map(|(i, d)| format!("P{}={}", i + 1, d.name))
+                                            .collect::<Vec<_>>()
+                                            .join(" ")
+                                    ),
+                                }
+                            }
+                        }
                         // The standard before the line count, and once per
                         // game: they go to the tube in one command, and a
                         // core that reports its rate again is not asking for
@@ -781,6 +844,13 @@ fn run(args: &Args) -> Result<(), String> {
                             && following != Some(h)
                         {
                             following = Some(h);
+                            // Write it down against this game, so the next
+                            // launch asks the tube for this frame before the
+                            // emulator opens instead of moving it underneath
+                            // a picture already laid out for another one.
+                            if let Some(p) = &playing_path {
+                                omacrt_shell::shapes::remember(p, h);
+                            }
                             // "following" was a claim rather than a report,
                             // and for a core that says more lines than the
                             // standard has it was false: `omacrt mode
@@ -801,6 +871,12 @@ fn run(args: &Args) -> Result<(), String> {
                             if want == have {
                                 eprintln!(
                                     "the core is drawing {h} lines, which is the frame the tube has"
+                                );
+                            } else if !may_move_frame {
+                                eprintln!(
+                                    "the core is drawing {h} lines in a {have} line frame: the \
+                                     emulator was laid out for this one, so it is scaled into it. \
+                                     The next launch of this game asks for {h}."
                                 );
                             } else {
                                 eprintln!(
@@ -851,6 +927,7 @@ fn run(args: &Args) -> Result<(), String> {
                 Err(e) => {
                     eprintln!("wait failed: {e}");
                     child = None;
+                    stop_asked = None;
                     scene.game_finished(false);
                 }
             }
@@ -944,9 +1021,23 @@ fn run(args: &Args) -> Result<(), String> {
                 },
                 Event::MouseButtonDown { .. } => inp.start = true,
                 Event::ControllerDeviceAdded { which, .. } => {
-                    if let Ok(c) = gcs.open(which) {
+                    // The guard the path after a mapping already had. Without
+                    // it one pad could be opened twice, and then it was two
+                    // rows on the screen and two of every rumble.
+                    if let Ok(c) = gcs.open(which)
+                        && !controllers
+                            .iter()
+                            .any(|x: &sdl2::controller::GameController| {
+                                x.instance_id() == c.instance_id()
+                            })
+                    {
                         scene.set_pad(Some(&c.name()));
                         teach_retroarch(&gcs, &js, which, &c.name());
+                        here.push((
+                            c.instance_id(),
+                            remember_pad(&mut pads, &js, &c, which, &controllers),
+                        ));
+                        pads_dirty = true;
                         controllers.push(c);
                     }
                 }
@@ -960,6 +1051,9 @@ fn run(args: &Args) -> Result<(), String> {
                 }
                 Event::JoyDeviceRemoved { which, .. } => {
                     raw_joys.retain(|j| j.instance_id() != which);
+                    // A mapping wizard waiting on a pad that has gone sits
+                    // there refusing every button until B is pressed.
+                    scene.pad_wizard_unplugged(which);
                 }
                 Event::JoyButtonDown {
                     which, button_idx, ..
@@ -984,10 +1078,16 @@ fn run(args: &Args) -> Result<(), String> {
                 }
                 Event::ControllerDeviceRemoved { which, .. } => {
                     controllers.retain(|c| c.instance_id() != which);
+                    here.retain(|(id, _)| *id != which);
+                    pads_dirty = true;
                     match controllers.last() {
                         Some(c) => scene.set_pad(Some(&c.name())),
                         None => scene.set_pad(None),
                     }
+                    // A pad unplugged with its stick held left the direction
+                    // held for ever, and the menu ran on by itself with
+                    // nothing connected to stop it.
+                    stick.release();
                 }
                 Event::ControllerAxisMotion { axis, value, .. } => {
                     if axis == sdl2::controller::Axis::TriggerLeft {
@@ -1079,6 +1179,11 @@ fn run(args: &Args) -> Result<(), String> {
                             {
                                 raw_joys.retain(|j| j.instance_id() != c.instance_id());
                                 scene.set_pad(Some(&c.name()));
+                                here.push((
+                                    c.instance_id(),
+                                    remember_pad(&mut pads, &js, &c, i, &controllers),
+                                ));
+                                pads_dirty = true;
                                 controllers.push(c);
                             }
                         }
@@ -1088,10 +1193,35 @@ fn run(args: &Args) -> Result<(), String> {
             }
             inputs.push(inp);
         }
+        if pads_dirty || scene.pad_list().order != pads.order {
+            pads_dirty = false;
+            // The screen may have reordered or forgotten one, so its copy is
+            // the one that counts.
+            if scene.pad_list().order != pads.order && !scene.pad_list().order.is_empty() {
+                pads = scene.pad_list().clone();
+            }
+            scene.set_pad_list(pads.clone(), here.iter().map(|(_, p)| p.clone()).collect());
+        }
+        // bluetoothctl is polled wherever the launcher is: a search left
+        // running behind a screen that has gone used to sit there for ever
+        // with nothing to advance it.
+        if scene.bt_poll() {
+            pads_dirty = true;
+        }
         if scene.take_rumble()
             && let Some(c) = controllers.last_mut()
         {
             let _ = c.set_rumble(0, 0x9000, 60);
+        }
+        // Identify: the one pad the screen pointed at shakes, not the last
+        // one plugged in, which is the only way to tell two of a model apart.
+        if let Some(want) = scene.take_identify()
+            && let Some((id, _)) = here.iter().find(|(_, p)| p.is(&want))
+        {
+            let id = *id;
+            if let Some(c) = controllers.iter_mut().find(|c| c.instance_id() == id) {
+                let _ = c.set_rumble(0xc000, 0xc000, 900);
+            }
         }
         if scene.take_remap_request() {
             // Map the last pad again: its raw joystick answers the wizard.
@@ -1136,6 +1266,12 @@ fn run(args: &Args) -> Result<(), String> {
             if inp.quit {
                 break 'main;
             }
+            if inp.quit_game {
+                if !stop_game(&child, &mut stop_asked) {
+                    eprintln!("quit-game: no game is running");
+                }
+                continue;
+            }
             let is_input = inp.any();
             let Input {
                 start,
@@ -1161,17 +1297,17 @@ fn run(args: &Args) -> Result<(), String> {
 
             if scene.is_running() {
                 if inp.menu {
-                    after_pause(scene.toggle_pause(), following, playing_hz, fb.h as u32);
+                    let out = scene.toggle_pause();
+                    after_pause(out, following, playing_hz, fb.h as u32);
                     continue;
                 }
                 if scene.is_paused() {
                     if is_input {
-                        after_pause(
-                            scene.pause_input(nav, fire),
-                            following,
-                            playing_hz,
-                            fb.h as u32,
-                        );
+                        let out = scene.pause_input(nav, fire, inp.jump);
+                        if out == PauseOutcome::Quit {
+                            stop_game(&child, &mut stop_asked);
+                        }
+                        after_pause(out, following, playing_hz, fb.h as u32);
                     }
                     continue;
                 }
@@ -1276,11 +1412,14 @@ fn run(args: &Args) -> Result<(), String> {
                 let _ = omacrt_shell::crt::display::send("monitor off");
             }
             // A pinned frame is not followed: it was chosen for the session.
-            follow_at = if lines.map(|g| g.follow).unwrap_or(true) {
-                now() + 2.0
-            } else {
-                f64::MAX
-            };
+            follow_at = now() + 2.0;
+            // A launch that named a height laid the emulator out for it, and
+            // the emulator cannot be laid out again while it runs. Moving the
+            // tube under it then is what leaves a band of black at the bottom
+            // and the top of the picture up under the overscan; scaling into
+            // the frame it was given is the smaller wrong, and the height is
+            // written down so the next launch has neither.
+            may_move_frame = lines.map(|g| g.follow && g.lines.is_none()).unwrap_or(true);
             following = lines.and_then(|g| g.lines);
             // What core this is, and in which standard, so the rate it
             // reports can be remembered against the pair and applied before
@@ -1331,6 +1470,11 @@ fn run(args: &Args) -> Result<(), String> {
             if args.fullscreen {
                 crt_focus();
             }
+            // What the launch config just asked for, kept so the log can be
+            // held against it.
+            port_plan = omacrt_shell::pads::plan();
+            ports_checked = false;
+            playing_path = scene.running_game_path();
             match cmd.spawn() {
                 Ok(c) => {
                     eprintln!("running {title}: {cmd:?}");
@@ -1372,11 +1516,25 @@ fn run(args: &Args) -> Result<(), String> {
                 }
             }
         }
+        // A direction held down keeps moving, and speeds up the longer it is
+        // held. The pause menu is drawn over a running game, so gating this
+        // on `is_running` alone left that one menu with no repeat at all.
         if let Some(n) = stick.poll(now())
-            && !scene.is_running()
             && !scene.touch(now())
         {
-            scene.navigate(n);
+            if scene.is_paused() {
+                // Up and down only. Left and right cycle the picture and the
+                // shader, and each step of those writes systems.toml.
+                if matches!(n, Nav::Up | Nav::Down) {
+                    let out = scene.pause_input(Some(n), false, 0);
+                    if out == PauseOutcome::Quit {
+                        stop_game(&child, &mut stop_asked);
+                    }
+                    after_pause(out, following, playing_hz, fb.h as u32);
+                }
+            } else if !scene.is_running() {
+                scene.navigate(n);
+            }
         }
 
         let t = now();
@@ -1419,6 +1577,67 @@ fn run(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// How long the game is given to stop on its own before it is killed.
+///
+/// RetroArch's shutdown writes the automatic save state and unloads the core,
+/// which is under a second on this machine. Five seconds is room for a slow
+/// disk, not for a wedged process.
+const STOP_GRACE: Duration = Duration::from_secs(5);
+
+/// Write down a pad the launcher has just met.
+///
+/// The model comes from SDL's GUID and the individual from sysfs, matched by
+/// the vendor and product SDL reports. A pad already on the list keeps its
+/// place, so plugging one in never rearranges the ports of the others.
+fn remember_pad(
+    pads: &mut omacrt_shell::pads::Pads,
+    js: &sdl2::JoystickSubsystem,
+    c: &sdl2::controller::GameController,
+    which: u32,
+    open: &[sdl2::controller::GameController],
+) -> omacrt_shell::pads::Pad {
+    let devices = omacrt_shell::pads::devices();
+    let vendor = c.vendor_id().unwrap_or(0);
+    let product = c.product_id().unwrap_or(0);
+    // Two of one model are told apart by the order the kernel numbered them,
+    // which is the order SDL opens them in.
+    let nth = open
+        .iter()
+        .filter(|o| o.vendor_id().unwrap_or(0) == vendor && o.product_id().unwrap_or(0) == product)
+        .count();
+    let unit = omacrt_shell::pads::unit_for(&devices, vendor, product, nth);
+    let guid = js
+        .device_guid(which)
+        .map(|g| g.string())
+        .unwrap_or_default();
+    let pad = omacrt_shell::pads::Pad::new(&guid, &c.name(), &unit);
+    if pads.seen(&pad)
+        && let Err(e) = pads.save()
+    {
+        eprintln!("cannot write the pad list: {e}");
+    }
+    pad
+}
+
+/// Ask the running game to stop, the way closing its window would.
+///
+/// SIGTERM rather than the exit key: RetroArch runs the same shutdown for
+/// both, but a key goes through the core first and a core that reads the
+/// keyboard keeps it. ScummVM is one - Escape closes ScummVM, RetroArch stays
+/// up on an empty menu, and the next press reaches nobody.
+fn stop_game(child: &Option<std::process::Child>, asked: &mut Option<Instant>) -> bool {
+    let Some(c) = child else {
+        return false;
+    };
+    // Already asked: leave the first deadline standing rather than pushing it
+    // out every time the button is pressed.
+    if asked.is_none() {
+        *asked = Some(Instant::now());
+    }
+    unsafe { libc::kill(c.id() as i32, libc::SIGTERM) };
+    true
+}
+
 /// One user input, from a key, a pad button or the control pipe.
 #[derive(Default, Clone)]
 struct Input {
@@ -1431,6 +1650,8 @@ struct Input {
     /// In-game menu of the running emulator.
     menu: bool,
     quit: bool,
+    /// Stop the running game and come back to the launcher.
+    quit_game: bool,
     /// Characters typed into the search bar.
     text: Option<String>,
     backspace: bool,
@@ -1466,6 +1687,7 @@ impl Input {
             || self.watch.is_some()
             || self.screen.is_some()
             || self.play.is_some()
+            || self.quit_game
     }
 }
 
@@ -1495,6 +1717,10 @@ fn control_input(line: &str) -> Option<Input> {
             }
         };
         inp.watch = Some(target);
+        return Some(inp);
+    }
+    if line.trim() == "quit-game" {
+        inp.quit_game = true;
         return Some(inp);
     }
     if let Some(name) = line.strip_prefix("screen ") {

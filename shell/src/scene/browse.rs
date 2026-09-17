@@ -6,6 +6,36 @@
 
 use super::*;
 
+/// Where the top of the page goes when the cursor lands on `target`.
+///
+/// Free of the Scene so the arithmetic can be tested without one: the screens
+/// differ only in how many rows they hold and how many of them show.
+fn page_top(top: usize, target: usize, rows: usize, page: usize) -> usize {
+    if page == 0 {
+        return 0;
+    }
+    let mut t = top;
+    if target < t {
+        t = target;
+    } else if target >= t + page {
+        t = target + 1 - page;
+    }
+    // A list shorter than a page has nothing to scroll, and the clamp must
+    // not push the cursor off the top of its own page.
+    t = t.min(rows.saturating_sub(page));
+    t.min(target)
+}
+
+/// One shoulder press on a list with no letters: a page, less one row kept
+/// for the eye, in the direction asked for.
+fn page_step(sel: usize, dir: i32, rows: usize, page: usize) -> usize {
+    if rows == 0 {
+        return 0;
+    }
+    let step = page.max(2) as i32 - 1;
+    (sel as i32 + dir.signum() * step).clamp(0, rows as i32 - 1) as usize
+}
+
 impl Scene {
     // -- game browser (systems, then games; recent and favorites on top) -----
 
@@ -299,37 +329,97 @@ impl Scene {
         }
     }
 
+    /// A screen that scrolls a list: how many rows it holds, and how many of
+    /// them show at once.
+    ///
+    /// One place knows which screens are lists, so the shoulders and the
+    /// first and last keys reach all of them. Naming them one at a time is
+    /// how the shoulders came to work on the games and on nothing else.
+    pub(super) fn list_shape(&self) -> Option<(usize, usize)> {
+        Some(match self.screen {
+            Screen::Systems { .. } => (
+                Self::VIRTUAL
+                    + self
+                        .library
+                        .systems
+                        .iter()
+                        .filter(|s| !s.is_video())
+                        .count(),
+                SYS_PAGE,
+            ),
+            Screen::Collections { .. } => (self.library.collections().len(), SYS_PAGE),
+            Screen::Games { .. } => (self.games.len(), self.page_rows()),
+            Screen::Music { .. } => (self.music_rows().len(), Self::ROWS_PER_PAGE),
+            Screen::MusicList { .. } => (self.music_visible().len(), self.page_rows()),
+            _ => return None,
+        })
+    }
+
+    fn list_cursor(&mut self) -> Option<(&mut usize, &mut usize)> {
+        match &mut self.screen {
+            Screen::Systems { sel, top }
+            | Screen::Collections { sel, top }
+            | Screen::Games { sel, top, .. }
+            | Screen::Music { sel, top }
+            | Screen::MusicList { sel, top } => Some((sel, top)),
+            _ => None,
+        }
+    }
+
+    /// Put a list's cursor on `target` and bring it into view.
+    pub(super) fn list_go(&mut self, target: usize) {
+        let Some((rows, page)) = self.list_shape() else {
+            return;
+        };
+        if rows == 0 || page == 0 {
+            return;
+        }
+        let target = target.min(rows - 1);
+        let moved = match self.list_cursor() {
+            Some((sel, top)) if *sel != target => {
+                *sel = target;
+                *top = page_top(*top, target, rows, page);
+                true
+            }
+            _ => false,
+        };
+        if moved {
+            self.pending.push(Sound::Move);
+        }
+    }
+
     /// Jump to the first title of the next (or previous) initial letter.
     pub fn jump_letter(&mut self, dir: i32) {
+        // On the pads screen the shoulders move a pad between ports, which is
+        // the whole point of it: the order is the player's.
+        if let Screen::Pads { sel, scan } = self.screen {
+            if !scan {
+                let mut s = sel;
+                self.pads_shift(&mut s, dir);
+                if let Screen::Pads { sel, .. } = &mut self.screen {
+                    *sel = s;
+                }
+            }
+            return;
+        }
         if matches!(self.screen, Screen::NowPlaying) {
             self.music_view_step(dir);
             return;
         }
-        // The list of consoles has no letters worth jumping between, so the
-        // shoulders move it a page at a time, which is what they are for on
-        // every other screen.
-        if let Screen::Systems { sel, top } = &mut self.screen {
-            let rows = Self::VIRTUAL
-                + self
-                    .library
-                    .systems
-                    .iter()
-                    .filter(|s| !s.is_video())
-                    .count();
+        // A list of games has letters worth jumping between. Every other list
+        // has not, so the shoulders move it a page at a time.
+        if !matches!(self.screen, Screen::Games { .. }) {
+            let Some((rows, page)) = self.list_shape() else {
+                return;
+            };
             if rows == 0 {
                 return;
             }
-            let step = SYS_PAGE as i32 - 1;
-            let next = (*sel as i32 + dir.signum() * step).clamp(0, rows as i32 - 1) as usize;
-            if next == *sel {
-                return;
-            }
-            *sel = next;
-            *top = next.saturating_sub(SYS_PAGE - 1).min(next);
-            if next < *top {
-                *top = next;
-            }
-            self.pending.push(Sound::Move);
+            let (sel, _) = match self.list_cursor() {
+                Some((sel, top)) => (*sel, *top),
+                None => return,
+            };
+            self.list_go(page_step(sel, dir, rows, page));
             return;
         }
         let Screen::Games { sel, .. } = self.screen else {
@@ -372,11 +462,13 @@ impl Scene {
 
     /// First or last row of the list.
     pub fn jump_end(&mut self, last: bool) {
-        if !matches!(self.screen, Screen::Games { .. }) || self.games.is_empty() {
+        let Some((rows, _)) = self.list_shape() else {
+            return;
+        };
+        if rows == 0 {
             return;
         }
-        let target = if last { self.games.len() - 1 } else { 0 };
-        self.select_row(target);
+        self.list_go(if last { rows - 1 } else { 0 });
     }
 
     /// Move the cursor to `target` and show it at the top of the page, so a
@@ -653,23 +745,14 @@ impl Scene {
                     _ => {}
                 }
             }
-            Screen::Pair { sel } => match nav {
-                Nav::Up if *sel > 0 => {
-                    *sel -= 1;
-                    moved = true;
+            Screen::Pads { sel, scan } => {
+                let (mut s, mut sc) = (*sel, *scan);
+                moved = self.pads_nav(&mut s, &mut sc, nav);
+                if let Screen::Pads { sel, scan } = &mut self.screen {
+                    *sel = s;
+                    *scan = sc;
                 }
-                Nav::Down if *sel + 1 < self.bt.devices.len() => {
-                    *sel += 1;
-                    moved = true;
-                }
-                Nav::Back => {
-                    self.screen = Screen::Settings {
-                        sel: settings_row(Page::Pads),
-                    };
-                    moved = true;
-                }
-                _ => {}
-            },
+            }
             Screen::Videos { sel } => match nav {
                 Nav::Up if *sel > 0 => {
                     *sel -= 1;
@@ -1311,13 +1394,8 @@ impl Scene {
                 }
                 _ => Action::None,
             },
-            Screen::Pair { sel } => {
-                self.pending.push(Sound::Select);
-                if self.bt.devices.is_empty() {
-                    self.bt.start_scan();
-                } else {
-                    self.bt.pair(sel);
-                }
+            Screen::Pads { sel, scan } => {
+                self.pads_fire(sel, scan);
                 Action::None
             }
             Screen::Settings { sel } => self.activate_settings(sel),
@@ -1656,7 +1734,14 @@ impl Scene {
                         crate::library::VideoPolicy::Fixed(_, ph) => Some(ph),
                         _ => None,
                     };
-                    if let Some(l) = system.lines.or(pinned) {
+                    // What this game drew last time beats the system's own
+                    // default: `mame` defaults to 224 and holds games at 240,
+                    // and a default that is wrong leaves the emulator laid
+                    // out for a frame the tube is not in.
+                    let want = omacrt_shell::shapes::known(&entry.game.path)
+                        .or(system.lines)
+                        .or(pinned);
+                    if let Some(l) = want {
                         // Never taller than the frame the tube is being
                         // given. A core is free to report any height it
                         // likes, and a GameCube reports 528; the mode is
@@ -1714,7 +1799,9 @@ impl Scene {
             let l = if system.aspect == "frame" {
                 None
             } else {
-                system.lines.or(pinned)
+                omacrt_shell::shapes::known(&entry.game.path)
+                    .or(system.lines)
+                    .or(pinned)
             };
             // The standard the file name claims, so the tube is already in it
             // when the emulator opens. The core says the same thing a second
@@ -1832,6 +1919,12 @@ impl Scene {
 
     /// Toggle the selected game in the favorites list.
     pub fn toggle_favorite(&mut self) {
+        if let Screen::Pads { sel, scan } = self.screen {
+            if !scan {
+                self.pads_forget(sel);
+            }
+            return;
+        }
         if matches!(self.screen, Screen::NowPlaying) {
             self.sleep_cycle();
             return;
@@ -2490,25 +2583,9 @@ impl Scene {
                     1,
                 );
             }
-            Screen::Pair { sel } => {
-                let y0 = self.draw_header(fb, "Pads");
-                let devices = self.bt.devices.clone();
-                if devices.is_empty() {
-                    fb.text(left, y0, "no devices yet", self.theme.dim, 1);
-                }
-                for (i, (mac, name)) in devices.iter().enumerate().take(Self::ROWS_PER_PAGE) {
-                    let y = y0 + i as i32 * row_h;
-                    self.draw_row(fb, y, name, &mac[9..], i == sel, self.theme.paper);
-                }
-                let dots = ((self.now * 2.0) as usize) % 4;
-                let status = if self.bt.busy {
-                    format!("{}{}", self.bt.status, ".".repeat(dots))
-                } else {
-                    self.bt.status.clone()
-                };
-                fb.text(left, h - 28, &cut(&status, max_cols), self.theme.cyan, 1);
-                let hint = self.hint(&[("A", "pair/scan"), ("X", "remap pad"), ("B", "back")]);
-                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+            Screen::Pads { sel, scan } => {
+                self.draw_pads(fb, sel, scan);
+                return;
             }
             Screen::Settings { sel } => {
                 self.draw_settings_menu(fb, sel);
@@ -2609,7 +2686,7 @@ impl Scene {
             Screen::Menu => {}
         }
         if let Some((msg, _)) = &self.message
-            && !matches!(self.screen, Screen::Pair { .. })
+            && !matches!(self.screen, Screen::Pads { .. })
         {
             fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.cyan, 1);
         }
@@ -2948,5 +3025,41 @@ impl Scene {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod list_tests {
+    use super::{page_step, page_top};
+
+    #[test]
+    fn a_jump_brings_its_row_onto_the_page() {
+        // Down the list: the row lands on the last line of the page.
+        assert_eq!(page_top(0, 12, 40, 13), 0);
+        assert_eq!(page_top(0, 13, 40, 13), 1);
+        // Back up: the row lands on the first line.
+        assert_eq!(page_top(20, 5, 40, 13), 5);
+        // Already in view: the page does not move under the cursor.
+        assert_eq!(page_top(10, 15, 40, 13), 10);
+    }
+
+    #[test]
+    fn the_end_of_a_list_does_not_scroll_past_itself() {
+        // The last page is full: 40 rows, 13 a page, the top stops at 27.
+        assert_eq!(page_top(0, 39, 40, 13), 27);
+        // A list shorter than a page never scrolls at all.
+        assert_eq!(page_top(0, 3, 4, 13), 0);
+        assert_eq!(page_top(2, 0, 4, 13), 0);
+    }
+
+    #[test]
+    fn a_shoulder_moves_a_page_and_stops_at_the_ends() {
+        assert_eq!(page_step(0, 1, 40, 13), 12);
+        assert_eq!(page_step(12, 1, 40, 13), 24);
+        assert_eq!(page_step(35, 1, 40, 13), 39, "stops at the last row");
+        assert_eq!(page_step(5, -1, 40, 13), 0, "stops at the first");
+        // A list that fits on one page still answers, and goes to its ends.
+        assert_eq!(page_step(0, 1, 3, 13), 2);
+        assert_eq!(page_step(0, 1, 0, 13), 0, "nothing to move in");
     }
 }

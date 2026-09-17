@@ -7,6 +7,84 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-17
+
+### Added
+
+- **The pads screen shows four ports as sockets.** Two by two, drawn whether
+  they are filled or not, with the pad in each one drawn as a pad. A pad the
+  launcher remembers but which is switched off keeps its socket in grey. The
+  shoulders move a pad between ports, A shakes the pad in the selected port so
+  two of one model can be told apart, A on an empty socket looks for a new pad,
+  Y forgets one.
+- **`pads.toml` remembers which pad is which, and the order decides the
+  ports.** A pad is identified by its SDL GUID and by a unit id read from
+  sysfs: the Bluetooth address over the air, the USB serial on a cable. Ports
+  1..4 are handed out when a game starts, to the pads on the list that are
+  connected then, skipping the ones that are not.
+- **A pad's name is cut down to its model.** A device calls itself "8BitDo
+  Ultimate 2C Wireless Controller", and thirty eight characters into a socket
+  twelve wide is "8BitDo Ultim", which names nothing. The words that say only
+  that it is a pad go first, then the maker.
+- **`omacrt pads` and `omacrt pads devices`.** The remembered order with what
+  is connected, and what the kernel shows in the order RetroArch enumerates.
+- **The port each pad plays in is asserted and then verified.**
+  `input_playerN_joypad_index` is written into every launch, and the udev lines
+  in RetroArch's own log are read back afterwards. A launcher that got it wrong
+  says which port it meant and what RetroArch did instead.
+
+### Changed
+
+- **Leaving a game no longer presses a key.** The launcher owns the emulator
+  process and stops it directly, escalating after five seconds. The exit key
+  went through the core first, and a core that reads the keyboard took it:
+  ScummVM closed itself and left RetroArch up on an empty menu, deaf to the
+  next press.
+- **Bluetooth pairing says what happened.** Every step has a deadline, every
+  step's output is read, and the reason a step failed is quoted on screen. B
+  stops a search, A looks again with a list already up, and the search carries
+  on when another screen is drawn instead of stalling behind it.
+- **A game's own line count is remembered, and the frame stops moving under
+  it.** The launcher asked the tube for the system's default height, laid the
+  emulator out for it, then followed the core into a different frame a dozen
+  seconds later while the emulator went on drawing the old one: a band of
+  black at the bottom and the top of the picture pushed up under the overscan.
+  It bit every arcade game whose board is not 224 lines. The height each game
+  reports is now written down against that game and asked for before the
+  emulator opens, and a frame the emulator was laid out for is not moved under
+  it: the picture is scaled into it for that one session instead.
+- **What is playing reaches the desktop's media widget.** cliamp publishes
+  MPRIS for the machine and overwrites its metadata field by field, treating
+  an empty one as nothing to write, so a radio stream played after an album
+  kept that album's artist and album name beside it. Every track the launcher
+  plays now carries both: a station's own name where there is one, a blank
+  where there is nothing, never a name invented for it.
+- **The shoulders and the first and last keys work on every list**, not only
+  on the games: consoles, collections, the music sources and a music list.
+- **The pause menu scrolls like every other menu.** A direction held down
+  repeats and speeds up, and the shoulders go to its first and last row.
+
+### Fixed
+
+- **A pad already plugged in when the launcher started was never written
+  down.** Those are opened by an enumeration at startup rather than by an
+  event, so the pads screen showed four empty sockets with a pad in hand. The
+  path after a mapping had the same gap.
+- **A pad unplugged with its stick held left the menu scrolling by itself.**
+- **`analog_dpad` produced no key.** It has been read from `systems.toml` and
+  documented since it was added, and wrote nothing: on an 8 or 16 bit system
+  the left stick did nothing inside the game.
+- **`input_max_users` reached only new installations.** It lived in the base
+  config, which is written once and never rewritten.
+- **Two unknown pads at boot: the second cancelled the first**, which was then
+  never offered the mapping wizard at all.
+- **A mapping wizard waiting on a pad that had been unplugged** sat there
+  refusing every button until B was pressed.
+- **One pad could be opened twice**, becoming two rows and two of every rumble.
+- **`bluetoothctl` children were left unreaped** on an error, and `pair`,
+  `trust`, `power on` and the check for bluetoothctl itself all blocked the
+  thread that draws.
+
 ## [0.8.2] - 2026-09-16
 
 ### Added
@@ -1265,7 +1343,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.9.0
 [0.8.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.2
 [0.8.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.1
 [0.8.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.0

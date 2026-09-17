@@ -276,3 +276,103 @@ pub const CHART: Icon = [
 pub const PHOTO: Icon = [
     "########", "#......#", "#..#...#", "#.###..#", "#####.##", "#######.", "#......#", "########",
 ];
+
+// -- the pads screen ---------------------------------------------------------
+
+/// A pad drawn big enough to be recognised from a sofa: 22 by 11, `#` for the
+/// body and `o` for the buttons, so it takes two colours.
+pub type PadArt = [&'static str; 11];
+
+/// A modern pad: two grips, a d-pad cut out of the body on the left, four
+/// buttons on the right.
+pub const PAD_TWIN: PadArt = [
+    "..####..........####..",
+    ".####################.",
+    "######################",
+    "###..#..######..oo..##",
+    "##..###..####..o..o..#",
+    "###..#..######..oo..##",
+    "######################",
+    ".####..########..####.",
+    "..###..########..###..",
+    "..##....######....##..",
+    "..##..............##..",
+];
+
+/// A round six button pad, the shape of a Mega Drive controller.
+pub const PAD_ROUND: PadArt = [
+    "......##########......",
+    "....##############....",
+    "..##################..",
+    ".####..######..oo..oo.",
+    "####..######..oo..oo.#",
+    "####...####...oo..oo.#",
+    ".####..######..oo..oo.",
+    "..##################..",
+    "....##############....",
+    "......##########......",
+    "......................",
+];
+
+/// A pad with its sticks below the buttons.
+pub const PAD_STICKS: PadArt = [
+    "...####........####...",
+    ".####################.",
+    "######################",
+    "###..#..######..oo..##",
+    "##..###..####..o..o..#",
+    "###..#..######..oo..##",
+    "######################",
+    ".####..#.####.#..####.",
+    "..###.ooo####ooo.###..",
+    "..###..o.####.o..###..",
+    "...##..............##.",
+];
+
+/// The mark of a cable.
+pub const USB: Icon = [
+    "...##...", "..####..", "...##...", ".#.##.#.", ".#.##.##", ".###..#.", "...##...", "...##...",
+];
+
+/// The rune, as it is printed on the pads themselves.
+pub const BLUETOOTH: Icon = [
+    "...##...", "...###..", "#..#.#..", ".#.##...", "..###...", ".#.##...", "#..#.#..", "...###..",
+];
+
+/// Shaking, for the pad being identified.
+pub const SHAKE: Icon = [
+    "......#.", "..##..#.", ".#..#.#.", "#.##.##.", "#.##.##.", ".#..#.#.", "..##..#.", "......#.",
+];
+
+/// An empty socket.
+pub const SOCKET: Icon = [
+    "........", ".#....#.", "..#..#..", "...##...", "...##...", "..#..#..", ".#....#.", "........",
+];
+
+/// Something went wrong, drawn as a spark rather than a word.
+pub const SPARK: Icon = [
+    "...#....", "#..#..#.", ".#.#.#..", "..###...", "#####.#.", "..###...", ".#.#.#..", "#..#..#.",
+];
+
+/// A battery shell, 13 by 6. The bars inside are drawn separately so they can
+/// take their own colour.
+pub const BATTERY: [&str; 6] = [
+    "###########..",
+    "#.........#..",
+    "#.........###",
+    "#.........###",
+    "#.........#..",
+    "###########..",
+];
+
+/// The bars of a battery at `level` quarters, in the same 13 by 6 cell.
+pub fn battery_bars(level: u8) -> [String; 6] {
+    let mut rows: [String; 6] = std::array::from_fn(|_| ".".repeat(13));
+    for i in 0..level.min(4) as usize {
+        let x = 2 + i * 2;
+        for row in rows.iter_mut().take(5).skip(1) {
+            row.replace_range(x..x + 1, "#");
+        }
+    }
+    rows
+}
