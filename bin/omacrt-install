@@ -52,9 +52,11 @@ fi
 step() { echo "${bold}== $*${plain}"; }
 plugin_id="io.github.stefanomainardi.omacrt"
 library_id="${plugin_id}.library"
+pads_id="${plugin_id}.pads"
 bin_dir="${HOME}/.local/bin"
 plugin_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
 library_dir="${HOME}/.config/omarchy/plugins/${library_id}"
+pads_dir="${HOME}/.config/omarchy/plugins/${pads_id}"
 build=1
 # Take the tube off and on at the end, rather than leaving the running
 # processes on the old binaries and the panel saying an update is waiting.
@@ -234,10 +236,11 @@ for arg in "$@"; do
         echo "note: the session is locked; run this again unlocked to remove the plugins"
       else
         command -v omarchy >/dev/null 2>&1 && {
+          omarchy plugin disable "$pads_id" >/dev/null 2>&1 || true
           omarchy plugin disable "$library_id" >/dev/null 2>&1 || true
           omarchy plugin disable "$plugin_id" >/dev/null 2>&1 || true
         }
-        rm -rf "$plugin_dir" "$library_dir"
+        rm -rf "$plugin_dir" "$library_dir" "$pads_dir"
         command -v omarchy-shell >/dev/null 2>&1 && omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
       fi
       if [ -f /etc/systemd/system/omacrt-lease.service ]; then
@@ -350,12 +353,18 @@ fi
 
 legacy_retire_plugins
 
-step "installing the plugins into $plugin_dir and $library_dir"
+step "installing the plugins into $plugin_dir, $library_dir and $pads_dir"
 # The binary carries the plugin files and writes the ones that differ:
 # `omacrt plugin sync`. One implementation rather than two, and the same
 # command puts them right after an upgrade, which this script cannot be
 # there for. Overwrite in place: removing a folder makes the shell drop the
-# plugin for a moment and the bar widget vanishes; changed files hot reload.
+# plugin for a moment and the bar widget vanishes.
+#
+# A changed file does NOT hot reload, whatever the shell's folder watching
+# suggests: `rescanPlugins` re-reads the list of plugins and `reloadConfig`
+# reloads the shell's own configuration, and neither recompiles the QML of a
+# plugin already loaded. The panel goes on showing the version it started
+# with until the shell is restarted, which is what the step below does.
 #
 # The helper the widget runs is a launcher for whichever omacrt writes it,
 # so this has to be the installed one and never the freshly built copy in
@@ -375,6 +384,7 @@ fi
 if command -v omarchy >/dev/null 2>&1; then
   omarchy plugin validate "$plugin_dir"
   omarchy plugin validate "$library_dir"
+  omarchy plugin validate "$pads_dir"
   if ! omarchy plugin list --json 2>/dev/null | grep -q "\"$library_id\""; then
     omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
   fi
@@ -386,7 +396,16 @@ sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
   }
   enabled "$plugin_id" || omarchy plugin enable "$plugin_id" right
   enabled "$library_id" || omarchy plugin enable "$library_id"
+  enabled "$pads_id" || omarchy plugin enable "$pads_id"
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  # And the restart that actually puts the new panel on screen. Not under the
+  # lock screen, for the same reason the reload above waits for one.
+  if [ "$(omarchy-shell lock isLocked 2>/dev/null)" != "true" ]; then
+    step "restarting the Omarchy shell so the panel is the new one"
+    omarchy restart shell >/dev/null 2>&1 || true
+  else
+    echo "!! The session is locked. When you unlock it:  omarchy restart shell"
+  fi
 fi
 
 # An install replaces the files and leaves the running processes alone: a

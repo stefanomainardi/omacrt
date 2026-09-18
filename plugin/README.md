@@ -51,6 +51,14 @@ validator refuses every symlink inside a plugin folder.
   stole it.
 - `TV volume` sets the sink volume of the television (up to 150%) and keeps
   it in `crt.toml`.
+- The `PADS` section lists the pads in port order with how each one is
+  attached and its charge where the kernel reports one, and moves or forgets
+  one on the spot. `Pads` opens the full screen overlay (a third plugin,
+  `io.github.stefanomainardi.omacrt.pads`): the four ports as sockets,
+  filled or not, each with the pad's serial, the index RetroArch will give
+  it, and whether the letters on its face sit where SDL expects. Identify
+  shakes the pad in that port, which is the only way to tell two of one model
+  apart.
 - `Library` opens the full screen library overlay (a second plugin,
   `io.github.stefanomainardi.omacrt.library`, installed and enabled by
   the installer): the folders the scan reads and disks that look like

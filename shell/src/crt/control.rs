@@ -113,6 +113,16 @@ pub fn send_quit_game() -> std::io::Result<()> {
     send(&["quit-game"])
 }
 
+/// Ask the running launcher to rearrange the pads.
+///
+/// The launcher holds the order in memory and writes `pads.toml` itself, so a
+/// second writer would have its change overwritten by the next save. While the
+/// launcher is up it is the one that edits the file.
+pub fn send_pads(rest: &str) -> std::io::Result<()> {
+    let line = format!("pads {}", rest.trim().replace(['\n', '\r'], " "));
+    send(&[line.as_str()])
+}
+
 /// Send inputs to the running launcher. Fails when nothing listens.
 pub fn send(inputs: &[&str]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;

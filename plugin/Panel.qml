@@ -78,6 +78,19 @@ Panel {
   readonly property int volume: Number((audio && audio.volume) || 100)
   property int volumeShown: -1
 
+  // The pads, in the order that decides who is P1. `omacrt pads` reads the
+  // same file the launcher writes, and asks the launcher to edit it while it
+  // is running so the two never disagree.
+  property var padState: ({})
+  readonly property var pads: (root.padState.pads || [])
+  readonly property int padsHere: Number(root.padState.connected || 0)
+  readonly property var padsUnlisted: (root.padState.unlisted || [])
+
+  function openPads() {
+    root.close()
+    Quickshell.execDetached(["omarchy-shell", "shell", "summon", root.moduleName + ".pads", "{}"])
+  }
+
   function openLibrary() {
     root.close()
     // No `helper` in the payload: the overlay resolves the binary from its own
@@ -103,6 +116,10 @@ Panel {
     statusProc.command = [root.helper, "status", "--json"]
     statusProc.running = true
     if (!watchProc.running) watchProc.running = true
+    if (!padsProc.running) {
+      padsProc.command = [root.helper, "pads", "--json"]
+      padsProc.running = true
+    }
   }
 
   function runAction(args) {
@@ -180,6 +197,16 @@ Panel {
       root.busy = ""
       root.refresh()
       if (root.hostWidget && root.hostWidget.refresh) root.hostWidget.refresh()
+    }
+  }
+
+  Process {
+    id: padsProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try { root.padState = JSON.parse(String(text || "{}")) } catch (e) { root.padState = {} }
+      }
     }
   }
 
@@ -574,6 +601,90 @@ Panel {
             }
             Act { text: "Reset DAC"; tooltipText: "Last resort: a reset leaves the DAC in a different colour state until its next power cycle"; onClicked: root.runAction(["dac", "reset"]) }
           }
+          // ---------------------------------------------------------- pads
+          PanelSectionHeader { text: "PADS"; foreground: root.fg }
+          Mono {
+            visible: root.pads.length === 0 && root.padsUnlisted.length === 0
+            width: parent.width
+            text: "no pads yet"
+            color: root.muted
+          }
+          Repeater {
+            model: root.pads
+            Row {
+              required property var modelData
+              required property int index
+              width: parent.width
+              spacing: Style.space(6)
+              Key {
+                text: "P" + modelData.port
+                width: Style.space(22)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+              Mono {
+                text: String(modelData.short || modelData.name || "")
+                color: modelData.connected ? root.fg : root.muted
+                width: Style.space(142)
+                elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
+              }
+              Mono {
+                text: {
+                  var how = modelData.wireless ? "wireless" : "cable"
+                  if (!modelData.connected) return "off"
+                  var b = modelData.battery
+                  return (b === null || b === undefined) ? how : how + "  " + (b * 25) + "%"
+                }
+                color: root.muted
+                width: Style.space(50)
+                elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
+              }
+              Act {
+                text: "▲"
+                enabled: !actionProc.running && index > 0
+                tooltipText: "one port towards P1"
+                onClicked: root.runAction(["pads", "move", String(modelData.port), "up"])
+              }
+              Act {
+                text: "▼"
+                enabled: !actionProc.running && index < root.pads.length - 1
+                tooltipText: "one port away from P1"
+                onClicked: root.runAction(["pads", "move", String(modelData.port), "down"])
+              }
+              Act {
+                text: "Forget"
+                tooltipText: "stop remembering this pad and the port it holds"
+                onClicked: root.runAction(["pads", "forget", String(modelData.port)])
+              }
+            }
+          }
+          Repeater {
+            model: root.padsUnlisted
+            Row2 {
+              required property var modelData
+              label: "new"
+              value: String(modelData.short || modelData.name || "") + "  (plays, not written down yet)"
+              valueColor: root.muted
+            }
+          }
+          Mono {
+            visible: root.padState.ambiguous === true
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: "Two pads of one model report no serial, so the order between them is whatever the kernel numbered them."
+            color: root.urgent
+          }
+          Row {
+            width: parent.width
+            spacing: Style.space(6)
+            Act {
+              text: "▤  Pads"
+              tooltipText: "the four ports, which pad is which, and what each is called in a game"
+              onClicked: root.openPads()
+            }
+          }
+
           Toggle {
             width: parent.width
             visible: !!root.audio

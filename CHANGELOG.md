@@ -7,6 +7,48 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-18
+
+### Added
+
+- **The pads are on the desktop too.** The bar panel lists them in port order
+  with how each one is connected and its charge where the kernel reports one,
+  and moves or forgets one from there. A pad plugged in that nothing has
+  written down yet is shown as well, because it still plays.
+- **A full screen pads overlay on the desktop**, opened from the panel the way
+  the library is. The four ports as sockets, filled or not, each with the
+  pad's serial, the index RetroArch will give it, and whether the letters on
+  its face sit where SDL expects. Identify shakes the pad in that port, which
+  is the only way to tell two of one model apart.
+- **`omacrt pads --json`**, `omacrt pads mapping --json`, and
+  `omacrt pads move <port> up|down`, `forget <port>` and `identify <port>`.
+  While the launcher runs it is asked to make the change, because it holds the
+  order and writes the file; with nothing running the file is edited directly.
+  One writer at a time either way.
+
+### Changed
+
+- **The face buttons follow the letters printed on the pad.** SDL names a face
+  button by where it sits, so on a pad built like a Mega Drive or a Saturn
+  controller the launcher confirmed on the button marked B while the one
+  marked A went back, the reverse of what RetroArch does inside the game. The
+  letters are read from the profile RetroArch ships for that pad, and the
+  buttons are swapped only where they can be shown to be crossed.
+- **A pad changing ports slides between the two sockets** instead of appearing
+  somewhere else, and the shoulders say when there is nowhere left to go: on
+  four sockets with two pads, silence read as a button that did not work.
+
+### Fixed
+
+- **An install left the desktop panel on the old version.** A changed plugin
+  file does not hot reload, whatever the folder watching suggests: neither
+  `rescanPlugins` nor `reloadConfig` recompiles the QML of a plugin already
+  loaded. The installer now restarts the shell, and says so instead when the
+  session is locked.
+- **A pad connected while the launcher ran reached neither the screen nor the
+  order.** The list was held in two places that overwrote each other, so the
+  header counted two pads and the sockets drew one.
+
 ## [0.9.0] - 2026-09-17
 
 ### Added
@@ -1343,7 +1385,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.10.0
 [0.9.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.9.0
 [0.8.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.2
 [0.8.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.1

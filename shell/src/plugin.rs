@@ -21,12 +21,22 @@ use std::path::{Path, PathBuf};
 pub const ID: &str = "io.github.stefanomainardi.omacrt";
 /// The library overlay: a plugin of its own, summoned by the panel.
 pub const LIBRARY_ID: &str = "io.github.stefanomainardi.omacrt.library";
+/// The pads overlay, the same way.
+pub const PADS_ID: &str = "io.github.stefanomainardi.omacrt.pads";
 
 const MAIN_FILES: &[(&str, &str)] = &[
     ("manifest.json", include_str!("../../plugin/manifest.json")),
     ("BarWidget.qml", include_str!("../../plugin/BarWidget.qml")),
     ("Panel.qml", include_str!("../../plugin/Panel.qml")),
     ("README.md", include_str!("../../plugin/README.md")),
+];
+
+const PADS_FILES: &[(&str, &str)] = &[
+    (
+        "manifest.json",
+        include_str!("../../plugin/pads/manifest.json"),
+    ),
+    ("Pads.qml", include_str!("../../plugin/pads/Pads.qml")),
 ];
 
 const LIBRARY_FILES: &[(&str, &str)] = &[
@@ -40,18 +50,31 @@ const LIBRARY_FILES: &[(&str, &str)] = &[
     ),
 ];
 
-/// Where the two folders live.
-pub fn dirs() -> Option<(PathBuf, PathBuf)> {
+/// The files that belong in one plugin folder: name and body.
+type Files = &'static [(&'static str, &'static str)];
+
+/// Every folder this version installs, with the files that belong in it. The
+/// first is the bar widget, which is also where the helper binary lives.
+pub fn folders() -> Option<Vec<(PathBuf, Files)>> {
     let home = std::env::var_os("HOME")?;
     let plugins = PathBuf::from(home).join(".config/omarchy/plugins");
-    Some((plugins.join(ID), plugins.join(LIBRARY_ID)))
+    Some(vec![
+        (plugins.join(ID), MAIN_FILES),
+        (plugins.join(LIBRARY_ID), LIBRARY_FILES),
+        (plugins.join(PADS_ID), PADS_FILES),
+    ])
+}
+
+/// The bar widget's own folder, which carries the helper the widget runs.
+pub fn main_dir() -> Option<PathBuf> {
+    folders().and_then(|f| f.first().map(|(d, _)| d.clone()))
 }
 
 /// Whether the plugins are installed at all. On a machine with no Omarchy
 /// there is nothing to keep up to date and nothing to complain about.
 pub fn installed() -> bool {
-    dirs()
-        .map(|(main, _)| main.join("manifest.json").is_file())
+    main_dir()
+        .map(|main| main.join("manifest.json").is_file())
         .unwrap_or(false)
 }
 
@@ -60,12 +83,13 @@ pub fn installed() -> bool {
 /// The helper binary counts: the widget runs the copy in its own folder, so
 /// an old one there is an old program answering the bar.
 pub fn drift() -> Vec<PathBuf> {
-    let Some((main, library)) = dirs() else {
+    let Some(folders) = folders() else {
         return Vec::new();
     };
+    let main = folders[0].0.clone();
     let mut out = Vec::new();
-    for (dir, files) in [(&main, MAIN_FILES), (&library, LIBRARY_FILES)] {
-        for (name, body) in files {
+    for (dir, files) in &folders {
+        for (name, body) in *files {
             let path = dir.join(name);
             if std::fs::read_to_string(&path).ok().as_deref() != Some(*body) {
                 out.push(path);
@@ -130,9 +154,10 @@ fn shell_quote(p: &Path) -> String {
 /// the shell reload the plugin, and a reload under the lock screen takes
 /// Quickshell down with it.
 pub fn sync(create: bool) -> Result<Vec<String>, String> {
-    let Some((main, library)) = dirs() else {
+    let Some(folders) = folders() else {
         return Err("no HOME to install into".into());
     };
+    let main = folders[0].0.clone();
     if !create && !installed() {
         return Ok(Vec::new());
     }
@@ -140,9 +165,9 @@ pub fn sync(create: bool) -> Result<Vec<String>, String> {
         return Err("the session is locked: a plugin reload would take the shell down".into());
     }
     let mut wrote = Vec::new();
-    for (dir, files) in [(&main, MAIN_FILES), (&library, LIBRARY_FILES)] {
+    for (dir, files) in &folders {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        for (name, body) in files {
+        for (name, body) in *files {
             let path = dir.join(name);
             if std::fs::read_to_string(&path).ok().as_deref() == Some(*body) {
                 continue;
@@ -312,9 +337,10 @@ mod tests {
         assert!(MAIN_FILES.iter().any(|(n, _)| *n == "manifest.json"));
         assert!(MAIN_FILES.iter().any(|(n, _)| *n == "Panel.qml"));
         assert!(LIBRARY_FILES.iter().any(|(n, _)| *n == "Library.qml"));
+        assert!(PADS_FILES.iter().any(|(n, _)| *n == "Pads.qml"));
         // And none of them is empty, which is what a missing include would
         // look like from here.
-        for (name, body) in MAIN_FILES.iter().chain(LIBRARY_FILES) {
+        for (name, body) in MAIN_FILES.iter().chain(LIBRARY_FILES).chain(PADS_FILES) {
             assert!(body.len() > 100, "{name} is {} bytes", body.len());
         }
     }
@@ -324,6 +350,11 @@ mod tests {
         let (_, manifest) = MAIN_FILES[0];
         assert!(manifest.contains(ID), "the manifest does not name {ID}");
         let (_, library) = LIBRARY_FILES[0];
+        let (_, pads) = PADS_FILES[0];
+        assert!(
+            pads.contains(PADS_ID),
+            "the pads manifest does not name {PADS_ID}"
+        );
         assert!(
             library.contains(LIBRARY_ID),
             "the overlay manifest does not name {LIBRARY_ID}"
