@@ -483,23 +483,26 @@ fn run(args: &Args) -> Result<(), String> {
     // Pads without a mapping stay open as bare joysticks so the wizard can
     // read their buttons.
     let mut raw_joys: Vec<sdl2::joystick::Joystick> = Vec::new();
-    // Every pad the launcher has met, in the order that decides the ports,
-    // and the ones switched on right now with the controller each belongs to.
-    let mut pads = omacrt_shell::pads::Pads::load();
+    // Which pads are switched on right now, with the controller each one
+    // belongs to. The order they play in belongs to the scene, which is the
+    // thing that reorders it.
     let mut here: Vec<(u32, omacrt_shell::pads::Pad)> = Vec::new();
     let mut pads_dirty = true;
+    // Where the letters are on the pad in hand. SDL names a face button by
+    // where it sits, not by what is printed beside it.
+    let mut faces = omacrt_shell::padmap::Faces::default();
     for i in 0..gcs.num_joysticks()? {
         if gcs.is_game_controller(i) {
             if let Ok(c) = gcs.open(i) {
                 teach_retroarch(&gcs, &js, i, &c.name());
-                // A pad already plugged in when the launcher starts is opened
-                // here rather than from an event, so it has to be written
-                // down here too: without this the pads screen showed four
-                // empty sockets with a pad in hand.
-                here.push((
-                    c.instance_id(),
-                    remember_pad(&mut pads, &js, &c, i, &controllers),
-                ));
+                // A pad already plugged in when the launcher starts is
+                // opened here rather than from an event, so it has to be
+                // written down here too: without this the pads screen showed
+                // four empty sockets with a pad in hand. The scene does not
+                // exist yet, and is told below.
+                let pad = pad_identity(&js, &c, i, &controllers);
+                faces = faces_of(&c);
+                here.push((c.instance_id(), pad));
                 controllers.push(c);
             }
         } else if let Ok(j) = js.open(i) {
@@ -511,6 +514,10 @@ fn run(args: &Args) -> Result<(), String> {
     let mut scene = build_scene(args);
     if let Some(c) = controllers.last() {
         scene.set_pad(Some(&c.name()));
+    }
+    // The pads found above, now that there is something to tell.
+    for (_, pad) in &here {
+        scene.pad_seen(pad);
     }
     // Pads plugged in before the start that SDL does not know: the wizard
     // shows once the menu is up.
@@ -1033,10 +1040,10 @@ fn run(args: &Args) -> Result<(), String> {
                     {
                         scene.set_pad(Some(&c.name()));
                         teach_retroarch(&gcs, &js, which, &c.name());
-                        here.push((
-                            c.instance_id(),
-                            remember_pad(&mut pads, &js, &c, which, &controllers),
-                        ));
+                        let pad = pad_identity(&js, &c, which, &controllers);
+                        scene.pad_seen(&pad);
+                        faces = faces_of(&c);
+                        here.push((c.instance_id(), pad));
                         pads_dirty = true;
                         controllers.push(c);
                     }
@@ -1080,6 +1087,7 @@ fn run(args: &Args) -> Result<(), String> {
                     controllers.retain(|c| c.instance_id() != which);
                     here.retain(|(id, _)| *id != which);
                     pads_dirty = true;
+                    faces = controllers.last().map(faces_of).unwrap_or_default();
                     match controllers.last() {
                         Some(c) => scene.set_pad(Some(&c.name())),
                         None => scene.set_pad(None),
@@ -1119,7 +1127,7 @@ fn run(args: &Args) -> Result<(), String> {
                     Button::DPadRight => stick.set_pressed(Nav::Right, false, now()),
                     _ => {}
                 },
-                Event::ControllerButtonDown { button, .. } => match button {
+                Event::ControllerButtonDown { button, .. } => match faces.of(button) {
                     // Select + Start (either order) or the home button: the
                     // pause menu over a running game.
                     Button::Guide => inp.menu = true,
@@ -1179,10 +1187,10 @@ fn run(args: &Args) -> Result<(), String> {
                             {
                                 raw_joys.retain(|j| j.instance_id() != c.instance_id());
                                 scene.set_pad(Some(&c.name()));
-                                here.push((
-                                    c.instance_id(),
-                                    remember_pad(&mut pads, &js, &c, i, &controllers),
-                                ));
+                                let pad = pad_identity(&js, &c, i, &controllers);
+                                scene.pad_seen(&pad);
+                                faces = faces_of(&c);
+                                here.push((c.instance_id(), pad));
                                 pads_dirty = true;
                                 controllers.push(c);
                             }
@@ -1193,14 +1201,9 @@ fn run(args: &Args) -> Result<(), String> {
             }
             inputs.push(inp);
         }
-        if pads_dirty || scene.pad_list().order != pads.order {
+        if pads_dirty {
             pads_dirty = false;
-            // The screen may have reordered or forgotten one, so its copy is
-            // the one that counts.
-            if scene.pad_list().order != pads.order && !scene.pad_list().order.is_empty() {
-                pads = scene.pad_list().clone();
-            }
-            scene.set_pad_list(pads.clone(), here.iter().map(|(_, p)| p.clone()).collect());
+            scene.set_pads_here(here.iter().map(|(_, p)| p.clone()).collect());
         }
         // bluetoothctl is polled wherever the launcher is: a search left
         // running behind a screen that has gone used to sit there for ever
@@ -1269,6 +1272,17 @@ fn run(args: &Args) -> Result<(), String> {
             if inp.quit_game {
                 if !stop_game(&child, &mut stop_asked) {
                     eprintln!("quit-game: no game is running");
+                }
+                continue;
+            }
+            if let Some((port, step)) = inp.pads {
+                let done = match step {
+                    0 => scene.pad_forget(port),
+                    2 => scene.pad_identify(port),
+                    step => scene.pad_reorder(port, step).is_some(),
+                };
+                if !done {
+                    eprintln!("pads: nothing to do in port {}", port + 1);
                 }
                 continue;
             }
@@ -1584,13 +1598,22 @@ fn run(args: &Args) -> Result<(), String> {
 /// disk, not for a wedged process.
 const STOP_GRACE: Duration = Duration::from_secs(5);
 
-/// Write down a pad the launcher has just met.
+/// Where the letters are on this pad, from the profile RetroArch ships for it.
+fn faces_of(c: &sdl2::controller::GameController) -> omacrt_shell::padmap::Faces {
+    let (Some(vendor), Some(product)) = (c.vendor_id(), c.product_id()) else {
+        return omacrt_shell::padmap::Faces::default();
+    };
+    match omacrt_shell::padmap::profile_for(vendor, product) {
+        Some(profile) => omacrt_shell::padmap::faces_from(&c.mapping(), &profile),
+        None => omacrt_shell::padmap::Faces::default(),
+    }
+}
+
+/// Who a pad is.
 ///
 /// The model comes from SDL's GUID and the individual from sysfs, matched by
-/// the vendor and product SDL reports. A pad already on the list keeps its
-/// place, so plugging one in never rearranges the ports of the others.
-fn remember_pad(
-    pads: &mut omacrt_shell::pads::Pads,
+/// the vendor and product SDL reports.
+fn pad_identity(
     js: &sdl2::JoystickSubsystem,
     c: &sdl2::controller::GameController,
     which: u32,
@@ -1610,13 +1633,7 @@ fn remember_pad(
         .device_guid(which)
         .map(|g| g.string())
         .unwrap_or_default();
-    let pad = omacrt_shell::pads::Pad::new(&guid, &c.name(), &unit);
-    if pads.seen(&pad)
-        && let Err(e) = pads.save()
-    {
-        eprintln!("cannot write the pad list: {e}");
-    }
-    pad
+    omacrt_shell::pads::Pad::new(&guid, &c.name(), &unit)
 }
 
 /// Ask the running game to stop, the way closing its window would.
@@ -1652,6 +1669,9 @@ struct Input {
     quit: bool,
     /// Stop the running game and come back to the launcher.
     quit_game: bool,
+    /// Act on a pad from outside: `(port, -1|1)` moves it, `(port, 0)`
+    /// forgets it, `(port, 2)` shakes it.
+    pads: Option<(usize, i32)>,
     /// Characters typed into the search bar.
     text: Option<String>,
     backspace: bool,
@@ -1688,6 +1708,7 @@ impl Input {
             || self.screen.is_some()
             || self.play.is_some()
             || self.quit_game
+            || self.pads.is_some()
     }
 }
 
@@ -1721,6 +1742,32 @@ fn control_input(line: &str) -> Option<Input> {
     }
     if line.trim() == "quit-game" {
         inp.quit_game = true;
+        return Some(inp);
+    }
+    // `pads move 2 up`, `pads move 2 down`, `pads forget 2`: the port as a
+    // person counts them, from one.
+    if let Some(rest) = line.strip_prefix("pads ") {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let port = words
+            .get(1)
+            .and_then(|n| n.parse::<usize>().ok())
+            .filter(|n| (1..=4).contains(n));
+        let Some(port) = port else {
+            eprintln!("control: {line:?} needs a port from 1 to 4");
+            return None;
+        };
+        inp.pads = match (words.first().copied(), words.get(2).copied()) {
+            (Some("move"), Some("up")) => Some((port - 1, -1)),
+            (Some("move"), Some("down")) => Some((port - 1, 1)),
+            (Some("forget"), _) => Some((port - 1, 0)),
+            // 2 is not a step: shaking a pad is the only way to tell two of
+            // one model apart, and it has to work from the desktop too.
+            (Some("identify"), _) => Some((port - 1, 2)),
+            _ => {
+                eprintln!("control: {line:?} is not `pads move N up|down` or `pads forget N`");
+                return None;
+            }
+        };
         return Some(inp);
     }
     if let Some(name) = line.strip_prefix("screen ") {

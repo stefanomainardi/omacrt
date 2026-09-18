@@ -163,9 +163,32 @@ assertion about what RetroArch will do, so the udev lines in its log are read
 back afterwards: if a pad landed somewhere other than where it was sent, the
 launcher says which port it meant and what happened instead.
 
-From the terminal, `omacrt pads` prints the order and what is connected, and
+**The letters on the pad decide.** SDL names a face button by where it sits,
+not by what is printed beside it: `a` is the southern one whatever the label.
+On a pad built like a Mega Drive or a Saturn controller that is not the button
+marked A, and the launcher confirmed on the one marked B while A went back, the
+reverse of RetroArch inside the game. The launcher reads the letters from the
+profile RetroArch ships for that pad and swaps the pair where they are crossed,
+so A confirms everywhere. It swaps nothing on a guess: the letter has to be
+found, and found somewhere other than SDL put it. `omacrt pads mapping` prints
+what SDL makes of each pad.
+
+From the terminal, `omacrt pads` prints the order and what is connected,
 `omacrt pads devices` prints what the kernel shows in the order RetroArch
-enumerates them, with the index each one gets.
+enumerates them with the index each one gets, and `omacrt pads --json` gives
+the same to a script. `omacrt pads move <port> up|down` and
+`omacrt pads forget <port>` rearrange it: while the launcher runs it is asked
+to make the change, because it holds the order and writes the file.
+
+The bar panel on the desktop shows the same list and carries the same two
+actions, and its `Pads` button opens a full screen overlay with the four ports
+as sockets: each pad's serial, the index RetroArch will give it, whether the
+letters on its face sit where SDL expects, and a button that shakes it. So the
+ports can be arranged, and a pad identified, without turning the television on.
+
+Changing a plugin's files is not enough for the desktop to show the new
+version: the shell keeps the QML it has already loaded. `omarchy restart shell`
+is what puts it on screen.
 
 ## Bluetooth pairing
 

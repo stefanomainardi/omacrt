@@ -2606,6 +2606,68 @@ fn cmd_pads(args: &[String]) {
         .unwrap_or("list")
         .to_string();
     let devices = pads::devices();
+    // What SDL makes of each pad: the mapping decides which physical button
+    // is the one that says yes, and a pad whose mapping has no south button
+    // has no way to confirm anything.
+    if sub == "mapping" {
+        let Ok(sdl) = sdl2::init() else {
+            die("SDL would not start");
+        };
+        let Ok(gcs) = sdl.game_controller() else {
+            die("no game controller subsystem");
+        };
+        let n = gcs.num_joysticks().unwrap_or(0);
+        let mut rows: Vec<Value> = Vec::new();
+        for i in 0..n {
+            if !gcs.is_game_controller(i) {
+                if !has(args, "--json") {
+                    println!("{i}  (SDL has no mapping for this one)");
+                }
+                continue;
+            }
+            let Ok(c) = gcs.open(i) else { continue };
+            let mapping = c.mapping();
+            // Where the letters really are: SDL says where a button sits,
+            // the profile RetroArch ships says what is printed beside it.
+            let profile = match (c.vendor_id(), c.product_id()) {
+                (Some(v), Some(p)) => omacrt_shell::padmap::profile_for(v, p),
+                _ => None,
+            };
+            let faces = profile
+                .as_deref()
+                .map(|p| omacrt_shell::padmap::faces_from(&mapping, p))
+                .unwrap_or_default();
+            if has(args, "--json") {
+                rows.push(json!({
+                    "index": i,
+                    "name": c.name(),
+                    "mapping": mapping,
+                    "labels_known": profile.is_some(),
+                    "swap_ab": faces.swap_ab,
+                    "swap_xy": faces.swap_xy,
+                }));
+            } else {
+                let crossed = match (faces.swap_ab, faces.swap_xy) {
+                    (false, false) => "letters where SDL puts them".to_string(),
+                    (a, x) => format!(
+                        "letters crossed:{}{}",
+                        if a { " A/B" } else { "" },
+                        if x { " X/Y" } else { "" }
+                    ),
+                };
+                println!("{i}  {}\n    {mapping}\n    {crossed}", c.name());
+            }
+        }
+        if has(args, "--json") {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({ "pads": rows })).unwrap_or_default()
+            );
+        } else if n == 0 {
+            println!("no pads");
+        }
+        return;
+    }
     if sub == "devices" {
         if devices.is_empty() {
             println!("no pads on this machine");
@@ -2623,9 +2685,105 @@ fn cmd_pads(args: &[String]) {
         }
         println!();
         println!("The number on the left is what input_playerN_joypad_index takes.");
+        println!("`omacrt pads mapping` prints what SDL makes of each one.");
+        return;
+    }
+    // Rearranging: the launcher holds the order while it runs and writes the
+    // file itself, so a second writer would lose the change at its next save.
+    if matches!(sub.as_str(), "move" | "forget" | "identify") {
+        let pos = positional(args);
+        let rest = pos.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+        match crt::control::send_pads(&rest) {
+            Ok(()) => term::sheet::step("pads", format!("{rest}: asked the launcher")),
+            Err(_) => {
+                // Nothing running: the file is ours to edit.
+                let mut list = pads::Pads::load();
+                let port: usize = pos
+                    .get(1)
+                    .and_then(|n| n.parse().ok())
+                    .filter(|n| (1..=4).contains(n))
+                    .unwrap_or_else(|| die("that needs a port from 1 to 4"));
+                let i = port - 1;
+                if i >= list.order.len() {
+                    die(&format!("nothing is in port {port}"));
+                }
+                if sub == "identify" {
+                    die("nothing is running to shake it: start the launcher first");
+                }
+                if sub == "forget" {
+                    list.forget(i);
+                } else {
+                    let dir = match pos.get(2).map(|s| s.as_str()) {
+                        Some("up") => -1,
+                        Some("down") => 1,
+                        _ => die("move needs `up` or `down`"),
+                    };
+                    list.shift(i, dir);
+                }
+                match list.save() {
+                    Ok(()) => term::sheet::step("pads", format!("{rest}: done")),
+                    Err(e) => die(&format!("cannot write the pad list: {e}")),
+                }
+            }
+        }
         return;
     }
     let list = pads::Pads::load();
+    if has(args, "--json") {
+        let here = |p: &pads::Pad| {
+            devices
+                .iter()
+                .find(|d| !p.unit.is_empty() && d.unit == p.unit)
+        };
+        let rows: Vec<Value> = list
+            .order
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let dev = here(p);
+                json!({
+                    "port": i + 1,
+                    "name": p.name,
+                    "short": pads::short_name(&p.name, 18),
+                    "guid": p.guid,
+                    "unit": p.unit,
+                    "connected": dev.is_some(),
+                    // A Bluetooth address is what an over the air pad reports
+                    // as its own; a cable gives a serial with no colons.
+                    "wireless": p.unit.contains(':'),
+                    "battery": pads::battery_of(&p.unit),
+                    "event": dev.map(|d| d.event.display().to_string()),
+                    "index": dev.and_then(|d| devices.iter().position(|x| x.event == d.event)),
+                })
+            })
+            .collect();
+        // A pad plugged in that nothing has written down yet still plays, so
+        // it is still worth showing.
+        let strangers: Vec<Value> = devices
+            .iter()
+            .filter(|d| !d.unit.is_empty() && !list.order.iter().any(|p| p.unit == d.unit))
+            .map(|d| {
+                json!({
+                    "name": d.name,
+                    "short": pads::short_name(&d.name, 18),
+                    "unit": d.unit,
+                    "event": d.event.display().to_string(),
+                })
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "file": pads::path().display().to_string(),
+                "connected": rows.iter().filter(|r| r["connected"] == true).count(),
+                "ambiguous": list.ambiguous(),
+                "pads": rows,
+                "unlisted": strangers,
+            }))
+            .unwrap_or_default()
+        );
+        return;
+    }
     if list.order.is_empty() {
         println!("no pads remembered yet ({})", pads::path().display());
         println!("The launcher writes this file the first time it sees a pad.");

@@ -681,6 +681,9 @@ pub struct Scene {
     /// it shakes for.
     identify: Option<omacrt_shell::pads::Pad>,
     identify_until: f64,
+    /// A pad on its way between two ports: where from, where to, and when it
+    /// set off. Two sockets swap, so both tiles slide past each other.
+    pad_move: Option<(usize, usize, f64)>,
     /// Pads that arrived while the wizard could not show: name, guid, id.
     /// A queue rather than one slot, so two unknown pads at boot both get
     /// their turn instead of the second cancelling the first.
@@ -822,10 +825,11 @@ impl Scene {
             sleep_set_at: 0.0,
             rumble_pending: false,
             wizard: None,
-            pad_list: omacrt_shell::pads::Pads::default(),
+            pad_list: omacrt_shell::pads::Pads::load(),
             pads_here: Vec::new(),
             identify: None,
             identify_until: 0.0,
+            pad_move: None,
             pending_wizards: Vec::new(),
             pending_entry: None,
             remap_request: false,

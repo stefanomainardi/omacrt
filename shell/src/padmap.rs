@@ -467,3 +467,212 @@ leftx:a0,lefty:a1,rightx:a3,righty:a4,lefttrigger:a2,righttrigger:a5,platform:Li
         assert_eq!(ids_from_guid("short"), None);
     }
 }
+
+// ----------------------------------------------------- what is printed on it
+
+/// Which of the launcher's own buttons sit where the pad's letters say.
+///
+/// SDL names a face button by where it is, not by what is printed on it: `a`
+/// is the southern one whatever the letter beside it. On most pads the
+/// southern button is the one marked A and nothing has to be done. On a pad
+/// built like a Mega Drive or a Saturn controller it is not: the 8BitDo M30
+/// has A B C along the bottom, SDL calls the middle one `a`, and the launcher
+/// confirmed on the button marked B while the one marked A went back. The
+/// letters on the plastic are what a person reads, and RetroArch obeys them
+/// inside the game, so the launcher obeys them too.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Faces {
+    /// The southern and eastern buttons carry each other's meaning.
+    pub swap_ab: bool,
+    /// The western and northern ones do.
+    pub swap_xy: bool,
+}
+
+impl Faces {
+    /// The SDL button this one means on this pad.
+    pub fn of(&self, b: sdl2::controller::Button) -> sdl2::controller::Button {
+        use sdl2::controller::Button::*;
+        match b {
+            A if self.swap_ab => B,
+            B if self.swap_ab => A,
+            X if self.swap_xy => Y,
+            Y if self.swap_xy => X,
+            other => other,
+        }
+    }
+}
+
+/// The raw button a mapping puts an SDL name on: `a:b1` is 1.
+fn raw_of(mapping: &str, sdl: &str) -> Option<u32> {
+    mapping.split(',').find_map(|part| {
+        let (name, bind) = part.split_once(':')?;
+        (name.trim() == sdl)
+            .then(|| bind.trim().strip_prefix('b')?.parse().ok())
+            .flatten()
+    })
+}
+
+/// Raw button to the letter printed beside it, from a RetroArch profile.
+///
+/// The profile carries both: `input_b_btn = "0"` says which raw button
+/// RetroPad B is, and `input_b_btn_label = "A"` says what that button is
+/// called on the plastic.
+fn labels_of(profile: &str) -> Vec<(u32, String)> {
+    let value = |line: &str| -> Option<(String, String)> {
+        let (k, v) = line.split_once('=')?;
+        Some((
+            k.trim().to_string(),
+            v.trim().trim_matches('"').trim().to_string(),
+        ))
+    };
+    let pairs: Vec<(String, String)> = profile.lines().filter_map(value).collect();
+    let mut out = Vec::new();
+    for (k, v) in &pairs {
+        let Some(stem) = k.strip_suffix("_btn") else {
+            continue;
+        };
+        let Ok(raw) = v.parse::<u32>() else { continue };
+        let want = format!("{stem}_btn_label");
+        if let Some((_, label)) = pairs.iter().find(|(k, _)| *k == want)
+            && !label.is_empty()
+        {
+            out.push((raw, label.clone()));
+        }
+    }
+    out
+}
+
+/// Whether this pad's letters disagree with where SDL puts them.
+///
+/// Only when it can be shown: the letter has to be somewhere, and somewhere
+/// else than SDL put it. A pad whose profile carries no labels, or whose
+/// labels agree, is left exactly as SDL has it.
+pub fn faces_from(mapping: &str, profile: &str) -> Faces {
+    let labels = labels_of(profile);
+    let letter = |sdl: &str| -> Option<&str> {
+        let raw = raw_of(mapping, sdl)?;
+        labels
+            .iter()
+            .find(|(r, _)| *r == raw)
+            .map(|(_, l)| l.as_str())
+    };
+    let crossed = |low: &str, high: &str, want: &str| {
+        letter(low).is_some_and(|l| !l.eq_ignore_ascii_case(want))
+            && letter(high).is_some_and(|l| l.eq_ignore_ascii_case(want))
+    };
+    Faces {
+        swap_ab: crossed("a", "b", "A"),
+        swap_xy: crossed("x", "y", "X"),
+    }
+}
+
+/// The RetroArch profile for a pad, from the directory the launcher keeps
+/// filled and then from the one the distribution ships.
+pub fn profile_for(vendor: u16, product: u16) -> Option<String> {
+    if vendor == 0 && product == 0 {
+        return None;
+    }
+    let wanted = (
+        format!("input_vendor_id = \"{}\"", vendor as u32),
+        format!("input_product_id = \"{}\"", product as u32),
+    );
+    for dir in [autoconfig_dir(), PathBuf::from(SYSTEM_AUTOCONFIG)] {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let Ok(text) = std::fs::read_to_string(e.path()) else {
+                continue;
+            };
+            if text.contains(&wanted.0) && text.contains(&wanted.1) {
+                return Some(text);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod faces_tests {
+    use super::*;
+
+    /// The mapping and the profile of a real pad, as SDL and RetroArch have
+    /// them. A B C along the bottom, X Y Z above: SDL's southern button is
+    /// the one marked B.
+    const M30_MAPPING: &str = "05009b42c82d00005106000000010000,8BitDo M30 Gamepad,\
+        a:b1,b:b0,back:b10,guide:b2,leftshoulder:b6,lefttrigger:a5,leftx:a0,lefty:a1,\
+        rightshoulder:b7,righttrigger:a4,start:b11,x:b4,y:b3,platform:Linux,";
+    const M30_PROFILE: &str = r#"
+input_b_btn = "0"
+input_y_btn = "3"
+input_a_btn = "1"
+input_x_btn = "4"
+input_start_btn = "11"
+input_b_btn_label = "A"
+input_y_btn_label = "X"
+input_a_btn_label = "B"
+input_x_btn_label = "Y"
+input_start_btn_label = "Start"
+"#;
+
+    /// And one built the usual way, where SDL and the plastic agree.
+    const PAD_MAPPING: &str = "030000005e0400008e02000010010000,Xbox 360,\
+        a:b0,b:b1,x:b2,y:b3,start:b7,platform:Linux,";
+    const PAD_PROFILE: &str = r#"
+input_b_btn = "0"
+input_a_btn = "1"
+input_y_btn = "2"
+input_x_btn = "3"
+input_b_btn_label = "A"
+input_a_btn_label = "B"
+input_y_btn_label = "X"
+input_x_btn_label = "Y"
+"#;
+
+    #[test]
+    fn a_pad_with_its_letters_where_sdl_expects_them_is_left_alone() {
+        assert_eq!(faces_from(PAD_MAPPING, PAD_PROFILE), Faces::default());
+    }
+
+    #[test]
+    fn a_six_button_pad_has_its_letters_the_other_way_round() {
+        let f = faces_from(M30_MAPPING, M30_PROFILE);
+        assert!(f.swap_ab, "the button marked A is SDL's eastern one");
+        assert!(f.swap_xy, "and the one marked X is SDL's northern one");
+        use sdl2::controller::Button::*;
+        assert_eq!(f.of(A), B, "pressing the letter A confirms");
+        assert_eq!(f.of(B), A);
+        assert_eq!(f.of(X), Y);
+        assert_eq!(f.of(Y), X);
+        // Everything else is where it was.
+        assert_eq!(f.of(Start), Start);
+        assert_eq!(f.of(DPadUp), DPadUp);
+    }
+
+    #[test]
+    fn nothing_is_swapped_on_a_guess() {
+        // No profile at all, a profile with no labels, and a mapping with no
+        // face buttons: three ways of not knowing, and none of them moves a
+        // button.
+        assert_eq!(faces_from(M30_MAPPING, ""), Faces::default());
+        assert_eq!(
+            faces_from(M30_MAPPING, "input_b_btn = \"0\"\ninput_a_btn = \"1\"\n"),
+            Faces::default()
+        );
+        assert_eq!(
+            faces_from("guid,name,start:b11,", M30_PROFILE),
+            Faces::default()
+        );
+    }
+
+    #[test]
+    fn a_letter_is_read_off_the_button_it_belongs_to() {
+        assert_eq!(raw_of(M30_MAPPING, "a"), Some(1));
+        assert_eq!(raw_of(M30_MAPPING, "b"), Some(0));
+        assert_eq!(raw_of(M30_MAPPING, "lefttrigger"), None, "that is an axis");
+        assert_eq!(raw_of(M30_MAPPING, "nonesuch"), None);
+        let labels = labels_of(M30_PROFILE);
+        assert!(labels.contains(&(0, "A".to_string())));
+        assert!(labels.contains(&(1, "B".to_string())));
+    }
+}

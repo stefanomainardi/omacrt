@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.stefanomainardi.omacrt.pads",
+  "name": "OmaCRT pads",
+  "version": "0.1.0",
+  "author": "Stefano Mainardi",
+  "license": "MIT",
+  "homepage": "https://github.com/stefanomainardi/omacrt",
+  "description": "Full screen overlay for the game pads: the four ports as sockets, the order that decides who is P1, which physical pad is which, and what each one will be called inside a game. Summoned from the OmaCRT bar panel.",
+  "kinds": ["overlay"],
+  "keepLoaded": false,
+  "entryPoints": { "overlay": "Pads.qml" }
+}

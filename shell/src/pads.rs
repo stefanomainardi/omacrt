@@ -55,6 +55,38 @@ impl Pad {
     }
 }
 
+/// A pad's name cut down to something that fits a socket.
+///
+/// SDL reports what the device calls itself, and a device calls itself
+/// "8BitDo Ultimate 2C Wireless Controller". Thirty eight characters into
+/// twelve is "8BitDo Ultim", which names nothing. The words that say only
+/// that it is a pad go first, then the maker, and the model is what is left.
+pub fn short_name(name: &str, cols: usize) -> String {
+    const NOISE: [&str; 7] = [
+        "controller",
+        "gamepad",
+        "joystick",
+        "wireless",
+        "bluetooth",
+        "usb",
+        "game pad",
+    ];
+    let mut words: Vec<String> = name.split_whitespace().map(str::to_string).collect();
+    // "8BitDo 8BitDo Ultimate" is what the kernel calls one of these.
+    words.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    words.retain(|w| !NOISE.iter().any(|n| w.eq_ignore_ascii_case(n)));
+    // Still too long: the maker matters less than the model.
+    while words.len() > 1 && words.join(" ").chars().count() > cols {
+        words.remove(0);
+    }
+    let out = words.join(" ");
+    if out.chars().count() > cols {
+        out.chars().take(cols).collect()
+    } else {
+        out
+    }
+}
+
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct File {
     #[serde(default)]
@@ -784,5 +816,27 @@ mod tests {
         assert_eq!(Pads::load_from(&p), good, "the backup answered");
         assert!(p.with_extension("toml.bad").exists() || !p.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pads_name_is_cut_down_to_its_model() {
+        // The words that say only that it is a pad go first.
+        assert_eq!(
+            short_name("8BitDo Ultimate 2C Wireless Controller", 20),
+            "8BitDo Ultimate 2C"
+        );
+        // Then the maker, when the model still does not fit.
+        assert_eq!(
+            short_name("8BitDo Ultimate 2C Wireless Controller", 12),
+            "Ultimate 2C"
+        );
+        // The kernel says some of these twice.
+        assert_eq!(short_name("8BitDo 8BitDo M30 gamepad", 20), "8BitDo M30");
+        // One word and no room left: cut, because something is better than
+        // an empty socket that has a pad in it.
+        assert_eq!(short_name("Supercalifragilistic", 6), "Superc");
+        assert_eq!(short_name("", 12), "");
+        // A name that already fits is left alone.
+        assert_eq!(short_name("DualShock 4", 15), "DualShock 4");
     }
 }
