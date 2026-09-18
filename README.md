@@ -48,9 +48,29 @@ Use your own files where you have the right to do so.
 
 ## How it works
 
-<p align="center">
-  <img src="docs/architecture.png" width="720" alt="OmaCRT architecture, drawn as a 16 bit illustration">
-</p>
+```mermaid
+flowchart TB
+  desktop["Hyprland desktop"]
+  monitors["Desktop monitors"]
+  flyback["Flyback<br/>Wayland compositor"]
+  subgraph clients["CRT applications"]
+    launcher["omacrt-shell<br/>Launcher"]
+    games["RetroArch"]
+    video["mpv"]
+  end
+  dac["Video DAC"]
+  tv["15 kHz CRT television"]
+
+  desktop -->|"Normal outputs"| monitors
+  desktop -->|"DRM lease: one connector"| flyback
+  clients -->|"Wayland surfaces"| flyback
+  flyback -->|"DRM scanout at 15 kHz"| dac
+  dac -->|"Analogue video"| tv
+```
+
+The arrows show connector ownership and the video path. Each application in
+the CRT group is a separate Wayland client of Flyback. Omarchy's optional
+plugins and the CLI control these processes; audio is routed through PipeWire.
 
 At boot a systemd unit installs an
 EDID override that marks the DAC's connector _non-desktop_, so Hyprland leaves
