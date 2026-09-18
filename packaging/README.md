@@ -11,11 +11,10 @@ cd packaging
 makepkg -si
 ```
 
-The package deliberately stops at the edge of the session. Enabling the boot
-time unit and installing the bar plugin into `~/.config/omarchy/plugins` are
-printed as the two remaining steps: the first needs a decision about which
-connector belongs to the television, the second belongs to a user and not to
-the system.
+After installation, follow the printed instructions to enable the boot time
+unit and install the plugins into `~/.config/omarchy/plugins`. These steps
+require choosing the television's connector and the user account that runs
+the desktop.
 
 `sha256sums` carries the real checksum of the tag tarball GitHub builds. It
 can only be filled in after the tag is pushed, since the tarball does not

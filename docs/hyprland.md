@@ -1,12 +1,8 @@
 # Without Omarchy
 
-OmaCRT is built on Omarchy and runs on plain Hyprland. This page is the second
-of those, what it has and what it does not.
-
-**The television is identical.** The launcher, the timings, the leased
-connector, the games, the films, the music, the photo frame, the pads: none of
-it knows what Omarchy is. Nothing in the Rust ever calls it. What changes is
-the desktop, and only the desktop.
+OmaCRT runs on plain Hyprland with the same launcher, display timings, games
+and media features. The command line and Hyprland keybindings provide the
+desktop controls that Omarchy exposes through its plugins.
 
 ## What is not there
 
@@ -71,10 +67,9 @@ before a DAC is bought.
 The row after them says which channel you are on, and everything below it is
 the same on both.
 
-The laser is not a loading bar with a costume on. It advances because a check
-answered, and when a probe is slow it waits with you. The diagram under the
-report is the modeline that is actually configured, read out of `crt.toml`:
-active, front porch, sync, back porch, for both axes.
+The animation advances as checks complete. The diagram below the report shows
+the modeline from `crt.toml`: active area, front porch, sync and back porch
+for both axes.
 
 This is what the install looks like on a machine with no Omarchy:
 

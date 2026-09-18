@@ -1,16 +1,14 @@
 # omacrt-shell
 
-Native boot screen and launcher for Omarchy on a 15 kHz CRT. It re-creates the
+Boot screen and launcher for a 15 kHz CRT on Hyprland. It re-creates the
 sequence of [crt.omarchy.org](https://crt.omarchy.org/) (power surge, BIOS
 POST, logo reveal, chime, laser-etched wordmark, `ls` menu) as a real
-320x240 framebuffer, without any shader that fakes a tube. The CRT provides the
-scanlines.
+320x240 framebuffer. The CRT provides the scanlines.
 
-Written in Rust on SDL2. Colors come from the current Omarchy theme
-(`~/.config/omarchy/current/colors.toml`). The mark is the project's own, four
-bars crossed by the dark cut of the beam's return, drawn as geometry; the
-wordmark is decoded from a block drawing that takes its letterforms from
-Omarchy's own `logo.txt`.
+Written in Rust with SDL2. Colours come from the current Omarchy theme
+(`~/.config/omarchy/current/colors.toml`) when available, with Tokyo Night as
+the fallback. The icon is OmaCRT's own design; the wordmark uses letterforms
+from Omarchy's `logo.txt`.
 
 ## Build and run
 
@@ -23,26 +21,26 @@ cargo build --release
 
 Options:
 
-| Flag                                       | Meaning                                                                       |
-| ------------------------------------------ | ----------------------------------------------------------------------------- |
-| `--size WxH`                               | framebuffer size, default `320x240`                                           |
-| `--hz N`                                   | refresh rate shown in the POST, default 60                                    |
-| `--scale N`                                | window scale for desktop testing, default 3                                   |
-| `--fullscreen`                             | fullscreen on the current output                                              |
-| `--stretch`                                | fill the output ignoring aspect ratio, for wide 15 kHz modes such as 1440x240 |
-| `--no-audio`                               | disable sound                                                                 |
-| `--auto-boot`                              | start the boot sequence immediately                                           |
-| `--theme PATH`                             | alternative `colors.toml`                                                     |
-| `--systems PATH`                           | alternative `systems.toml`                                                    |
-| `--config-dir DIR`                         | settings, profile, recents and the RetroArch configs somewhere else           |
+| Flag                                       | Meaning                                                                                                                                                                |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--size WxH`                               | framebuffer size, default `320x240`                                                                                                                                    |
+| `--hz N`                                   | refresh rate shown in the POST, default 60                                                                                                                             |
+| `--scale N`                                | window scale for desktop testing, default 3                                                                                                                            |
+| `--fullscreen`                             | fullscreen on the current output                                                                                                                                       |
+| `--stretch`                                | fill the output ignoring aspect ratio, for wide 15 kHz modes such as 1440x240                                                                                          |
+| `--no-audio`                               | disable sound                                                                                                                                                          |
+| `--auto-boot`                              | start the boot sequence immediately                                                                                                                                    |
+| `--theme PATH`                             | alternative `colors.toml`                                                                                                                                              |
+| `--systems PATH`                           | alternative `systems.toml`                                                                                                                                             |
+| `--config-dir DIR`                         | settings, profile, recents and the RetroArch configs somewhere else                                                                                                    |
 | `--browse [SYSTEM]`                        | boot straight into a screen: a system name, or `settings`, `frame`, `monitor`, `ambient`, `saversettings`, `diag`, `about`, `power`, `profile`, `pair`, `style`, `fit` |
-| `--idle SECONDS`                           | screensaver after this idle time, default 60, 0 disables                      |
-| `--screensaver [NAME]`                     | start in the screensaver, optionally with one effect                          |
-| `--pads`                                   | what SDL makes of every connected pad, then exit                              |
-| `--headless --dump 1.0,4.5 --dump-dir DIR` | render frames to PPM without a window                                         |
-| `--realtime`                               | with `--headless`, hold the loop to the wall clock: anything drawn from live data needs it |
-| `--record DIR --record-secs N --script F`  | offline render: every frame as PPM plus `audio.wav`, inputs replayed from a script |
-| `--dump-audio DIR`                         | write every synthesized sound as a WAV and exit                               |
+| `--idle SECONDS`                           | screensaver after this idle time, default 60, 0 disables                                                                                                               |
+| `--screensaver [NAME]`                     | start in the screensaver, optionally with one effect                                                                                                                   |
+| `--pads`                                   | what SDL makes of every connected pad, then exit                                                                                                                       |
+| `--headless --dump 1.0,4.5 --dump-dir DIR` | render frames to PPM without a window                                                                                                                                  |
+| `--realtime`                               | with `--headless`, hold the loop to the wall clock: anything drawn from live data needs it                                                                             |
+| `--record DIR --record-secs N --script F`  | offline render: every frame as PPM plus `audio.wav`, inputs replayed from a script                                                                                     |
+| `--dump-audio DIR`                         | write every synthesized sound as a WAV and exit                                                                                                                        |
 
 Controls: arrows or `hjkl` move, `Enter` or `Space` select (and skip the boot
 sequence while it plays), `Esc` or `Backspace` go back, `F` stars a game, `q`

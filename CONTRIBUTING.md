@@ -1,15 +1,12 @@
 # Contributing
 
-This is one person's television, given away because it turned out well. It is
-not a product, there is no roadmap anybody is owed, and it gets worked on when
-it is fun to work on. Read that before you spend an evening on a change.
+OmaCRT is a personal project maintained in spare time, with no fixed roadmap.
+Contributions are welcome. Discuss substantial changes before starting work
+so their scope and testing requirements are clear.
 
-None of which means the door is shut. The parts of this that other people can
-improve are real, and a good change is welcome.
+## Hardware testing
 
-## The rule that is not negotiable
-
-**It has to have run on a real television.**
+**Changes to display behaviour must be tested on a real CRT.**
 
 Half of this project cannot be tested any other way. A modeline the kernel
 accepts can still show a strip; a picture that is centred on one set is off on
@@ -35,53 +32,40 @@ what you did check.
 
 ## What probably does not
 
-- **A new dependency** without a reason that cannot be met by the thirteen
-  already here. This draws its own pixels on purpose.
+- **A new dependency** without a reason the existing dependencies cannot meet.
+  The launcher deliberately draws its own pixels.
 - **A feature nobody asked for**, or one that only makes sense on your
   hardware. Open a discussion first and save yourself the work.
-- **A refactor for taste.** Splitting a file because it is long is a change
-  with all the risk of a rewrite and none of the benefit, unless it comes with
-  a reason the code itself gives you.
-- **Anything that patches Omarchy.** The whole argument of this project is
-  that it did not have to. A change that needs a patched desktop, a forked
-  plugin or a modified upstream file is the wrong change, and there is nearly
-  always an extension point that does the job. Making something work without
-  Omarchy is not a patch to it and is welcome: the television has never needed
-  it, and [`docs/hyprland.md`](docs/hyprland.md) is where that half lives.
+- **A refactor without a concrete benefit.** Explain the maintenance,
+  correctness or testing problem it addresses.
+- **Anything that patches Omarchy.** Use its extension points without modifying
+  upstream files or forking its plugins. Improvements to plain Hyprland support
+  are welcome; see [`docs/hyprland.md`](docs/hyprland.md).
 
 ## Standards
-
-Nothing exotic, but they are held to:
 
 - `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test` and
   `python3 scripts/audit.py` all clean. CI runs the same four.
 - **Tests for what can be decided on a machine with no television**: parsers,
   name matching, modeline arithmetic, the video fit, durable writes. Not for
   what needs a tube; that is what the living room is for.
-- **Conventional Commits**, and a body that says what was wrong and why the
-  change is right. The history of this repository is its design document, so a
-  commit that says "fix stuff" costs a future reader an hour.
+- **Conventional Commits**, with a body explaining the problem and the reason
+  for the change.
 - **Plain prose** in commits, comments and documentation. A comment explains why the code is the way it is. The next line speaks for itself. No em dashes.
-- **Code you can explain.** Use whatever tools you like, including an
-  assistant, but the change is yours: it has to run on your television and you
-  have to be able to say why every line of it is there. A patch its author
-  cannot defend is not a contribution, it is homework for the maintainer.
+- **Code you can explain.** AI assistance is welcome. Contributors remain
+  responsible for understanding and testing their changes, including the
+  hardware checks described above.
 
-[`AGENTS.md`](AGENTS.md) is the working guide: what the modules are, how to
-render a screen without a television and look at it, how to add a screen, a
-console, a setting or a CLI verb, and the handful of rules that do damage when
-they are broken. Read it before the first change; it covers most of the ways
-to get this wrong.
+Read [`AGENTS.md`](AGENTS.md) before making changes. It covers the modules,
+headless rendering, common development tasks and operational precautions.
 
 ## Bugs, ideas and questions
 
 - **A bug** is an issue, with the template filled in: the hardware, the
   television, and the output of `omacrt doctor`. That command exists to
   make a bug report answerable, so please run it.
-- **An idea** belongs in a discussion. It costs nothing to float and it
-  will not sit in a list making the project look neglected.
-- **A question** is a discussion too. There is no support queue here, and
-  nobody is on call.
+- **Ideas and questions** belong in discussions. Support is provided as time
+  allows.
 - **What your television did** is an issue with its own template, and the most useful thing anybody can send. Every number in this project was
   taken on one set in one room; what a different tube, a different converter
   or a different card does with the same timings is the part this cannot find

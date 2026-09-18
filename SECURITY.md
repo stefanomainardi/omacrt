@@ -3,16 +3,15 @@
 This project drives a television, indexes a game collection and talks to a few
 programs on the same machine. It is a desktop tool for a single user, not a
 service: nothing listens on a network port and no daemon accepts remote input.
-One credential can exist, and only if you create it: an API key for your own
-photograph server. What follows is everything it touches, so you can decide
-whether you are comfortable running it.
+Optional credentials include an Immich API key and private calendar URLs.
+This document describes privileges, network access and file handling.
 
 ## Reporting a problem
 
 Open an issue, or write to the address on
 [stefanomainardi.com](https://www.stefanomainardi.com) if you would rather not
-say it in public first. There is no bounty, and there is no security team: it
-is one person and a television.
+say it in public first. Reports are handled by the maintainer; there is no
+bug bounty programme.
 
 ## What runs as root, and only that
 
@@ -22,7 +21,7 @@ One thing needs root, once, at install time:
   `scripts/crt-lease-setup.sh`, `scripts/edid-non-desktop.py` and a systemd
   unit that runs the first of those at boot.
 
-That script marks the DAC's connector as *non-desktop* by writing an EDID
+That script marks the DAC's connector as _non-desktop_ by writing an EDID
 override through debugfs, so the compositor offers the output for DRM leasing
 instead of managing it. It writes to `/sys/kernel/debug/dri/*`, the connector's
 `status` file under `/sys/class/drm`, and one file under `/run`. It reads the
@@ -132,9 +131,8 @@ follow no redirect. Curl would otherwise send the key header to whatever host
 a redirect named, and a photograph server that redirects, by mistake or on
 purpose, would be handing your key to somebody else.
 
-The file is yours, so its permissions are yours. This project cannot change
-them without changing a file you wrote, but it reads them: when the mode lets
-anybody but you read it, the launcher says so on its error output.
+The launcher checks the file's permissions and warns on stderr if other users
+can read it. It does not change those permissions.
 
 The other thing here that is a secret is the calendar address, when it is a
 private subscription link: those carry a token in the path or the query, so
@@ -156,8 +154,7 @@ message that summons it carries data and never the name of a binary, so opening
 the overlay starts what the installer put there and nothing that arrived with
 the request.
 
-Two places on the desktop side do use a shell, and both are named here rather
-than glossed over. The bar panel and the library overlay open a floating
+The bar panel and the library overlay use a shell to open a floating
 terminal for the few commands that need a password or show long progress. That
 terminal takes a command line, so everything variable in it goes through the
 one function that quotes it. And `bin/omacrt-pick` reads `OMACRT_PICKER` as a
@@ -199,9 +196,8 @@ temporary file and a rename, and the copy being replaced is kept as `.bak`.
 `state.json` and `watch-later.tsv` go through that same write, so an interrupted
 one costs the last change and never the file.
 
-It never deletes a game and never uploads anything anywhere. It does write
-inside your collection, in three places, and it is better to say so than to
-claim otherwise:
+It does not delete games or upload media. It writes inside your collection
+in three places:
 
 - a scan writes `<Title>.scummvm` into the folder of a ScummVM game, which is
   the file ScummVM needs to be launched by name;
@@ -252,9 +248,9 @@ script with those reasons, and anything new fails the build.
 
 ## What it does not do
 
-No telemetry. No analytics. No crash reporting. No auto update. No account, no
-token, no key. If you see it opening a connection to anything not listed above,
-that is a bug worth reporting.
+OmaCRT has no telemetry, analytics, crash reporting or automatic updates. It
+requires no OmaCRT account. Optional services use the credentials described
+above. Report unexpected network connections as bugs.
 
 It sends nothing to the running emulator over the network either. RetroArch's
 command interface is disabled at every launch, because a single datagram

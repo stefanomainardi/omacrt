@@ -1,13 +1,11 @@
 # OmaCRT bar plugin
 
-A television in the Omarchy bar. The glyph shows whether the 15 kHz tube is
-on the air and the panel is the remote control: power, NTSC or PAL, keyboard
-focus to the launcher, DAC sync mode and reset, audio to the TV, and the
-health of the game library and BIOS files.
+The bar widget shows the television's status. Its panel controls power,
+NTSC or PAL, keyboard focus, DAC sync, audio routing and volume. It also
+provides access to the game library and BIOS checks.
 
-Everything real happens in the `omacrt` binary that ships in `bin/`
-next to these files. The widget runs `omacrt status --json` and renders
-it; every button runs one `omacrt` command.
+The widget reads `omacrt status --json`; each button runs an `omacrt` command
+through the helper in `bin/` beside the plugin files.
 
 ## Install
 
@@ -27,15 +25,12 @@ Everything the widget and the panel do is a call to `omacrt`, through
 `bin/omacrt` in this folder. That file is a two line launcher for the
 installed program, written by `omacrt plugin sync`. It is not a copy.
 
-It was a copy once, and a copy is a snapshot: no package upgrade writes into
-anybody's home, so the bar went on running the build that was current when
-the plugin was last installed. Two versions of one program then shared one
-state directory, and every rename on the program's side became a failure that
-appeared only through the bar. `omacrt doctor` reports a helper that is not
-the launcher for this install, under `plugin up to date`.
+The helper keeps the plugin on the installed CLI version after package
+upgrades. Older installs copied the binary into the plugin directory, where
+it could become stale. `omacrt doctor` checks this under `plugin up to date`.
 
-A symlink would say the same thing more directly, and Omarchy's plugin
-validator refuses every symlink inside a plugin folder.
+The helper is a script because Omarchy's plugin validator rejects symlinks
+inside plugin folders.
 
 ## Use
 
