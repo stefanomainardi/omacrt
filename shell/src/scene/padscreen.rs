@@ -377,20 +377,17 @@ impl Scene {
             );
         }
         let filled = matches!(slots.get(sel), Some(Slot::Pad(_, true)));
-        let hint = if scan {
-            self.hint(&[("A", "pair"), ("X", "look again"), ("B", "back")])
+        let hint: &[(&str, &str)] = if scan {
+            &[("A", "pair"), ("X", "look again"), ("B", "back")]
         } else if filled {
-            self.hint(&[("A", "identify"), ("X", "remap"), ("Y", "forget")])
+            &[("A", "identify"), ("X", "remap"), ("Y", "forget")]
         } else {
-            self.hint(&[("A", "add a pad"), ("Y", "forget")])
+            &[("A", "add a pad"), ("Y", "forget")]
         };
-        fb.text(left, h - 26, &hint, scale(self.theme.dim, 0.7), 1);
-        let hint2 = if scan {
-            String::new()
-        } else {
-            self.hint(&[("L R", "move a port"), ("B", "back")])
-        };
-        fb.text(left, h - 14, &hint2, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 26, hint);
+        if !scan {
+            self.draw_hint(fb, left, h - 14, &[("L R", "move a port"), ("B", "back")]);
+        }
     }
 
     // ------------------------------------------------------------- the input

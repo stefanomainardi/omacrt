@@ -280,13 +280,8 @@ impl Scene {
         let width = w - 2 * (w as f32 * 0.05) as i32;
         let y0 = self.draw_header(fb, &title);
         let row_h = 14;
-        fb.rect(
-            left,
-            self.band(y0 + sel as i32 * row_h),
-            width,
-            row_h - 1,
-            self.theme.selection,
-        );
+        let band_y = self.band(y0 + sel as i32 * row_h);
+        self.select_bar(fb, left, band_y, width, row_h - 1);
         for (i, (row, icon, label)) in PAUSE_ROWS.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             self.draw_menu_row(fb, left, y, width, icon, label, false, i == sel, 1.0);
@@ -296,22 +291,25 @@ impl Scene {
                     ((width - 30 - 18 - Framebuffer::text_width(label, 1)) / 8).max(0) as usize;
                 let text: String = value.chars().take(room).collect();
                 let tx = left + width - 8 - Framebuffer::text_width(&text, 1);
-                fb.text(tx, y + 2, &text, scale(self.theme.dim, 1.0), 1);
+                if i == sel {
+                    let shadow = crate::paint::Tones::of(&self.theme).shadow;
+                    crate::paint::text_shadow(fb, tx, y + 2, &text, self.theme.fg, shadow);
+                } else {
+                    fb.text(tx, y + 2, &text, self.theme.dim, 1);
+                }
             }
         }
         let max_cols = (width / 8) as usize;
         if let Some((msg, _)) = &self.message {
             let m: String = msg.chars().take(max_cols).collect();
-            fb.text(left, h - 28, &m, self.theme.cyan, 1);
+            self.draw_message(fb, left, h - 28, &m);
         }
         // A choice is changed, not selected: the hint says so on its row.
-        let hint = match PAUSE_ROWS.get(sel).map(|(row, _, _)| *row) {
-            Some(PauseRow::Aspect) | Some(PauseRow::Shader) => {
-                self.hint(&[("A", "change"), ("B", "back")])
-            }
-            _ => self.hint(&[("A", "select"), ("B", "back")]),
+        let hint: &[(&str, &str)] = match PAUSE_ROWS.get(sel).map(|(row, _, _)| *row) {
+            Some(PauseRow::Aspect) | Some(PauseRow::Shader) => &[("A", "change"), ("B", "back")],
+            _ => &[("A", "select"), ("B", "back")],
         };
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, hint);
     }
 
     pub(super) fn draw_running(&mut self, fb: &mut Framebuffer) {

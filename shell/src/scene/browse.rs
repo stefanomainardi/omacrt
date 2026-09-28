@@ -2042,7 +2042,7 @@ impl Scene {
         let left = margin + self.slide();
         let max_cols = ((w - 2 * margin) / 8) as usize;
         if on {
-            fb.rect(left, y - 2, w - 2 * margin, 12, self.band_color());
+            self.select_bar(fb, left, y - 2, w - 2 * margin, 12);
         }
         let room = max_cols.saturating_sub(right.chars().count() + 1);
         let full = format!("  {label}");
@@ -2058,24 +2058,16 @@ impl Scene {
         } else {
             full.chars().take(room).collect()
         };
-        fb.text(
-            left,
-            y,
-            &text,
-            if on { self.theme.accent } else { color },
-            1,
-        );
-        fb.text(
-            left + w - 2 * margin - Framebuffer::text_width(right, 1),
-            y,
-            right,
-            if on {
-                self.theme.accent
-            } else {
-                self.theme.dim
-            },
-            1,
-        );
+        let rx = left + w - 2 * margin - Framebuffer::text_width(right, 1);
+        if on {
+            // Light words on their shadow: the bar is already the accent.
+            let shadow = crate::paint::Tones::of(&self.theme).shadow;
+            crate::paint::text_shadow(fb, left, y, &text, self.theme.paper, shadow);
+            crate::paint::text_shadow(fb, rx, y, right, self.theme.paper, shadow);
+        } else {
+            fb.text(left, y, &text, color, 1);
+            fb.text(rx, y, right, self.theme.dim, 1);
+        }
     }
 
     pub(super) fn draw_browser(&mut self, fb: &mut Framebuffer) {
@@ -2240,8 +2232,7 @@ impl Scene {
                         1,
                     );
                 }
-                let hint = self.hint(&[("A", "open"), ("B", "back")]);
-                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+                self.draw_hint(fb, left, h - 16, &[("A", "open"), ("B", "back")]);
             }
             Screen::Collections { sel, top } => {
                 let y0 = self.draw_header(fb, "Collections");
@@ -2290,8 +2281,7 @@ impl Scene {
                         1,
                     );
                 }
-                let hint = self.hint(&[("A", "open"), ("B", "back")]);
-                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+                self.draw_hint(fb, left, h - 16, &[("A", "open"), ("B", "back")]);
             }
             Screen::Games { sys, sel, top } => {
                 let prompt = match sys {
@@ -2567,18 +2557,18 @@ impl Scene {
                     self.draw_osk(fb);
                 }
                 let keyboard = self.pad == PadKind::Keyboard;
-                let hint = if self.osk.is_some() {
-                    self.hint(&[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")])
+                let hint: &[(&str, &str)] = if self.osk.is_some() {
+                    &[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")]
                 } else if is_video && matches!(self.games_back, Some(Screen::YouTube { .. })) {
-                    self.hint(&[("A", "play"), ("Y", "later"), ("B", "back")])
+                    &[("A", "play"), ("Y", "later"), ("B", "back")]
                 } else if is_video {
-                    self.hint(&[("A", "play"), ("X", "convert"), ("Y", "fav"), ("B", "back")])
+                    &[("A", "play"), ("X", "convert"), ("Y", "fav"), ("B", "back")]
                 } else if keyboard {
-                    self.hint(&[("A", "run"), ("X", "covers"), ("Y", "fav"), ("/", "find")])
+                    &[("A", "run"), ("X", "covers"), ("Y", "fav"), ("/", "find")]
                 } else {
-                    self.hint(&[("A", "run"), ("X", "covers"), ("Y", "fav"), ("LT", "find")])
+                    &[("A", "run"), ("X", "covers"), ("Y", "fav"), ("LT", "find")]
                 };
-                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+                self.draw_hint(fb, left, h - 16, hint);
             }
             Screen::Profile { sel } => {
                 let y0 = self.draw_header(fb, "TV");
@@ -2730,7 +2720,7 @@ impl Scene {
         if let Some((msg, _)) = &self.message
             && !matches!(self.screen, Screen::Pads { .. })
         {
-            fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.cyan, 1);
+            self.draw_message(fb, left, h - 28, &cut(msg, max_cols - 8));
         }
     }
 
@@ -2761,7 +2751,7 @@ impl Scene {
         ];
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
-        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        self.select_bar(fb, left, band_y, width, row_h - 1);
         for (i, (icon, text, sub)) in items.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             self.draw_menu_row(fb, left, y, width, icon, text, *sub, i == sel, 1.0);
@@ -2776,8 +2766,7 @@ impl Scene {
             scale(self.theme.dim, 0.9),
             1,
         );
-        let hint = self.hint(&[("A", "choose"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, &[("A", "choose"), ("B", "back")]);
     }
 
     /// The cover flow: the selected game's box art large in the middle, the
@@ -2977,8 +2966,12 @@ impl Scene {
         );
         let p: String = prompt.chars().take(24).collect();
         fb.text(left, 4, &p, scale(self.theme.dim, 0.8), 1);
-        let hint = self.hint(&[("A", "run"), ("X", "list"), ("Y", "fav"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[("A", "run"), ("X", "list"), ("Y", "fav"), ("B", "back")],
+        );
     }
 
     /// The search bar under the header: the query with a blinking cursor and

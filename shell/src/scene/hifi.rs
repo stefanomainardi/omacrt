@@ -642,8 +642,12 @@ impl Scene {
             Some(Ok(())) => {}
         }
         self.draw_music_strip(fb, h - 30);
-        let hint = self.hint(&[("A", "open"), ("X", "pause"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[("A", "open"), ("X", "pause"), ("B", "back")],
+        );
     }
 
     /// The ten bands as vertical sliders, the picked one lit, with the
@@ -728,10 +732,8 @@ impl Scene {
             1,
         );
         // Four controls do not fit on one line at this width.
-        let hint1 = self.hint(&[("<>", "band"), ("^v", "gain")]);
-        let hint2 = self.hint(&[("A", "preset"), ("B", "back")]);
-        fb.text(left, h - 24, &hint1, scale(th.dim, 0.7), 1);
-        fb.text(left, h - 14, &hint2, scale(th.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 24, &[("<>", "band"), ("^v", "gain")]);
+        self.draw_hint(fb, left, h - 14, &[("A", "preset"), ("B", "back")]);
     }
 
     pub(super) fn draw_music_list(&mut self, fb: &mut Framebuffer, sel: usize, top: usize) {
@@ -850,16 +852,16 @@ impl Scene {
             Some(MusicItem::Source(Source::ProviderPlaylist(..), _))
         );
         let keyboard = self.pad == PadKind::Keyboard;
-        let hint = if self.osk.is_some() {
-            self.hint(&[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")])
+        let hint: &[(&str, &str)] = if self.osk.is_some() {
+            &[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")]
         } else if playlist {
-            self.hint(&[("A", "play"), ("B", "back")])
+            &[("A", "play"), ("B", "back")]
         } else if keyboard {
-            self.hint(&[("A", "play"), ("Y", "star"), ("/", "find"), ("B", "back")])
+            &[("A", "play"), ("Y", "star"), ("/", "find"), ("B", "back")]
         } else {
-            self.hint(&[("A", "play"), ("Y", "star"), ("LT", "find"), ("B", "back")])
+            &[("A", "play"), ("Y", "star"), ("LT", "find"), ("B", "back")]
         };
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, hint);
     }
 
     pub(super) fn draw_now_playing(&mut self, fb: &mut Framebuffer) {
@@ -976,19 +978,27 @@ impl Scene {
         }
         // Two lines of hints: the deck has more controls than fit in one.
         let skip = if track.stream { "tune" } else { "track" };
-        let hint1 = self.hint(&[("A", "pause"), ("<>", skip), ("^v", "volume")]);
+        self.draw_hint(
+            fb,
+            left,
+            h - 24,
+            &[("A", "pause"), ("<>", skip), ("^v", "volume")],
+        );
         let deck_key = if self.pad == PadKind::Keyboard {
             "PgUp"
         } else {
             "LB"
         };
-        let hint2 = self.hint(&[
-            ("X", "show"),
-            (deck_key, "deck"),
-            ("Y", "timer"),
-            ("B", "back"),
-        ]);
-        fb.text(left, h - 24, &hint1, scale(theme.dim, 0.7), 1);
-        fb.text(left, h - 14, &hint2, scale(theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[
+                ("X", "show"),
+                (deck_key, "deck"),
+                ("Y", "timer"),
+                ("B", "back"),
+            ],
+        );
     }
 }

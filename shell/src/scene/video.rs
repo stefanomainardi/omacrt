@@ -356,13 +356,17 @@ impl Scene {
             fb.rect(w / 2 - 8, h / 2 + 10, 5, 16, self.theme.paper);
             fb.rect(w / 2 + 3, h / 2 + 10, 5, 16, self.theme.paper);
         }
-        let hint = self.hint(&[
-            ("A", "pause"),
-            ("<>", "seek"),
-            ("^v", "volume"),
-            ("B", "stop"),
-        ]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[
+                ("A", "pause"),
+                ("<>", "seek"),
+                ("^v", "volume"),
+                ("B", "stop"),
+            ],
+        );
     }
 
     pub(super) fn draw_video_settings(&mut self, fb: &mut Framebuffer, sel: usize) {

@@ -1349,22 +1349,68 @@ impl Scene {
         self.pad = name.map(PadKind::from_name).unwrap_or(PadKind::Keyboard);
     }
 
-    fn hint(&self, parts: &[(&str, &str)]) -> String {
+    /// What a button is called on the connected pad, and the colour its role
+    /// is drawn in. The colour follows the role, not the letter, so accepting
+    /// is green on every pad even where the pad calls that button X.
+    fn hint_key<'a>(&self, button: &'a str) -> (&'a str, Option<Color>) {
         let l = self.pad.labels();
-        parts
-            .iter()
-            .map(|(button, what)| {
-                let b = match *button {
-                    "A" => l.accept,
-                    "B" => l.back,
-                    "Y" => l.fav,
-                    "X" => l.alt,
-                    other => other,
-                };
-                format!("{b} {what}")
-            })
-            .collect::<Vec<_>>()
-            .join("  ")
+        let th = &self.theme;
+        match button {
+            "A" => (l.accept, Some(th.green)),
+            "B" => (l.back, Some(th.red)),
+            "Y" => (l.fav, Some(th.yellow)),
+            "X" => (l.alt, Some(th.blue)),
+            other => (other, None),
+        }
+    }
+
+    fn hint_width(&self, parts: &[(&str, &str)]) -> i32 {
+        let mut w = 0;
+        for (button, what) in parts {
+            let (label, role) = self.hint_key(button);
+            let cap = if role.is_some() && label.chars().count() == 1 {
+                9
+            } else {
+                Framebuffer::text_width(label, 1) + 4
+            };
+            w += cap + 3 + Framebuffer::text_width(what, 1) + 10;
+        }
+        (w - 10).max(0)
+    }
+
+    /// The buttons along the bottom, drawn as buttons: a pad's face buttons
+    /// as round caps in the colour of what they do, anything else (a key,
+    /// a direction, a shoulder) as a small sunken plate with its name.
+    fn draw_hint(&self, fb: &mut Framebuffer, x: i32, y: i32, parts: &[(&str, &str)]) -> i32 {
+        let th = &self.theme;
+        let tones = crate::paint::Tones::of(th);
+        let mut cx = x;
+        for (button, what) in parts {
+            let (label, role) = self.hint_key(button);
+            let mut chars = label.chars();
+            match (role, chars.next(), chars.next()) {
+                (Some(c), Some(k), None) => {
+                    cx += crate::paint::keycap(fb, cx, y - 1, k, c, th.bg);
+                }
+                _ => {
+                    let w = Framebuffer::text_width(label, 1) + 4;
+                    fb.rect(cx, y - 1, w, 10, tones.lo);
+                    fb.rect(
+                        cx + 1,
+                        y + 8,
+                        w - 1,
+                        1,
+                        lerp_color(th.selection, th.paper, 0.2),
+                    );
+                    fb.text(cx + 2, y, label, th.fg, 1);
+                    cx += w;
+                }
+            }
+            cx += 3;
+            fb.text(cx, y, what, scale(th.dim, 0.9), 1);
+            cx += Framebuffer::text_width(what, 1) + 10;
+        }
+        cx
     }
 
     /// Compact header used by the browser and the running screen: small icon,
@@ -1373,9 +1419,25 @@ impl Scene {
         let left = (fb.w as f32 * 0.05) as i32 + self.slide();
         // The same mark as everywhere else, at the smallest size its shape
         // holds, and on the same return.
+        let th = &self.theme;
+        let tones = crate::paint::Tones::of(th);
+        let w = fb.w as i32;
+        // A little light from above: the room the menu stands in, in the
+        // dithered steps a fixed palette would have painted it with.
+        crate::paint::gradient_v(
+            fb,
+            0,
+            0,
+            w,
+            120,
+            &[lerp_color(th.bg, th.selection, 0.55), th.bg],
+        );
         let (base, hot) = self.retrace_now();
         self.draw_retrace(fb, left, 8, 24.0, base, 1.0, hot);
-        let mx = fb.w as i32 - left - self.mark_small.cols;
+        let mx = w - left - self.mark_small.cols;
+        for cell in &self.mark_small.cells {
+            effects::draw_cell(fb, mx + 1, 11, 1, cell, tones.shadow);
+        }
         for cell in &self.mark_small.cells {
             effects::draw_cell(fb, mx, 10, 1, cell, cell.final_color);
         }
@@ -1389,14 +1451,35 @@ impl Scene {
             8.0,
             2.6,
         );
-        fb.text(left, 40, prompt, self.theme.dim, 1);
+        // The title on a shelf label: a band that fades out to the right, a
+        // tab of accent in front of it, the words standing on a shadow.
+        let span = w - 2 * left;
+        crate::paint::gradient_h(
+            fb,
+            left,
+            36,
+            span,
+            13,
+            lerp_color(th.selection, th.accent, 0.22),
+            th.bg,
+        );
+        fb.rect(left, 37, 3, 11, th.accent);
+        crate::paint::text_shadow(fb, left + 8, 39, prompt, th.paper, tones.shadow);
+        // The clock in a small sunken window of its own.
         let clock = crate::clock::now(self.now).format("%H:%M").to_string();
-        fb.text(
-            fb.w as i32 - left - Framebuffer::text_width(&clock, 1),
-            40,
-            &clock,
-            scale(self.theme.dim, 0.7),
+        let cw = Framebuffer::text_width(&clock, 1) + 8;
+        let cx = w - left - cw;
+        let well = lerp_color(th.bg, tones.lo, 0.5);
+        crate::paint::bevel(fb, &tones, cx, 36, cw, 13, well, th.bg, false);
+        fb.text(cx + 4, 39, &clock, th.fg, 1);
+        crate::paint::gradient_h(
+            fb,
+            left,
+            50,
+            span,
             1,
+            lerp_color(th.accent, th.bg, 0.3),
+            th.bg,
         );
         52
     }
@@ -1569,16 +1652,28 @@ impl Scene {
         std::mem::take(&mut self.rumble_pending)
     }
 
-    /// The selection band breathes with the beat while music plays.
-    fn band_color(&self) -> Color {
-        if self.music.status.playing() {
-            crate::fb::lerp_color(
-                self.theme.selection,
-                self.theme.accent,
-                self.deck.kick.hit * 0.3,
-            )
-        } else {
-            self.theme.selection
+    /// A passing message, in a small raised window of its own rather than
+    /// loose on the ground. `y` is where the text sits, as it always was.
+    fn draw_message(&self, fb: &mut Framebuffer, x: i32, y: i32, text: &str) {
+        let th = &self.theme;
+        let tones = crate::paint::Tones::of(th);
+        let w = Framebuffer::text_width(text, 1) + 12;
+        crate::paint::bevel(fb, &tones, x, y - 3, w, 13, tones.panel, tones.panel2, true);
+        fb.rect(x + 2, y - 1, 2, 9, th.cyan);
+        fb.text(x + 7, y, text, th.cyan, 1);
+    }
+
+    /// The selection, drawn as a lit key. A sheen crosses it every four
+    /// seconds, the small movement that says which row is alive.
+    fn select_bar(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32) {
+        let tones = crate::paint::Tones::of(&self.theme);
+        let shine = ((self.now % 4.0) / 1.2) as f32;
+        crate::paint::select_bar(fb, &self.theme, &tones, x, y, w, h, shine);
+        if self.music.status.playing() && self.deck.kick.hit > 0.05 {
+            // The beat still lands on it, as a flash of the accent edge.
+            let k = self.deck.kick.hit * 0.6;
+            let edge = crate::fb::lerp_color(self.theme.accent, self.theme.paper, k);
+            fb.rect(x + 1, y, w - 2, 1, edge);
         }
     }
 

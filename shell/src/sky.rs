@@ -18,20 +18,7 @@ use crate::fb::{Color, Framebuffer, lerp_color, rgb, scale};
 use omacrt_shell::ambient::{Kind, Reading};
 use omacrt_shell::theme::Theme;
 
-/// The ordered dither of every home computer that had to fake a gradient.
-const BAYER: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
-
-/// A pixel of `a` or of `b` depending on where it is, so that a fraction
-/// between the two colours reads as a mix from a distance.
-#[inline]
-fn dither(x: i32, y: i32, t: f32, a: Color, b: Color) -> Color {
-    let level = (t.clamp(0.0, 1.0) * 16.0) as u8;
-    if level > BAYER[(y & 3) as usize][(x & 3) as usize] {
-        b
-    } else {
-        a
-    }
-}
+use crate::paint::{BAYER, dither};
 
 /// How much fog stands between the viewer and a point of the picture.
 ///

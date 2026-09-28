@@ -559,8 +559,10 @@ impl Scene {
         on: bool,
         fade: f32,
     ) {
+        // Under the cursor the words are the light colour on their shadow:
+        // the bar is already the accent, and accent on accent does not read.
         let (icon_c, text_c, chev_c) = if on {
-            (self.theme.accent, self.theme.accent, self.theme.accent)
+            (self.theme.accent, self.theme.paper, self.theme.paper)
         } else {
             (self.theme.dim, self.theme.paper, self.theme.dim)
         };
@@ -573,6 +575,10 @@ impl Scene {
             1.0
         };
         fb.bitmap(x + 4, y + 2, icon, scale(icon_c, fade * pulse), 1, 8);
+        if on {
+            let shadow = crate::paint::Tones::of(&self.theme).shadow;
+            fb.text(x + 19, y + 3, label, scale(shadow, fade), 1);
+        }
         fb.text(x + 18, y + 2, label, scale(text_c, fade), 1);
         if submenu {
             let cx = x + width - 8;
@@ -657,13 +663,17 @@ impl Scene {
         let row_h = 12;
         let band_y = self.band(rows_y + self.sel as i32 * row_h);
         if self.menu_live {
-            fb.rect(
-                left,
-                band_y,
-                width,
-                row_h - 1,
-                scale(self.theme.selection, fade),
-            );
+            if fade >= 0.99 {
+                self.select_bar(fb, left, band_y - 1, width, row_h);
+            } else {
+                fb.rect(
+                    left,
+                    band_y,
+                    width,
+                    row_h - 1,
+                    scale(self.theme.selection, fade),
+                );
+            }
         }
         for (i, (icon, label, submenu)) in HOME.iter().enumerate() {
             let y = rows_y + i as i32 * row_h;
@@ -727,7 +737,8 @@ impl Scene {
             let room = ((width - 30 - 18 - Framebuffer::text_width(label, 1)) / 8).max(0) as usize;
             let text: String = detail.chars().take(room).collect();
             let tx = left + width - 16 - Framebuffer::text_width(&text, 1);
-            fb.text(tx, y + 2, &text, scale(self.theme.dim, 0.95), 1);
+            let shadow = crate::paint::Tones::of(&self.theme).shadow;
+            crate::paint::text_shadow(fb, tx, y + 2, &text, self.theme.fg, shadow);
         }
         // The two corners the wordmark leaves empty, which is the only room
         // this screen has: what the set is doing on the left, and the time on
@@ -784,7 +795,7 @@ impl Scene {
         let y0 = self.draw_header(fb, title);
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
-        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        self.select_bar(fb, left, band_y, width, row_h - 1);
         for (i, (icon, label, sub)) in items.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             self.draw_menu_row(fb, left, y, width, icon, label, *sub, i == sel, 1.0);
@@ -792,10 +803,9 @@ impl Scene {
         let max_cols = (width / 8) as usize;
         if let Some((msg, _)) = &self.message {
             let m: String = msg.chars().take(max_cols).collect();
-            fb.text(left, h - 28, &m, self.theme.cyan, 1);
+            self.draw_message(fb, left, h - 28, &m);
         }
-        let hint = self.hint(&[("A", "select"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, &[("A", "select"), ("B", "back")]);
     }
 
     /// Launch animation: a cartridge slides into its slot (or a disc spins

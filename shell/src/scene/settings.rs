@@ -75,13 +75,8 @@ impl Scene {
                     SettingsLine::Row(icon, label, _) => {
                         let on = row == sel;
                         if on {
-                            fb.rect(
-                                x,
-                                self.band(y),
-                                col_w,
-                                SETTINGS_ROW_H - 2,
-                                self.theme.selection,
-                            );
+                            let band_y = self.band(y);
+                            self.select_bar(fb, x, band_y, col_w, SETTINGS_ROW_H - 2);
                         }
                         // No chevron: every row here opens a page, so one on
                         // each of them says nothing and sits in the gutter.
@@ -96,10 +91,14 @@ impl Scene {
         let max_cols = (width / 8) as usize;
         if let Some((msg, _)) = &self.message {
             let m: String = msg.chars().take(max_cols).collect();
-            fb.text(left, h - 28, &m, self.theme.cyan, 1);
+            self.draw_message(fb, left, h - 28, &m);
         }
-        let hint = self.hint(&[("^v<>", "move"), ("A", "select"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[("^v<>", "move"), ("A", "select"), ("B", "back")],
+        );
     }
 
     /// The Power submenu: back to the desktop, power off with confirmation.
@@ -324,7 +323,7 @@ impl Scene {
         }
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
-        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        self.select_bar(fb, left, band_y, width, row_h - 1);
         for (i, (label, value)) in rows.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             let on = i == sel;
@@ -378,8 +377,12 @@ impl Scene {
             scale(self.theme.dim, 0.7),
             1,
         );
-        let hint = self.hint(&[("<>", "change"), ("A", "preview"), ("B", "save")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[("<>", "change"), ("A", "preview"), ("B", "save")],
+        );
     }
 
     /// Diagnostics: key and value rows, scrollable.
@@ -418,8 +421,7 @@ impl Scene {
                 1,
             );
         }
-        let hint = self.hint(&[("^v", "scroll"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, &[("^v", "scroll"), ("B", "back")]);
     }
 
     /// Style: pick a palette, previewed live. The desktop's own themes when
@@ -450,7 +452,7 @@ impl Scene {
             .saturating_sub(page - 1)
             .min(names.len().saturating_sub(page));
         let band_y = self.band(y0 + (sel - top) as i32 * row_h - 2);
-        fb.rect(left, band_y, width, row_h, self.theme.selection);
+        self.select_bar(fb, left, band_y, width, row_h);
         for (row, i) in (top..(top + page).min(names.len())).enumerate() {
             let y = y0 + row as i32 * row_h;
             let on = i == sel;
@@ -486,8 +488,12 @@ impl Scene {
             self.theme.dim,
             1,
         );
-        let hint = self.hint(&[("^v", "preview"), ("A", "keep"), ("B", "back saves")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[("^v", "preview"), ("A", "keep"), ("B", "back saves")],
+        );
     }
 
     /// A settings table: label left, `< value >` right, a note for the
@@ -510,7 +516,7 @@ impl Scene {
         let width = w - 2 * (w as f32 * 0.05) as i32;
         let y0 = self.draw_header(fb, title);
         let band_y = self.band(y0 + sel as i32 * row_h);
-        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        self.select_bar(fb, left, band_y, width, row_h - 1);
         for (i, (label, value)) in rows.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             let on = i == sel;
@@ -570,8 +576,7 @@ impl Scene {
                 1,
             );
         }
-        let hint = self.hint(&[("<>", "change"), ("B", "save")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, &[("<>", "change"), ("B", "save")]);
     }
 
     /// About: goals and credits, scrollable text.
@@ -595,8 +600,7 @@ impl Scene {
             };
             fb.text(left, y, line, c, 1);
         }
-        let hint = self.hint(&[("^v", "scroll"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, &[("^v", "scroll"), ("B", "back")]);
     }
 
     // --------------------------------------------------------- pad wizard
@@ -742,8 +746,7 @@ impl Scene {
             scale(self.theme.dim, 0.8),
             1,
         );
-        let hint = self.hint(&[("Enter", "skip"), ("Esc", "cancel")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, &[("Enter", "skip"), ("Esc", "cancel")]);
     }
 }
 

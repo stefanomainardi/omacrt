@@ -161,8 +161,7 @@ impl Scene {
 
         if page == 1 {
             self.draw_monitor_processes(fb, left, width, 4 + plate_h + 8, h);
-            let hint = self.hint(&[("<>", "page"), ("B", "back")]);
-            fb.text(left, h - 12, &hint, scale(self.theme.dim, 0.7), 1);
+            self.draw_hint(fb, left, h - 12, &[("<>", "page"), ("B", "back")]);
             return;
         }
 
@@ -349,8 +348,7 @@ impl Scene {
             fb.text(w - left - mem_w, y, &mem, self.theme.dim, 1);
         }
 
-        let hint = self.hint(&[("<>", "processes"), ("B", "back")]);
-        fb.text(left, h - 12, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 12, &[("<>", "processes"), ("B", "back")]);
     }
 
     /// Page two: the processes using the machine, most demanding first.

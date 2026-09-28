@@ -17,6 +17,7 @@ mod font8x8;
 mod icons;
 mod menu;
 mod pad;
+mod paint;
 mod photos;
 mod scene;
 mod sky;

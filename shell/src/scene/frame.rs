@@ -265,13 +265,11 @@ impl Scene {
         let line: String = line.chars().take(room).collect();
         let lw = Framebuffer::text_width(&line, 1);
         fb.text((w - lw) / 2, h / 2 + 26, &line, self.theme.cyan, 1);
-        let hint = self.hint(&[("A", "next"), ("B", "back")]);
-        fb.text(
+        self.draw_hint(
+            fb,
             (w as f32 * 0.05) as i32,
             h - 14,
-            &hint,
-            scale(self.theme.dim, 0.7),
-            1,
+            &[("A", "next"), ("B", "back")],
         );
     }
 
@@ -355,8 +353,12 @@ impl Scene {
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32 + self.slide();
         fb.rect(0, h - 15, w, 11, self.theme.bg);
-        let hint = self.hint(&[("<>", "change"), ("A", "show it"), ("B", "save")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[("<>", "change"), ("A", "show it"), ("B", "save")],
+        );
     }
 
     /// Left and right on the clock and weather page.
@@ -433,8 +435,12 @@ impl Scene {
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32 + self.slide();
         fb.rect(0, h - 15, w, 11, self.theme.bg);
-        let hint = self.hint(&[("<>", "change"), ("A", "show it"), ("B", "save")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[("<>", "change"), ("A", "show it"), ("B", "save")],
+        );
     }
 
     /// Left and right on the sound page: three switches, nothing else.
@@ -594,11 +600,11 @@ impl Scene {
             last = track.label();
             colour = self.theme.green;
         }
-        let hint = self.hint(&[("B", "back")]);
-        let hw = Framebuffer::text_width(&hint, 1);
+        let hint = [("B", "back")];
+        let hw = self.hint_width(&hint);
         if !last.is_empty() {
             fb.text(left, row(2), &cut(&last, w - 2 * left - hw - 8), colour, 1);
         }
-        fb.text(w - left - hw, row(2), &hint, scale(self.theme.dim, 0.5), 1);
+        self.draw_hint(fb, w - left - hw, row(2), &hint);
     }
 }

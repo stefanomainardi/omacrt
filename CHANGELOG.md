@@ -13,6 +13,14 @@ caveat for a 0.x project: anything may still move.
   board's own rate instead of the last one its core ran at.
 - The time each game has been played is kept and shown under its cover.
 
+### Changed
+
+- A new 8x8 font, drawn for the tube: two pixel stems, one pixel horizontals,
+  more air between letters.
+- The selection is a lit bar with a sheen, the title sits on a shaded band,
+  the clock in a sunken window, and messages in a small raised one.
+- Button hints are drawn as buttons, in the colour of what they do.
+
 ### Fixed
 
 - A game whose refresh rate is built into the timing is no longer shown lower
