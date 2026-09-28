@@ -25,7 +25,8 @@ caveat for a 0.x project: anything may still move.
   motion, reset and going back to the launcher no longer share icons.
 - The systems list puts the selected console on a lit stage, with its
   number of games, core and video policy. The NES, Super Nintendo, Mega
-  Drive, PlayStation and Nintendo 64 are drawn as sprites; the others stand
+  Drive, PlayStation, Nintendo 64, Dreamcast, Saturn and Neo Geo are drawn
+  as sprites, and the arcade systems as an upright cabinet; the others stand
   on the stage as their pictures.
 - The games list shows the cover on the same kind of stage, lit on its edge
   and reflected in the floor, with the region and the time played as chips.

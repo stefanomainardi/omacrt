@@ -304,6 +304,26 @@ fn sprite(name: &str) -> Option<Sprite> {
             h: 31,
             draw: n64,
         },
+        "dreamcast" | "dc" => Sprite {
+            w: 60,
+            h: 30,
+            draw: dreamcast,
+        },
+        "saturn" => Sprite {
+            w: 66,
+            h: 30,
+            draw: saturn,
+        },
+        "neogeo" => Sprite {
+            w: 66,
+            h: 24,
+            draw: neogeo,
+        },
+        "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => Sprite {
+            w: 36,
+            h: 58,
+            draw: cabinet,
+        },
         _ => return None,
     })
 }
@@ -507,6 +527,149 @@ fn n64(p: &mut Pen, light: Color) {
     }
     p.dot(4, top + 4, RED_LAMP);
     p.rim(w, top, 5, light, lerp_color(light, n[2], 0.5));
+}
+
+/// The Dreamcast: pale, a lid over most of the top with the swirl in the
+/// middle, the buttons either side of it and four ports on the front.
+fn dreamcast(p: &mut Pen, light: Color) {
+    let g = ramp(rgb(214, 214, 208));
+    let (w, top, front) = (60, 20, 10);
+    p.case(w, top, front, 4, g[3], g[1], g[2]);
+    // The lid, raised, with a shaded groove round it.
+    p.rect(8, 2, 44, 15, g[3]);
+    p.hline(8, 2, 44, g[4]);
+    p.vline(8, 2, 15, g[4]);
+    p.hline(8, 16, 44, g[1]);
+    p.vline(51, 3, 14, g[1]);
+    // The swirl: a spiral of blue, as the European one had it.
+    let blue = 0x2a5ad2;
+    let (cx, cy) = (30.0f32, 9.0f32);
+    for i in 0..30 {
+        let t = i as f32 / 30.0;
+        let a = t * std::f32::consts::TAU * 1.6;
+        let r = 1.0 + t * 5.0;
+        p.dot(
+            (cx + r * a.cos()).round() as i32,
+            (cy + r * 0.55 * a.sin()).round() as i32,
+            blue,
+        );
+    }
+    // Power on the left, open on the right, round.
+    p.ellipse(4, 12, 2, 1, g[2]);
+    p.ellipse(56, 12, 2, 1, g[2]);
+    p.dot(56, 11, g[4]);
+    for px in [6, 19, 32, 45] {
+        p.port(px, top + 3, 9, 4, g[0], g[2], g[2]);
+    }
+    p.dot(3, top + 4, 0xf08c28);
+    p.rim(w, top, 4, light, lerp_color(light, g[3], 0.4));
+}
+
+/// The first Saturn: near black, the round lid for the disc, the cartridge
+/// slot behind it, oval buttons and two ports.
+fn saturn(p: &mut Pen, light: Color) {
+    let b = ramp(rgb(58, 58, 66));
+    let (w, top, front) = (66, 21, 9);
+    p.case(w, top, front, 4, b[2], b[1], b[3]);
+    // The cartridge slot along the back.
+    p.hline(14, 2, 36, b[4]);
+    p.rect(14, 3, 36, 2, b[0]);
+    // The lid, round and lighter, with its ring.
+    p.ellipse(28, 12, 17, 7, b[3]);
+    p.arc(28, 12, 17, 7, 0.5, 0.75, b[4]);
+    p.arc(28, 12, 17, 7, 0.0, 0.25, b[1]);
+    p.arc(28, 12, 12, 5, 0.0, 1.0, b[2]);
+    p.ellipse(28, 12, 3, 1, b[1]);
+    // Open, reset, power: oval buttons on the right.
+    p.ellipse(54, 8, 4, 2, b[3]);
+    p.arc(54, 8, 4, 2, 0.5, 0.75, b[4]);
+    p.ellipse(52, 14, 2, 1, b[3]);
+    p.ellipse(59, 14, 2, 1, b[3]);
+    p.dot(59, 17, 0x3cdc5a);
+    for px in [14, 42] {
+        p.port(px, top + 2, 10, 5, b[0], b[2], b[2]);
+    }
+    p.rim(w, top, 4, light, lerp_color(light, b[2], 0.5));
+}
+
+/// The Neo Geo AES: long, low and black, the wide cartridge slot on top and
+/// the two big controller sockets on the front.
+fn neogeo(p: &mut Pen, light: Color) {
+    let b = ramp(rgb(46, 46, 54));
+    let (w, top, front) = (66, 15, 9);
+    p.case(w, top, front, 2, b[2], b[1], b[3]);
+    // The slot: a wide mouth with a thick lip.
+    p.rect(12, 3, 42, 7, b[3]);
+    p.hline(12, 3, 42, b[4]);
+    p.hline(12, 9, 42, b[1]);
+    p.rect(15, 5, 36, 3, b[0]);
+    // The power slider at the back left.
+    p.rect(3, 5, 6, 3, b[0]);
+    p.rect(4, 5, 2, 2, rgb(170, 170, 176));
+    // The name on the front, as two white strokes at this size.
+    p.hline(5, top + 3, 9, rgb(230, 230, 236));
+    p.hline(5, top + 5, 6, rgb(230, 230, 236));
+    for px in [36, 51] {
+        p.port(px, top + 2, 12, 5, b[0], b[2], b[2]);
+    }
+    p.dot(20, top + 4, RED_LAMP);
+    p.rim(w, top, 2, light, lerp_color(light, b[2], 0.5));
+}
+
+/// An upright cabinet: T-molding in the brand's colour, the lit marquee, a
+/// screen with its scanlines and something small playing on it, the stick
+/// and buttons, and the coin slots glowing on the door.
+fn cabinet(p: &mut Pen, light: Color) {
+    let b = ramp(rgb(58, 48, 70));
+    let side = ramp(rgb(40, 34, 50));
+    let brand = ramp(0xff4fa3);
+    // The side panel, seen past the front on the left.
+    p.rect(0, 3, 5, 54, side[1]);
+    p.vline(0, 3, 54, side[3]);
+    // The front of the body.
+    p.rect(5, 1, 31, 56, b[2]);
+    // The marquee, lit from inside.
+    p.rect(6, 2, 29, 8, brand[3]);
+    p.hline(6, 2, 29, brand[4]);
+    p.hline(6, 9, 29, brand[1]);
+    for x in [10, 14, 18, 22, 26, 30] {
+        p.rect(x, 5, 2, 2, lerp_color(brand[4], 0xffffff, 0.5));
+    }
+    // The screen in its bezel, with scanlines and a tiny game on it.
+    p.rect(7, 11, 27, 20, b[0]);
+    let glass = rgb(18, 36, 48);
+    p.rect(9, 13, 23, 16, glass);
+    for r in (13..29).step_by(2) {
+        p.hline(9, r, 23, lerp_color(glass, 0, 0.35));
+    }
+    for (x, y) in [(12, 15), (18, 16), (25, 14), (28, 18), (14, 20)] {
+        p.dot(x, y, 0xb4c8ff);
+    }
+    p.rect(19, 25, 3, 1, 0x78ff96);
+    p.dot(20, 24, 0x78ff96);
+    p.rect(14, 18, 2, 1, 0xff6e6e);
+    p.rect(24, 19, 2, 1, 0xff6e6e);
+    // The control panel, sloping towards the player.
+    p.rect(5, 31, 31, 6, b[3]);
+    p.hline(5, 31, 31, b[4]);
+    p.vline(13, 29, 3, rgb(40, 40, 40));
+    p.ellipse(13, 29, 1, 1, 0xdc2828);
+    for (x, c) in [(21, 0xdc2828), (25, 0xf0c828), (29, 0x3c78dc)] {
+        p.dot(x, 34, c);
+        p.dot(x + 1, 34, c);
+    }
+    // The coin door and its two lit slots.
+    p.rect(14, 41, 13, 12, b[1]);
+    p.hline(14, 41, 13, b[3]);
+    for x in [17, 22] {
+        p.rect(x, 44, 2, 3, 0xff9e3c);
+    }
+    p.rect(5, 55, 31, 2, b[0]);
+    // The T-molding along the front edges, in the brand's colour.
+    p.vline(5, 1, 56, brand[2]);
+    p.vline(35, 1, 56, brand[2]);
+    p.hline(5, 1, 31, lerp_color(brand[3], light, 0.5));
+    p.vline(5, 1, 30, lerp_color(brand[3], light, 0.4));
 }
 
 #[cfg(test)]
