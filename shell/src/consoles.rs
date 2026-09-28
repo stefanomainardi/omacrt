@@ -1,0 +1,643 @@
+//! The consoles as voxel models, built from their real measurements.
+//!
+//! One voxel is 3.5 mm, so a console about 26 cm wide is about 75 voxels
+//! across. Where a part sits was measured on Evan Amos's photographs and on
+//! RetroArch's top views, as fractions of the body, and a detail smaller
+//! than a voxel (a name, a logo) is stylised to a few cells of colour, the
+//! way sprites of the period did it.
+
+use crate::fb::rgb;
+use crate::voxel::Model;
+
+/// Millimetres to voxels.
+fn mm(v: f32) -> i32 {
+    (v / 3.5).round() as i32
+}
+
+/// The model for a system, if one has been built.
+pub fn model(name: &str) -> Option<Model> {
+    Some(match name {
+        "snes" | "sfc" => snes(),
+        "saturn" => saturn(),
+        "n64" => n64(),
+        "nes" | "famicom" => nes(),
+        "megadrive" | "genesis" | "md" => megadrive(),
+        "psx" | "playstation" => psx(),
+        "dreamcast" | "dc" => dreamcast(),
+        "neogeo" => neogeo(),
+        "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => cabinet(),
+        _ => return None,
+    })
+}
+
+/// The Super Nintendo as Europe and Japan had it (the Super Famicom's
+/// shape): 200 by 242 by 72 mm, light grey, the darker deck with the slot
+/// and the four coloured dots, POWER, eject and RESET in front of it, the
+/// name at the front, two ports and the lamp.
+fn snes() -> Model {
+    let (w, d, h) = (mm(200.0), mm(242.0), mm(72.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(204, 204, 208));
+    let deck = m.mat(rgb(150, 150, 158));
+    let dark = m.mat(rgb(62, 62, 68));
+    let button = m.mat(rgb(214, 214, 218));
+    let eject = m.mat(rgb(132, 132, 140));
+    let reset = m.mat(rgb(76, 76, 82));
+    let port = m.mat(rgb(170, 170, 176));
+    let rib = m.mat(rgb(180, 180, 186));
+    let lamp = m.glow(rgb(230, 40, 40));
+    let (blue, red, green, yellow) = (
+        m.mat(rgb(60, 100, 210)),
+        m.mat(rgb(220, 50, 50)),
+        m.mat(rgb(60, 170, 80)),
+        m.mat(rgb(240, 200, 40)),
+    );
+    let top = h - 4;
+    // The body, its vertical edges rounded.
+    m.rounded(0, 0, 0, w, d, top, 5, body);
+    // Ribs along the back of the top.
+    m.cube(3, d - 7, top, w - 6, 5, 1, body);
+    for x in (4..w - 4).step_by(2) {
+        m.cube(x, d - 7, top, 1, 5, 1, rib);
+    }
+    // The deck: 8 to 92 per cent across, 12 to 72 per cent from the back.
+    let (dx0, dx1) = (w * 8 / 100, w * 92 / 100);
+    let (dy0, dy1) = (d * 28 / 100, d * 88 / 100);
+    m.rounded(dx0, dy0, top, dx1 - dx0, dy1 - dy0, 2, 3, deck);
+    // The cartridge slot near the back of the deck, a dark channel.
+    let sy = d * 65 / 100;
+    m.cube(w * 20 / 100, sy, top + 1, w * 60 / 100, 2, 1, 0);
+    m.cube(w * 20 / 100, sy, top, w * 60 / 100, 2, 1, dark);
+    // The four dots in their light circle at the right of the deck.
+    let (lx, ly) = (w * 84 / 100, d * 78 / 100);
+    m.cylinder(
+        lx as f32 + 0.5,
+        ly as f32 + 0.5,
+        top + 1,
+        2.6,
+        2.6,
+        1,
+        button,
+    );
+    m.set(lx - 1, ly + 1, top + 1, blue);
+    m.set(lx + 1, ly + 1, top + 1, red);
+    m.set(lx - 1, ly - 1, top + 1, green);
+    m.set(lx + 1, ly - 1, top + 1, yellow);
+    // POWER at the left, eject in the middle, RESET at the right.
+    let by = d * 32 / 100;
+    m.cube(w * 14 / 100, by, top + 2, w * 11 / 100, 5, 1, button);
+    m.paint_top(w * 16 / 100, by + 3, w * 7 / 100, 1, dark);
+    m.paint_top(w * 36 / 100, by, w * 28 / 100, 5, eject);
+    m.cube(w * 74 / 100, by, top + 2, w * 11 / 100, 5, 1, reset);
+    // The name on the light strip in front of the deck.
+    m.paint_top(w * 8 / 100, d * 18 / 100, w * 24 / 100, 1, dark);
+    m.paint_top(w * 8 / 100, d * 14 / 100, w * 34 / 100, 1, dark);
+    m.set(w * 88 / 100, d * 12 / 100, top - 1, lamp);
+    // Two ports on the front: grey mouths with a dark row of pins.
+    for (x0, x1) in [(8, 26), (36, 54)] {
+        let (a, b) = (w * x0 / 100, w * x1 / 100);
+        m.cube(a, 0, 4, b - a, 1, 6, 0);
+        m.cube(a, 1, 4, b - a, 1, 6, port);
+        m.cube(a + 1, 1, 6, b - a - 2, 1, 2, dark);
+    }
+    m
+}
+
+/// The first Saturn as Europe had it: 260 by 230 by 83 mm, near black, the
+/// cartridge slot at the back, the lid for the disc in the middle with the
+/// name, power, open and access along the front edge of the top, the vents
+/// on the right and two ports low on the front.
+fn saturn() -> Model {
+    let (w, d, h) = (mm(260.0), mm(230.0), mm(83.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(46, 46, 56));
+    let lid = m.mat(rgb(58, 58, 72));
+    let black = m.mat(rgb(18, 18, 22));
+    let button = m.mat(rgb(96, 96, 112));
+    let white = m.mat(rgb(226, 226, 232));
+    let port = m.mat(rgb(84, 84, 96));
+    let logo = m.mat(rgb(150, 150, 164));
+    let top = h - 6;
+    m.rounded(0, 0, 0, w, d, top, 6, body);
+    // A step along the front edge of the top, which the real one has.
+    m.cube(0, 0, top - 1, w, 2, 1, 0);
+    // The lid: 20 to 80 per cent across, 15 to 70 per cent from the back.
+    let (lx0, lx1) = (w * 20 / 100, w * 80 / 100);
+    let (ly0, ly1) = (d * 30 / 100, d * 85 / 100);
+    m.rounded(lx0, ly0, top, lx1 - lx0, ly1 - ly0, 3, 9, lid);
+    m.rounded(
+        lx0 + 3,
+        ly0 + 3,
+        top + 3,
+        lx1 - lx0 - 6,
+        ly1 - ly0 - 8,
+        1,
+        7,
+        lid,
+    );
+    // Its two ridges and the name across its front.
+    m.paint_top(lx0 + 6, d * 62 / 100, (lx1 - lx0) * 45 / 100, 1, button);
+    m.paint_top(
+        w * 50 / 100,
+        d * 55 / 100,
+        (lx1 - lx0) * 40 / 100,
+        1,
+        button,
+    );
+    m.paint_top(w * 38 / 100, d * 44 / 100, w * 24 / 100, 1, white);
+    m.paint_top(w * 48 / 100, d * 74 / 100, 3, 2, logo);
+    // The cartridge slot at the back, in its frame.
+    let (sx0, sx1) = (w * 33 / 100, w * 67 / 100);
+    m.cube(sx0 - 2, d - 8, top, sx1 - sx0 + 4, 6, 1, black);
+    m.cube(sx0, d - 6, top, sx1 - sx0, 2, 1, 0);
+    // Power, open and access along the front of the top.
+    m.cylinder(w as f32 * 0.12, 8.0, top, 3.5, 1.6, 1, button);
+    m.cylinder(w as f32 * 0.50, 7.0, top, 6.0, 1.6, 1, button);
+    m.cylinder(w as f32 * 0.88, 8.0, top, 3.5, 1.6, 1, button);
+    // SEGA in white at the left of the top.
+    m.paint_top(3, 12, 6, 1, white);
+    // The vents down the right side.
+    for y in (d * 25 / 100..d * 85 / 100).step_by(3) {
+        m.paint_right(y, 6, 1, top - 10, black);
+    }
+    // Two ports low on the front.
+    for (x0, x1) in [(28, 36), (42, 50)] {
+        let (a, b) = (w * x0 / 100, w * x1 / 100);
+        m.cube(a, 0, 3, b - a, 1, 4, 0);
+        m.cube(a, 1, 3, b - a, 1, 4, port);
+        m.cube(a + 1, 1, 4, b - a - 2, 1, 1, black);
+    }
+    m
+}
+
+/// Whether a system has a voxel model.
+pub fn has(name: &str) -> bool {
+    matches!(
+        name,
+        "snes"
+            | "sfc"
+            | "saturn"
+            | "n64"
+            | "nes"
+            | "famicom"
+            | "megadrive"
+            | "genesis"
+            | "md"
+            | "psx"
+            | "playstation"
+            | "dreamcast"
+            | "dc"
+            | "neogeo"
+            | "arcade"
+            | "mame"
+            | "mame2003"
+            | "fbneo"
+            | "naomi"
+    )
+}
+
+/// The Nintendo 64: 260 by 190 by 73 mm, charcoal. The middle of the front is
+/// set back between the two wings; the raised back carries the grey slot
+/// cover and the vents; the power slider, the reset button and the memory
+/// lid are on the deck; the window with the N and the four ports are on the
+/// set back front.
+fn n64() -> Model {
+    let (w, d, h) = (mm(260.0), mm(190.0), mm(73.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(72, 72, 80));
+    let hump = m.mat(rgb(80, 80, 90));
+    let dark = m.mat(rgb(26, 26, 30));
+    let grey = m.mat(rgb(170, 170, 178));
+    let white = m.mat(rgb(226, 226, 232));
+    let lid = m.mat(rgb(88, 88, 98));
+    let (red, green, blue, yellow) = (
+        m.mat(rgb(220, 50, 50)),
+        m.mat(rgb(50, 170, 80)),
+        m.mat(rgb(50, 90, 220)),
+        m.mat(rgb(240, 200, 40)),
+    );
+    let lamp = m.glow(rgb(230, 40, 40));
+    let deck = 12;
+    m.rounded(0, 0, 0, w, d, deck, 8, body);
+    m.rounded(3, 4, deck, w - 6, d - 6, 2, 8, body);
+    // The front set back between the wings.
+    let (rx0, rx1, rd) = (w * 25 / 100, w * 75 / 100, 6);
+    m.cube(rx0, 0, 2, rx1 - rx0, rd, h, 0);
+    // The raised back, the grey slot cover and its mouth, the vents.
+    m.rounded(
+        w * 27 / 100,
+        d * 45 / 100,
+        deck + 2,
+        w * 46 / 100,
+        d * 48 / 100,
+        4,
+        6,
+        hump,
+    );
+    m.cube(
+        w * 35 / 100,
+        d * 72 / 100,
+        deck + 6,
+        w * 30 / 100,
+        5,
+        1,
+        grey,
+    );
+    m.cube(
+        w * 38 / 100,
+        d * 74 / 100,
+        deck + 6,
+        w * 24 / 100,
+        1,
+        1,
+        dark,
+    );
+    for x in (w * 29 / 100..w * 71 / 100).step_by(2) {
+        m.paint_top(x, d * 46 / 100, 1, 3, dark);
+    }
+    // Power slider on the left, reset on the right, the memory lid between.
+    m.cube(w * 12 / 100, d * 32 / 100, deck + 2, 7, 4, 1, dark);
+    m.cube(w * 13 / 100, d * 33 / 100, deck + 3, 3, 2, 1, grey);
+    m.cylinder(
+        w as f32 * 0.84,
+        d as f32 * 0.34,
+        deck + 2,
+        2.6,
+        2.0,
+        1,
+        dark,
+    );
+    m.paint_top(w * 40 / 100, d * 18 / 100, w * 20 / 100, d * 18 / 100, lid);
+    // The window on the set back front: the name, and the N in its colours.
+    let (wx, wz) = (w * 43 / 100, 4);
+    m.cube(wx, rd, wz, w * 14 / 100, 1, 6, dark);
+    m.cube(wx + 1, rd, wz + 5, w * 14 / 100 - 2, 1, 1, white);
+    for (i, c) in [(0, red), (1, green), (2, blue), (3, yellow)] {
+        m.set(wx + 3 + i, rd, wz + 2 + (i % 2), c);
+    }
+    m.set(w / 2, rd, 2, lamp);
+    // Four ports: light grey with a dark mouth, two either side.
+    for x0 in [w * 27 / 100, w * 34 / 100, w * 60 / 100, w * 67 / 100] {
+        m.cube(x0, rd, 4, 4, 1, 3, grey);
+        m.cube(x0 + 1, rd, 5, 2, 1, 1, dark);
+    }
+    m
+}
+
+/// The NES: 256 by 203 by 85 mm, a light grey box. The ribbed panel sits at
+/// the front right of the top with a dark strip behind it; the front has the
+/// lid with the name in red, the dark band with power, reset and the lamp,
+/// and the black end with the two ports.
+fn nes() -> Model {
+    let (w, d, h) = (mm(256.0), mm(203.0), mm(80.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(200, 198, 194));
+    let rib = m.mat(rgb(170, 168, 164));
+    let black = m.mat(rgb(40, 40, 44));
+    let band = m.mat(rgb(118, 118, 122));
+    let lidc = m.mat(rgb(206, 204, 200));
+    let seam = m.mat(rgb(160, 158, 154));
+    let red = m.mat(rgb(206, 40, 40));
+    let button = m.mat(rgb(72, 72, 76));
+    let port = m.mat(rgb(126, 126, 130));
+    let lamp = m.glow(rgb(230, 40, 40));
+    m.rounded(0, 0, 0, w, d, h, 2, body);
+    // The ribbed panel and the dark strip behind it.
+    let (px0, px1) = (w * 68 / 100, w * 97 / 100);
+    for y in (2..d * 55 / 100).step_by(2) {
+        m.paint_top(px0, y, px1 - px0, 1, rib);
+    }
+    m.paint_top(px0, d * 55 / 100, px1 - px0, 4, black);
+    // The seam of the lid on the top.
+    let (lx1, ly1) = (w * 60 / 100, d * 45 / 100);
+    m.paint_top(3, ly1, lx1 - 3, 1, seam);
+    m.paint_top(lx1, 1, 1, ly1, seam);
+    // The front: the lid with the name, the band with the buttons, the
+    // black end with the ports.
+    let end = w * 68 / 100;
+    m.paint_front(2, h * 45 / 100, end - 4, h * 50 / 100, lidc);
+    m.paint_front(5, h * 80 / 100, 9, 1, red);
+    m.paint_front(5, h * 70 / 100, 16, 1, red);
+    m.paint_front(0, 0, end, h * 42 / 100, band);
+    m.paint_front(4, 3, 6, 3, button);
+    m.paint_front(12, 3, 6, 3, button);
+    m.paint_front(end, 0, w - end, h, black);
+    for x0 in [end + 4, end + 13] {
+        m.paint_front(x0, 3, 6, 5, port);
+        m.paint_front(x0 + 1, 5, 4, 1, black);
+    }
+    if let Some(y) = (0..d).find(|&y| m.get(1, y, 4) != 0) {
+        m.set(1, y, 4, lamp);
+    }
+    m
+}
+
+/// The first Mega Drive: 280 by 212 by 70 mm, black. The grille at the back
+/// left, the volume, power and reset at the front left, the raised disc with
+/// the slot and the 16-BIT plate, the name and two ports on the front.
+fn megadrive() -> Model {
+    let (w, d, h) = (mm(280.0), mm(212.0), mm(70.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(44, 44, 52));
+    let disc = m.mat(rgb(76, 76, 90));
+    let inner = m.mat(rgb(54, 54, 64));
+    let dark = m.mat(rgb(16, 16, 20));
+    let gold = m.mat(rgb(206, 168, 72));
+    let white = m.mat(rgb(220, 216, 206));
+    let red = m.mat(rgb(210, 40, 40));
+    let grey = m.mat(rgb(170, 170, 176));
+    let top = 14;
+    m.rounded(0, 0, 0, w, d, top, 4, body);
+    // The grille.
+    for y in (d * 58 / 100..d * 92 / 100).step_by(2) {
+        m.paint_top(w * 8 / 100, y, w * 25 / 100, 1, dark);
+    }
+    // The disc, raised, with its inner step, the slot across it and the
+    // 16-BIT plate on its front.
+    let (cx, cy) = (w as f32 * 0.64, d as f32 * 0.50);
+    m.cylinder(cx, cy, top, 21.0, 21.0, 3, disc);
+    m.cylinder(cx, cy, top + 2, 15.0, 15.0, 1, inner);
+    m.cube((cx - 13.0) as i32, (cy + 5.0) as i32, top + 1, 26, 2, 3, 0);
+    m.cube((cx - 13.0) as i32, (cy + 5.0) as i32, top, 26, 2, 1, dark);
+    let (px, py) = ((cx - 7.0) as i32, (cy - 16.0) as i32);
+    m.cube(px, py + 3, top + 3, 14, 4, 1, dark);
+    m.cube(px + 2, py + 5, top + 4, 10, 1, 1, gold);
+    m.cube(px, py, top + 3, 14, 3, 1, white);
+    m.set(px + 7, py + 1, top + 3, red);
+    // Volume, power and reset at the front left.
+    m.cube(w * 6 / 100, d * 12 / 100, top, 3, 9, 1, dark);
+    m.cube(w * 6 / 100, d * 16 / 100, top + 1, 3, 2, 1, grey);
+    m.cube(w * 12 / 100, d * 24 / 100, top, 11, 5, 1, dark);
+    m.set(w * 14 / 100, d * 26 / 100, top + 1, red);
+    m.set(w * 18 / 100, d * 26 / 100, top + 1, white);
+    m.cube(w * 12 / 100, d * 12 / 100, top, 8, 3, 1, grey);
+    // On the front: the name, and the two ports.
+    m.paint_front(w * 66 / 100, 10, w * 20 / 100, 1, white);
+    for x0 in [w * 56 / 100, w * 68 / 100] {
+        m.paint_front(x0, 3, 7, 4, dark);
+        m.paint_front(x0 + 1, 5, 5, 1, disc);
+    }
+    m
+}
+
+/// The first PlayStation: 270 by 188 by 60 mm, grey. The round lid in the
+/// middle, reset and power on its left with the green lamp, open on its
+/// right, the raised strip at the back, two ports under their memory card
+/// slots on the front, and the grooves down the right.
+fn psx() -> Model {
+    let (w, d, h) = (mm(270.0), mm(188.0), mm(60.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(184, 184, 190));
+    let lid = m.mat(rgb(194, 194, 200));
+    let rim = m.mat(rgb(150, 150, 156));
+    let button = m.mat(rgb(166, 166, 172));
+    let dark = m.mat(rgb(64, 64, 70));
+    let lamp = m.glow(rgb(60, 220, 90));
+    let (r, y, g, b) = (
+        m.mat(rgb(224, 60, 60)),
+        m.mat(rgb(240, 192, 40)),
+        m.mat(rgb(60, 180, 90)),
+        m.mat(rgb(60, 120, 220)),
+    );
+    let top = h - 3;
+    m.rounded(0, 0, 0, w, d, top, 3, body);
+    m.cube(
+        w * 38 / 100,
+        d * 82 / 100,
+        top,
+        w * 24 / 100,
+        d * 18 / 100,
+        2,
+        lid,
+    );
+    // The lid: a disc with a dark rim.
+    let (cx, cy) = (w as f32 * 0.52, d as f32 * 0.50);
+    m.cylinder(cx, cy, top, 18.5, 18.5, 1, rim);
+    m.cylinder(cx, cy, top, 17.5, 17.5, 1, lid);
+    for (i, c) in [r, y, g, b].into_iter().enumerate() {
+        m.set(
+            cx as i32 - 1 + (i as i32 % 2),
+            cy as i32 - 1 + (i as i32 / 2),
+            top,
+            c,
+        );
+    }
+    // Reset and power on the left, open on the right.
+    m.cylinder(w as f32 * 0.10, d as f32 * 0.72, top, 2.0, 1.6, 1, button);
+    m.cylinder(w as f32 * 0.12, d as f32 * 0.48, top, 4.0, 3.2, 1, button);
+    m.set(w * 5 / 100, d * 34 / 100, top - 1, lamp);
+    m.cylinder(w as f32 * 0.88, d as f32 * 0.24, top, 4.0, 3.2, 1, button);
+    // Two ports on the front, each under its memory card slot.
+    for x0 in [w * 32 / 100, w * 52 / 100] {
+        m.paint_front(x0, top - 3, 9, 1, dark);
+        m.paint_front(x0, 3, 9, 4, button);
+        m.paint_front(x0 + 1, 4, 7, 2, dark);
+    }
+    // The grooves down the right.
+    for yy in (4..d - 4).step_by(2) {
+        m.paint_right(yy, 2, 1, top - 4, rim);
+    }
+    m
+}
+
+/// The Dreamcast: 190 by 195 by 78 mm, pale. The round lid over most of the
+/// top with the swirl and the triangle, power on the left and open on the
+/// right, four ports on the front and the vents on the right.
+fn dreamcast() -> Model {
+    let (w, d, h) = (mm(190.0), mm(195.0), mm(72.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(222, 222, 220));
+    let lid = m.mat(rgb(236, 236, 236));
+    let rim = m.mat(rgb(190, 190, 192));
+    let panel = m.mat(rgb(206, 206, 208));
+    let dark = m.mat(rgb(36, 36, 40));
+    let blue = m.mat(rgb(40, 90, 210));
+    let button = m.mat(rgb(212, 212, 214));
+    let top = h - 3;
+    m.rounded(0, 0, 0, w, d, top, 5, body);
+    let (cx, cy) = (w as f32 * 0.52, d as f32 * 0.56);
+    m.cylinder(cx, cy, top, 20.0, 19.0, 1, rim);
+    m.cylinder(cx, cy, top, 19.0, 18.0, 2, lid);
+    // The triangle pointing at the catch, and the swirl.
+    for (i, wdt) in [(0, 5), (1, 3), (2, 1)] {
+        m.paint_top(w / 2 - wdt / 2, d * 18 / 100 + 2 - i, wdt, 1, rim);
+    }
+    for (dx, dy) in [(0, 0), (1, 0), (1, 1), (0, 2), (-1, 1)] {
+        m.set(w * 62 / 100 + dx, d * 70 / 100 + dy, top + 1, blue);
+    }
+    // Power and open.
+    m.cylinder(w as f32 * 0.12, d as f32 * 0.24, top, 3.0, 3.0, 1, button);
+    m.cylinder(w as f32 * 0.88, d as f32 * 0.24, top, 3.0, 3.0, 1, button);
+    // The port panel and its four ports.
+    m.paint_front(w * 10 / 100, 2, w * 80 / 100, 11, panel);
+    for i in 0..4 {
+        let x0 = w * 15 / 100 + i * w * 19 / 100;
+        m.paint_front(x0, 5, 5, 4, dark);
+    }
+    for yy in (d * 10 / 100..d * 40 / 100).step_by(2) {
+        m.paint_right(yy, 3, 1, 8, rim);
+    }
+    m
+}
+
+/// The Neo Geo AES: 325 by 237 by 60 mm, black. The raised ring round the
+/// wide slot, the vents behind it, the big round button on the left, the gold
+/// name, two controller sockets and the memory card slot on the front.
+fn neogeo() -> Model {
+    let (w, d, h) = (mm(325.0), mm(237.0), mm(60.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(44, 44, 52));
+    let ring = m.mat(rgb(60, 60, 70));
+    let dark = m.mat(rgb(14, 14, 16));
+    let gold = m.mat(rgb(206, 168, 72));
+    let button = m.mat(rgb(76, 76, 88));
+    let port = m.mat(rgb(70, 70, 80));
+    let lamp = m.glow(rgb(230, 40, 40));
+    let top = h - 5;
+    m.rounded(0, 0, 0, w, d, top, 3, body);
+    // The ring and the slot inside it.
+    let (x0, y0, rw, rd) = (w * 22 / 100, d * 30 / 100, w * 66 / 100, d * 52 / 100);
+    m.rounded(x0, y0, top, rw, rd, 3, 9, ring);
+    m.rounded(x0 + 6, y0 + 7, top + 1, rw - 12, rd - 14, 2, 4, 0);
+    m.rounded(x0 + 6, y0 + 7, top, rw - 12, rd - 14, 1, 4, dark);
+    for y in (d * 86 / 100..d * 96 / 100).step_by(2) {
+        m.paint_top(w * 58 / 100, y, w * 30 / 100, 1, dark);
+    }
+    // The big round button and the gold name.
+    m.cylinder(w as f32 * 0.12, d as f32 * 0.45, top, 5.0, 4.0, 1, button);
+    m.cylinder(
+        w as f32 * 0.12,
+        d as f32 * 0.47,
+        top + 1,
+        3.0,
+        2.0,
+        1,
+        button,
+    );
+    m.paint_top(w * 36 / 100, d * 16 / 100, w * 22 / 100, 1, gold);
+    // Two sockets and the memory card slot.
+    for xs in [w * 15 / 100, w * 42 / 100] {
+        m.paint_front(xs, 3, 10, 5, port);
+        m.paint_front(xs + 1, 5, 8, 1, dark);
+    }
+    m.paint_front(w * 70 / 100, 4, w * 20 / 100, 2, dark);
+    if let Some(y) = (0..d).find(|&y| m.get(4, y, 6) != 0) {
+        m.set(4, y, 6, lamp);
+    }
+    m
+}
+
+/// An upright arcade cabinet, in voxels rather than millimetres: an upright
+/// is a type rather than one machine. Side panels with T-molding in pink, the
+/// marquee lit from inside, the screen set back in its bezel with a tiny game
+/// on it, the control panel with its stick and buttons, and the coin door.
+fn cabinet() -> Model {
+    let (w, d, h) = (24, 28, 62);
+    let mut m = Model::new(w, d, h);
+    let side = m.mat(rgb(40, 34, 50));
+    let body = m.mat(rgb(58, 48, 70));
+    let panel = m.mat(rgb(74, 64, 90));
+    let tmold = m.mat(rgb(255, 79, 163));
+    let marquee = m.glow(rgb(255, 120, 190));
+    let glass = m.glow(rgb(18, 36, 52));
+    let pixel = m.glow(rgb(120, 255, 150));
+    let alien = m.glow(rgb(255, 110, 110));
+    let coin = m.glow(rgb(255, 158, 60));
+    let stick = m.mat(rgb(220, 40, 40));
+    let (b1, b2, b3) = (
+        m.mat(rgb(220, 40, 40)),
+        m.mat(rgb(240, 200, 40)),
+        m.mat(rgb(60, 120, 220)),
+    );
+    let door = m.mat(rgb(46, 38, 56));
+    m.cube(0, 0, 0, 2, d, h, side);
+    m.cube(w - 2, 0, 0, 2, d, h, side);
+    m.cube(2, 6, 0, w - 4, d - 6, h, body);
+    // The lower front, the control panel sticking out, the coin door.
+    m.cube(2, 4, 0, w - 4, 2, 26, body);
+    m.cube(2, 0, 24, w - 4, 6, 3, panel);
+    m.paint_front(8, 6, 8, 12, door);
+    m.paint_front(9, 13, 2, 3, coin);
+    m.paint_front(13, 13, 2, 3, coin);
+    m.cube(7, 2, 27, 1, 1, 2, stick);
+    for (x, c) in [(12, b1), (15, b2), (18, b3)] {
+        m.set(x, 2, 26, c);
+    }
+    // The screen, set back, with scanlines and a tiny game.
+    m.cube(2, 6, 30, w - 4, 3, 22, glass);
+    for (x, z, c) in [
+        (8, 44, alien),
+        (12, 46, alien),
+        (16, 44, alien),
+        (11, 34, pixel),
+        (12, 34, pixel),
+        (12, 35, pixel),
+    ] {
+        m.set(x, 6, z, c);
+    }
+    // The marquee.
+    m.cube(2, 4, 52, w - 4, 3, 8, marquee);
+    // T-molding down the front edges of the side panels.
+    for z in 0..h {
+        m.set(1, 0, z, tmold);
+        m.set(w - 2, 0, z, tmold);
+    }
+    m
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What one frame of the arrival costs, for each model, at the scale the
+    /// stage draws it. Not run by default: it measures, it does not check.
+    /// `cargo test --release consoles::tests::arrival_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn arrival_cost() {
+        for name in [
+            "snes",
+            "saturn",
+            "n64",
+            "nes",
+            "megadrive",
+            "psx",
+            "dreamcast",
+            "neogeo",
+            "arcade",
+        ] {
+            let m = model(name).unwrap();
+            let t = std::time::Instant::now();
+            let frames = 30;
+            for i in 0..frames {
+                let v = crate::voxel::View {
+                    yaw: i as f32 * 0.21,
+                    pitch: 0.55,
+                    scale: 1.4,
+                };
+                std::hint::black_box(crate::voxel::render(&m, &v, 0xffffff, 0));
+            }
+            let ms = t.elapsed().as_secs_f64() * 1000.0 / frames as f64;
+            println!("{name:10} {ms:.2} ms a frame");
+        }
+    }
+
+    #[test]
+    fn every_model_fits_its_box_and_is_not_empty() {
+        for name in [
+            "snes",
+            "saturn",
+            "n64",
+            "nes",
+            "megadrive",
+            "psx",
+            "dreamcast",
+            "neogeo",
+            "arcade",
+        ] {
+            let m = model(name).unwrap();
+            assert!(m.w > 20 && m.d > 20 && m.h > 10, "{name} is the wrong size");
+            assert_ne!(m.get(m.w / 2, m.d / 2, 1), 0, "{name} has no body");
+        }
+    }
+}

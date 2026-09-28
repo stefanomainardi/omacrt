@@ -2131,6 +2131,11 @@ impl Scene {
                 let (floor, br) = crate::stage::draw(fb, &th, px, y0, panel, stage_h, brand);
                 let cx = px + panel / 2;
                 let lamp = lerp_color(br[4], 0xffecbe, 0.5);
+                // A console that has just been chosen arrives on the stage.
+                if self.stage_name != name {
+                    self.stage_name = name.clone();
+                    self.stage_since = self.now;
+                }
                 if sel < Self::VIRTUAL {
                     // The virtual rows have no console: their own icon, big,
                     // stands in the light instead.
@@ -2148,7 +2153,15 @@ impl Scene {
                             }
                         }
                     }
-                } else if crate::stage::stand(fb, &th, &name, cx, floor, lamp) {
+                } else if crate::stage::stand(
+                    fb,
+                    &th,
+                    &name,
+                    cx,
+                    floor,
+                    lamp,
+                    self.now - self.stage_since,
+                ) {
                 } else if let Some(img) = self.art.system_image(&name, 88) {
                     let img = img.clone();
                     crate::stage::shadow(fb, &th, cx, floor + 2, img.w as i32 / 2 + 6, 7);

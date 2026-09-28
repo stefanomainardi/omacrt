@@ -24,10 +24,9 @@ caveat for a 0.x project: anything may still move.
   each action has its own: saving, loading, rewinding, fast forward, slow
   motion, reset and going back to the launcher no longer share icons.
 - The systems list puts the selected console on a lit stage, with its
-  number of games, core and video policy. The NES, Super Nintendo, Mega
-  Drive, PlayStation, Nintendo 64, Dreamcast, Saturn and Neo Geo are drawn
-  as sprites, and the arcade systems as an upright cabinet; the others stand
-  on the stage as their pictures.
+  number of games, core and video policy. The consoles are voxel models built
+  to their real measurements and drawn as pixel art from three quarters; a
+  newly chosen one comes down onto the stage and turns before it settles.
 - The pad sockets are windows: raised under the cursor, sunk otherwise, the
   port number on a tab.
 - The games list shows the cover on the same kind of stage, lit on its edge

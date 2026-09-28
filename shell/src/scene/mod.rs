@@ -637,6 +637,10 @@ pub struct Scene {
     playtime: std::collections::HashMap<PathBuf, u64>,
     /// When the running game last started counting: unpaused, not a video.
     play_since: Option<f64>,
+    /// Which console stands on the systems stage, and since when, so a new
+    /// one arrives rather than appearing.
+    stage_name: String,
+    stage_since: f64,
     favorites: Vec<(usize, PathBuf)>,
     pad: PadKind,
     bt: Bluetooth,
@@ -859,6 +863,8 @@ impl Scene {
             recent_at: load_times(&library.config_dir.join("recent.txt")),
             playtime: omacrt_shell::playtime::load(&library.config_dir.join("playtime.tsv")),
             play_since: None,
+            stage_name: String::new(),
+            stage_since: 0.0,
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
             library,
             screen: Screen::Menu,
