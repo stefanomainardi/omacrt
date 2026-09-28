@@ -9,6 +9,8 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- A game whose refresh rate is built into the timing is no longer shown lower
+  on the screen than the others.
 - The installer no longer restarts the Omarchy shell; a changed bar panel
   appears at the next login.
 
