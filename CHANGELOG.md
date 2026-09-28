@@ -23,6 +23,9 @@ caveat for a 0.x project: anything may still move.
 - Menu icons are redrawn in the theme's colours, with light and shade, and
   each action has its own: saving, loading, rewinding, fast forward, slow
   motion, reset and going back to the launcher no longer share icons.
+- The systems list puts the selected console on a lit stage, with its
+  number of games, core and video policy; the Super Nintendo is drawn as a
+  sprite, the others stand on the stage as their pictures.
 
 ### Fixed
 

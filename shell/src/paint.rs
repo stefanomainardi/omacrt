@@ -74,6 +74,19 @@ pub fn gradient_h(fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, a: Color
     }
 }
 
+/// `c` laid over what is there at coverage `t`, through the dither: the only
+/// kind of transparency a fixed palette has.
+pub fn mix(fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32, c: Color, t: f32) {
+    let level = (t.clamp(0.0, 1.0) * 16.0) as u8;
+    for j in y..y + h {
+        for i in x..x + w {
+            if level > BAYER[(j & 3) as usize][(i & 3) as usize] {
+                fb.put(i, j, c);
+            }
+        }
+    }
+}
+
 fn luma(c: Color) -> f32 {
     0.2126 * ch(c, 16) + 0.7152 * ch(c, 8) + 0.0722 * ch(c, 0)
 }

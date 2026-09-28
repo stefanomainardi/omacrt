@@ -1233,6 +1233,23 @@ impl Scene {
                 }
             }
             Some("settings") => self.screen = Screen::Settings { sel: 0 },
+            // The systems list, with a console already selected when one is
+            // named after a colon, so its stage can be looked at.
+            Some(s) if s == "systems" || s.starts_with("systems:") => {
+                let list = self.browse_systems();
+                let sel = s
+                    .strip_prefix("systems:")
+                    .and_then(|want| {
+                        list.iter()
+                            .position(|&i| self.library.systems[i].name == want)
+                    })
+                    .map(|p| p + Self::VIRTUAL)
+                    .unwrap_or(0);
+                self.screen = Screen::Systems {
+                    sel,
+                    top: sel.saturating_sub(SYS_PAGE - 1),
+                };
+            }
             Some("about") => self.screen = Screen::About { top: 0 },
             Some("saver") => self.screen = Screen::Saver { sel: 0 },
             Some("diag") => {

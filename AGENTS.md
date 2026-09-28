@@ -202,7 +202,8 @@ cargo run --bin omacrt-shell -- --headless \
 magick /tmp/shot/frame_14.00.ppm -filter point -resize 300% /tmp/shot/a.png
 ```
 
-`--browse` takes a system name or one of the named screens: `settings`,
+`--browse` takes a system name or one of the named screens: `systems` (or
+`systems:snes` with that console selected), `settings`,
 `saver`, `diag`, `about`, `power`, `profile`, `pair`, `style`, `fit`,
 `monitor`, `processes`, `frame`, `ambient`, `music`, `pause`. `--size WxH` renders at another
 shape, and

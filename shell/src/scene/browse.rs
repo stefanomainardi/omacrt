@@ -40,7 +40,7 @@ impl Scene {
     // -- game browser (systems, then games; recent and favorites on top) -----
 
     pub(super) const ROWS_PER_PAGE: usize = 13;
-    const VIRTUAL: usize = 3; // recent/, favorites/, collections/
+    pub(super) const VIRTUAL: usize = 3; // recent/, favorites/, collections/
 
     pub(super) fn open_games(&mut self, sys: Option<usize>) {
         self.game_dir = None;
@@ -528,7 +528,7 @@ impl Scene {
     /// Rows of the systems screen: recent/, favorites/, then every system.
     /// Systems the Games browser lists: everything but the videos folder,
     /// which is not a console and has its own row on the home menu.
-    fn browse_systems(&self) -> Vec<usize> {
+    pub(super) fn browse_systems(&self) -> Vec<usize> {
         (0..self.library.systems.len())
             .filter(|&i| !self.library.systems[i].is_video())
             .collect()
@@ -2086,45 +2086,128 @@ impl Scene {
                     .iter()
                     .map(|&i| self.library.systems[i].clone())
                     .collect();
-                // The selected console sits on the right; rows make room.
-                let panel = 72;
+                // The selected console stands on a lit stage on the right,
+                // and the list gives up its numbers to it: a name is enough
+                // to choose by, and the stage says the rest in the light.
+                let panel = 156.min(w - 2 * left - 124).max(72);
                 self.row_shrink = panel + 8;
-                if sel >= Self::VIRTUAL
-                    && let Some(s) = systems.get(sel - Self::VIRTUAL)
-                {
-                    let name = s.name.clone();
-                    let px = w - left - panel;
-                    let py = y0 + 6;
-                    if let Some(img) = self.art.system_image(&name, panel as usize) {
-                        let img = img.clone();
-                        fb.blit(
-                            px + (panel - img.w as i32) / 2,
-                            py + (panel - img.h as i32) / 2,
-                            &img,
-                        );
-                    } else if let Some((logo, c)) = icons::system_logo(&name) {
-                        fb.bitmap(px + panel / 2 - 10, py + panel / 2 - 10, logo, c, 2, 10);
-                    }
-                    let label = crate::index::catalog(&name)
+                let px = w - left - panel;
+                let stage_h = (h - 34 - y0).max(80);
+                let (brand, name, label, count, core, policy) = if sel >= Self::VIRTUAL {
+                    let s = &systems[sel - Self::VIRTUAL];
+                    let brand = icons::system_logo(&s.name)
+                        .map(|(_, c)| c)
+                        .unwrap_or(self.theme.accent);
+                    let label = crate::index::catalog(&s.name)
                         .map(|(l, _, _)| l.to_string())
-                        .unwrap_or_else(|| name.clone());
-                    let words: Vec<&str> = label.split(' ').collect();
-                    let mut line = String::new();
-                    let mut ly = py + panel + 6;
-                    for wd in words {
-                        if !line.is_empty() && (line.len() + 1 + wd.len()) * 8 > panel as usize {
-                            fb.text(px, ly, &line, scale(self.theme.dim, 0.9), 1);
-                            ly += 10;
-                            line.clear();
+                        .unwrap_or_else(|| s.name.clone());
+                    let count = browse
+                        .get(sel - Self::VIRTUAL)
+                        .and_then(|&si| self.system_counts.get(si))
+                        .copied()
+                        .unwrap_or(0);
+                    let policy = crate::library::VideoPolicy::parse(&s.video)
+                        .label()
+                        .to_string();
+                    (brand, s.name.clone(), label, count, s.core.clone(), policy)
+                } else {
+                    let (label, count) = match sel {
+                        0 => ("Recent", self.recent.len()),
+                        1 => ("Favorites", self.favorites.len()),
+                        _ => ("Collections", self.library.collections().len()),
+                    };
+                    let th = &self.theme;
+                    let brand = [th.orange, th.yellow, th.yellow][sel.min(2)];
+                    (
+                        brand,
+                        String::new(),
+                        label.to_string(),
+                        count,
+                        String::new(),
+                        String::new(),
+                    )
+                };
+                let th = self.theme.clone();
+                let (floor, br) = crate::stage::draw(fb, &th, px, y0, panel, stage_h, brand);
+                let cx = px + panel / 2;
+                let lamp = lerp_color(br[4], 0xffecbe, 0.5);
+                if sel < Self::VIRTUAL {
+                    // The virtual rows have no console: their own icon, big,
+                    // stands in the light instead.
+                    let icon = [icons::CLOCK, icons::STAR, icons::FOLDER][sel.min(2)];
+                    crate::stage::shadow(fb, &th, cx, floor + 2, 22, 6);
+                    let big = 4;
+                    let (ix, iy) = (cx - 4 * big, floor - 8 * big + 2);
+                    let mut tile = Framebuffer::new(8, 8);
+                    icons::paint(&mut tile, 0, 0, &icon, &th, th.accent, true, 1.0);
+                    for j in 0..8 {
+                        for i in 0..8 {
+                            let c = tile.at(i, j);
+                            if c != 0 {
+                                fb.rect(ix + i * big, iy + j * big, big, big, c);
+                            }
                         }
-                        if !line.is_empty() {
-                            line.push(' ');
-                        }
-                        line.push_str(wd);
                     }
-                    if !line.is_empty() {
-                        fb.text(px, ly, &line, scale(self.theme.dim, 0.9), 1);
-                    }
+                } else if crate::stage::has_sprite(&name) {
+                    crate::stage::shadow(fb, &th, cx, floor + 13, 56, 6);
+                    crate::stage::console(
+                        fb,
+                        &name,
+                        cx - crate::stage::SNES_W / 2,
+                        floor - 34,
+                        lamp,
+                    );
+                } else if let Some(img) = self.art.system_image(&name, 88) {
+                    let img = img.clone();
+                    crate::stage::shadow(fb, &th, cx, floor + 2, img.w as i32 / 2 + 6, 7);
+                    fb.blit(cx - img.w as i32 / 2, floor + 4 - img.h as i32, &img);
+                } else if let Some((logo, c)) = icons::system_logo(&name) {
+                    fb.bitmap(cx - 20, floor - 40, logo, c, 4, 10);
+                }
+                let tones = crate::paint::Tones::of(&th);
+                let title: String = label
+                    .to_uppercase()
+                    .chars()
+                    .take((panel / 8) as usize)
+                    .collect();
+                crate::paint::text_shadow(
+                    fb,
+                    cx - Framebuffer::text_width(&title, 1) / 2,
+                    y0 + 8,
+                    &title,
+                    th.paper,
+                    tones.shadow,
+                );
+                let games = if count == 1 {
+                    "1 game".to_string()
+                } else {
+                    format!("{count} games")
+                };
+                crate::paint::text_shadow(
+                    fb,
+                    cx - Framebuffer::text_width(&games, 1) / 2,
+                    y0 + 19,
+                    &games,
+                    lerp_color(br[4], th.paper, 0.5),
+                    tones.shadow,
+                );
+                let base = y0 + stage_h - 12;
+                if !core.is_empty() {
+                    let room = ((panel - 12) / 8) as usize;
+                    let core_txt: String = core
+                        .chars()
+                        .take(room.saturating_sub(policy.len() + 1))
+                        .collect();
+                    crate::paint::text_shadow(fb, px + 6, base, &core_txt, br[3], tones.shadow);
+                    let pw = Framebuffer::text_width(&policy, 1);
+                    crate::paint::text_shadow(
+                        fb,
+                        px + panel - 6 - pw,
+                        base,
+                        &policy,
+                        br[3],
+                        tones.shadow,
+                    );
                 }
                 let total = Self::VIRTUAL + systems.len();
                 let end = (top + SYS_PAGE).min(total);
@@ -2138,14 +2221,7 @@ impl Scene {
                     };
                     match i {
                         0 => {
-                            self.draw_row(
-                                fb,
-                                y,
-                                "Recent",
-                                &format!("{:>4}", self.recent.len()),
-                                on,
-                                self.theme.paper,
-                            );
+                            self.draw_row(fb, y, "Recent", "", on, self.theme.paper);
                             icons::paint(
                                 fb,
                                 left + ox + 4,
@@ -2158,14 +2234,7 @@ impl Scene {
                             );
                         }
                         1 => {
-                            self.draw_row(
-                                fb,
-                                y,
-                                "Favorites",
-                                &format!("{:>4}", self.favorites.len()),
-                                on,
-                                self.theme.paper,
-                            );
+                            self.draw_row(fb, y, "Favorites", "", on, self.theme.paper);
                             icons::paint(
                                 fb,
                                 left + ox + 4,
@@ -2178,14 +2247,7 @@ impl Scene {
                             );
                         }
                         2 => {
-                            self.draw_row(
-                                fb,
-                                y,
-                                "Collections",
-                                &format!("{:>4}", self.library.collections().len()),
-                                on,
-                                self.theme.paper,
-                            );
+                            self.draw_row(fb, y, "Collections", "", on, self.theme.paper);
                             icons::paint(
                                 fb,
                                 left + ox + 4,
@@ -2199,16 +2261,7 @@ impl Scene {
                         }
                         _ => {
                             let sys = &systems[i - Self::VIRTUAL];
-                            let count = browse
-                                .get(i - Self::VIRTUAL)
-                                .and_then(|&si| self.system_counts.get(si))
-                                .copied()
-                                .unwrap_or(0);
-                            let right = format!(
-                                "{count:>4}  {}",
-                                crate::library::VideoPolicy::parse(&sys.video).label()
-                            );
-                            self.draw_row(fb, y, &sys.name, &right, on, self.theme.paper);
+                            self.draw_row(fb, y, &sys.name, "", on, self.theme.paper);
                             match icons::system_logo(&sys.name) {
                                 Some((logo, c)) => fb.bitmap(
                                     left + ox + 2,

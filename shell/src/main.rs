@@ -21,6 +21,7 @@ mod paint;
 mod photos;
 mod scene;
 mod sky;
+mod stage;
 mod sysmon;
 mod weather_sound;
 use omacrt_shell::assets;
