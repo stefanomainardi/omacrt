@@ -1336,6 +1336,17 @@ fn run(args: &Args) -> Result<(), String> {
             if inp.menu {
                 continue;
             }
+            // Asked for from the desktop, and put away the screensaver
+            // themselves. Letting `touch` take them first spent the request
+            // on waking the television and the game never started.
+            if let Some(target) = &inp.watch {
+                scene.watch(target);
+                continue;
+            }
+            if let Some(target) = &inp.play {
+                scene.play(target);
+                continue;
+            }
             if is_input && scene.touch(now()) {
                 continue;
             }
@@ -1364,14 +1375,6 @@ fn run(args: &Args) -> Result<(), String> {
             }
             if let Some(last) = inp.edge {
                 scene.jump_end(last);
-                continue;
-            }
-            if let Some(target) = &inp.watch {
-                scene.watch(target);
-                continue;
-            }
-            if let Some(target) = &inp.play {
-                scene.play(target);
                 continue;
             }
             if scene.osk_active() && (nav.is_some() || fire || fav || alt) {

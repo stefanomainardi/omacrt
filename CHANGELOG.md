@@ -16,6 +16,8 @@ caveat for a 0.x project: anything may still move.
 
 - A game whose refresh rate is built into the timing is no longer shown lower
   on the screen than the others.
+- A game or video started from the desktop while the screensaver is up now
+  starts, instead of only waking the television.
 - `omacrt mode --hz` holds a rate slower than the television follows at
   `output.vrr_min_hz`, as `omacrt rate` already did.
 - The installer no longer restarts the Omarchy shell; a changed bar panel

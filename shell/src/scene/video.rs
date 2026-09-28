@@ -234,6 +234,7 @@ impl Scene {
     /// pipe (`omacrt watch`). A URL goes to mpv as it is; yt-dlp
     /// resolves it.
     pub fn watch(&mut self, target: &str) {
+        self.wake();
         if !self.menu_live || self.running.is_some() || self.launching.is_some() {
             self.message = Some(("busy: cannot start a video now".into(), self.now + 3.0));
             return;

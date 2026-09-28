@@ -987,9 +987,20 @@ impl Scene {
     /// the way `touch` does. Anything that changes the screen from outside
     /// the television calls this first.
     fn wake(&mut self) {
+        // The screen the idle timer covered comes back, as it does for a key
+        // press, so a game started from the desktop returns to the menu and
+        // not to the screensaver page.
+        if let Some((_, _, back)) = self.saver_run.take()
+            && self.saver.is_none()
+        {
+            self.screen = back;
+            self.screen_since = self.now;
+            self.band_y = -1.0;
+        }
+        if let Some(prev) = self.music_saver.take() {
+            self.screen = prev;
+        }
         self.saver = None;
-        self.saver_run = None;
-        self.music_saver = None;
         self.last_input = self.now;
     }
 
