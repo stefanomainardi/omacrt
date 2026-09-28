@@ -2148,15 +2148,7 @@ impl Scene {
                             }
                         }
                     }
-                } else if crate::stage::has_sprite(&name) {
-                    crate::stage::shadow(fb, &th, cx, floor + 13, 56, 6);
-                    crate::stage::console(
-                        fb,
-                        &name,
-                        cx - crate::stage::SNES_W / 2,
-                        floor - 34,
-                        lamp,
-                    );
+                } else if crate::stage::stand(fb, &th, &name, cx, floor, lamp) {
                 } else if let Some(img) = self.art.system_image(&name, 88) {
                     let img = img.clone();
                     crate::stage::shadow(fb, &th, cx, floor + 2, img.w as i32 / 2 + 6, 7);
@@ -2165,11 +2157,15 @@ impl Scene {
                     fb.bitmap(cx - 20, floor - 40, logo, c, 4, 10);
                 }
                 let tones = crate::paint::Tones::of(&th);
-                let title: String = label
-                    .to_uppercase()
-                    .chars()
-                    .take((panel / 8) as usize)
-                    .collect();
+                // The full name when it fits, the short one when it does not:
+                // NES reads better than NINTENDO ENTERTAINM.
+                let cols = (panel / 8) as usize;
+                let title = if label.chars().count() <= cols || name.is_empty() {
+                    label.to_uppercase()
+                } else {
+                    name.to_uppercase()
+                };
+                let title: String = title.chars().take(cols).collect();
                 crate::paint::text_shadow(
                     fb,
                     cx - Framebuffer::text_width(&title, 1) / 2,
