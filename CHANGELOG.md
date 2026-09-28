@@ -20,6 +20,9 @@ caveat for a 0.x project: anything may still move.
 - The selection is a lit bar with a sheen, the title sits on a shaded band,
   the clock in a sunken window, and messages in a small raised one.
 - Button hints are drawn as buttons, in the colour of what they do.
+- Menu icons are redrawn in the theme's colours, with light and shade, and
+  each action has its own: saving, loading, rewinding, fast forward, slow
+  motion, reset and going back to the launcher no longer share icons.
 
 ### Fixed
 

@@ -2146,7 +2146,16 @@ impl Scene {
                                 on,
                                 self.theme.paper,
                             );
-                            fb.bitmap(left + ox + 4, y + 1, &icons::CLOCK, icon_c, 1, 8);
+                            icons::paint(
+                                fb,
+                                left + ox + 4,
+                                y + 1,
+                                &icons::CLOCK,
+                                &self.theme,
+                                icon_c,
+                                on,
+                                1.0,
+                            );
                         }
                         1 => {
                             self.draw_row(
@@ -2157,7 +2166,16 @@ impl Scene {
                                 on,
                                 self.theme.paper,
                             );
-                            fb.bitmap(left + ox + 4, y + 1, &icons::STAR, icon_c, 1, 8);
+                            icons::paint(
+                                fb,
+                                left + ox + 4,
+                                y + 1,
+                                &icons::STAR,
+                                &self.theme,
+                                icon_c,
+                                on,
+                                1.0,
+                            );
                         }
                         2 => {
                             self.draw_row(
@@ -2168,7 +2186,16 @@ impl Scene {
                                 on,
                                 self.theme.paper,
                             );
-                            fb.bitmap(left + ox + 4, y + 1, &icons::FOLDER, icon_c, 1, 8);
+                            icons::paint(
+                                fb,
+                                left + ox + 4,
+                                y + 1,
+                                &icons::FOLDER,
+                                &self.theme,
+                                icon_c,
+                                on,
+                                1.0,
+                            );
                         }
                         _ => {
                             let sys = &systems[i - Self::VIRTUAL];
@@ -2191,9 +2218,16 @@ impl Scene {
                                     1,
                                     10,
                                 ),
-                                None => {
-                                    fb.bitmap(left + ox + 4, y + 1, &icons::CONSOLE, icon_c, 1, 8)
-                                }
+                                None => icons::paint(
+                                    fb,
+                                    left + ox + 4,
+                                    y + 1,
+                                    &icons::CONSOLE,
+                                    &self.theme,
+                                    icon_c,
+                                    on,
+                                    1.0,
+                                ),
                             }
                         }
                     }
@@ -2263,17 +2297,19 @@ impl Scene {
                             i == sel,
                             self.theme.paper,
                         );
-                        fb.bitmap(
+                        icons::paint(
+                            fb,
                             left + self.slide() + 4,
                             y + 1,
                             &icons::FOLDER,
+                            &self.theme,
                             if i == sel {
                                 self.theme.accent
                             } else {
                                 self.theme.dim
                             },
-                            1,
-                            8,
+                            i == sel,
+                            1.0,
                         );
                     }
                     let pos = format!("{}/{}", sel + 1, lists.len());
@@ -2502,46 +2538,52 @@ impl Scene {
                         let fav = !entry.game.folder && self.is_favorite(&entry);
                         if entry.game.folder {
                             self.draw_row(fb, y, &entry.game.title, "", i == sel, self.theme.paper);
-                            fb.bitmap(
+                            icons::paint(
+                                fb,
                                 left + self.slide() + 4,
                                 y + 1,
                                 &icons::FOLDER,
+                                &self.theme,
                                 if i == sel {
                                     self.theme.accent
                                 } else {
                                     self.theme.dim
                                 },
-                                1,
-                                8,
+                                i == sel,
+                                1.0,
                             );
                             continue;
                         }
                         self.draw_row(fb, y, &entry.game.title, &right, i == sel, self.theme.paper);
                         if fav {
-                            fb.bitmap(
+                            icons::paint(
+                                fb,
                                 left + self.slide() + 4,
                                 y + 1,
                                 &icons::STAR,
+                                &self.theme,
                                 self.theme.yellow,
-                                1,
-                                8,
+                                true,
+                                1.0,
                             );
                         } else if !entry.game.folder
                             && !self.library.systems[entry.sys].is_video()
                             && !self.states.get(&entry.game.path).is_empty()
                         {
                             // A game with a save state: it resumes where it was left.
-                            fb.bitmap(
+                            icons::paint(
+                                fb,
                                 left + self.slide() + 6,
                                 y + 1,
                                 &icons::RESUME,
+                                &self.theme,
                                 if i == sel {
                                     self.theme.accent
                                 } else {
                                     self.theme.green
                                 },
-                                1,
-                                8,
+                                i == sel,
+                                1.0,
                             );
                         }
                     }
@@ -2951,13 +2993,15 @@ impl Scene {
             fb.text(left, floor_y + 34, label, self.theme.green, 1);
         }
         if self.is_favorite(&entry) {
-            fb.bitmap(
+            icons::paint(
+                fb,
                 w - left - 8,
                 floor_y + 35,
                 &icons::STAR,
+                &self.theme,
                 self.theme.yellow,
-                1,
-                8,
+                true,
+                1.0,
             );
         }
         let pos = format!("{}/{}", sel + 1, n);

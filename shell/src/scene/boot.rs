@@ -574,7 +574,16 @@ impl Scene {
         } else {
             1.0
         };
-        fb.bitmap(x + 4, y + 2, icon, scale(icon_c, fade * pulse), 1, 8);
+        icons::paint(
+            fb,
+            x + 4,
+            y + 2,
+            icon,
+            &self.theme,
+            icon_c,
+            on,
+            fade * pulse,
+        );
         if on {
             let shadow = crate::paint::Tones::of(&self.theme).shadow;
             fb.text(x + 19, y + 3, label, scale(shadow, fade), 1);

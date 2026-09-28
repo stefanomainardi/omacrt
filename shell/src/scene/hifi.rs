@@ -631,7 +631,7 @@ impl Scene {
             } else {
                 self.theme.dim
             };
-            fb.bitmap(left + ox + 4, y + 1, icon, c, 1, 8);
+            icons::paint(fb, left + ox + 4, y + 1, icon, &self.theme, c, on, 1.0);
         }
         match &self.music.ready {
             None => fb.text(left, h - 42, "starting cliamp", self.theme.dim, 1),
@@ -820,16 +820,11 @@ impl Scene {
                         } else {
                             self.theme.bright_green
                         };
-                        fb.bitmap(left + self.slide() + 4, y + 1, &icons::NOTE, c, 1, 8);
+                        let x = left + self.slide() + 4;
+                        icons::paint(fb, x, y + 1, &icons::NOTE, &self.theme, c, true, 1.0);
                     } else if matches!(item, MusicItem::Track(t) if self.music.is_favorite(t)) {
-                        fb.bitmap(
-                            left + self.slide() + 4,
-                            y + 1,
-                            &icons::STAR,
-                            self.theme.yellow,
-                            1,
-                            8,
-                        );
+                        let x = left + self.slide() + 4;
+                        icons::paint(fb, x, y + 1, &icons::STAR, &self.theme, 0, true, 1.0);
                     }
                 }
                 let page = format!("{}/{}", sel + 1, items.len());

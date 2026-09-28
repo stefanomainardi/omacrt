@@ -427,7 +427,7 @@ const LAUNCH_SECS: f32 = 1.15;
 /// Power submenu entries.
 const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::DESKTOP, "Back to desktop", false),
-    (icons::PULSE, "Restart launcher", false),
+    (icons::RESET, "Restart launcher", false),
     (icons::POWER, "Power off", false),
 ];
 
@@ -453,15 +453,15 @@ pub(super) enum PauseRow {
 /// Pause menu over a running game.
 const PAUSE_ROWS: [(PauseRow, icons::Icon, &str); 10] = [
     (PauseRow::Resume, icons::GAMEPAD, "Resume"),
-    (PauseRow::Save, icons::FOLDER, "Save state"),
-    (PauseRow::Load, icons::FOLDER, "Load state"),
-    (PauseRow::Rewind, icons::RESUME, "Rewind two seconds"),
-    (PauseRow::FastForward, icons::RESUME, "Fast forward"),
-    (PauseRow::SlowMotion, icons::PULSE, "Slow motion"),
+    (PauseRow::Save, icons::SAVE, "Save state"),
+    (PauseRow::Load, icons::LOAD, "Load state"),
+    (PauseRow::Rewind, icons::REWIND, "Rewind two seconds"),
+    (PauseRow::FastForward, icons::FORWARD, "Fast forward"),
+    (PauseRow::SlowMotion, icons::SLOW, "Slow motion"),
     (PauseRow::Aspect, icons::FIT, "Picture"),
     (PauseRow::Shader, icons::BRUSH, "Shader"),
-    (PauseRow::Reset, icons::PULSE, "Reset game"),
-    (PauseRow::Quit, icons::DESKTOP, "Back to launcher"),
+    (PauseRow::Reset, icons::RESET, "Reset game"),
+    (PauseRow::Quit, icons::LAUNCHER, "Back to launcher"),
 ];
 
 /// What the main loop has to do with the compositor after a pause action.
