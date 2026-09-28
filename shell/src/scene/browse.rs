@@ -2198,6 +2198,11 @@ impl Scene {
                         }
                     }
                 }
+                // The page count takes the right end of the line, so the
+                // core's line stops short of it: a long core name such as
+                // mednafen_psx_hw used to run on underneath the count.
+                let pos = (total > SYS_PAGE).then(|| format!("{}/{}", sel + 1, total));
+                let room = max_cols.saturating_sub(pos.as_ref().map_or(0, |p| p.len() + 2));
                 if sel >= Self::VIRTUAL
                     && let Some(sys) = systems.get(sel - Self::VIRTUAL)
                 {
@@ -2213,7 +2218,7 @@ impl Scene {
                     fb.text(
                         left,
                         h - 28,
-                        &cut(&info, max_cols),
+                        &cut(&info, room),
                         if core_ok {
                             self.theme.dim
                         } else {
@@ -2222,8 +2227,7 @@ impl Scene {
                         1,
                     );
                 }
-                if total > SYS_PAGE {
-                    let pos = format!("{}/{}", sel + 1, total);
+                if let Some(pos) = pos {
                     fb.text(
                         w - left - Framebuffer::text_width(&pos, 1),
                         h - 28,

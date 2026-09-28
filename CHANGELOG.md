@@ -23,6 +23,8 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- The core's line under the systems list no longer runs under the page count
+  when the core has a long name.
 - A game whose refresh rate is built into the timing is no longer shown lower
   on the screen than the others.
 - A game or video started from the desktop while the screensaver is up now
