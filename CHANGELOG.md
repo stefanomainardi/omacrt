@@ -7,6 +7,11 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Fixed
+
+- The installer no longer restarts the Omarchy shell; a changed bar panel
+  appears at the next login.
+
 ## [0.10.0] - 2026-09-18
 
 ### Added

@@ -364,7 +364,10 @@ step "installing the plugins into $plugin_dir, $library_dir and $pads_dir"
 # suggests: `rescanPlugins` re-reads the list of plugins and `reloadConfig`
 # reloads the shell's own configuration, and neither recompiles the QML of a
 # plugin already loaded. The panel goes on showing the version it started
-# with until the shell is restarted, which is what the step below does.
+# with until the shell starts again.
+#
+# That is left to the next login. Restarting the shell from here can leave the
+# desktop black until a reboot, so this script never does it.
 #
 # The helper the widget runs is a launcher for whichever omacrt writes it,
 # so this has to be the installed one and never the freshly built copy in
@@ -398,14 +401,7 @@ sys.exit(0 if pl and pl[0].get("enabled") else 1)' "$1"
   enabled "$library_id" || omarchy plugin enable "$library_id"
   enabled "$pads_id" || omarchy plugin enable "$pads_id"
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
-  # And the restart that actually puts the new panel on screen. Not under the
-  # lock screen, for the same reason the reload above waits for one.
-  if [ "$(omarchy-shell lock isLocked 2>/dev/null)" != "true" ]; then
-    step "restarting the Omarchy shell so the panel is the new one"
-    omarchy restart shell >/dev/null 2>&1 || true
-  else
-    echo "!! The session is locked. When you unlock it:  omarchy restart shell"
-  fi
+  echo "   The bar panel shows the new version from your next login."
 fi
 
 # An install replaces the files and leaves the running processes alone: a
