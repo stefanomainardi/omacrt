@@ -1808,10 +1808,12 @@ impl Scene {
             // later, and acting on it then means changing the mode under a
             // program that is still starting.
             let standard = crate::library::standard_for_path(&entry.game.path);
-            // And the rate this core ran at the last time it was in this
-            // standard, so the timing is right before the emulator opens
-            // rather than one mode change later.
-            let hz = standard.and_then(|s| crate::rates::known(&system.core, s));
+            // And the rate this game ran at last time, else the rate this
+            // core ran at the last time it was in this standard, so the
+            // timing is right before the emulator opens rather than one mode
+            // change later.
+            let hz = crate::rates::known_game(&entry.game.path)
+                .or_else(|| standard.and_then(|s| crate::rates::known(&system.core, s)));
             if l.is_some()
                 || standard.is_some()
                 || hz.is_some()

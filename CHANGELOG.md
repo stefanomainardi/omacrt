@@ -7,10 +7,17 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- Each game's refresh rate is remembered, so an arcade game starts at its
+  board's own rate instead of the last one its core ran at.
+
 ### Fixed
 
 - A game whose refresh rate is built into the timing is no longer shown lower
   on the screen than the others.
+- `omacrt mode --hz` holds a rate slower than the television follows at
+  `output.vrr_min_hz`, as `omacrt rate` already did.
 - The installer no longer restarts the Omarchy shell; a changed bar panel
   appears at the next login.
 

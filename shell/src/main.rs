@@ -806,6 +806,9 @@ fn run(args: &Args) -> Result<(), String> {
                             {
                                 rates::remember(core, std, hz);
                             }
+                            if let Some(p) = &playing_path {
+                                rates::remember_game(p, hz);
+                            }
                         }
                         let mut standard_moved = false;
                         // Whether this pass has already sent the tube a

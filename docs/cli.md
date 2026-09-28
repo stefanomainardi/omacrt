@@ -253,7 +253,8 @@ No instrument here produces that precision, and one of the four was below
 How slow it may go is `output.vrr_min_hz` in `crt.toml`, a
 calibration of the set in the room: past it a television stops following and
 the picture loses height. 55 Hz by default, measured on a BeoCenter 1. A rate
-below it is held there and `rate` says so.
+below it is held there and `rate` says so. `mode --hz` builds a rate into the
+timing instead, and holds it at the same floor.
 
 ## Library and BIOS
 

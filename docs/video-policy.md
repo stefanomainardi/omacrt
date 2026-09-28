@@ -69,6 +69,15 @@ height a core reports is written down against that game in
 `lines.tsv`, and the next launch asks the tube for it before the emulator
 opens. Nothing to configure; the file fills itself as games are played.
 
+**So is its rate.** An arcade board runs at whatever that board ran at:
+Mortal Kombat at 54.7 Hz, R-Type at 55, most of the rest at 57.5 or 60. The
+rate a core reports goes into `game-rates.tsv` against the game, and the next
+launch builds it into the timing before the emulator opens instead of
+changing the mode a second time under the title screen. A game that has never
+run starts at the rate its core last ran at in that standard, from
+`rates.tsv`, which is right for every console. A rate slower than the set
+follows is held at `output.vrr_min_hz`, the same floor `omacrt rate` keeps.
+
 **A frame the emulator was laid out for is not moved under it.** The emulator
 is told the size of its picture once, when it starts, and cannot be told
 again while it runs. Following a core into a taller frame after that left the
