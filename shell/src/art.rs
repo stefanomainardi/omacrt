@@ -245,16 +245,7 @@ fn fetch(req: &Request) -> Option<Image> {
 /// Decode a PNG into straight alpha RGBA.
 pub fn decode(path: &Path) -> Option<Image> {
     let file = std::fs::File::open(path).ok()?;
-    decode_from(std::io::BufReader::new(file))
-}
-
-/// Decode a PNG held in memory, such as one built into the program.
-pub fn decode_bytes(bytes: &[u8]) -> Option<Image> {
-    decode_from(std::io::Cursor::new(bytes))
-}
-
-fn decode_from<R: std::io::BufRead + std::io::Seek>(r: R) -> Option<Image> {
-    let mut decoder = png::Decoder::new(r);
+    let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
     // A cover is a few hundred pixels on a side. Without a limit the decoder
     // believes whatever the file's header claims and allocates it, so one
     // downloaded picture declaring enormous dimensions is the launcher gone.

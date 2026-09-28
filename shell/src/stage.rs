@@ -208,60 +208,128 @@ impl Pen<'_> {
             self.fb.rect(px - half, py + dy, 2 * half + 1, 1, c);
         }
     }
+    /// The edge of an ellipse between two angles (0 is to the right, a
+    /// quarter turn is down), one pixel wide.
+    #[allow(clippy::too_many_arguments)]
+    fn arc(&mut self, cx: i32, cy: i32, rx: i32, ry: i32, from: f32, to: f32, c: Color) {
+        let (px, py) = (self.x + self.at(cx), self.y + self.at(cy));
+        let (rx, ry) = (rx as f32 * self.k, ry as f32 * self.k);
+        let steps = ((rx + ry) * 4.0) as i32;
+        for i in 0..=steps {
+            let t = from + (to - from) * i as f32 / steps as f32;
+            let a = t * std::f32::consts::TAU;
+            self.fb.put(
+                px + (rx * a.cos()).round() as i32,
+                py + (ry * a.sin()).round() as i32,
+                c,
+            );
+        }
+    }
+    /// The rim of light from the lamp, along the top and the left edge of a
+    /// box whose back corners are rounded by `round`.
+    fn rim(&mut self, w: i32, top: i32, round: i32, light: Color, side: Color) {
+        let (x0, x1) = (self.x + self.at(round), self.x + self.at(w - round));
+        self.fb.rect(x0, self.y, x1 - x0, 1, light);
+        let (y0, y1) = (self.y + self.at(round), self.y + self.at(top));
+        self.fb.rect(self.x, y0, 1, y1 - y0, side);
+        for i in 0..round {
+            self.dot(round - 1 - i, i + 1, light);
+        }
+    }
+    /// A box seen from the front and above: a top face with its back corners
+    /// rounded, a darker front face, and the edge between them lit.
+    #[allow(clippy::too_many_arguments)]
+    fn case(
+        &mut self,
+        w: i32,
+        top: i32,
+        front: i32,
+        round: i32,
+        top_c: Color,
+        front_c: Color,
+        edge: Color,
+    ) {
+        for j in 0..top {
+            let inset = (round - j).max(0);
+            self.rect(inset, j, w - 2 * inset, 1, top_c);
+        }
+        for j in 0..front {
+            let inset = if j == front - 1 { 1 } else { 0 };
+            self.rect(inset, top + j, w - 2 * inset, 1, front_c);
+        }
+        self.hline(0, top, w, edge);
+    }
+    /// A controller port: a dark mouth with its pins.
+    #[allow(clippy::too_many_arguments)]
+    fn port(&mut self, a: i32, b: i32, w: i32, h: i32, mouth: Color, pins: Color, lip: Color) {
+        self.hline(a, b - 1, w, lip);
+        self.rect(a, b, w, h, mouth);
+        self.hline(a + 1, b + 1, w - 2, pins);
+    }
 }
 
-/// The consoles, as sprites traced from Evan Amos's public domain
-/// photographs on Wikimedia Commons and detailed by hand: the silhouette and
-/// the light come from the photograph, the faces and the details that make
-/// each one recognisable were painted over it, pixel by pixel. They are
-/// PNGs so they can be looked at and redrawn with any tool.
-const CONSOLES: &[(&[&str], &[u8])] = &[
-    (
-        &["nes", "famicom"],
-        include_bytes!("../assets/consoles/nes.png"),
-    ),
-    (
-        &["snes", "sfc"],
-        include_bytes!("../assets/consoles/snes.png"),
-    ),
-    (
-        &["megadrive", "genesis", "md"],
-        include_bytes!("../assets/consoles/megadrive.png"),
-    ),
-    (&["n64"], include_bytes!("../assets/consoles/n64.png")),
-    (
-        &["psx", "playstation"],
-        include_bytes!("../assets/consoles/psx.png"),
-    ),
-    (&["saturn"], include_bytes!("../assets/consoles/saturn.png")),
-    (
-        &["dreamcast", "dc"],
-        include_bytes!("../assets/consoles/dreamcast.png"),
-    ),
-    (&["neogeo"], include_bytes!("../assets/consoles/neogeo.png")),
-];
-
-fn console_image(name: &str) -> Option<&'static crate::art::Image> {
-    static DECODED: std::sync::OnceLock<Vec<Option<crate::art::Image>>> =
-        std::sync::OnceLock::new();
-    let all = DECODED.get_or_init(|| {
-        CONSOLES
-            .iter()
-            .map(|(_, bytes)| crate::art::decode_bytes(bytes))
-            .collect()
-    });
-    let i = CONSOLES
-        .iter()
-        .position(|(names, _)| names.contains(&name))?;
-    all[i].as_ref()
+struct Sprite {
+    /// Size on the design grid.
+    w: i32,
+    h: i32,
+    draw: fn(&mut Pen, Color),
 }
 
-fn is_arcade(name: &str) -> bool {
-    matches!(name, "arcade" | "mame" | "mame2003" | "fbneo" | "naomi")
+const SCALE: f32 = 1.5;
+
+fn sprite(name: &str) -> Option<Sprite> {
+    Some(match name {
+        "snes" | "sfc" => Sprite {
+            w: 66,
+            h: 33,
+            draw: snes,
+        },
+        "megadrive" | "genesis" | "md" => Sprite {
+            w: 66,
+            h: 30,
+            draw: megadrive,
+        },
+        "nes" | "famicom" => Sprite {
+            w: 66,
+            h: 34,
+            draw: nes,
+        },
+        "psx" | "playstation" => Sprite {
+            w: 66,
+            h: 29,
+            draw: psx,
+        },
+        "n64" => Sprite {
+            w: 66,
+            h: 31,
+            draw: n64,
+        },
+        "dreamcast" | "dc" => Sprite {
+            w: 60,
+            h: 30,
+            draw: dreamcast,
+        },
+        "saturn" => Sprite {
+            w: 66,
+            h: 30,
+            draw: saturn,
+        },
+        "neogeo" => Sprite {
+            w: 66,
+            h: 24,
+            draw: neogeo,
+        },
+        "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => Sprite {
+            w: 36,
+            h: 58,
+            draw: cabinet,
+        },
+        _ => return None,
+    })
 }
 
-/// Stand a console on the floor at `cx`, with its shadow. False when there
-/// is no sprite for it and a picture has to do instead.
+/// Stand a console's sprite on the floor at `cx`, with its shadow. False
+/// when the console has no sprite and a picture has to do instead.
 pub fn stand(
     fb: &mut Framebuffer,
     th: &Theme,
@@ -270,28 +338,283 @@ pub fn stand(
     floor: i32,
     light: Color,
 ) -> bool {
-    if let Some(img) = console_image(name) {
-        let (w, h) = (img.w as i32, img.h as i32);
-        shadow(fb, th, cx, floor + 12, w / 2 + 4, 6);
-        fb.blit(cx - w / 2, floor + 14 - h, img);
-        return true;
-    }
-    if is_arcade(name) {
-        let (w, h) = ((36.0 * SCALE) as i32, (58.0 * SCALE) as i32);
-        shadow(fb, th, cx, floor + 12, w / 2 + 6, 6);
-        let mut pen = Pen {
-            fb,
-            x: cx - w / 2,
-            y: floor + 14 - h,
-            k: SCALE,
-        };
-        cabinet(&mut pen, light);
-        return true;
-    }
-    false
+    let Some(s) = sprite(name) else {
+        return false;
+    };
+    let (w, h) = ((s.w as f32 * SCALE) as i32, (s.h as f32 * SCALE) as i32);
+    let (x, y) = (cx - w / 2, floor + 14 - h);
+    shadow(fb, th, cx, floor + 12, w / 2 + 6, 6);
+    let mut pen = Pen { fb, x, y, k: SCALE };
+    (s.draw)(&mut pen, light);
+    true
 }
 
-const SCALE: f32 = 1.5;
+const RED_LAMP: Color = 0xe62828;
+
+/// A PAL Super Nintendo: grey, the raised deck around the slot, two dark
+/// sliders, the eject button, and four coloured dots on the front.
+fn snes(p: &mut Pen, light: Color) {
+    let g = ramp(rgb(178, 178, 186));
+    let dg = ramp(rgb(96, 96, 104));
+    let (w, top, front) = (66, 24, 9);
+    p.case(w, top, front, 3, g[3], g[1], g[2]);
+    p.rect(14, 3, 38, 14, g[3]);
+    p.hline(14, 3, 38, g[4]);
+    p.vline(14, 3, 14, g[4]);
+    p.hline(14, 16, 38, g[2]);
+    p.vline(51, 4, 13, g[2]);
+    p.hline(21, 6, 24, g[4]);
+    p.rect(21, 7, 24, 3, g[0]);
+    p.hline(22, 8, 22, lerp_color(g[0], 0, 0.5));
+    for sx in [4, 55] {
+        p.rect(sx, 9, 7, 6, g[2]);
+        p.rect(sx + 1, 10, 5, 4, dg[1]);
+        p.rect(sx + 1, 10, 3, 3, dg[3]);
+        p.hline(sx + 1, 10, 3, dg[4]);
+    }
+    p.rect(28, 17, 10, 3, dg[2]);
+    p.hline(28, 17, 10, dg[4]);
+    p.hline(2, 21, w - 4, g[2]);
+    for px in [20, 38] {
+        p.port(px, top + 2, 9, 5, g[0], dg[2], g[2]);
+    }
+    for (i, c) in [0xdc323c, 0xf0c828, 0x3caa50, 0x3c6edc]
+        .into_iter()
+        .enumerate()
+    {
+        p.dot(6 + i as i32 * 2, top + 4, c);
+    }
+    p.dot(60, top + 4, RED_LAMP);
+    p.rim(w, top, 3, light, lerp_color(light, g[3], 0.4));
+}
+
+/// The first Mega Drive: black, the raised disc with the gold ring around
+/// the slot, the volume slider and the headphone socket at the back left.
+fn megadrive(p: &mut Pen, light: Color) {
+    let b = ramp(rgb(52, 52, 60));
+    let gold = ramp(rgb(200, 160, 64));
+    let (w, top, front) = (66, 21, 9);
+    p.case(w, top, front, 4, b[2], b[1], b[3]);
+    // The disc, raised, lit on its top left and shaded on its bottom right.
+    p.ellipse(40, 10, 18, 9, b[3]);
+    p.arc(40, 10, 18, 9, 0.5, 0.75, b[4]);
+    p.arc(40, 10, 18, 9, 0.0, 0.25, b[1]);
+    p.ellipse(40, 10, 13, 6, b[2]);
+    // The gold ring on its front half, broken where the letters would be.
+    let (cx, cy) = (40, 10);
+    let steps = 40;
+    for i in 0..steps {
+        if i % 4 == 3 {
+            continue;
+        }
+        let t = 0.05 + 0.4 * i as f32 / steps as f32;
+        let a = t * std::f32::consts::TAU;
+        let (px, py) = (cx as f32 + 15.5 * a.cos(), cy as f32 + 7.5 * a.sin());
+        p.dot(px.round() as i32, py.round() as i32, gold[3]);
+    }
+    // The slot across the disc.
+    p.hline(29, 7, 22, b[4]);
+    p.rect(29, 8, 22, 3, b[0]);
+    // Volume slider and headphone socket.
+    p.rect(5, 5, 12, 2, b[0]);
+    p.rect(9, 4, 3, 4, b[3]);
+    p.hline(9, 4, 3, b[4]);
+    p.ellipse(8, 13, 2, 1, b[0]);
+    p.dot(8, 12, b[4]);
+    // Front: power switch, reset, the red lamp, two ports.
+    p.rect(5, top + 2, 7, 4, b[3]);
+    p.hline(5, top + 2, 7, b[4]);
+    p.rect(15, top + 2, 4, 4, b[3]);
+    p.hline(15, top + 2, 4, b[4]);
+    p.dot(22, top + 3, RED_LAMP);
+    for px in [38, 50] {
+        p.port(px, top + 2, 9, 5, b[0], b[2], b[2]);
+    }
+    p.rim(w, top, 4, light, lerp_color(light, b[2], 0.5));
+}
+
+/// The European NES: a grey box with a ribbed back, the dark grey lid on the
+/// front, and the dark band with the buttons and the ports.
+fn nes(p: &mut Pen, light: Color) {
+    let g = ramp(rgb(190, 188, 184));
+    let dg = ramp(rgb(74, 74, 80));
+    let (w, top, front) = (66, 16, 18);
+    p.case(w, top, front, 2, g[3], g[2], g[4]);
+    // Ribs across the back of the top.
+    for r in [2, 4, 6, 8] {
+        p.hline(4, r, w - 8, g[2]);
+    }
+    // The lid, set into the upper front.
+    p.rect(11, top + 2, 44, 7, dg[2]);
+    p.hline(11, top + 2, 44, dg[4]);
+    p.hline(11, top + 8, 44, dg[1]);
+    p.hline(28, top + 5, 10, dg[1]);
+    // The dark band along the bottom.
+    p.rect(1, top + 10, w - 2, 8, dg[1]);
+    p.hline(1, top + 10, w - 2, dg[3]);
+    // Power and reset, with the lamp between them.
+    p.rect(6, top + 12, 6, 3, g[3]);
+    p.hline(6, top + 12, 6, g[4]);
+    p.rect(16, top + 12, 6, 3, g[3]);
+    p.hline(16, top + 12, 6, g[4]);
+    p.dot(13, top + 13, RED_LAMP);
+    for px in [38, 50] {
+        p.port(px, top + 12, 9, 4, dg[0], g[1], dg[2]);
+    }
+    p.rim(w, top, 2, light, lerp_color(light, g[3], 0.4));
+}
+
+/// The first PlayStation: grey, the round lid, three buttons to its right,
+/// and the ports and memory card slots on the front.
+fn psx(p: &mut Pen, light: Color) {
+    let g = ramp(rgb(186, 186, 192));
+    let dg = ramp(rgb(92, 92, 100));
+    let (w, top, front) = (66, 20, 9);
+    p.case(w, top, front, 3, g[3], g[1], g[2]);
+    // The lid: a disc raised over the top, a groove around its middle.
+    p.ellipse(25, 10, 20, 9, g[3]);
+    p.arc(25, 10, 20, 9, 0.5, 0.75, g[4]);
+    p.arc(25, 10, 20, 9, 0.0, 0.25, g[1]);
+    p.arc(25, 10, 15, 6, 0.0, 1.0, g[2]);
+    // The mark in the middle of the lid, in its four colours.
+    for (i, c) in [0xe03c3c, 0xf0c028, 0x3cb45a, 0x3c78dc]
+        .into_iter()
+        .enumerate()
+    {
+        p.dot(23 + (i as i32 % 2), 9 + (i as i32 / 2), c);
+    }
+    // Open, reset, power.
+    p.ellipse(54, 6, 5, 2, g[2]);
+    p.arc(54, 6, 5, 2, 0.5, 0.75, g[4]);
+    p.ellipse(50, 13, 2, 1, g[2]);
+    p.ellipse(58, 13, 2, 1, g[2]);
+    p.dot(58, 16, 0x3cdc5a);
+    // Front: two ports, and the memory card slots over them.
+    for px in [11, 44] {
+        p.hline(px + 1, top + 1, 9, dg[0]);
+        p.port(px, top + 3, 11, 4, dg[0], dg[2], g[2]);
+    }
+    p.rim(w, top, 3, light, lerp_color(light, g[3], 0.4));
+}
+
+/// The Nintendo 64: charcoal, the slot on its raised back, the sliders, the
+/// coloured mark and four ports along the front.
+fn n64(p: &mut Pen, light: Color) {
+    let n = ramp(rgb(62, 62, 70));
+    let (w, top, front) = (66, 20, 11);
+    p.case(w, top, front, 5, n[2], n[1], n[3]);
+    // The raised back with the cartridge slot.
+    p.rect(17, 2, 32, 11, n[3]);
+    p.hline(17, 2, 32, n[4]);
+    p.vline(17, 2, 11, n[4]);
+    p.hline(17, 12, 32, n[1]);
+    p.hline(21, 5, 24, n[4]);
+    p.rect(21, 6, 24, 2, n[0]);
+    // Power and reset sliders either side.
+    for sx in [6, 53] {
+        p.rect(sx, 12, 7, 4, n[0]);
+        p.rect(sx + 1, 12, 3, 3, rgb(150, 150, 158));
+    }
+    // The mark: four coloured blocks.
+    p.rect(31, 15, 2, 2, 0xdc3232);
+    p.rect(33, 15, 2, 2, 0x32a050);
+    p.rect(31, 17, 2, 2, 0x3264dc);
+    p.rect(33, 17, 2, 2, 0xf0c828);
+    // Four ports along the front.
+    for (i, px) in [9, 22, 36, 49].into_iter().enumerate() {
+        let _ = i;
+        p.port(px, top + 3, 8, 5, n[0], n[2], n[3]);
+    }
+    p.dot(4, top + 4, RED_LAMP);
+    p.rim(w, top, 5, light, lerp_color(light, n[2], 0.5));
+}
+
+/// The Dreamcast: pale, a lid over most of the top with the swirl in the
+/// middle, the buttons either side of it and four ports on the front.
+fn dreamcast(p: &mut Pen, light: Color) {
+    let g = ramp(rgb(214, 214, 208));
+    let (w, top, front) = (60, 20, 10);
+    p.case(w, top, front, 4, g[3], g[1], g[2]);
+    // The lid, raised, with a shaded groove round it.
+    p.rect(8, 2, 44, 15, g[3]);
+    p.hline(8, 2, 44, g[4]);
+    p.vline(8, 2, 15, g[4]);
+    p.hline(8, 16, 44, g[1]);
+    p.vline(51, 3, 14, g[1]);
+    // The swirl: a spiral of blue, as the European one had it.
+    let blue = 0x2a5ad2;
+    let (cx, cy) = (30.0f32, 9.0f32);
+    for i in 0..30 {
+        let t = i as f32 / 30.0;
+        let a = t * std::f32::consts::TAU * 1.6;
+        let r = 1.0 + t * 5.0;
+        p.dot(
+            (cx + r * a.cos()).round() as i32,
+            (cy + r * 0.55 * a.sin()).round() as i32,
+            blue,
+        );
+    }
+    // Power on the left, open on the right, round.
+    p.ellipse(4, 12, 2, 1, g[2]);
+    p.ellipse(56, 12, 2, 1, g[2]);
+    p.dot(56, 11, g[4]);
+    for px in [6, 19, 32, 45] {
+        p.port(px, top + 3, 9, 4, g[0], g[2], g[2]);
+    }
+    p.dot(3, top + 4, 0xf08c28);
+    p.rim(w, top, 4, light, lerp_color(light, g[3], 0.4));
+}
+
+/// The first Saturn: near black, the round lid for the disc, the cartridge
+/// slot behind it, oval buttons and two ports.
+fn saturn(p: &mut Pen, light: Color) {
+    let b = ramp(rgb(58, 58, 66));
+    let (w, top, front) = (66, 21, 9);
+    p.case(w, top, front, 4, b[2], b[1], b[3]);
+    // The cartridge slot along the back.
+    p.hline(14, 2, 36, b[4]);
+    p.rect(14, 3, 36, 2, b[0]);
+    // The lid, round and lighter, with its ring.
+    p.ellipse(28, 12, 17, 7, b[3]);
+    p.arc(28, 12, 17, 7, 0.5, 0.75, b[4]);
+    p.arc(28, 12, 17, 7, 0.0, 0.25, b[1]);
+    p.arc(28, 12, 12, 5, 0.0, 1.0, b[2]);
+    p.ellipse(28, 12, 3, 1, b[1]);
+    // Open, reset, power: oval buttons on the right.
+    p.ellipse(54, 8, 4, 2, b[3]);
+    p.arc(54, 8, 4, 2, 0.5, 0.75, b[4]);
+    p.ellipse(52, 14, 2, 1, b[3]);
+    p.ellipse(59, 14, 2, 1, b[3]);
+    p.dot(59, 17, 0x3cdc5a);
+    for px in [14, 42] {
+        p.port(px, top + 2, 10, 5, b[0], b[2], b[2]);
+    }
+    p.rim(w, top, 4, light, lerp_color(light, b[2], 0.5));
+}
+
+/// The Neo Geo AES: long, low and black, the wide cartridge slot on top and
+/// the two big controller sockets on the front.
+fn neogeo(p: &mut Pen, light: Color) {
+    let b = ramp(rgb(46, 46, 54));
+    let (w, top, front) = (66, 15, 9);
+    p.case(w, top, front, 2, b[2], b[1], b[3]);
+    // The slot: a wide mouth with a thick lip.
+    p.rect(12, 3, 42, 7, b[3]);
+    p.hline(12, 3, 42, b[4]);
+    p.hline(12, 9, 42, b[1]);
+    p.rect(15, 5, 36, 3, b[0]);
+    // The power slider at the back left.
+    p.rect(3, 5, 6, 3, b[0]);
+    p.rect(4, 5, 2, 2, rgb(170, 170, 176));
+    // The name on the front, as two white strokes at this size.
+    p.hline(5, top + 3, 9, rgb(230, 230, 236));
+    p.hline(5, top + 5, 6, rgb(230, 230, 236));
+    for px in [36, 51] {
+        p.port(px, top + 2, 12, 5, b[0], b[2], b[2]);
+    }
+    p.dot(20, top + 4, RED_LAMP);
+    p.rim(w, top, 2, light, lerp_color(light, b[2], 0.5));
+}
 
 /// An upright cabinet: T-molding in the brand's colour, the lit marquee, a
 /// screen with its scanlines and something small playing on it, the stick
