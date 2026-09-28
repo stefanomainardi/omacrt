@@ -199,6 +199,33 @@ impl Pen<'_> {
         let (x, y) = (self.x + self.at(a), self.y + self.at(b));
         self.fb.put(x, y, c);
     }
+    /// A filled polygon, its corners on the design grid.
+    fn poly(&mut self, pts: &[(i32, i32)], c: Color) {
+        let pts: Vec<(f32, f32)> = pts
+            .iter()
+            .map(|&(a, b)| ((self.x + self.at(a)) as f32, (self.y + self.at(b)) as f32))
+            .collect();
+        let y0 = pts.iter().map(|p| p.1).fold(f32::MAX, f32::min) as i32;
+        let y1 = pts.iter().map(|p| p.1).fold(f32::MIN, f32::max) as i32;
+        for y in y0..=y1 {
+            let yc = y as f32 + 0.5;
+            let mut xs = Vec::new();
+            for i in 0..pts.len() {
+                let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+                if (a.1 <= yc && yc < b.1) || (b.1 <= yc && yc < a.1) {
+                    xs.push(a.0 + (yc - a.1) * (b.0 - a.0) / (b.1 - a.1));
+                }
+            }
+            xs.sort_by(f32::total_cmp);
+            for pair in xs.chunks(2) {
+                if let [l, r] = pair {
+                    let (l, r) = (l.round() as i32, r.round() as i32);
+                    self.fb.rect(l, y, r - l, 1, c);
+                }
+            }
+        }
+    }
+
     fn ellipse(&mut self, cx: i32, cy: i32, rx: i32, ry: i32, c: Color) {
         let (px, py) = (self.x + self.at(cx), self.y + self.at(cy));
         let (rx, ry) = (rx as f32 * self.k, ry as f32 * self.k);
@@ -301,7 +328,7 @@ fn sprite(name: &str) -> Option<Sprite> {
         },
         "n64" => Sprite {
             w: 66,
-            h: 31,
+            h: 34,
             draw: n64,
         },
         "dreamcast" | "dc" => Sprite {
@@ -351,268 +378,344 @@ pub fn stand(
 
 const RED_LAMP: Color = 0xe62828;
 
-/// A PAL Super Nintendo: grey, the raised deck around the slot, two dark
-/// sliders, the eject button, and four coloured dots on the front.
+/// The Super Nintendo as Europe and Japan had it: grey, the darker deck with
+/// the slot and the four coloured dots in their circle, POWER, eject and
+/// RESET in front of it, the name, and two ports and the lamp on the front.
 fn snes(p: &mut Pen, light: Color) {
-    let g = ramp(rgb(178, 178, 186));
-    let dg = ramp(rgb(96, 96, 104));
+    let g = ramp(rgb(190, 190, 196));
     let (w, top, front) = (66, 24, 9);
     p.case(w, top, front, 3, g[3], g[1], g[2]);
-    p.rect(14, 3, 38, 14, g[3]);
-    p.hline(14, 3, 38, g[4]);
-    p.vline(14, 3, 14, g[4]);
-    p.hline(14, 16, 38, g[2]);
-    p.vline(51, 4, 13, g[2]);
-    p.hline(21, 6, 24, g[4]);
-    p.rect(21, 7, 24, 3, g[0]);
-    p.hline(22, 8, 22, lerp_color(g[0], 0, 0.5));
-    for sx in [4, 55] {
-        p.rect(sx, 9, 7, 6, g[2]);
-        p.rect(sx + 1, 10, 5, 4, dg[1]);
-        p.rect(sx + 1, 10, 3, 3, dg[3]);
-        p.hline(sx + 1, 10, 3, dg[4]);
+    let deck = rgb(150, 150, 158);
+    p.rect(7, 4, 52, 9, deck);
+    p.hline(7, 4, 52, g[2]);
+    p.hline(7, 12, 52, rgb(118, 118, 126));
+    p.hline(12, 8, 34, rgb(112, 112, 120));
+    p.ellipse(52, 8, 3, 2, g[3]);
+    for (a, b, c) in [
+        (51, 7, 0x3c64c8),
+        (53, 7, 0xdc3232),
+        (51, 9, 0x3caa50),
+        (53, 9, 0xf0c828),
+    ] {
+        p.dot(a, b, c);
     }
-    p.rect(28, 17, 10, 3, dg[2]);
-    p.hline(28, 17, 10, dg[4]);
-    p.hline(2, 21, w - 4, g[2]);
-    for px in [20, 38] {
-        p.port(px, top + 2, 9, 5, g[0], dg[2], g[2]);
-    }
-    for (i, c) in [0xdc323c, 0xf0c828, 0x3caa50, 0x3c6edc]
-        .into_iter()
-        .enumerate()
-    {
-        p.dot(6 + i as i32 * 2, top + 4, c);
-    }
-    p.dot(60, top + 4, RED_LAMP);
+    p.rect(11, 14, 9, 5, g[4]);
+    p.rect(12, 14, 7, 2, rgb(70, 70, 76));
+    p.rect(22, 15, 17, 5, rgb(140, 140, 148));
+    p.hline(22, 15, 17, rgb(170, 170, 178));
+    p.rect(42, 15, 9, 5, rgb(72, 72, 78));
+    p.hline(42, 15, 9, rgb(104, 104, 112));
+    p.hline(5, 21, 10, rgb(60, 60, 66));
+    p.hline(5, 22, 14, rgb(60, 60, 66));
+    p.port(9, top + 3, 11, 4, rgb(170, 170, 176), rgb(70, 70, 76), g[2]);
+    p.port(
+        33,
+        top + 3,
+        11,
+        4,
+        rgb(170, 170, 176),
+        rgb(70, 70, 76),
+        g[2],
+    );
+    p.dot(56, top + 3, 0xa02828);
     p.rim(w, top, 3, light, lerp_color(light, g[3], 0.4));
 }
 
-/// The first Mega Drive: black, the raised disc with the gold ring around
-/// the slot, the volume slider and the headphone socket at the back left.
+/// The first Mega Drive: black, the grille at the back left, the volume,
+/// power and reset at the front left, the raised disc with the curved slot
+/// and the 16-BIT plate, two ports on the front and the name on the right.
 fn megadrive(p: &mut Pen, light: Color) {
-    let b = ramp(rgb(52, 52, 60));
-    let gold = ramp(rgb(200, 160, 64));
+    let b = ramp(rgb(56, 56, 64));
+    let gold = ramp(rgb(206, 168, 72));
     let (w, top, front) = (66, 21, 9);
     p.case(w, top, front, 4, b[2], b[1], b[3]);
-    // The disc, raised, lit on its top left and shaded on its bottom right.
-    p.ellipse(40, 10, 18, 9, b[3]);
-    p.arc(40, 10, 18, 9, 0.5, 0.75, b[4]);
-    p.arc(40, 10, 18, 9, 0.0, 0.25, b[1]);
-    p.ellipse(40, 10, 13, 6, b[2]);
-    // The gold ring on its front half, broken where the letters would be.
-    let (cx, cy) = (40, 10);
-    let steps = 40;
-    for i in 0..steps {
-        if i % 4 == 3 {
-            continue;
-        }
-        let t = 0.05 + 0.4 * i as f32 / steps as f32;
-        let a = t * std::f32::consts::TAU;
-        let (px, py) = (cx as f32 + 15.5 * a.cos(), cy as f32 + 7.5 * a.sin());
-        p.dot(px.round() as i32, py.round() as i32, gold[3]);
+    // The grille.
+    p.rect(5, 2, 14, 7, b[1]);
+    for r in (3..9).step_by(2) {
+        p.hline(5, r, 14, b[0]);
     }
-    // The slot across the disc.
-    p.hline(29, 7, 22, b[4]);
-    p.rect(29, 8, 22, 3, b[0]);
-    // Volume slider and headphone socket.
-    p.rect(5, 5, 12, 2, b[0]);
-    p.rect(9, 4, 3, 4, b[3]);
-    p.hline(9, 4, 3, b[4]);
-    p.ellipse(8, 13, 2, 1, b[0]);
-    p.dot(8, 12, b[4]);
-    // Front: power switch, reset, the red lamp, two ports.
-    p.rect(5, top + 2, 7, 4, b[3]);
-    p.hline(5, top + 2, 7, b[4]);
-    p.rect(15, top + 2, 4, 4, b[3]);
-    p.hline(15, top + 2, 4, b[4]);
-    p.dot(22, top + 3, RED_LAMP);
-    for px in [38, 50] {
+    // The disc: raised, its rim lit and shaded, the slot curving across.
+    p.ellipse(42, 10, 19, 9, b[3]);
+    p.arc(42, 10, 19, 9, 0.5, 0.75, b[4]);
+    p.arc(42, 10, 19, 9, 0.0, 0.25, b[1]);
+    p.ellipse(42, 10, 14, 6, b[2]);
+    p.arc(42, 13, 13, 6, 0.6, 0.9, b[0]);
+    p.arc(42, 12, 13, 6, 0.6, 0.9, b[4]);
+    // The 16-BIT plate on the front of the disc: black with gold letters,
+    // the white label under it with its red dot.
+    p.rect(37, 12, 11, 3, 0x0c0c10);
+    p.hline(38, 13, 9, gold[3]);
+    p.rect(37, 15, 11, 3, rgb(214, 210, 200));
+    p.dot(42, 16, 0xd22828);
+    // Volume, power and reset at the front left.
+    p.rect(5, 11, 3, 7, b[0]);
+    p.rect(5, 13, 3, 2, b[4]);
+    p.rect(10, 11, 9, 3, b[0]);
+    p.dot(12, 12, 0xd22828);
+    p.dot(15, 12, 0xe6e6ea);
+    p.rect(10, 16, 6, 2, rgb(170, 170, 176));
+    // Front: two ports on the left, the name on the right.
+    for px in [6, 17] {
         p.port(px, top + 2, 9, 5, b[0], b[2], b[2]);
     }
+    p.hline(42, top + 4, 12, 0xe6e6ea);
+    p.hline(56, top + 4, 6, 0xe6e6ea);
     p.rim(w, top, 4, light, lerp_color(light, b[2], 0.5));
 }
 
-/// The European NES: a grey box with a ribbed back, the dark grey lid on the
-/// front, and the dark band with the buttons and the ports.
+/// The NES: a light grey box, the ribbed panel at the front right of the top;
+/// on the front the lid with the name in red, the dark band with power, reset
+/// and the lamp, and the black end with the two ports.
 fn nes(p: &mut Pen, light: Color) {
-    let g = ramp(rgb(190, 188, 184));
-    let dg = ramp(rgb(74, 74, 80));
+    let g = ramp(rgb(196, 194, 190));
     let (w, top, front) = (66, 16, 18);
+    let black = rgb(44, 44, 48);
     p.case(w, top, front, 2, g[3], g[2], g[4]);
-    // Ribs across the back of the top.
-    for r in [2, 4, 6, 8] {
-        p.hline(4, r, w - 8, g[2]);
+    // The ribbed panel, and the dark strip behind it.
+    p.rect(45, 3, 18, 12, g[3]);
+    for r in (4..15).step_by(2) {
+        p.hline(45, r, 18, g[1]);
     }
-    // The lid, set into the upper front.
-    p.rect(11, top + 2, 44, 7, dg[2]);
-    p.hline(11, top + 2, 44, dg[4]);
-    p.hline(11, top + 8, 44, dg[1]);
-    p.hline(28, top + 5, 10, dg[1]);
-    // The dark band along the bottom.
-    p.rect(1, top + 10, w - 2, 8, dg[1]);
-    p.hline(1, top + 10, w - 2, dg[3]);
-    // Power and reset, with the lamp between them.
-    p.rect(6, top + 12, 6, 3, g[3]);
-    p.hline(6, top + 12, 6, g[4]);
-    p.rect(16, top + 12, 6, 3, g[3]);
-    p.hline(16, top + 12, 6, g[4]);
-    p.dot(13, top + 13, RED_LAMP);
-    for px in [38, 50] {
-        p.port(px, top + 12, 9, 4, dg[0], g[1], dg[2]);
+    p.rect(45, 1, 18, 2, black);
+    // The lid on the front, with the name in red.
+    p.rect(2, top + 1, 41, 9, g[3]);
+    p.hline(2, top + 1, 41, g[4]);
+    p.hline(2, top + 9, 41, g[1]);
+    p.hline(5, top + 3, 8, 0xd22828);
+    p.hline(5, top + 5, 16, 0xd22828);
+    // The dark band under it: power, reset, the lamp.
+    p.rect(1, top + 10, 43, 8, rgb(120, 120, 124));
+    p.hline(1, top + 10, 43, rgb(150, 150, 154));
+    p.rect(5, top + 12, 6, 3, rgb(70, 70, 74));
+    p.rect(13, top + 12, 6, 3, rgb(70, 70, 74));
+    p.dot(3, top + 13, RED_LAMP);
+    // The black end with the two ports.
+    p.rect(44, top, 21, 18, black);
+    p.vline(44, top, 18, rgb(70, 70, 76));
+    for px in [47, 56] {
+        p.port(
+            px,
+            top + 11,
+            6,
+            4,
+            rgb(120, 120, 124),
+            rgb(20, 20, 22),
+            black,
+        );
     }
     p.rim(w, top, 2, light, lerp_color(light, g[3], 0.4));
 }
 
-/// The first PlayStation: grey, the round lid, three buttons to its right,
-/// and the ports and memory card slots on the front.
+/// The first PlayStation: grey, the round lid in the middle, reset and power
+/// on its left, open on its right, the raised strip at the back, and on the
+/// front two ports under their memory card slots and the grooves on the right.
 fn psx(p: &mut Pen, light: Color) {
     let g = ramp(rgb(186, 186, 192));
-    let dg = ramp(rgb(92, 92, 100));
+    let dark = rgb(60, 60, 64);
     let (w, top, front) = (66, 20, 9);
     p.case(w, top, front, 3, g[3], g[1], g[2]);
-    // The lid: a disc raised over the top, a groove around its middle.
-    p.ellipse(25, 10, 20, 9, g[3]);
-    p.arc(25, 10, 20, 9, 0.5, 0.75, g[4]);
-    p.arc(25, 10, 20, 9, 0.0, 0.25, g[1]);
-    p.arc(25, 10, 15, 6, 0.0, 1.0, g[2]);
-    // The mark in the middle of the lid, in its four colours.
+    p.rect(24, 0, 18, 3, g[4]);
+    p.ellipse(34, 10, 17, 8, g[3]);
+    p.arc(34, 10, 17, 8, 0.5, 0.75, g[4]);
+    p.arc(34, 10, 17, 8, 0.0, 0.5, g[1]);
     for (i, c) in [0xe03c3c, 0xf0c028, 0x3cb45a, 0x3c78dc]
         .into_iter()
         .enumerate()
     {
-        p.dot(23 + (i as i32 % 2), 9 + (i as i32 / 2), c);
+        p.dot(33 + (i as i32 % 2), 11 + (i as i32 / 2), c);
     }
-    // Open, reset, power.
-    p.ellipse(54, 6, 5, 2, g[2]);
-    p.arc(54, 6, 5, 2, 0.5, 0.75, g[4]);
-    p.ellipse(50, 13, 2, 1, g[2]);
-    p.ellipse(58, 13, 2, 1, g[2]);
-    p.dot(58, 16, 0x3cdc5a);
-    // Front: two ports, and the memory card slots over them.
-    for px in [11, 44] {
-        p.hline(px + 1, top + 1, 9, dg[0]);
-        p.port(px, top + 3, 11, 4, dg[0], dg[2], g[2]);
+    p.ellipse(7, 5, 2, 1, g[2]);
+    p.ellipse(8, 11, 5, 3, g[2]);
+    p.arc(8, 11, 5, 3, 0.5, 0.8, g[4]);
+    p.dot(4, 15, 0x3cdc5a);
+    p.ellipse(59, 15, 5, 3, g[2]);
+    p.arc(59, 15, 5, 3, 0.5, 0.8, g[4]);
+    for px in [18, 34] {
+        p.hline(px + 1, top + 1, 9, dark);
+        p.port(px, top + 3, 11, 4, g[2], dark, g[2]);
+    }
+    for x in (52..64).step_by(2) {
+        p.vline(x, top + 1, 7, g[0]);
     }
     p.rim(w, top, 3, light, lerp_color(light, g[3], 0.4));
 }
 
-/// The Nintendo 64: charcoal, the slot on its raised back, the sliders, the
-/// coloured mark and four ports along the front.
+/// The Nintendo 64, as the photographs have it: the deck spreading into two
+/// wings at the front with the middle set back between them, the raised
+/// back with the grey slot cover and the row of vents, the power slider and
+/// the reset button, the memory lid, and on the front the black window with
+/// the name and the N, between two pairs of grey ports.
 fn n64(p: &mut Pen, light: Color) {
-    let n = ramp(rgb(62, 62, 70));
-    let (w, top, front) = (66, 20, 11);
-    p.case(w, top, front, 5, n[2], n[1], n[3]);
-    // The raised back with the cartridge slot.
-    p.rect(17, 2, 32, 11, n[3]);
-    p.hline(17, 2, 32, n[4]);
-    p.vline(17, 2, 11, n[4]);
-    p.hline(17, 12, 32, n[1]);
-    p.hline(21, 5, 24, n[4]);
-    p.rect(21, 6, 24, 2, n[0]);
-    // Power and reset sliders either side.
-    for sx in [6, 53] {
-        p.rect(sx, 12, 7, 4, n[0]);
-        p.rect(sx + 1, 12, 3, 3, rgb(150, 150, 158));
+    let n = ramp(rgb(66, 66, 74));
+    let grey = ramp(rgb(166, 166, 172));
+    // The front faces first. The wings are round and come down lower than
+    // the body, like feet; the middle between them is set back, in shadow.
+    p.rect(13, 19, 40, 12, n[1]);
+    p.rect(13, 29, 40, 2, n[0]);
+    for cx in [8, 58] {
+        p.ellipse(cx, 27, 8, 6, n[0]);
+        p.ellipse(cx, 26, 8, 5, n[1]);
     }
-    // The mark: four coloured blocks.
-    p.rect(31, 15, 2, 2, 0xdc3232);
-    p.rect(33, 15, 2, 2, 0x32a050);
-    p.rect(31, 17, 2, 2, 0x3264dc);
-    p.rect(33, 17, 2, 2, 0xf0c828);
-    // Four ports along the front.
-    for (i, px) in [9, 22, 36, 49].into_iter().enumerate() {
-        let _ = i;
-        p.port(px, top + 3, 8, 5, n[0], n[2], n[3]);
+    // The deck: wide at the back, swelling into the wings, recessed between.
+    p.poly(
+        &[
+            (9, 2),
+            (57, 2),
+            (62, 5),
+            (65, 12),
+            (66, 20),
+            (52, 21),
+            (50, 19),
+            (16, 19),
+            (14, 21),
+            (0, 20),
+            (1, 12),
+            (4, 5),
+        ],
+        n[2],
+    );
+    for cx in [8, 58] {
+        p.ellipse(cx, 20, 8, 3, n[2]);
+        p.arc(cx, 20, 8, 3, 0.05, 0.45, n[3]);
     }
-    p.dot(4, top + 4, RED_LAMP);
-    p.rim(w, top, 5, light, lerp_color(light, n[2], 0.5));
+    p.hline(16, 19, 34, n[3]);
+    // The raised back: its top, the grey slot cover, the vents on its slope.
+    p.poly(
+        &[(18, 1), (48, 1), (51, 4), (51, 12), (15, 12), (15, 4)],
+        n[3],
+    );
+    p.hline(18, 1, 30, n[4]);
+    p.rect(15, 9, 36, 3, n[2]);
+    for x in (17..50).step_by(2) {
+        p.vline(x, 9, 2, n[0]);
+    }
+    p.rect(22, 3, 22, 4, grey[2]);
+    p.hline(22, 3, 22, grey[4]);
+    p.hline(24, 5, 18, grey[0]);
+    // Power slider on the left, reset on the right, the memory lid between.
+    p.ellipse(12, 14, 4, 2, n[0]);
+    p.rect(10, 13, 3, 2, grey[1]);
+    p.ellipse(54, 14, 3, 2, n[0]);
+    p.ellipse(54, 14, 2, 1, n[2]);
+    p.rect(27, 13, 12, 5, n[3]);
+    p.hline(27, 13, 12, n[4]);
+    p.hline(27, 17, 12, n[1]);
+    // The window on the front: the name in white, the N in its colours.
+    p.rect(27, 20, 12, 8, 0x0c0c10);
+    p.hline(28, 21, 10, 0xe6e6ea);
+    for (a, b, c) in [
+        (30, 23, 0xdc3232),
+        (30, 24, 0xdc3232),
+        (30, 25, 0xf0c828),
+        (31, 24, 0x32aa50),
+        (32, 25, 0x32aa50),
+        (33, 23, 0x325adc),
+        (33, 24, 0x325adc),
+        (33, 25, 0xf0c828),
+    ] {
+        p.dot(a, b, c);
+    }
+    p.dot(33, 29, RED_LAMP);
+    // Four ports, light grey with their three holes, two either side.
+    for cx in [17, 23, 43, 49] {
+        p.ellipse(cx, 25, 3, 2, grey[2]);
+        p.arc(cx, 25, 3, 2, 0.55, 0.95, grey[4]);
+        for i in -1..=1 {
+            p.dot(cx + i, 25, n[0]);
+        }
+    }
+    // The lamp's rim along the back edge and down the left.
+    p.hline(9, 2, 48, light);
+    p.arc(33, 6, 18, 5, 0.6, 0.9, lerp_color(light, n[4], 0.3));
+    for j in 6..20 {
+        p.dot(1, j, lerp_color(light, n[2], 0.5));
+    }
 }
 
-/// The Dreamcast: pale, a lid over most of the top with the swirl in the
-/// middle, the buttons either side of it and four ports on the front.
+/// The Dreamcast: pale and square, the round lid over most of the top with
+/// the swirl and the triangle, power on the left, open on the right, and four
+/// ports on the front under the name.
 fn dreamcast(p: &mut Pen, light: Color) {
-    let g = ramp(rgb(214, 214, 208));
+    let g = ramp(rgb(214, 214, 210));
     let (w, top, front) = (60, 20, 10);
     p.case(w, top, front, 4, g[3], g[1], g[2]);
-    // The lid, raised, with a shaded groove round it.
-    p.rect(8, 2, 44, 15, g[3]);
-    p.hline(8, 2, 44, g[4]);
-    p.vline(8, 2, 15, g[4]);
-    p.hline(8, 16, 44, g[1]);
-    p.vline(51, 3, 14, g[1]);
-    // The swirl: a spiral of blue, as the European one had it.
+    p.ellipse(29, 9, 19, 8, g[4]);
+    p.arc(29, 9, 19, 8, 0.0, 1.0, g[2]);
+    p.arc(29, 9, 19, 8, 0.55, 0.95, rgb(248, 248, 250));
+    p.poly(&[(27, 15), (32, 15), (29, 19)], g[1]);
     let blue = 0x2a5ad2;
-    let (cx, cy) = (30.0f32, 9.0f32);
-    for i in 0..30 {
-        let t = i as f32 / 30.0;
-        let a = t * std::f32::consts::TAU * 1.6;
-        let r = 1.0 + t * 5.0;
-        p.dot(
-            (cx + r * a.cos()).round() as i32,
-            (cy + r * 0.55 * a.sin()).round() as i32,
-            blue,
-        );
+    for (a, b) in [(35, 5), (36, 5), (37, 6), (36, 7), (35, 7), (34, 6)] {
+        p.dot(a, b, blue);
     }
-    // Power on the left, open on the right, round.
-    p.ellipse(4, 12, 2, 1, g[2]);
-    p.ellipse(56, 12, 2, 1, g[2]);
-    p.dot(56, 11, g[4]);
-    for px in [6, 19, 32, 45] {
-        p.port(px, top + 3, 9, 4, g[0], g[2], g[2]);
+    p.ellipse(5, 15, 3, 2, g[2]);
+    p.arc(5, 15, 3, 2, 0.5, 0.9, g[4]);
+    p.ellipse(55, 15, 3, 2, g[2]);
+    p.arc(55, 15, 3, 2, 0.5, 0.9, g[4]);
+    p.hline(26, top + 1, 8, g[0]);
+    for px in [8, 20, 32, 44] {
+        p.rect(px, top + 3, 8, 5, g[2]);
+        p.rect(px + 2, top + 4, 4, 3, rgb(34, 34, 36));
     }
-    p.dot(3, top + 4, 0xf08c28);
     p.rim(w, top, 4, light, lerp_color(light, g[3], 0.4));
 }
 
-/// The first Saturn: near black, the round lid for the disc, the cartridge
-/// slot behind it, oval buttons and two ports.
+/// The first Saturn: near black, the cartridge slot at the back, the big lid
+/// in the middle with the name, power, open and access along the front edge
+/// of the top, and two ports low on the front.
 fn saturn(p: &mut Pen, light: Color) {
-    let b = ramp(rgb(58, 58, 66));
+    let b = ramp(rgb(58, 58, 68));
     let (w, top, front) = (66, 21, 9);
     p.case(w, top, front, 4, b[2], b[1], b[3]);
-    // The cartridge slot along the back.
-    p.hline(14, 2, 36, b[4]);
-    p.rect(14, 3, 36, 2, b[0]);
-    // The lid, round and lighter, with its ring.
-    p.ellipse(28, 12, 17, 7, b[3]);
-    p.arc(28, 12, 17, 7, 0.5, 0.75, b[4]);
-    p.arc(28, 12, 17, 7, 0.0, 0.25, b[1]);
-    p.arc(28, 12, 12, 5, 0.0, 1.0, b[2]);
-    p.ellipse(28, 12, 3, 1, b[1]);
-    // Open, reset, power: oval buttons on the right.
-    p.ellipse(54, 8, 4, 2, b[3]);
-    p.arc(54, 8, 4, 2, 0.5, 0.75, b[4]);
-    p.ellipse(52, 14, 2, 1, b[3]);
-    p.ellipse(59, 14, 2, 1, b[3]);
-    p.dot(59, 17, 0x3cdc5a);
-    for px in [14, 42] {
-        p.port(px, top + 2, 10, 5, b[0], b[2], b[2]);
+    p.rect(18, 1, 30, 3, b[0]);
+    p.hline(18, 1, 30, b[4]);
+    p.hline(26, 2, 14, b[3]);
+    // The lid: a rounded block, its top edge lit, the name in white.
+    p.poly(
+        &[(15, 5), (51, 5), (54, 9), (52, 16), (14, 16), (12, 9)],
+        b[3],
+    );
+    p.hline(15, 5, 36, b[4]);
+    p.hline(18, 8, 12, b[2]);
+    p.hline(34, 9, 14, b[2]);
+    p.hline(25, 12, 16, 0xe6e6ea);
+    p.dot(33, 7, rgb(170, 170, 180));
+    // Power, open and access along the front edge.
+    p.ellipse(10, 18, 4, 1, b[3]);
+    p.ellipse(33, 19, 6, 1, b[3]);
+    p.ellipse(56, 19, 4, 1, b[3]);
+    p.hline(3, 16, 5, 0xe6e6ea);
+    for px in [20, 36] {
+        p.port(px, top + 4, 10, 4, b[0], b[3], b[2]);
     }
     p.rim(w, top, 4, light, lerp_color(light, b[2], 0.5));
 }
 
-/// The Neo Geo AES: long, low and black, the wide cartridge slot on top and
-/// the two big controller sockets on the front.
+/// The Neo Geo AES: long, low and black, the raised ring round the wide slot,
+/// the vents behind it, the big round button on the left, the gold name on
+/// the front of the top, the two controller sockets and the memory card slot.
 fn neogeo(p: &mut Pen, light: Color) {
-    let b = ramp(rgb(46, 46, 54));
+    let b = ramp(rgb(50, 50, 58));
     let (w, top, front) = (66, 15, 9);
     p.case(w, top, front, 2, b[2], b[1], b[3]);
-    // The slot: a wide mouth with a thick lip.
-    p.rect(12, 3, 42, 7, b[3]);
-    p.hline(12, 3, 42, b[4]);
-    p.hline(12, 9, 42, b[1]);
-    p.rect(15, 5, 36, 3, b[0]);
-    // The power slider at the back left.
-    p.rect(3, 5, 6, 3, b[0]);
-    p.rect(4, 5, 2, 2, rgb(170, 170, 176));
-    // The name on the front, as two white strokes at this size.
-    p.hline(5, top + 3, 9, rgb(230, 230, 236));
-    p.hline(5, top + 5, 6, rgb(230, 230, 236));
-    for px in [36, 51] {
-        p.port(px, top + 2, 12, 5, b[0], b[2], b[2]);
+    // The ring, raised, lit on its back edge, and the slot inside it.
+    p.rect(16, 2, 44, 9, b[3]);
+    p.hline(17, 2, 42, b[4]);
+    p.hline(17, 10, 42, b[1]);
+    p.rect(22, 4, 32, 4, 0x0a0a0c);
+    p.hline(22, 4, 32, b[0]);
+    for x in (40..58).step_by(3) {
+        p.vline(x, 1, 1, b[0]);
     }
-    p.dot(20, top + 4, RED_LAMP);
+    // The big round button.
+    p.ellipse(8, 7, 4, 2, b[3]);
+    p.ellipse(8, 6, 2, 1, b[4]);
+    // The name in gold on the front of the top.
+    p.hline(22, 13, 10, rgb(206, 168, 72));
+    // Two sockets and the memory card slot on the front.
+    p.port(8, top + 3, 9, 4, b[0], b[3], b[2]);
+    p.port(30, top + 3, 9, 4, b[0], b[3], b[2]);
+    p.rect(48, top + 4, 14, 2, 0x0a0a0c);
+    p.dot(4, top + 4, RED_LAMP);
     p.rim(w, top, 2, light, lerp_color(light, b[2], 0.5));
 }
 
