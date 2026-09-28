@@ -2432,7 +2432,9 @@ impl Scene {
                 let page = self.page_rows();
                 // Box art of the selected game on the right, once the cursor
                 // rests; scrolling fast shows the frame and no downloads.
-                let cover_box = 84;
+                // The box stands on a lit stage of its own, as the console
+                // does in the systems list.
+                let stage_w = 120.min(w - 2 * left - 150).max(84);
                 let with_covers = n > 0
                     && self
                         .games
@@ -2445,68 +2447,91 @@ impl Scene {
                         })
                         .unwrap_or(false);
                 if with_covers {
-                    self.row_shrink = cover_box + 10;
+                    self.row_shrink = stage_w + 8;
                     let entry = self.games[sel].clone();
                     let system = self.library.systems[entry.sys].name.clone();
-                    let bx = w - left - cover_box;
-                    let by = y0 + 4;
+                    let th = self.theme.clone();
+                    let tones = crate::paint::Tones::of(&th);
+                    let bx = w - left - stage_w;
+                    let stage_h = (h - 34 - y0).max(80);
+                    let brand = icons::system_logo(&system)
+                        .map(|(_, c)| c)
+                        .unwrap_or(th.accent);
+                    let (floor, br) = crate::stage::draw(fb, &th, bx, y0, stage_w, stage_h, brand);
+                    let cx = bx + stage_w / 2;
+                    let (cw, chh) = ((stage_w - 40) as usize, (stage_h - 62).max(40) as usize);
                     let settled = self.now - self.last_input > 0.12;
                     let img = if settled {
-                        self.art
-                            .cover(
-                                &system,
-                                &entry.game.path,
-                                cover_box as usize,
-                                cover_box as usize,
-                            )
-                            .cloned()
+                        self.art.cover(&system, &entry.game.path, cw, chh).cloned()
                     } else {
                         None
                     };
-                    let frame = scale(self.theme.dim, 0.6);
                     match img {
                         Some(img) => {
-                            let x = bx + (cover_box - img.w as i32) / 2;
-                            let y = by + (cover_box - img.h as i32) / 2;
-                            fb.rect(x - 1, y - 1, img.w as i32 + 2, img.h as i32 + 2, frame);
+                            let (iw, ih) = (img.w as i32, img.h as i32);
+                            let x = cx - iw / 2;
+                            let y = floor + 10 - ih;
+                            crate::stage::shadow(fb, &th, cx + 4, floor + 9, iw / 2 + 4, 5);
                             fb.blit(x, y, &img);
+                            // The plastic of the case catches the lamp on
+                            // its top and left edges; the right edge is in
+                            // its own shadow.
+                            let lamp = lerp_color(br[4], 0xfff0d2, 0.6);
+                            fb.rect(x, y, iw, 1, lamp);
+                            fb.rect(x, y, 1, ih, lerp_color(lamp, br[3], 0.4));
+                            fb.rect(x + iw, y + 1, 1, ih, tones.lo);
+                            // And it stands in the floor's reflection.
+                            for j in 0..12.min(ih) {
+                                let k = 0.22 * (1.0 - j as f32 / 12.0);
+                                for i in 0..iw {
+                                    let src = img.px[(ih - 1 - j) as usize * img.w + i as usize];
+                                    if src >> 24 < 128 {
+                                        continue;
+                                    }
+                                    let p = fb.at(x + i, y + ih + 1 + j);
+                                    fb.put(x + i, y + ih + 1 + j, lerp_color(p, src & 0xffffff, k));
+                                }
+                            }
                         }
                         None => {
-                            // Dashed frame; a blinking dot while it loads.
-                            for i in (0..cover_box).step_by(4) {
-                                fb.put(bx + i, by, frame);
-                                fb.put(bx + i, by + cover_box - 1, frame);
-                                fb.put(bx, by + i, frame);
-                                fb.put(bx + cover_box - 1, by + i, frame);
+                            let key =
+                                crate::art::Art::cover_key(&system, &entry.game.path, cw, chh);
+                            let frame = br[2];
+                            let (x, y) = (cx - cw as i32 / 2, floor + 10 - chh as i32);
+                            for i in (0..cw as i32).step_by(4) {
+                                fb.put(x + i, y, frame);
+                                fb.put(x + i, y + chh as i32 - 1, frame);
                             }
-                            let key = crate::art::Art::cover_key(
-                                &system,
-                                &entry.game.path,
-                                cover_box as usize,
-                                cover_box as usize,
-                            );
+                            for i in (0..chh as i32).step_by(4) {
+                                fb.put(x, y + i, frame);
+                                fb.put(x + cw as i32 - 1, y + i, frame);
+                            }
                             if !settled || self.art.loading(&key) {
                                 if (self.now * 3.0) as i64 % 2 == 0 {
-                                    fb.rect(
-                                        bx + cover_box / 2 - 2,
-                                        by + cover_box / 2 - 2,
-                                        4,
-                                        4,
-                                        frame,
-                                    );
+                                    fb.rect(cx - 2, y + chh as i32 / 2 - 2, 4, 4, frame);
                                 }
                             } else {
-                                fb.text_centered(
-                                    bx + cover_box / 2,
-                                    by + cover_box / 2 - 4,
-                                    "no art",
-                                    frame,
-                                    1,
-                                );
+                                fb.text_centered(cx, y + chh as i32 / 2 - 4, "no art", br[3], 1);
                             }
                         }
                     }
-                    // Tags of the file name under the box: region, revision.
+                    let cols = ((stage_w - 12) / 8) as usize;
+                    // At the top of the stage, in the light: where the game
+                    // was left, else when it was last played.
+                    let top_line = if let Some(st) = self.states.latest(&entry.game.path) {
+                        Some((st.label(), th.green))
+                    } else {
+                        self.recent_at.get(&entry.game.path).map(|at| {
+                            let when = std::time::UNIX_EPOCH
+                                + std::time::Duration::from_secs((*at).max(0) as u64);
+                            (states::when_label(when), lerp_color(br[4], th.paper, 0.4))
+                        })
+                    };
+                    if let Some((text, c)) = top_line {
+                        let text: String = text.chars().take(cols).collect();
+                        crate::paint::text_shadow(fb, bx + 6, y0 + 6, &text, c, tones.shadow);
+                    }
+                    // At the foot, two chips: the region, and the time played.
                     let stem = entry
                         .game
                         .path
@@ -2514,34 +2539,29 @@ impl Scene {
                         .and_then(|s| s.to_str())
                         .unwrap_or("");
                     let (_, tags, _, _) = crate::index::parse_name(stem);
-                    let mut ty = by + cover_box + 6;
-                    for t in tags.iter().take(3) {
-                        let t: String = t.chars().take((cover_box / 8) as usize).collect();
-                        fb.text(bx, ty, &t, scale(self.theme.dim, 0.9), 1);
-                        ty += 10;
-                    }
-                    if let Some(st) = self.states.latest(&entry.game.path) {
-                        let label: String =
-                            st.label().chars().take((cover_box / 8) as usize).collect();
-                        fb.text(bx, ty + 2, &label, self.theme.green, 1);
-                        ty += 10;
-                    }
-                    if let Some(at) = self.recent_at.get(&entry.game.path) {
-                        let when = std::time::UNIX_EPOCH
-                            + std::time::Duration::from_secs((*at).max(0) as u64);
-                        let label: String = format!("played {}", states::when_label(when))
-                            .chars()
-                            .take((cover_box / 8) as usize)
-                            .collect();
-                        fb.text(bx, ty + 2, &label, scale(self.theme.dim, 0.9), 1);
-                        ty += 10;
+                    let base = y0 + stage_h - 13;
+                    let chip = |fb: &mut Framebuffer, x: i32, text: &str, c: Color| -> i32 {
+                        let cw = Framebuffer::text_width(text, 1) + 6;
+                        let ground = lerp_color(th.bg, c, 0.25);
+                        fb.rect(x + 1, base, cw - 2, 11, ground);
+                        fb.rect(x, base + 1, cw, 9, ground);
+                        fb.text(x + 3, base + 2, text, c, 1);
+                        cw
+                    };
+                    let mut x = bx + 5;
+                    if let Some(tag) = tags.first() {
+                        let tag: String = tag.chars().take(cols / 2).collect();
+                        x += chip(fb, x, &tag, th.cyan) + 4;
                     }
                     if let Some(label) = self
                         .playtime
                         .get(&entry.game.path)
                         .and_then(|s| omacrt_shell::playtime::label(*s))
                     {
-                        fb.text(bx, ty + 2, &label, scale(self.theme.dim, 0.9), 1);
+                        let t = label.trim_start_matches("time ").to_string();
+                        if x + Framebuffer::text_width(&t, 1) + 6 <= bx + stage_w - 4 {
+                            chip(fb, x, &t, th.green);
+                        }
                     }
                 }
                 if n == 0 && self.yt_query {
