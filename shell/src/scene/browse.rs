@@ -1980,7 +1980,39 @@ impl Scene {
     }
 
     /// The game process ended; back to the list, cursor where it was.
+    /// Start or stop the clock of the running game as it runs, pauses and
+    /// resumes. What decides it is the state, not the events, so a pause
+    /// that went through any of its paths is counted the same way.
+    pub(super) fn tick_playtime(&mut self) {
+        let counting = self.running_path.is_some()
+            && self.paused.is_none()
+            && self.player.is_none()
+            && self.launching.as_ref().is_none_or(|l| l.spawned);
+        match (counting, self.play_since) {
+            (true, None) => self.play_since = Some(self.now),
+            (false, Some(_)) => self.stop_play_clock(),
+            _ => {}
+        }
+    }
+
+    fn stop_play_clock(&mut self) {
+        let Some(since) = self.play_since.take() else {
+            return;
+        };
+        let Some((_, path)) = &self.running_path else {
+            return;
+        };
+        let secs = (self.now - since).max(0.0) as u64;
+        omacrt_shell::playtime::add(
+            &self.library.config_dir.join("playtime.tsv"),
+            &mut self.playtime,
+            path,
+            secs,
+        );
+    }
+
     pub fn game_finished(&mut self, ok: bool) {
+        self.stop_play_clock();
         self.running = None;
         if let Some((_, path)) = self.running_path.take() {
             self.states.forget(&path);
@@ -2418,6 +2450,14 @@ impl Scene {
                             .chars()
                             .take((cover_box / 8) as usize)
                             .collect();
+                        fb.text(bx, ty + 2, &label, scale(self.theme.dim, 0.9), 1);
+                        ty += 10;
+                    }
+                    if let Some(label) = self
+                        .playtime
+                        .get(&entry.game.path)
+                        .and_then(|s| omacrt_shell::playtime::label(*s))
+                    {
                         fb.text(bx, ty + 2, &label, scale(self.theme.dim, 0.9), 1);
                     }
                 }

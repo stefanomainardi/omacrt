@@ -633,6 +633,10 @@ pub struct Scene {
     recent: Vec<(usize, PathBuf)>,
     /// When each recent game was last started, seconds since the epoch.
     recent_at: std::collections::HashMap<PathBuf, i64>,
+    /// Seconds each game has been played, in all.
+    playtime: std::collections::HashMap<PathBuf, u64>,
+    /// When the running game last started counting: unpaused, not a video.
+    play_since: Option<f64>,
     favorites: Vec<(usize, PathBuf)>,
     pad: PadKind,
     bt: Bluetooth,
@@ -853,6 +857,8 @@ impl Scene {
             visual_on: false,
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
             recent_at: load_times(&library.config_dir.join("recent.txt")),
+            playtime: omacrt_shell::playtime::load(&library.config_dir.join("playtime.tsv")),
+            play_since: None,
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
             library,
             screen: Screen::Menu,
@@ -1439,6 +1445,7 @@ impl Scene {
         self.tick_conversion();
         self.tick_music(now);
         self.yt_poll();
+        self.tick_playtime();
         if !self.pending_wizards.is_empty()
             && self.menu_live
             && self.running.is_none()

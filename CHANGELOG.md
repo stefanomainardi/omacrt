@@ -11,6 +11,7 @@ caveat for a 0.x project: anything may still move.
 
 - Each game's refresh rate is remembered, so an arcade game starts at its
   board's own rate instead of the last one its core ran at.
+- The time each game has been played is kept and shown under its cover.
 
 ### Fixed
 
