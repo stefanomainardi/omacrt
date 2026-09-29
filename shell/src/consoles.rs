@@ -196,20 +196,22 @@ pub fn has(name: &str) -> bool {
     )
 }
 
-/// The Nintendo 64: 260 by 190 by 73 mm, charcoal. The middle of the front is
-/// set back between the two wings; the raised back carries the grey slot
-/// cover and the vents; the power slider, the reset button and the memory
-/// lid are on the deck; the window with the N and the four ports are on the
-/// set back front.
+/// The Nintendo 64: 260 by 190 by 73 mm, charcoal. Two round feet stick out
+/// at the front corners, low down; between them, under the overhang of the
+/// deck, the front carries the window with the N and the four light grey
+/// ports. The broad raised back takes up the rear of the top, with the grey
+/// slot cover across it and the vents in front of that; the power slider,
+/// the reset button and the memory lid are on the deck.
 fn n64() -> Model {
     let (w, d, h) = (mm(260.0), mm(190.0), mm(73.0));
     let mut m = Model::new(w, d, h);
     let body = m.mat(rgb(72, 72, 80));
+    let feet = m.mat(rgb(62, 62, 70));
     let hump = m.mat(rgb(80, 80, 90));
-    let dark = m.mat(rgb(26, 26, 30));
-    let grey = m.mat(rgb(170, 170, 178));
+    let dark = m.mat(rgb(24, 24, 28));
+    let grey = m.mat(rgb(176, 176, 184));
     let white = m.mat(rgb(226, 226, 232));
-    let lid = m.mat(rgb(88, 88, 98));
+    let lid = m.mat(rgb(90, 90, 100));
     let (red, green, blue, yellow) = (
         m.mat(rgb(220, 50, 50)),
         m.mat(rgb(50, 170, 80)),
@@ -217,69 +219,56 @@ fn n64() -> Model {
         m.mat(rgb(240, 200, 40)),
     );
     let lamp = m.glow(rgb(230, 40, 40));
-    let deck = 12;
-    m.rounded(0, 0, 0, w, d, deck, 8, body);
-    m.rounded(3, 4, deck, w - 6, d - 6, 2, 8, body);
-    // The front set back between the wings.
-    let (rx0, rx1, rd) = (w * 25 / 100, w * 75 / 100, 6);
-    m.cube(rx0, 0, 2, rx1 - rx0, rd, h, 0);
-    // The raised back, the grey slot cover and its mouth, the vents.
+    let foot = w * 24 / 100;
+    let face = 5;
+    let deck = 13;
+    // The low body behind, and the two round feet at the front corners.
+    m.rounded(1, face, 0, w - 2, d - face, 6, 6, feet);
+    m.rounded(0, 0, 0, foot, 20, 6, 7, feet);
+    m.rounded(w - foot, 0, 0, foot, 20, 6, 7, feet);
+    // The upper body: its front is set back from the feet and carries the
+    // window and the ports under the lip of the deck.
+    m.rounded(3, face, 5, w - 6, d - face - 1, deck - 5, 8, body);
+    m.rounded(2, face - 1, deck - 1, w - 4, d - face, 1, 8, body);
+    // The broad raised back.
+    let (hx0, hx1) = (w * 13 / 100, w * 87 / 100);
+    let hy0 = d * 42 / 100;
+    m.rounded(hx0, hy0, deck, hx1 - hx0, d - hy0 - 2, 3, 9, hump);
     m.rounded(
-        w * 27 / 100,
-        d * 45 / 100,
-        deck + 2,
-        w * 46 / 100,
-        d * 48 / 100,
-        4,
-        6,
+        hx0 + 3,
+        hy0 + 3,
+        deck + 3,
+        hx1 - hx0 - 6,
+        d - hy0 - 8,
+        1,
+        8,
         hump,
     );
-    m.cube(
-        w * 35 / 100,
-        d * 72 / 100,
-        deck + 6,
-        w * 30 / 100,
-        5,
-        1,
-        grey,
-    );
-    m.cube(
-        w * 38 / 100,
-        d * 74 / 100,
-        deck + 6,
-        w * 24 / 100,
-        1,
-        1,
-        dark,
-    );
-    for x in (w * 29 / 100..w * 71 / 100).step_by(2) {
-        m.paint_top(x, d * 46 / 100, 1, 3, dark);
+    // The grey slot cover across it, its mouth, and the vents in front.
+    let (sx0, sx1) = (w * 30 / 100, w * 70 / 100);
+    m.cube(sx0, d * 66 / 100, deck + 4, sx1 - sx0, 7, 1, grey);
+    m.cube(sx0 + 2, d * 68 / 100, deck + 4, sx1 - sx0 - 4, 2, 1, dark);
+    for x in (w * 26 / 100..w * 74 / 100).step_by(2) {
+        m.paint_top(x, hy0 + 4, 1, 3, dark);
     }
     // Power slider on the left, reset on the right, the memory lid between.
-    m.cube(w * 12 / 100, d * 32 / 100, deck + 2, 7, 4, 1, dark);
-    m.cube(w * 13 / 100, d * 33 / 100, deck + 3, 3, 2, 1, grey);
-    m.cylinder(
-        w as f32 * 0.84,
-        d as f32 * 0.34,
-        deck + 2,
-        2.6,
-        2.0,
-        1,
-        dark,
-    );
-    m.paint_top(w * 40 / 100, d * 18 / 100, w * 20 / 100, d * 18 / 100, lid);
-    // The window on the set back front: the name, and the N in its colours.
-    let (wx, wz) = (w * 43 / 100, 4);
-    m.cube(wx, rd, wz, w * 14 / 100, 1, 6, dark);
-    m.cube(wx + 1, rd, wz + 5, w * 14 / 100 - 2, 1, 1, white);
+    m.cube(w * 13 / 100, d * 26 / 100, deck, 7, 4, 1, dark);
+    m.cube(w * 14 / 100, d * 27 / 100, deck + 1, 3, 2, 1, grey);
+    m.cylinder(w as f32 * 0.83, d as f32 * 0.30, deck, 3.0, 2.2, 1, dark);
+    m.paint_top(w * 38 / 100, d * 14 / 100, w * 24 / 100, d * 20 / 100, lid);
+    m.paint_top(w * 38 / 100, d * 14 / 100, w * 24 / 100, 1, dark);
+    // The window on the front, with the name and the N.
+    let (wx, wz) = (w * 43 / 100, 6);
+    m.cube(wx, face, wz, w * 14 / 100, 1, 6, dark);
+    m.cube(wx + 1, face, wz + 5, w * 14 / 100 - 2, 1, 1, white);
     for (i, c) in [(0, red), (1, green), (2, blue), (3, yellow)] {
-        m.set(wx + 3 + i, rd, wz + 2 + (i % 2), c);
+        m.set(wx + 3 + i, face, wz + 2 + (i % 2), c);
     }
-    m.set(w / 2, rd, 2, lamp);
-    // Four ports: light grey with a dark mouth, two either side.
-    for x0 in [w * 27 / 100, w * 34 / 100, w * 60 / 100, w * 67 / 100] {
-        m.cube(x0, rd, 4, 4, 1, 3, grey);
-        m.cube(x0 + 1, rd, 5, 2, 1, 1, dark);
+    m.set(w / 2, face, 5, lamp);
+    // Four light grey ports with their dark mouths.
+    for x0 in [w * 26 / 100, w * 34 / 100, w * 59 / 100, w * 67 / 100] {
+        m.cube(x0, face, 6, 5, 1, 4, grey);
+        m.cube(x0 + 1, face, 7, 3, 1, 2, dark);
     }
     m
 }
