@@ -698,7 +698,7 @@ impl Scene {
             }
             if self.hall_cues & 1 == 0 {
                 self.hall_cues |= 1;
-                self.pending.push(Sound::Whoosh);
+                self.pending.push(Sound::Laser);
             }
             return;
         }
@@ -729,13 +729,13 @@ impl Scene {
         let local = t - HALL_LANDS;
         if self.hall_cues & 2 == 0 {
             self.hall_cues |= 2;
-            self.pending.push(Sound::Click);
+            self.pending.push(Sound::Neon);
         }
         for (k, at) in hall::CAB_TIMES.iter().enumerate() {
             let bit = 4u8 << k;
             if local >= *at && self.hall_cues & bit == 0 {
                 self.hall_cues |= bit;
-                self.pending.push(Sound::Move);
+                self.pending.push(Sound::Cabinet);
             }
         }
     }
