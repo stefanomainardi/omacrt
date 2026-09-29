@@ -2228,7 +2228,9 @@ impl Scene {
                     th.paper,
                     tones.shadow,
                 );
-                let games = if count == 1 {
+                let games = if shots() {
+                    String::new()
+                } else if count == 1 {
                     "1 game".to_string()
                 } else {
                     format!("{count} games")

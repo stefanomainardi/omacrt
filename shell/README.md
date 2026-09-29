@@ -42,6 +42,10 @@ Options:
 | `--record DIR --record-secs N --script F`  | offline render: every frame as PPM plus `audio.wav`, inputs replayed from a script                                                                                     |
 | `--dump-audio DIR`                         | write every synthesized sound as a WAV and exit                                                                                                                        |
 
+`OMACRT_SHOTS=1` in the environment leaves the counts of games, films and
+favourites out of every screen, so a picture for a public page does not
+describe somebody's library.
+
 Controls: arrows or `hjkl` move, `Enter` or `Space` select (and skip the boot
 sequence while it plays), `Esc` or `Backspace` go back, `F` stars a game, `q`
 quits. Game controllers work through

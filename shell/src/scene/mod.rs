@@ -261,12 +261,19 @@ const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 4] = [
     (icons::BRUSH, "Art gallery", true),
 ];
 
-/// The three ambient pages in a few words, for the home row that opens them.
-/// A test counts these against `AMBIENT_ITEMS`, so a fourth page cannot be
-/// added without saying so here.
+/// Whether this run is taking pictures for a public page (`OMACRT_SHOTS`
+/// set): then the screens leave out the figures that describe somebody's
+/// library, the counts of games, films and favourites.
+fn shots() -> bool {
+    std::env::var_os("OMACRT_SHOTS").is_some()
+}
+
 /// How long a painting stays on the wall before the next is hung.
 const GALLERY_TURN: f64 = 40.0;
 
+/// The three ambient pages in a few words, for the home row that opens them.
+/// A test counts these against `AMBIENT_ITEMS`, so a fourth page cannot be
+/// added without saying so here.
 const AMBIENT_SUMMARY: &str = "photos, weather, monitor, art";
 
 /// Settings submenu entries.

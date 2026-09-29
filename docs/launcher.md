@@ -125,6 +125,16 @@ of `/proc` and `/sys`.
   <img src="screens/system.gif" width="560" alt="The system monitor: a bank of meters, one per processor, moving with the machine">
 </p>
 
+The last ambient page is a gallery of three paintings by René Magritte,
+redrawn in pixels as homages and hung in gilt frames under a spotlight. Each
+one moves a little: the apple in front of the face steps aside, a bird crosses
+the daylight sky over the lamp lit street, and one of the men of Golconde
+raises his hat.
+
+<p align="center">
+  <img src="screens/gallery.gif" width="560" alt="The art gallery: Le fils de l'homme, L'empire des lumières and Golconde, each in a gilt frame on a dark wall">
+</p>
+
 ## The library scans anything
 
 Point `omacrt library scan` at a disk and it works out what every file

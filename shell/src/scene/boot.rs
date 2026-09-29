@@ -607,6 +607,10 @@ impl Scene {
     /// rather than context.
     fn home_detail(&self, row: usize) -> Option<String> {
         let label = HOME.get(row).map(|(_, l, _)| *l)?;
+        // Pictures for a public page carry no figures from the library.
+        if shots() && matches!(label, "Games" | "Videos" | "Favorites" | "Recent") {
+            return None;
+        }
         match label {
             "Games" => {
                 let index = self.library.index.as_ref()?;
