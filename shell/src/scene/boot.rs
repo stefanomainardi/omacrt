@@ -26,7 +26,8 @@ impl Scene {
         if !self.boot_started || self.menu_live {
             return;
         }
-        self.t0 = now - 9.75;
+        self.t0 = now - BOOT_DONE as f64;
+        self.hall_cues = u8::MAX;
         self.chime_played = true;
         self.tag_sound_played = true;
         self.etch_sound_played = true;
@@ -621,7 +622,10 @@ impl Scene {
                 names.sort_unstable();
                 names.dedup();
                 let systems = names.len();
-                (games > 0).then(|| format!("{games} in {systems} systems"))
+                // The window is narrow: the count of games, and the count of
+                // systems only when it fits.
+                let _ = systems;
+                (games > 0).then(|| format!("{games} games"))
             }
             "Videos" => {
                 let index = self.library.index.as_ref()?;
@@ -650,54 +654,194 @@ impl Scene {
         }
     }
 
+    /// The bridge from the boot into the hall, and the hall itself once the
+    /// boot is over: the laser climbs the screen with the hall standing up
+    /// behind it, the word and the mark fly to the far wall, the word strikes
+    /// as the neon sign and the hall powers on around it.
+    pub(super) fn draw_hall_bridge(&mut self, fb: &mut Framebuffer, t: f32) {
+        use crate::hall;
+        let tick = (self.now * hall::TICK_HZ) as u32;
+        let lights = if t < HALL_LANDS {
+            hall::dark()
+        } else {
+            hall::power_on(t - HALL_LANDS)
+        };
+        let board = hall::board(&self.theme);
+        let sign_c = self.theme.cyan;
+        let climb_to = HALL_FROM + HALL_CLIMB;
+        if t < climb_to {
+            // The boot's own picture is already in the framebuffer; the
+            // hall replaces it below the laser.
+            let mut scratch = self
+                .hall_scratch
+                .take()
+                .filter(|s| s.w == fb.w && s.h == fb.h)
+                .unwrap_or_else(|| Framebuffer::new(fb.w, fb.h));
+            self.hall
+                .draw(&mut scratch, &self.theme, &lights, sign_c, tick);
+            let p = ease(clamp((t - HALL_FROM) / HALL_CLIMB, 0.0, 1.0));
+            let line = ((fb.h as f32) * (1.0 - p)) as i32;
+            let from = line.clamp(0, fb.h as i32) as usize * fb.w;
+            fb.px[from..].copy_from_slice(&scratch.px[from..]);
+            self.hall_scratch = Some(scratch);
+            self.draw_flying_word(fb, 0.0);
+            // The laser: the same orange as the one that wrote the word,
+            // white in its middle, a haze under it.
+            let orange = self.theme.orange;
+            fb.rect(0, line - 1, fb.w as i32, 3, orange);
+            fb.rect(0, line, fb.w as i32, 1, 0xfff0dc);
+            for x in 0..fb.w as i32 {
+                if crate::paint::BAYER[((line + 2) & 3) as usize][(x & 3) as usize] < 8 {
+                    let under = fb.at(x, line + 2);
+                    fb.put(x, line + 2, lerp_color(under, orange, 0.5));
+                }
+            }
+            if self.hall_cues & 1 == 0 {
+                self.hall_cues |= 1;
+                self.pending.push(Sound::Whoosh);
+            }
+            return;
+        }
+        self.hall.draw(fb, &self.theme, &lights, sign_c, tick);
+        if t < HALL_LANDS {
+            let f = ease(clamp((t - climb_to) / HALL_FLY, 0.0, 1.0));
+            self.draw_flying_word(fb, f);
+            return;
+        }
+        let (cols, rows) = (self.hall_mask.1 as i32, self.hall_mask.2 as i32);
+        let (ox, oy) = hall::Hall::sign_at(fb, cols);
+        let tubes = (
+            hall::Tube::of(self.theme.cyan, board),
+            hall::Tube::of(self.theme.green, board),
+        );
+        hall::draw_sign(fb, &self.hall_mask, (ox, oy), tubes, &lights, board, tick);
+        let (base, hot) = self.retrace_now();
+        self.draw_retrace(fb, ox - 16, oy + rows / 2 - 5, 10.0, base, 1.0, hot);
+        hall::draw_arrow(fb, ox + cols + 6, oy + rows / 2 - 4, &lights, tick);
+        // The sounds of it: the sign striking, a clunk for every pair of
+        // cabinets switched on.
+        let local = t - HALL_LANDS;
+        if self.hall_cues & 2 == 0 {
+            self.hall_cues |= 2;
+            self.pending.push(Sound::Click);
+        }
+        for (k, at) in hall::CAB_TIMES.iter().enumerate() {
+            let bit = 4u8 << k;
+            if local >= *at && self.hall_cues & bit == 0 {
+                self.hall_cues |= bit;
+                self.pending.push(Sound::Move);
+            }
+        }
+    }
+
+    /// The word and the mark on their way from where the boot left them
+    /// (`f` 0) to the far wall (`f` 1), shrinking as they go.
+    fn draw_flying_word(&mut self, fb: &mut Framebuffer, f: f32) {
+        let (cols, rows) = (self.hall_mask.1 as i32, self.hall_mask.2 as i32);
+        let (ox, oy) = crate::hall::Hall::sign_at(fb, cols);
+        let (lx, ly, lsize) = self.logo_final(fb);
+        let (base, hot) = self.retrace_now();
+        let size = lerp(lsize as f32, 10.0, f);
+        let mx = lerp(lx as f32, (ox - 16) as f32, f).round() as i32;
+        let my = lerp(ly as f32, (oy + rows / 2 - 5) as f32, f).round() as i32;
+        self.draw_retrace(fb, mx, my, size, base, 1.0, hot && f == 0.0);
+        let Some(etch) = self.etch.as_ref() else {
+            return;
+        };
+        let (x0, y0) = (self.mark_x(fb), self.mark_final_y(fb));
+        if f <= 0.0 {
+            etch.draw(fb, x0, y0, MARK_SCALE, 1.0);
+            return;
+        }
+        // Drawn once at its own size, then scaled pixel by pixel.
+        const KEY: Color = 0x010203;
+        let mut word = Framebuffer::new(fb.w, fb.h);
+        word.clear(KEY);
+        etch.draw(&mut word, x0, y0, MARK_SCALE, 1.0);
+        let (ww, wh) = (self.mark_cols * MARK_SCALE, self.mark_rows * 2 * MARK_SCALE);
+        let (scx, scy) = (x0 as f32 + ww as f32 / 2.0, y0 as f32 + wh as f32 / 2.0);
+        let (tcx, tcy) = (ox as f32 + cols as f32 / 2.0, oy as f32 + rows as f32 / 2.0);
+        let s = lerp(1.0, cols as f32 / ww as f32, f);
+        let (cx, cy) = (lerp(scx, tcx, f), lerp(scy, tcy, f));
+        let (hw, hh) = ((ww as f32 / 2.0 + 5.0) * s, (wh as f32 / 2.0 + 5.0) * s);
+        for y in (cy - hh) as i32..=(cy + hh) as i32 {
+            for x in (cx - hw) as i32..=(cx + hw) as i32 {
+                let sx = (scx + (x as f32 + 0.5 - cx) / s).floor() as i32;
+                let sy = (scy + (y as f32 + 0.5 - cy) / s).floor() as i32;
+                let c = word.at(sx, sy);
+                if c != KEY && !(sx < 0 || sy < 0 || sx >= fb.w as i32 || sy >= fb.h as i32) {
+                    fb.put(x, y, c);
+                }
+            }
+        }
+    }
+
+    /// The home menu, in a window of dark glass with a neon frame over the
+    /// aisle. Its frame strikes from the middle outwards, the glass darkens,
+    /// then the rows come up one after another.
     pub(super) fn draw_home(&mut self, fb: &mut Framebuffer, t: f32) {
-        let fade = ease(clamp((t - 8.25) / 0.45, 0.0, 1.0));
-        if fade <= 0.0 {
+        let m = ease(clamp((t - MENU_FROM) / 0.8, 0.0, 1.0));
+        if m <= 0.0 {
             return;
         }
         let w = fb.w as i32;
         let h = fb.h as i32;
-        let left = (w as f32 * 0.05) as i32;
-        let width = w - 2 * left;
-        // The CRT tag is not drawn any more, and the layout no longer
-        // reserves its 22 rows under the wordmark: with the mark above the
-        // wordmark, those rows are what keeps the last menu row on a 240
-        // line screen.
-        let y0 = self.mark_final_y(fb) + self.mark_rows * 2 * MARK_SCALE + 6;
-        fb.text(left + 4, y0, "Play...", scale(self.theme.dim, fade), 1);
-        let rows_y = y0 + 11;
+        let width = 180;
+        let left = (w - width) / 2;
+        let top = (h as f32 * 0.525) as i32;
         let row_h = 12;
-        let band_y = self.band(rows_y + self.sel as i32 * row_h);
-        if self.menu_live {
-            if fade >= 0.99 {
-                self.select_bar(fb, left, band_y - 1, width, row_h);
-            } else {
-                fb.rect(
-                    left,
-                    band_y,
-                    width,
-                    row_h - 1,
-                    scale(self.theme.selection, fade),
-                );
+        let height = HOME.len() as i32 * row_h + 12;
+        let glass = clamp((m - 0.2) / 0.3, 0.0, 1.0);
+        let dark = crate::hall::board(&self.theme);
+        if glass > 0.0 {
+            for y in top..top + height {
+                for x in left..left + width {
+                    let under = fb.at(x, y);
+                    let c = if glass >= 1.0 {
+                        lerp_color(under, dark, 0.8)
+                    } else {
+                        crate::paint::dither(x, y, glass, under, lerp_color(under, dark, 0.8))
+                    };
+                    fb.put(x, y, c);
+                }
             }
         }
-        for (i, (icon, label, submenu)) in HOME.iter().enumerate() {
+        let strike = clamp(m / 0.35, 0.0, 1.0);
+        let half = (width as f32 / 2.0 * strike) as i32;
+        let cx = left + width / 2;
+        let (hot, cold) = (self.theme.magenta, self.theme.cyan);
+        fb.rect(cx - half, top, half * 2, 1, hot);
+        fb.rect(cx - half, top - 1, half * 2, 1, lerp_color(dark, hot, 0.5));
+        if strike >= 1.0 {
+            let side = ((height - 4) as f32 * clamp((m - 0.35) / 0.15, 0.0, 1.0)) as i32;
+            let c = lerp_color(dark, cold, 0.55);
+            fb.rect(left, top + 2, 1, side, c);
+            fb.rect(left + width - 1, top + 2, 1, side, c);
+        }
+        let shown = ((clamp((m - 0.5) / 0.5, 0.0, 1.0) * HOME.len() as f32) + 0.001) as usize;
+        let rows_y = top + 4;
+        let (inner, iw) = (left + 3, width - 6);
+        if self.menu_live && shown > self.sel {
+            let band_y = self.band(rows_y + self.sel as i32 * row_h);
+            self.select_bar(fb, inner, band_y - 1, iw, row_h);
+        }
+        for (i, (icon, label, submenu)) in HOME.iter().enumerate().take(shown) {
             let y = rows_y + i as i32 * row_h;
             self.draw_menu_row(
                 fb,
-                left,
+                inner,
                 y,
-                width,
+                iw,
                 icon,
                 label,
                 *submenu,
                 self.menu_live && i == self.sel,
-                fade,
+                1.0,
             );
         }
-        // What plays, on the Music row itself: the home list leaves no room
-        // for a line of its own.
-        if fade > 0.9 && self.music.status.active() {
+        let ready = m >= 1.0;
+        // What plays, on the Music row itself.
+        if ready && self.music.status.active() {
             let row = HOME
                 .iter()
                 .position(|(_, label, _)| *label == "Music")
@@ -716,10 +860,9 @@ impl Scene {
                 "  paused"
             };
             let text = format!("{label}{state}");
-            let vis_w = 30;
-            // Room between the row's own label and the chevron.
-            let room = ((width - 18 - vis_w - 30 - Framebuffer::text_width("Music", 1)) / 8).max(0)
-                as usize;
+            let vis_w = 20;
+            let room =
+                ((iw - 18 - vis_w - 24 - Framebuffer::text_width("Music", 1)) / 8).max(0) as usize;
             let text: String = text
                 .chars()
                 .take(room)
@@ -727,49 +870,41 @@ impl Scene {
                 .trim_end()
                 .to_string();
             let tw = Framebuffer::text_width(&text, 1);
-            let tx = left + width - 16 - tw;
-            fb.text(tx, y + 2, &text, scale(self.theme.dim, 1.0), 1);
-            self.draw_vis(fb, tx - vis_w - 6, y + 9, vis_w, 7);
+            let tx = inner + iw - 16 - tw;
+            fb.text(tx, y + 2, &text, self.theme.dim, 1);
+            self.draw_vis(fb, tx - vis_w - 4, y + 9, vis_w, 7);
         }
-        // The row under the cursor says what it holds, dim, on its own right,
-        // between the label and the chevron. Music has already written there.
+        // The row under the cursor says what it holds, between its label and
+        // its chevron. Music has already written there.
         if self.menu_live
-            && fade > 0.9
+            && ready
             && HOME.get(self.sel).map(|(_, l, _)| *l) != Some("Music")
             && let Some(detail) = self.home_detail(self.sel)
         {
             let y = rows_y + self.sel as i32 * row_h;
             let label = HOME[self.sel].1;
-            let room = ((width - 30 - 18 - Framebuffer::text_width(label, 1)) / 8).max(0) as usize;
+            let room = ((iw - 18 - 10 - Framebuffer::text_width(label, 1) - 8) / 8).max(0) as usize;
             let text: String = detail.chars().take(room).collect();
-            let tx = left + width - 16 - Framebuffer::text_width(&text, 1);
+            let tx = inner + iw - 14 - Framebuffer::text_width(&text, 1);
             let shadow = crate::paint::Tones::of(&self.theme).shadow;
             crate::paint::text_shadow(fb, tx, y + 2, &text, self.theme.fg, shadow);
         }
-        // The two corners the wordmark leaves empty, which is the only room
-        // this screen has: what the set is doing on the left, and the time on
-        // the right, both spent right down.
-        if self.menu_live && fade > 0.9 {
-            fb.text(
-                left,
-                8,
-                &self.home_status(fb.h),
-                scale(self.theme.dim, 0.55),
-                1,
-            );
+        // What the set is doing, and the time, in the two top corners.
+        let edge = (w as f32 * 0.05) as i32;
+        if self.menu_live && ready {
+            // On their shadow: the wall tubes run through the corners.
+            let shadow = crate::hall::board(&self.theme);
+            let status = self.home_status(fb.h);
+            crate::paint::text_shadow(fb, edge, 8, &status, self.theme.dim, shadow);
             let clock = crate::clock::now(self.now).format("%H:%M").to_string();
-            fb.text(
-                w - left - Framebuffer::text_width(&clock, 1),
-                8,
-                &clock,
-                scale(self.theme.dim, 0.55),
-                1,
-            );
+            let cx = w - edge - Framebuffer::text_width(&clock, 1);
+            crate::paint::text_shadow(fb, cx, 8, &clock, self.theme.dim, shadow);
         }
-        let max_cols = (width / 8) as usize;
-        let cut = |s: &str| -> String { s.chars().take(max_cols).collect() };
         if let Some((msg, _)) = &self.message {
-            fb.text(left, h - 28, &cut(msg), scale(self.theme.cyan, fade), 1);
+            let cols = ((w - 2 * edge) / 8) as usize;
+            let msg: String = msg.chars().take(cols).collect();
+            let msg = msg.clone();
+            self.draw_message(fb, edge, top - 14, &msg);
         }
     }
 

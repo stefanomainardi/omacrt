@@ -12,6 +12,13 @@ caveat for a 0.x project: anything may still move.
 - Each game's refresh rate is remembered, so an arcade game starts at its
   board's own rate instead of the last one its core ran at.
 - The time each game has been played is kept and shown under its cover.
+- The home stands in an arcade hall: an aisle between two rows of lit
+  cabinets playing their attract modes, a cosmic carpet, and the wordmark
+  as a neon sign on the far wall, in the theme's colours. The menu sits in a
+  window of dark glass with a neon frame.
+- After the boot's floor, the laser climbs the screen and the hall stands up
+  behind it; the word and the mark fly to the far wall, the sign strikes and
+  the hall powers on, the cabinets pair by pair from the back.
 
 ### Changed
 

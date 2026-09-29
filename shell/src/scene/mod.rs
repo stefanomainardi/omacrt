@@ -558,6 +558,19 @@ const ABOUT: &[&str] = &[
     "MIT license.",
 ];
 const TAG_START: f32 = 5.75;
+/// The bridge into the hall: after the copper bar, the laser climbs the
+/// screen and the hall stands up behind it, then the word flies to the far
+/// wall, then the hall powers on.
+const HALL_FROM: f32 = 8.1;
+const HALL_CLIMB: f32 = 1.0;
+const HALL_FLY: f32 = 0.6;
+/// When the word lands and the power-on starts.
+const HALL_LANDS: f32 = HALL_FROM + HALL_CLIMB + HALL_FLY;
+/// When the menu's window starts to come up, and when it takes input.
+const MENU_FROM: f32 = HALL_LANDS + 1.4;
+const MENU_LIVE: f32 = MENU_FROM + 0.2;
+/// Everything lit and settled: where a skipped boot jumps to.
+const BOOT_DONE: f32 = MENU_FROM + 1.2;
 
 /// The project's own name, in one place, so a rename is one edit.
 pub const NAME: &str = "OmaCRT";
@@ -608,6 +621,12 @@ pub struct Scene {
     etch: Option<LaserEtch>,
     tag_sound_played: bool,
     etch_sound_played: bool,
+    /// The arcade hall the home stands in, and what the boot's bridge into
+    /// it keeps between frames.
+    hall: crate::hall::Hall,
+    hall_mask: (Vec<bool>, usize, usize),
+    hall_scratch: Option<Framebuffer>,
+    hall_cues: u8,
     saver: Option<Saver>,
     last_input: f64,
     idle_secs: f32,
@@ -821,6 +840,10 @@ impl Scene {
             etch: None,
             tag_sound_played: false,
             etch_sound_played: false,
+            hall: crate::hall::Hall::default(),
+            hall_mask: crate::hall::sign_mask(),
+            hall_scratch: None,
+            hall_cues: 0,
             saver: None,
             last_input: 0.0,
             idle_secs,
@@ -1679,27 +1702,22 @@ impl Scene {
             }
             return;
         }
-        self.draw_post(fb, t);
-        self.draw_logo(fb, t);
-        self.draw_crt_tag(fb, t, false);
-        self.draw_etch(fb, t);
-        self.draw_crt_tag(fb, t, true);
-        if self.menu_live {
-            // Icon and wordmark together, one sweep every nine seconds.
-            let (lx, ly, lsize) = self.logo_final(fb);
-            let mw = self.mark_cols * MARK_SCALE;
-            let mx = (fb.w as i32 - mw) / 2;
-            let bottom = self.mark_final_y(fb) + self.mark_rows * 2 * MARK_SCALE;
-            let x0 = mx.min(lx);
-            let x1 = (mx + mw).max(lx + lsize);
-            self.glint(fb, x0, ly, x1 - x0, bottom - ly, 6.0, 0.0);
+        if t < HALL_FROM + HALL_CLIMB {
+            self.draw_post(fb, t);
+            self.draw_logo(fb, t);
+            self.draw_crt_tag(fb, t, false);
+            self.draw_etch(fb, t);
+            self.draw_crt_tag(fb, t, true);
+        }
+        if t >= HALL_FROM {
+            self.draw_hall_bridge(fb, t);
         }
         self.draw_home(fb, t);
         if t >= 2.2 && !self.chime_played {
             self.chime_played = true;
             self.pending.push(Sound::Chime);
         }
-        if t > 8.2 && !self.menu_live {
+        if t > MENU_LIVE && !self.menu_live {
             self.menu_live = true;
             self.last_input = now;
         }
