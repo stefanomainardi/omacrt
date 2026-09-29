@@ -180,7 +180,7 @@ pub fn draw(fb: &mut Framebuffer, m: Moment, alpha: f32, t: f32, horizon: i32, m
         }
         Moment::Eye => eye(fb, w / 2, 62, t),
         Moment::Rock => rock(fb, 40.0 + t * 3.0, 70.0 + (t * 0.8).sin() * 2.0),
-        Moment::Dove => dove(fb, w as f32 * 0.45, 72.0, 50.0),
+        Moment::Dove => dove(fb, w as f32 * 0.46, 70.0, 56.0),
         Moment::Sept => sept(fb, 64, horizon, moon),
         Moment::Easel => easel(fb, 104, horizon),
         Moment::Pipe => {}
@@ -385,6 +385,7 @@ fn rock(fb: &mut Framebuffer, cx: f32, cy: f32) {
     fb.rect(cx - 2, top - 7, 4, 7, rgb(40, 36, 40));
 }
 
+#[allow(dead_code)]
 fn in_poly(pts: &[(f32, f32)], x: f32, y: f32) -> bool {
     let mut inside = false;
     for i in 0..pts.len() {
@@ -396,87 +397,70 @@ fn in_poly(pts: &[(f32, f32)], x: f32, y: f32) -> bool {
     inside
 }
 
-/// A dove with its wings raised, and inside it a daylight sky.
+/// A dove seen from below as it flies, the way La grande famille has it:
+/// the wings spread wide with their feathers fanned at the back edge, the
+/// head up, the tail spread under it, and inside the outline a daylight
+/// sky with white clouds, against the storm.
 fn dove(fb: &mut Framebuffer, cx: f32, cy: f32, s: f32) {
-    let parts: [&[(f32, f32)]; 5] = [
-        &[
-            (-0.50, -0.06),
-            (-0.15, -0.20),
-            (0.35, -0.18),
-            (0.55, -0.10),
-            (0.50, 0.08),
-            (0.10, 0.16),
-            (-0.45, 0.10),
-        ],
-        &[
-            (0.45, -0.18),
-            (0.58, -0.30),
-            (0.72, -0.28),
-            (0.80, -0.20),
-            (0.92, -0.18),
-            (0.80, -0.12),
-            (0.62, -0.06),
-        ],
-        &[
-            (-0.45, -0.06),
-            (-1.00, -0.24),
-            (-1.08, -0.08),
-            (-1.02, 0.10),
-            (-0.95, 0.20),
-            (-0.45, 0.10),
-        ],
-        &[
-            (-0.25, -0.12),
-            (0.30, -0.16),
-            (0.18, -0.50),
-            (0.00, -0.80),
-            (-0.18, -1.02),
-            (-0.30, -0.92),
-            (-0.40, -1.00),
-            (-0.50, -0.86),
-            (-0.58, -0.90),
-            (-0.60, -0.70),
-            (-0.48, -0.40),
-        ],
-        &[
-            (-0.18, 0.10),
-            (0.25, 0.10),
-            (0.10, 0.40),
-            (-0.10, 0.62),
-            (-0.24, 0.56),
-            (-0.34, 0.64),
-            (-0.40, 0.44),
-        ],
+    let wing: [(f32, f32); 14] = [
+        (-0.12, -0.22),
+        (-0.50, -0.36),
+        (-0.90, -0.52),
+        (-1.25, -0.60),
+        (-1.14, -0.46),
+        (-1.20, -0.38),
+        (-1.04, -0.30),
+        (-1.10, -0.21),
+        (-0.91, -0.15),
+        (-0.95, -0.07),
+        (-0.75, -0.03),
+        (-0.72, 0.05),
+        (-0.50, 0.03),
+        (-0.14, 0.16),
     ];
-    let scaled: Vec<Vec<(f32, f32)>> = parts
-        .iter()
-        .map(|p| p.iter().map(|&(u, v)| (cx + u * s, cy + v * s)).collect())
-        .collect();
+    let left: Vec<(f32, f32)> = wing.to_vec();
+    let right: Vec<(f32, f32)> = wing.iter().map(|&(x, y)| (-x, y)).collect();
+    let tail: Vec<(f32, f32)> = vec![
+        (-0.12, 0.36),
+        (0.12, 0.36),
+        (0.30, 0.84),
+        (0.18, 0.80),
+        (0.10, 0.88),
+        (0.0, 0.82),
+        (-0.10, 0.88),
+        (-0.18, 0.80),
+        (-0.30, 0.84),
+    ];
+    let beak: Vec<(f32, f32)> = vec![(-0.08, -0.50), (-0.22, -0.46), (-0.08, -0.42)];
+    let polys = [left, right, tail, beak];
+    let inside = |x: f32, y: f32| -> bool {
+        let (u, v) = ((x - cx) / s, (y - cy) / s);
+        (u / 0.18).powi(2) + ((v - 0.02) / 0.42).powi(2) <= 1.0
+            || u * u + (v + 0.47) * (v + 0.47) <= 0.13 * 0.13
+            || polys.iter().any(|p| {
+                let mut hit = false;
+                for i in 0..p.len() {
+                    let ((x0, y0), (x1, y1)) = (p[i], p[(i + 1) % p.len()]);
+                    if (y0 > v) != (y1 > v) && u < x0 + (v - y0) * (x1 - x0) / (y1 - y0) {
+                        hit = !hit;
+                    }
+                }
+                hit
+            })
+    };
     let (x0, x1, y0, y1) = (
-        (cx - 1.2 * s) as i32,
-        (cx + s) as i32,
-        (cy - 1.1 * s) as i32,
-        (cy + 0.7 * s) as i32,
+        (cx - 1.3 * s) as i32,
+        (cx + 1.3 * s) as i32,
+        (cy - 0.7 * s) as i32,
+        (cy + 0.95 * s) as i32,
     );
-    let mut mask = vec![false; ((x1 - x0) * (y1 - y0)).max(0) as usize];
-    let at = |x: i32, y: i32| ((y - y0) * (x1 - x0) + (x - x0)) as usize;
+    let at = |x: i32, y: i32| inside(x as f32 + 0.5, y as f32 + 0.5);
     for y in y0..y1 {
         for x in x0..x1 {
-            if scaled
-                .iter()
-                .any(|p| in_poly(p, x as f32 + 0.5, y as f32 + 0.5))
-            {
-                mask[at(x, y)] = true;
-            }
-        }
-    }
-    let inside = |x: i32, y: i32| x >= x0 && x < x1 && y >= y0 && y < y1 && mask[at(x, y)];
-    for y in y0..y1 {
-        for x in x0..x1 {
-            if !inside(x, y) {
+            if !at(x, y) {
                 if [(1, 0), (-1, 0), (0, 1), (0, -1)]
                     .iter()
-                    .any(|(dx, dy)| inside(x + dx, y + dy))
+                    .any(|(dx, dy)| at(x + dx, y + dy))
                 {
                     fb.put(x, y, rgb(22, 22, 34));
                 }

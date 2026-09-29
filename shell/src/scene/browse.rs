@@ -2238,7 +2238,9 @@ impl Scene {
                     cx - Framebuffer::text_width(&games, 1) / 2,
                     y0 + 19,
                     &games,
-                    lerp_color(br[4], th.paper, 0.5),
+                    // The theme's own text colour: a tint of the stage's
+                    // light washed out on a light theme.
+                    th.fg,
                     tones.shadow,
                 );
                 let base = y0 + stage_h - 12;
