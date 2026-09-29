@@ -3896,7 +3896,19 @@ fn main() {
                     // frame, not a frame with no blanking left in it.
                     ml = ml.with_lines(l.min(ml.height()));
                 }
-                if let Some(hz) = hz {
+                if let Some(asked) = hz {
+                    // A field longer than this set follows loses the picture
+                    // height, and an arcade board at 53 Hz on a 60 Hz timing
+                    // asks for exactly that. Held at the slowest the set
+                    // takes, the way `rate` holds a request.
+                    let slowest = ml.field_hz() / cfg.field_room();
+                    let hz = asked.max(slowest);
+                    if hz > asked {
+                        eprintln!(
+                            "{asked:.3} Hz is slower than this set follows from the {applied} \
+                             timing; held at {hz:.3} (output.vrr_min_hz)"
+                        );
+                    }
                     match ml.at_field_hz(hz, FIELD_RATE_TOLERANCE) {
                         Some(m) => ml = m,
                         None => eprintln!(

@@ -234,6 +234,7 @@ impl Scene {
     /// pipe (`omacrt watch`). A URL goes to mpv as it is; yt-dlp
     /// resolves it.
     pub fn watch(&mut self, target: &str) {
+        self.wake();
         if !self.menu_live || self.running.is_some() || self.launching.is_some() {
             self.message = Some(("busy: cannot start a video now".into(), self.now + 3.0));
             return;
@@ -355,13 +356,17 @@ impl Scene {
             fb.rect(w / 2 - 8, h / 2 + 10, 5, 16, self.theme.paper);
             fb.rect(w / 2 + 3, h / 2 + 10, 5, 16, self.theme.paper);
         }
-        let hint = self.hint(&[
-            ("A", "pause"),
-            ("<>", "seek"),
-            ("^v", "volume"),
-            ("B", "stop"),
-        ]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[
+                ("A", "pause"),
+                ("<>", "seek"),
+                ("^v", "volume"),
+                ("B", "stop"),
+            ],
+        );
     }
 
     pub(super) fn draw_video_settings(&mut self, fb: &mut Framebuffer, sel: usize) {

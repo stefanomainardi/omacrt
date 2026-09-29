@@ -425,7 +425,12 @@ impl Modeline {
     ///
     /// The blanking absorbs the change, never the picture: the active samples
     /// and lines and the sync widths come out unchanged, so the picture keeps
-    /// its size and its place.
+    /// its size. It keeps its place because the change goes in the front
+    /// porch, before the sync, and the back porch stays as it was: a set
+    /// starts drawing a fixed time after the sync, so a longer back porch
+    /// moves the picture. Taking Mortal Kombat's 54.7 Hz from NTSC's 262
+    /// lines to 286 put 24 of them there and the whole game came down a
+    /// tenth of the screen.
     ///
     /// `None` when the rate cannot be reached inside the tolerance, or when
     /// it is not a rate a 15 kHz set locks to.
@@ -442,7 +447,7 @@ impl Modeline {
         let want_v = (line_now / hz).round() as u32;
         let mut best: Option<(f64, u32, u32)> = None;
         for v in [want_v.saturating_sub(1), want_v, want_v + 1] {
-            if v < self.v[2] + 1 {
+            if retotal(self.v, v).is_none() {
                 continue;
             }
             let want_h = (clock / (hz * v as f64)).round() as u32;
@@ -450,7 +455,7 @@ impl Modeline {
             // a tolerance of nothing still gives the best whole-line answer
             // rather than no answer at all.
             for h in [want_h.saturating_sub(1), want_h, want_h + 1, self.h[3]] {
-                if h < self.h[2] + 1 {
+                if retotal(self.h, h).is_none() {
                     continue;
                 }
                 let line = clock / h as f64;
@@ -465,8 +470,8 @@ impl Modeline {
         }
         let (_, h, v) = best?;
         let mut m = self.clone();
-        m.h[3] = h;
-        m.v[3] = v;
+        m.h = retotal(self.h, h)?;
+        m.v = retotal(self.v, v)?;
         Some(m)
     }
 
@@ -764,6 +769,23 @@ pub fn focus_class(class: &str) -> (bool, String) {
         "local w = hl.get_windows({{ class = \"{class}\" }})[1]; if not w then return \"no window\" end; hl.dispatch(hl.dsp.focus({{ window = w }})); return \"focused\""
     ));
     (ok && out.contains("focused"), out)
+}
+
+/// One axis of a timing (active, sync start, sync end, total) with a new
+/// total. Growth goes in the front porch, so the time from the sync to the
+/// picture is unchanged and the picture stays where the set puts it. A
+/// shrink comes out of the front porch down to a single sample or line, and
+/// out of the back porch after that. `None` when either porch would go.
+fn retotal(t: [u32; 4], total: u32) -> Option<[u32; 4]> {
+    let d = total as i64 - t[3] as i64;
+    let front = t[1] as i64 - t[0] as i64;
+    let to_front = if d >= 0 { d } else { d.max(1 - front) };
+    let start = t[1] as i64 + to_front;
+    let end = t[2] as i64 + to_front;
+    if start <= t[0] as i64 || end >= total as i64 {
+        return None;
+    }
+    Some([t[0], start as u32, end as u32, total])
 }
 
 #[cfg(test)]
@@ -1066,6 +1088,29 @@ mod field_rate {
         // The sync pulses keep their widths; only the blanking absorbs it.
         assert_eq!(after.h[2] - after.h[1], before.h[2] - before.h[1]);
         assert_eq!(after.v[2] - after.v[1], before.v[2] - before.v[1]);
+    }
+
+    #[test]
+    fn a_slower_field_does_not_move_the_picture_down() {
+        // Mortal Kombat's 54.7 Hz, held at 55, from the NTSC timing: 24 more
+        // lines, and all of them before the sync. The back porch, which is
+        // where the set measures the top of the picture from, is untouched.
+        let before = Modeline::parse(NTSC).unwrap();
+        let after = at(NTSC, 55.0);
+        assert!(after.v[3] > before.v[3] + 20);
+        assert_eq!(after.v[3] - after.v[2], before.v[3] - before.v[2]);
+        assert_eq!(after.h[3] - after.h[2], before.h[3] - before.h[2]);
+    }
+
+    #[test]
+    fn a_faster_field_keeps_a_front_porch() {
+        // NTSC has two lines of front porch, and 61 Hz wants four fewer
+        // lines. Two come out of it, down to one line, and the rest from the
+        // back porch.
+        let after = at(NTSC, 61.0);
+        assert!(after.v[1] > after.v[0]);
+        assert!(after.v[3] > after.v[2]);
+        assert_eq!(after.v[2] - after.v[1], 3);
     }
 
     #[test]

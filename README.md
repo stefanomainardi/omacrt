@@ -20,7 +20,7 @@ entry. Plain Hyprland uses the same launcher and command line.
 Written in Rust, licensed under MIT. No account or telemetry.
 
 <p align="center">
-  <img src="docs/screens/boot.gif" width="560" alt="The launcher booting on the tube">
+  <img src="docs/screens/boot.gif" width="560" alt="The launcher booting: the laser, the wordmark, and the arcade hall it lands in">
 </p>
 
 <p align="center">

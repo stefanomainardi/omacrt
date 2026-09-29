@@ -8,19 +8,28 @@ mod art;
 mod audio;
 mod bt;
 mod clock;
+mod consoles;
+mod crowd;
 mod crt_tag;
 mod deck;
+mod digits;
 mod effects;
 mod etch;
 mod fb;
 mod font8x8;
+mod gallery;
+mod hall;
 mod icons;
 mod menu;
+mod moments;
 mod pad;
+mod paint;
 mod photos;
 mod scene;
 mod sky;
+mod stage;
 mod sysmon;
+mod voxel;
 mod weather_sound;
 use omacrt_shell::assets;
 use omacrt_shell::padmap::Raw;
@@ -94,7 +103,7 @@ const USAGE: &str = "usage: omacrt-shell [options]
                     needs the wall clock to move at the same speed as the scene
   --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
   --dump-dir DIR    where dumps go (default .)
-  --idle SECONDS    start the screensaver after this much idle time (default 60, 0 = never)
+  --idle SECONDS    start the screensaver after this much idle time (default 300, 0 = never)
   --screensaver [NAME]  start directly in the screensaver; NAME picks an effect
   --dump-audio DIR  write every synthesized sound as WAV into DIR and exit
   --clock HH:MM     draw this time of day instead of now (offline renders)
@@ -138,7 +147,7 @@ fn parse_args() -> Result<Args, String> {
         browse: None,
         dump: Vec::new(),
         dump_dir: PathBuf::from("."),
-        idle: 60.0,
+        idle: omacrt_shell::settings::DEFAULT_SAVER_IDLE as f32,
         screensaver: None,
         dump_audio: None,
         clock: None,
@@ -389,7 +398,11 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
             eprintln!("script: not launching {title} while recording");
         }
         scene.draw(&mut fb, t as f64);
-        fb.roll(scene.roll(), t);
+        // A recording that opens on a screen skips the power on, so it has no
+        // roll: the boot is started only to put the menu behind that screen.
+        if args.browse.is_none() {
+            fb.roll(scene.roll(), t);
+        }
         fb.apply_gain(scene.power());
         let offset = (t * audio::RATE as f32) as usize;
         for s in scene.take_sounds() {
@@ -805,6 +818,9 @@ fn run(args: &Args) -> Result<(), String> {
                                 (playing_core.as_deref(), playing_standard)
                             {
                                 rates::remember(core, std, hz);
+                            }
+                            if let Some(p) = &playing_path {
+                                rates::remember_game(p, hz);
                             }
                         }
                         let mut standard_moved = false;
@@ -1333,6 +1349,17 @@ fn run(args: &Args) -> Result<(), String> {
             if inp.menu {
                 continue;
             }
+            // Asked for from the desktop, and put away the screensaver
+            // themselves. Letting `touch` take them first spent the request
+            // on waking the television and the game never started.
+            if let Some(target) = &inp.watch {
+                scene.watch(target);
+                continue;
+            }
+            if let Some(target) = &inp.play {
+                scene.play(target);
+                continue;
+            }
             if is_input && scene.touch(now()) {
                 continue;
             }
@@ -1361,14 +1388,6 @@ fn run(args: &Args) -> Result<(), String> {
             }
             if let Some(last) = inp.edge {
                 scene.jump_end(last);
-                continue;
-            }
-            if let Some(target) = &inp.watch {
-                scene.watch(target);
-                continue;
-            }
-            if let Some(target) = &inp.play {
-                scene.play(target);
                 continue;
             }
             if scene.osk_active() && (nav.is_some() || fire || fav || alt) {

@@ -30,6 +30,13 @@ pub enum Sound {
     /// A needle set down on a record: a tick and a breath of surface noise.
     /// What a change of track sounds like, if it sounds like anything.
     Needle,
+    /// The laser climbing the screen as the hall stands up behind it.
+    Laser,
+    /// A neon tube striking: a few ticks of the starter, then the hum.
+    Neon,
+    /// An arcade cabinet switched on: the relay, the tube's thump, the
+    /// line whine coming up.
+    Cabinet,
 }
 
 struct Voice {
@@ -287,6 +294,9 @@ pub fn render_bank() -> Vec<(Sound, Vec<f32>)> {
         (Sound::Click, synth_click()),
         (Sound::Static, synth_static()),
         (Sound::Needle, synth_needle()),
+        (Sound::Laser, synth_laser()),
+        (Sound::Neon, synth_neon()),
+        (Sound::Cabinet, synth_cabinet()),
     ]
 }
 
@@ -554,6 +564,95 @@ fn synth_needle() -> Vec<f32> {
         lp += a * (rng.next() - lp);
         let hiss = lp * (1.0 - t / 0.2).max(0.0).powf(1.5) * 0.022;
         *s = tick + hiss;
+    }
+    out
+}
+
+/// The laser climbing: a tone sweeping up an octave and a half, with a
+/// thin fizz on it, for as long as the climb takes.
+fn synth_laser() -> Vec<f32> {
+    let len = 1.0;
+    let n = seconds(len);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(91);
+    let mut phase = 0.0f32;
+    let tau = 2.0 * std::f32::consts::PI;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let p = t / len;
+        let f = 220.0 * (2.0f32).powf(p * 1.6);
+        phase += tau * f / RATE as f32;
+        let env = (p * 8.0).min(1.0) * (1.0 - p).powf(0.6);
+        let fizz = rng.next() * 0.25 * (0.5 + 0.5 * (phase * 3.0).sin());
+        *s = ((phase).sin() * 0.7 + (phase * 2.0).sin() * 0.2 + fizz) * env * 0.05;
+    }
+    out
+}
+
+/// A neon tube striking: three ticks of the starter, each with a burst of
+/// buzz, then the hum settling in and fading under the rest.
+fn synth_neon() -> Vec<f32> {
+    let len = 0.9;
+    let n = seconds(len);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(57);
+    let tau = 2.0 * std::f32::consts::PI;
+    let ticks = [0.0f32, 0.08, 0.16, 0.34];
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let mut v = 0.0;
+        for (k, at) in ticks.iter().enumerate() {
+            let d = t - at;
+            if (0.0..0.07).contains(&d) {
+                v += rng.next() * (-d * 180.0).exp() * 0.25;
+                // The buzz: the mains at a hundred and twenty, all harmonics.
+                let buzz = ((tau * 120.0 * d).sin()).signum() * 0.5 + (tau * 240.0 * d).sin() * 0.3;
+                v += buzz * (-d * 40.0).exp() * if k == 3 { 0.0 } else { 0.10 };
+            }
+        }
+        if t > 0.34 {
+            let d = t - 0.34;
+            let hum = (tau * 120.0 * t).sin() * 0.6
+                + (tau * 240.0 * t).sin() * 0.3
+                + (tau * 360.0 * t).sin() * 0.1;
+            v += hum * (d * 20.0).min(1.0) * (1.0 - (t - 0.34) / (len - 0.34)).powi(2) * 0.06;
+        }
+        *s = v;
+    }
+    out
+}
+
+/// An arcade cabinet switched on: a relay's clack, the thump of the tube's
+/// degaussing coil, and the fifteen kilohertz whine coming up faintly.
+fn synth_cabinet() -> Vec<f32> {
+    let len = 0.45;
+    let n = seconds(len);
+    let mut out = vec![0.0; n];
+    let mut rng = Lcg(13);
+    let tau = 2.0 * std::f32::consts::PI;
+    let mut lp = 0.0f32;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / RATE as f32;
+        let mut v = 0.0;
+        // The relay.
+        if t < 0.02 {
+            v += rng.next() * (-t * 400.0).exp() * 0.2;
+            v += (tau * 1800.0 * t).sin() * (-t * 250.0).exp() * 0.1;
+        }
+        // The degauss: a low swell that dies away, a little rough.
+        let d = t - 0.015;
+        if d > 0.0 {
+            let a = 1.0 / (1.0 + RATE as f32 / (tau * 180.0));
+            lp += a * (rng.next() - lp);
+            let env = (d * 30.0).min(1.0) * (-d * 7.0).exp();
+            // Five of these come in quick succession: kept low.
+            v += ((tau * 60.0 * d).sin() * 0.8 + lp * 1.5) * env * 0.11;
+        }
+        // The line whine, barely there.
+        if t > 0.08 {
+            v += (tau * 15_734.0 * t).sin() * ((t - 0.08) * 6.0).min(1.0) * (1.0 - t / len) * 0.006;
+        }
+        *s = v;
     }
     out
 }

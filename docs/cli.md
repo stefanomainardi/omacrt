@@ -253,7 +253,8 @@ No instrument here produces that precision, and one of the four was below
 How slow it may go is `output.vrr_min_hz` in `crt.toml`, a
 calibration of the set in the room: past it a television stops following and
 the picture loses height. 55 Hz by default, measured on a BeoCenter 1. A rate
-below it is held there and `rate` says so.
+below it is held there and `rate` says so. `mode --hz` builds a rate into the
+timing instead, and holds it at the same floor.
 
 ## Library and BIOS
 
@@ -452,7 +453,7 @@ television, the same switch as Settings, Screensaver.
 
 ## Sound
 
-`[sound]`, and Settings, Sound. Three switches, and the boot show makes its
+`[sound]`, and Settings, Sound. Four switches, and the boot show makes its
 own noise whatever they say:
 
 | Key | Default | What it is |
@@ -460,6 +461,7 @@ own noise whatever they say:
 | `menu` | on | Moving about: the beep on a move, the click of a select, the page turn |
 | `deck` | off | The needle set down when the record deck changes track, or static between two stations |
 | `weather` | off | The weather's own sound while the clock and weather page is up |
+| `hall` | on | The arcade hall under the home menu: its murmur, cabinets playing far off, a coin now and then |
 
 The weather's sound is eight loops, one per sky: rain with drops on it, wind
 that gusts, thunder behind a downpour, snow, a horn in fog, birds on a clear
@@ -493,13 +495,14 @@ Four ways in, and none of them is the settings page:
 
 ## What an idle television shows
 
-Four pages can have the screen when the set is left alone:
+Five pages can have the screen when the set is left alone:
 
 | Page | What it shows |
 | --- | --- |
 | `effects` | The wordmark taken apart and put back, by one of nine text effects |
 | `photos` | The photo frame |
 | `ambient` | The weather drawn, with the time under it |
+| `gallery` | Three paintings after Magritte, each on the wall for forty seconds and moving a little |
 | `system` | The system monitor |
 
 `pages` is which of them are in the rotation, `cycle_secs` is how long each
@@ -509,8 +512,8 @@ uses:
 ```toml
 [screensaver]
 enabled = true
-idle_secs = 60                            # seconds of nothing before it starts
-pages = ["photos", "ambient", "system"]   # what an idle set shows
+idle_secs = 300                           # seconds of nothing before it starts
+pages = ["photos", "ambient", "gallery"]  # what an idle set shows
 cycle_secs = 240                          # how long each page keeps the screen
 effect = "random"                         # the wordmark page's own effect
 ```

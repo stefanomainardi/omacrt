@@ -18,20 +18,7 @@ use crate::fb::{Color, Framebuffer, lerp_color, rgb, scale};
 use omacrt_shell::ambient::{Kind, Reading};
 use omacrt_shell::theme::Theme;
 
-/// The ordered dither of every home computer that had to fake a gradient.
-const BAYER: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
-
-/// A pixel of `a` or of `b` depending on where it is, so that a fraction
-/// between the two colours reads as a mix from a distance.
-#[inline]
-fn dither(x: i32, y: i32, t: f32, a: Color, b: Color) -> Color {
-    let level = (t.clamp(0.0, 1.0) * 16.0) as u8;
-    if level > BAYER[(y & 3) as usize][(x & 3) as usize] {
-        b
-    } else {
-        a
-    }
-}
+use crate::paint::{BAYER, dither};
 
 /// How much fog stands between the viewer and a point of the picture.
 ///
@@ -174,24 +161,56 @@ pub fn is_brussels(place: &str) -> bool {
 /// one has a sphere at the front and two behind, the upper one two at the
 /// front and one behind.
 fn atomium_nodes(w: i32, horizon: i32) -> [(i32, i32, i32, f32); 9] {
-    // Right of centre, so the afternoon sun reaches it, and a little way
-    // into the roofline so it stands in the town rather than on it.
-    let cx = w * 60 / 100;
-    // High enough that the roofline hides its foot and not its shoulders.
-    let base = horizon - 16;
-    let level = 16;
-    let spread = 18;
-    [
-        (cx, base, 6, 0.35),
-        (cx, base - level, 6, 0.0),
-        (cx - spread, base - level, 5, 0.9),
-        (cx + spread, base - level, 5, 0.9),
-        (cx, base - 2 * level, 7, 0.15),
-        (cx - spread, base - 3 * level, 6, 0.2),
-        (cx + spread, base - 3 * level, 6, 0.2),
-        (cx, base - 3 * level, 5, 0.9),
-        (cx, base - 4 * level, 6, 0.35),
-    ]
+    // The cube's corners in the order the tubes name them: the foot, the
+    // lower ring, the middle, the upper ring, the top.
+    const CORNERS: [(f32, f32, f32); 9] = [
+        (-1.0, -1.0, -1.0),
+        (1.0, -1.0, -1.0),
+        (-1.0, 1.0, -1.0),
+        (-1.0, -1.0, 1.0),
+        (0.0, 0.0, 0.0),
+        (1.0, 1.0, -1.0),
+        (1.0, -1.0, 1.0),
+        (-1.0, 1.0, 1.0),
+        (1.0, 1.0, 1.0),
+    ];
+    // Turn the cube so its long diagonal stands upright (about the axis
+    // (1,1,1) x (0,1,0), by the angle between them), then a little about the
+    // upright, which is the view from the square that shows its shape best.
+    let s3 = 3.0f32.sqrt();
+    let (kx, kz) = (-1.0 / 2.0f32.sqrt(), 1.0 / 2.0f32.sqrt());
+    let ang = (1.0 / s3).acos();
+    let (c, sn) = (ang.cos(), ang.sin());
+    let rot = |(x, y, z): (f32, f32, f32)| -> (f32, f32, f32) {
+        // Rodrigues, with k = (kx, 0, kz).
+        let kv = (-kz * y, kz * x - kx * z, kx * y);
+        let kd = kx * x + kz * z;
+        (
+            x * c + kv.0 * sn + kx * kd * (1.0 - c),
+            y * c + kv.1 * sn,
+            z * c + kv.2 * sn + kz * kd * (1.0 - c),
+        )
+    };
+    let (cy, sy) = (0.26f32.cos(), 0.26f32.sin());
+    // Right of centre, so the afternoon sun reaches it.
+    let cx = (w * 60 / 100) as f32;
+    let unit = 13.5f32;
+    // The foot clear of most of the roofs, the legs going down among them.
+    let mid = (horizon - 30) as f32 - s3 * unit;
+    let mut out = [(0, 0, 0, 0.0); 9];
+    for (i, &p) in CORNERS.iter().enumerate() {
+        let (x, y, z) = rot(p);
+        let (x, z) = (x * cy - z * sy, x * sy + z * cy);
+        let depth = ((z + s3) / (2.0 * s3)).clamp(0.0, 1.0);
+        let r = if depth < 0.5 { 6 } else { 5 };
+        out[i] = (
+            (cx + x * unit).round() as i32,
+            (mid - y * unit).round() as i32,
+            r,
+            depth,
+        );
+    }
+    out
 }
 
 /// The twenty tubes: twelve edges of the cube and eight diagonals to the
@@ -242,6 +261,104 @@ impl Rng {
     }
 }
 
+/// The colours of the hour: the sky at its top, its middle and its
+/// horizon, the colour things are lit by, and the colour of their shadows.
+#[derive(Clone, Copy)]
+struct Pal {
+    top: Color,
+    mid: Color,
+    hor: Color,
+    light: Color,
+    amb: Color,
+}
+
+/// The sky through a day, as keys in minutes from midnight: night, the
+/// blue before dawn, dawn, morning, noon, the golden hour, sunset, dusk and
+/// night again. Between two keys the colours are mixed.
+fn keys(up: f32, down: f32) -> [(f32, [u32; 5]); 9] {
+    [
+        (
+            up - 120.0,
+            [0x070a1c, 0x0e1432, 0x1c2148, 0x8890c8, 0x141a38],
+        ),
+        (
+            up - 35.0,
+            [0x141a44, 0x3a2e66, 0xa0587a, 0xe08aa0, 0x2a2450],
+        ),
+        (up, [0x23306a, 0x7a5a8e, 0xff9a70, 0xffc090, 0x3a3464]),
+        (
+            up + 60.0,
+            [0x2a5aa8, 0x5f93d2, 0xb8dcf0, 0xfff0d8, 0x4a6a9a],
+        ),
+        (
+            (up + down) / 2.0,
+            [0x1d58b8, 0x4a8fdc, 0xa6d8f2, 0xffffff, 0x5478a8],
+        ),
+        (
+            down - 70.0,
+            [0x2c5a9e, 0x7c9ac8, 0xffd290, 0xffe0a0, 0x5a6a98],
+        ),
+        (
+            down - 10.0,
+            [0x2a2c6e, 0xa24e78, 0xff8a48, 0xffa060, 0x4a3060],
+        ),
+        (
+            down + 30.0,
+            [0x12183e, 0x3c2c60, 0x8a3e5e, 0xc07090, 0x221c40],
+        ),
+        (
+            down + 90.0,
+            [0x070a1c, 0x0e1432, 0x1c2148, 0x8890c8, 0x141a38],
+        ),
+    ]
+}
+
+/// How grey a kind of weather makes the sky.
+fn greyness(kind: Kind) -> f32 {
+    match kind {
+        Kind::Clear => 0.0,
+        Kind::Partly => 0.15,
+        Kind::Cloudy => 0.45,
+        Kind::Snow => 0.4,
+        Kind::Overcast | Kind::Fog | Kind::Rain => 0.6,
+        Kind::Heavy | Kind::Thunder => 0.75,
+    }
+}
+
+fn pal_at(minutes: f32, up: f32, down: f32, grey: f32, theme: &Theme) -> Pal {
+    let k = keys(up, down);
+    let mut c = k[0].1;
+    for w in k.windows(2) {
+        let ((a, ca), (b, cb)) = (w[0], w[1]);
+        if minutes >= a && minutes <= b {
+            let f = (minutes - a) / (b - a).max(1.0);
+            for i in 0..5 {
+                c[i] = lerp_color(ca[i], cb[i], f);
+            }
+            break;
+        }
+    }
+    let out = |col: Color, top: bool| -> Color {
+        let (r, g, b) = ((col >> 16) & 255, (col >> 8) & 255, col & 255);
+        let l = ((r + g + b) / 3) as u8;
+        let grey_to = if top {
+            rgb(l, l, l)
+        } else {
+            lerp_color(rgb(l, l, l), rgb(120, 124, 136), 0.2)
+        };
+        // A little way toward the theme's background, so a green desktop
+        // still feels like the same machine, and no further.
+        lerp_color(lerp_color(col, grey_to, grey), theme.bg, 0.08)
+    };
+    Pal {
+        top: out(c[0], true),
+        mid: out(c[1], false),
+        hor: out(c[2], false),
+        light: out(c[3], false),
+        amb: out(c[4], false),
+    }
+}
+
 /// What the sky is doing this frame.
 ///
 /// Every layer needs most of this and none of it changes while a frame is
@@ -282,6 +399,10 @@ struct Air<'a> {
     /// How dark the sky is, 1 in the night and 0 in daylight, with twilight
     /// in between: what the stars fade on rather than blink out on.
     darkness: f32,
+    /// The colours of the hour, for everything that is lit.
+    pal: Pal,
+    /// How grey the weather makes it, 0 clear to 1 black.
+    grey: f32,
 }
 
 /// A cloud: a handful of overlapping blobs, drifting.
@@ -368,6 +489,8 @@ pub struct Sky {
     splashes: Vec<Splash>,
     stars: Vec<(i32, i32, f32)>,
     town: Vec<Building>,
+    /// The city beyond the town, in the haze: (x, width, height, roof).
+    far: Vec<(i32, i32, i32, u32)>,
     /// The kind the moving parts were built for, so a change rebuilds them.
     built_for: Option<(Kind, Kind, usize, usize)>,
     /// When the next flash of lightning is due, and how far into it we are.
@@ -408,6 +531,8 @@ pub struct Sky {
     /// everything else here moves in. A long way in the past to begin with,
     /// because nothing has been struck yet.
     struck: f32,
+    /// The rare moments after Magritte, and which one is up.
+    moments: crate::moments::Moments,
     rng: Rng,
 }
 
@@ -425,6 +550,7 @@ impl Sky {
             splashes: Vec::new(),
             stars: Vec::new(),
             town: Vec::new(),
+            far: Vec::new(),
             built_for: None,
             flash_at: 4.0,
             flash: 0.0,
@@ -446,9 +572,27 @@ impl Sky {
             // a minute or two apart.
             plane_at: 5.0,
             struck: -1000.0,
+            moments: crate::moments::Moments::default(),
             bolt: Vec::new(),
             rng: Rng(0x1234_5678),
         }
+    }
+
+    /// Keep one of the rare moments up, by name, for rendering it on
+    /// purpose. False when there is no such moment.
+    pub fn force_moment(&mut self, name: &str) -> bool {
+        match crate::moments::Moment::by_name(name) {
+            Some(m) => {
+                self.moments.force(m);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Whether the clock is, for the moment, not a clock.
+    pub fn pipe(&self) -> bool {
+        self.moments.is(crate::moments::Moment::Pipe)
     }
 
     /// Where the ground starts: the picture is sky above this line and a dark
@@ -540,6 +684,24 @@ impl Sky {
             })
             .collect();
 
+        // The city beyond it: taller at the sides, lower in the middle where
+        // the Atomium stands, and always the same.
+        let mut far = Rng(0x00c1_7ee5);
+        self.far.clear();
+        let mut x = -6;
+        while x < w as i32 + 10 {
+            let bw = 10 + far.upto(12) as i32;
+            let edge = ((x.min(w as i32 - x)) as f32 / (w as f32 / 2.0)).clamp(0.0, 1.0);
+            let bh = (60.0 - 38.0 * edge.powf(0.7) * (0.5 + far.unit() * 0.5)) as i32;
+            self.far.push((x, bw, bh, far.next()));
+            x += bw
+                + if far.upto(10) < 6 {
+                    0
+                } else {
+                    2 + far.upto(4) as i32
+                };
+        }
+
         // The town. Its shape is fixed, so it is the same town every evening.
         let mut town = Rng(0x0512_00b1);
         self.town.clear();
@@ -596,7 +758,15 @@ impl Sky {
         // front of it does to the light.
         let sun = sun_at(fb.w, horizon, arc);
         let (cover, shadow) = self.sun_cover(sun);
+        let grey = greyness(from) + (greyness(to) - greyness(from)) * blend;
+        let (up, down) = (
+            reading.sunrise.unwrap_or(7 * 60) as f32,
+            reading.sunset.unwrap_or(19 * 60) as f32,
+        );
+        let pal = pal_at(minutes as f32, up, down, grey, theme);
         let air = Air {
+            pal,
+            grey,
             theme,
             kind,
             day,
@@ -622,15 +792,30 @@ impl Sky {
         if air.darkness > 0.02 {
             self.draw_stars(fb, &air);
         }
-        self.body(fb, &air, arc);
+        let cond = crate::moments::Cond {
+            kind,
+            day: air.day,
+            darkness: air.darkness,
+            dusk: air.dusk,
+        };
+        let moment = self.moments.at(t, &cond);
+        // The moon of Le seize septembre is in front of a tree, not in the
+        // sky as well.
+        if !moment.is_some_and(|m| m.0 == crate::moments::Moment::Sept) {
+            self.body(fb, &air, arc);
+        }
         self.draw_clouds(fb, &air);
         self.draw_plane(fb, &air);
         if from == Kind::Fog || to == Kind::Fog {
             // Over the clouds: fog is the thing between you and them.
             self.fog(fb, &air);
         }
+        if let Some((m, alpha, local)) = moment.filter(|m| m.0.in_sky()) {
+            crate::moments::draw(fb, m, alpha, local, horizon, theme.paper);
+        }
         // Brussels only, and behind the roofline: the town is drawn after it
         // so its foot stands among the buildings.
+        self.draw_far(fb, &air);
         if landmark {
             self.atomium(fb, &air, arc);
         }
@@ -641,59 +826,58 @@ impl Sky {
         self.lamps(fb, &air);
         self.walker(fb, &air, landmark);
         self.wind_streaks(fb, &air);
-        self.falling(fb, &air);
+        if let Some((m, alpha, local)) = moment.filter(|m| !m.0.in_sky()) {
+            crate::moments::draw(fb, m, alpha, local, horizon, theme.paper);
+        }
+        // Men in bowler hats stand where the rain was.
+        if !moment.is_some_and(|m| m.0 == crate::moments::Moment::Golconda) {
+            self.falling(fb, &air);
+        }
         self.lightning(fb, &air, landmark);
         self.pane(fb, &air);
     }
 
-    /// The sky itself: two colours and a dither between them, chosen by the
-    /// kind of weather and by how low the sun is.
+    /// The sky itself: the hour's colours in bands, top to middle to the
+    /// horizon, each step dithered into the next, and by day the sun's light
+    /// in rings round it, less of it the greyer the sky and the more a cloud
+    /// covers it.
     fn sky(&self, fb: &mut Framebuffer, air: &Air) {
-        // Fixed colours, because a sunset has to look like a sunset, tinted
-        // a quarter of the way toward the air.theme so a green desktop still
-        // feels like the same machine.
-        // A little way toward the air.theme's background, so a green desktop
-        // still feels like the same machine, and no further: a sky that has
-        // lost its own colour is a grey rectangle.
-        let tint = |c: Color| lerp_color(c, air.theme.bg, 0.14);
-        let pair = |day: bool, kind: Kind| -> (Color, Color) {
-            match (day, kind) {
-                (true, Kind::Clear | Kind::Partly) => (rgb(20, 62, 148), rgb(92, 162, 226)),
-                (true, Kind::Cloudy) => (rgb(58, 78, 112), rgb(150, 164, 180)),
-                (true, Kind::Overcast | Kind::Fog) => (rgb(70, 76, 88), rgb(148, 150, 156)),
-                (true, Kind::Rain) => (rgb(44, 56, 82), rgb(112, 124, 146)),
-                (true, Kind::Heavy | Kind::Thunder) => (rgb(30, 36, 56), rgb(84, 92, 116)),
-                // Snow needs a sky dark enough for white to show against it.
-                (true, Kind::Snow) => (rgb(58, 68, 92), rgb(136, 146, 166)),
-                (false, Kind::Clear | Kind::Partly) => (rgb(6, 8, 26), rgb(24, 30, 66)),
-                (false, Kind::Snow) => (rgb(14, 18, 38), rgb(52, 60, 88)),
-                (false, _) => (rgb(8, 10, 22), rgb(28, 32, 52)),
-            }
+        let p = air.pal;
+        let glow = if air.day {
+            0.9 * (1.0 - air.grey * 0.8) * (1.0 - air.cover)
+        } else {
+            0.0
         };
-        // Two skies for the weather that is going and two for the one that is
-        // coming, mixed by how far through the change we are.
-        let mix = |day: bool| -> (Color, Color) {
-            let (at, ab) = pair(day, air.from);
-            let (bt, bb) = pair(day, air.to);
-            (lerp_color(at, bt, air.blend), lerp_color(ab, bb, air.blend))
+        let shine = lerp_color(p.light, rgb(255, 255, 255), 0.3);
+        let steps = |a: Color, b: Color, t: f32, x: i32, y: i32| -> Color {
+            let q = ((t.clamp(0.0, 1.0) * 5.0
+                + (BAYER[(y & 3) as usize][(x & 3) as usize] as f32 + 0.5) / 16.0)
+                .floor()
+                / 5.0)
+                .clamp(0.0, 1.0);
+            lerp_color(a, b, q)
         };
-        let (day_top, day_bottom) = mix(true);
-        let (night_top, night_bottom) = mix(false);
-        // A low sun pushes orange into the bottom of the sky, and a sun below
-        // the horizon is as low as one gets, which is what the twilight blend
-        // below fades in and out of.
-        let dusk = if air.day { air.dusk } else { 1.0 };
-        let day_bottom = lerp_color(day_bottom, rgb(230, 128, 62), dusk * 0.75);
-        // Twilight: the sky does not change colour the instant the sun clears
-        // the horizon, so the two skies are mixed by how dark it is. At noon
-        // and at midnight this is one sky or the other exactly.
-        let top = lerp_color(day_top, night_top, air.darkness);
-        let bottom = lerp_color(day_bottom, night_bottom, air.darkness);
-        let (top, bottom) = (tint(top), tint(bottom));
         for y in 0..air.horizon.min(fb.h as i32) {
             let t = y as f32 / air.horizon as f32;
             for x in 0..fb.w as i32 {
-                fb.put(x, y, dither(x, y, t, top, bottom));
+                let mut c = if t < 0.55 {
+                    steps(p.top, p.mid, t / 0.55, x, y)
+                } else {
+                    steps(p.mid, p.hor, (t - 0.55) / 0.45, x, y)
+                };
+                if glow > 0.0 {
+                    let d = (x as f32 - air.sun.0).hypot((y as f32 - air.sun.1) * 1.2);
+                    let g = (1.0 - d / 70.0).max(0.0).powf(1.6) * glow;
+                    if g > 0.02 {
+                        let q = ((g * 4.0
+                            + (BAYER[(y & 3) as usize][(x & 3) as usize] as f32 + 0.5) / 16.0)
+                            .floor()
+                            / 4.0)
+                            .clamp(0.0, 1.0);
+                        c = lerp_color(c, shine, q);
+                    }
+                }
+                fb.put(x, y, c);
             }
         }
     }
@@ -970,12 +1154,12 @@ impl Sky {
         // Even a still air.day moves the clouds a little, or the sky is a
         // photograph.
         let base = 2.0 + air.wind * 0.55;
-        let dark = matches!(air.kind, Kind::Heavy | Kind::Thunder | Kind::Overcast);
         // How many clouds each sky wants. The ones only the arriving sky
         // wants fade in, and the ones only the leaving sky wanted fade out,
         // so a sky fills and clears rather than switching.
         let want_from = cloud_count(air.from).0;
         let want_to = cloud_count(air.to).0;
+        let mut shown = Vec::new();
         for (i, cloud) in self.clouds.iter_mut().enumerate() {
             let here = if i < want_from.min(want_to) {
                 1.0
@@ -993,62 +1177,104 @@ impl Sky {
             if cloud.x - cloud.width > w {
                 cloud.x = -cloud.width;
             }
-            let body = if air.day {
-                if dark {
-                    lerp_color(rgb(74, 78, 92), air.theme.bg, 0.25)
-                } else {
-                    lerp_color(rgb(226, 230, 238), rgb(230, 150, 90), air.dusk * 0.5)
+            shown.push((i, here));
+        }
+        for (i, here) in shown {
+            self.draw_cloud(fb, air, i, here);
+        }
+    }
+
+    /// One cumulus: its blobs as balls, with a smaller row lifted on them
+    /// and a crown, flat underneath. Each pixel is shaded by the ball whose
+    /// surface it is on, from that ball's normal against the light (the sun
+    /// by day, the moon at night), into five tones with the ordered dither
+    /// between neighbours: lit tops, shaded bellies, and volume.
+    fn draw_cloud(&self, fb: &mut Framebuffer, air: &Air, i: usize, here: f32) {
+        let cloud = &self.clouds[i];
+        let p = air.pal;
+        let mut balls: Vec<(f32, f32, f32)> = cloud.blobs.clone();
+        for w in cloud.blobs.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            let r = (a.2 + b.2) * 0.5 * 0.72;
+            balls.push(((a.0 + b.0) * 0.5, a.1.min(b.1) - r * 0.8, r));
+        }
+        if let (Some(first), Some(last)) = (cloud.blobs.first(), cloud.blobs.last()) {
+            let r = cloud.blobs.iter().map(|b| b.2).fold(0.0, f32::max) * 0.62;
+            let top = cloud.blobs.iter().map(|b| b.1).fold(f32::MAX, f32::min);
+            balls.push(((first.0 + last.0) * 0.5, top - r * 1.3, r));
+        }
+        let base_y = cloud
+            .blobs
+            .iter()
+            .map(|b| b.1 + b.2 * 0.35)
+            .fold(f32::MIN, f32::max);
+        let belly_h = cloud.width * 0.08 + 1.0;
+        // Light from the sun or the moon, as a direction from the cloud.
+        let mid = cloud.x + cloud.width * 0.5;
+        let (lx, ly) = ((air.sun.0 - mid) / fb.w as f32 * 1.5, -0.9f32);
+        let n = (lx * lx + ly * ly).sqrt().max(0.01);
+        let (lx, ly) = (lx / n, ly / n);
+        let hi = if air.day {
+            lerp_color(p.light, rgb(255, 255, 255), 0.45)
+        } else {
+            lerp_color(
+                lerp_color(rgb(60, 66, 96), rgb(110, 118, 160), air.moonlight),
+                p.light,
+                0.25,
+            )
+        };
+        let g = air.grey;
+        let tones = [
+            lerp_color(p.amb, rgb(18, 14, 40), 0.25),
+            lerp_color(hi, p.amb, 0.78 + g * 0.1),
+            lerp_color(hi, p.amb, 0.45 + g * 0.2),
+            lerp_color(hi, p.amb, 0.20 + g * 0.25),
+            hi,
+        ];
+        let (x0, x1) = (
+            balls.iter().map(|b| b.0 - b.2).fold(f32::MAX, f32::min),
+            balls.iter().map(|b| b.0 + b.2).fold(f32::MIN, f32::max),
+        );
+        let top = balls.iter().map(|b| b.1 - b.2).fold(f32::MAX, f32::min);
+        for yy in top as i32 - 1..=base_y as i32 {
+            let py = cloud.y as i32 + yy;
+            if py < 0 || py >= air.horizon {
+                continue;
+            }
+            for xx in x0 as i32 - 1..=x1 as i32 + 1 {
+                let px = cloud.x as i32 + xx;
+                if px < 0 || px >= fb.w as i32 {
+                    continue;
                 }
-            } else {
-                lerp_color(rgb(46, 50, 70), air.theme.bg, 0.35)
-            };
-            // At night the tops catch the moon, and how much depends on the
-            // phase: a full moon silvers them, a new one leaves them flat.
-            let lit = lerp_color(
-                body,
-                air.theme.paper,
-                if air.day {
-                    0.35
-                } else {
-                    0.10 + 0.30 * air.moonlight
-                },
-            );
-            let shade = lerp_color(body, air.theme.bg, 0.45);
-            for (dx, dy, r) in &cloud.blobs {
-                let bx = (cloud.x + dx) as i32;
-                let by = (cloud.y + dy) as i32;
-                let r = *r as i32;
-                for y in -r..=r {
-                    for x in -r..=r {
-                        // Flattened underneath, the way a cloud sits.
-                        let yy = if y > 0 { y * 2 } else { y };
-                        if x * x + yy * yy > r * r {
-                            continue;
+                let od = (BAYER[(py & 3) as usize][(px & 3) as usize] as f32 + 0.5) / 16.0;
+                // A cloud that is arriving or leaving is dithered into the
+                // sky rather than switched on.
+                if here < 0.98 && od > here {
+                    continue;
+                }
+                let (fx, fy) = (xx as f32 + 0.5, yy as f32 + 0.5);
+                let mut best: Option<(f32, f32, f32)> = None;
+                for &(bx, by, br) in &balls {
+                    let (dx, dy) = (fx - bx, fy - by);
+                    let d2 = dx * dx + dy * dy;
+                    if d2 <= br * br {
+                        let z = (br * br - d2).sqrt();
+                        if best.is_none_or(|b| z > b.0) {
+                            best = Some((z, dx / br, dy / br));
                         }
-                        let py = by + y;
-                        if py >= air.horizon {
-                            continue;
-                        }
-                        let c = if y < -r / 3 {
-                            lit
-                        } else if y > r / 3 {
-                            shade
-                        } else {
-                            body
-                        };
-                        // A cloud that is arriving or leaving is dithered
-                        // into the sky rather than switched on: at this size
-                        // that reads as thinning out.
-                        if here < 0.98
-                            && (BAYER[(py & 3) as usize][((bx + x) & 3) as usize] as f32 + 0.5)
-                                / 16.0
-                                > here
-                        {
-                            continue;
-                        }
-                        fb.put(bx + x, py, c);
                     }
                 }
+                let Some((_, nx, ny)) = best else { continue };
+                let nz = (1.0 - nx * nx - ny * ny).max(0.0).sqrt();
+                let v = nx * lx + ny * ly + nz * 0.35;
+                let k = ((v + 0.55) / 1.3 * 4.0).clamp(0.0, 3.999) + (od - 0.5) * 0.9;
+                let mut c = tones[(k.max(0.0) as usize).min(4)];
+                if fy > base_y - belly_h {
+                    let t = ((fy - (base_y - belly_h)) / belly_h).clamp(0.0, 1.0);
+                    let q = ((t * 3.0 + od).floor() / 3.0).clamp(0.0, 1.0);
+                    c = lerp_color(c, tones[0], q);
+                }
+                fb.put(px, py, c);
             }
         }
     }
@@ -1149,6 +1375,31 @@ impl Sky {
             lerp_color(a, b, k.fract())
         };
 
+        // Its legs: the column under the foot, and three splaying from the
+        // lower ring to the ground, behind everything else.
+        {
+            let leg = lerp_color(steel, air.theme.bg, 0.45);
+            let (fx, fy, _, _) = nodes[0];
+            fb.rect(fx - 1, fy, 3, air.horizon - fy, leg);
+            fb.rect(
+                fx - 1,
+                fy,
+                1,
+                air.horizon - fy,
+                lerp_color(leg, air.theme.paper, 0.2),
+            );
+            for &(lx, ly, _, _) in &nodes[1..4] {
+                let out = if lx > fx {
+                    7
+                } else if lx < fx {
+                    -7
+                } else {
+                    0
+                };
+                fb.line(lx, ly, lx + out, air.horizon, leg);
+                fb.line(lx + 1, ly, lx + out + 1, air.horizon, leg);
+            }
+        }
         // Tubes first, the ones at the back before the ones at the front, so
         // the front of the frame reads as nearer.
         let dim_first =
@@ -1224,7 +1475,11 @@ impl Sky {
                     }
                 }
             }
-            self.sphere(fb, cx, cy, r, (sun_x, sun_y), dark, base, lit, flash);
+            if air.darkness < 0.35 && !flash && has_light(i) {
+                self.chrome(fb, cx, cy, r, air, depth);
+            } else {
+                self.sphere(fb, cx, cy, r, (sun_x, sun_y), dark, base, lit, flash);
+            }
 
             if air.darkness > 0.05 && !flash && has_light(i) {
                 // The lamps round the equator of each sphere, one of them
@@ -1337,6 +1592,56 @@ impl Sky {
         }
     }
 
+    /// A sphere by day, the way the real ones look: a mirror. The sky above
+    /// in its upper half, the dark band of the city across its middle, the
+    /// ground below, a dark rim on the side away from the light and a hard
+    /// glint.
+    fn chrome(&self, fb: &mut Framebuffer, cx: i32, cy: i32, r: i32, air: &Air, depth: f32) {
+        let p = air.pal;
+        let rf = r as f32 + 0.5;
+        let sky_hi = lerp_color(p.light, rgb(255, 255, 255), 0.4);
+        let far = depth * 0.25;
+        for dy in -r - 1..=r + 1 {
+            for dx in -r - 1..=r + 1 {
+                let (x, y) = (cx + dx, cy + dy);
+                let d = ((dx * dx + dy * dy) as f32).sqrt();
+                if d > rf + 0.4 {
+                    continue;
+                }
+                if d > rf - 0.6 {
+                    fb.put(x, y, rgb(10, 10, 18));
+                    continue;
+                }
+                let od = (BAYER[(y & 3) as usize][(x & 3) as usize] as f32 + 0.5) / 16.0;
+                let ny = dy as f32 / rf;
+                let mut c = if ny < -0.15 {
+                    let t = (-ny - 0.15) / 0.85;
+                    lerp_color(
+                        p.hor,
+                        sky_hi,
+                        ((t * 3.0 + od).floor() / 3.0).clamp(0.0, 1.0),
+                    )
+                } else if ny < 0.25 {
+                    lerp_color(p.amb, rgb(20, 20, 30), 0.35)
+                } else {
+                    let t = (ny - 0.25) / 0.75;
+                    lerp_color(
+                        p.amb,
+                        lerp_color(p.amb, p.light, 0.3),
+                        ((t * 2.0 + od).floor() / 2.0).clamp(0.0, 1.0),
+                    )
+                };
+                if d > rf - 1.8 && dx > 0 {
+                    c = lerp_color(c, rgb(0, 0, 0), 0.25);
+                }
+                if (dx as f32 + rf * 0.35).powi(2) + (dy as f32 + rf * 0.45).powi(2) < 1.6 {
+                    c = rgb(255, 255, 255);
+                }
+                fb.put(x, y, lerp_color(c, p.hor, far));
+            }
+        }
+    }
+
     /// One sphere of the Atomium: a filled circle lit from where the sun is,
     /// its terminator dithered because a fixed palette had no other way of
     /// bending light.
@@ -1395,12 +1700,43 @@ impl Sky {
         fb.put(sx + 1, sy, lerp_color(lit, mid, 0.4));
     }
 
+    /// The city beyond the town, in the haze: behind the Atomium, which
+    /// stands between it and the town.
+    fn draw_far(&self, fb: &mut Framebuffer, air: &Air) {
+        let p = air.pal;
+        // The colour of the air between: the colour of the air between,
+        // a lit edge, its lights a scatter at night.
+        let haze = lerp_color(p.amb, p.hor, 0.55);
+        let haze_edge = lerp_color(haze, p.light, 0.15);
+        for &(x, bw, bh, seed) in &self.far {
+            let top = air.horizon - bh;
+            fb.rect(x, top, bw, bh, haze);
+            fb.rect(x, top, 1, bh, haze_edge);
+            if seed % 4 == 0 {
+                fb.rect(x + bw / 2, top - 7, 1, 7, haze);
+            }
+            if air.darkness > 0.5 {
+                let mut r = Rng(seed | 1);
+                for _ in 0..(bw * bh / 30) {
+                    let (wx, wy) = (
+                        x + 1 + r.upto((bw - 2).max(1) as u32) as i32,
+                        top + 2 + r.upto((bh - 4).max(1) as u32) as i32,
+                    );
+                    if r.upto(10) < 4 {
+                        fb.put(
+                            wx,
+                            wy,
+                            lerp_color(haze, rgb(255, 200, 130), 0.55 * air.darkness),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     fn draw_town(&self, fb: &mut Framebuffer, air: &Air) {
-        let base = if air.day {
-            lerp_color(air.theme.bg, rgb(40, 44, 62), 0.55)
-        } else {
-            lerp_color(air.theme.bg, rgb(18, 20, 34), 0.7)
-        };
+        let p = air.pal;
+        let base = lerp_color(p.amb, rgb(12, 12, 22), 0.3);
         for b in &self.town {
             // A cloud over the sun throws its shade across the roofs, and the
             // shade travels with the cloud. This is the whole reason the sun
@@ -1412,16 +1748,71 @@ impl Sky {
             } else {
                 0.0
             };
-            let body = lerp_color(base, air.theme.bg, shade);
-            let edge = lerp_color(body, air.theme.paper, 0.12);
+            // Each building its own tone of the same dark, lit down its left
+            // side, dark down its right.
+            let seed = b.x.unsigned_abs().wrapping_mul(2_654_435_761) ^ (b.w as u32 * 97);
+            let tone = lerp_color(base, p.amb, (seed % 7) as f32 / 20.0);
+            let body = lerp_color(tone, air.theme.bg, shade);
+            let side = lerp_color(body, p.light, 0.20 * (1.0 - air.darkness * 0.6));
+            let edge = lerp_color(body, p.light, 0.3);
             let top = air.horizon - b.h;
             fb.rect(b.x, top, b.w, b.h, body);
-            fb.rect(b.x, top, b.w, 1, edge);
+            fb.rect(b.x, top, 2, b.h, side);
+            fb.rect(
+                b.x + b.w - 1,
+                top,
+                1,
+                b.h,
+                lerp_color(body, rgb(0, 0, 0), 0.35),
+            );
+            // Roofs: a parapet, a stepped top, a water tower, or a spire.
+            match (seed >> 5) % 5 {
+                0 => fb.rect(b.x - 1, top - 1, b.w + 2, 1, edge),
+                1 if b.w > 12 => {
+                    fb.rect(b.x + 3, top - 5, b.w - 6, 5, body);
+                    fb.rect(b.x + 3, top - 5, 2, 5, side);
+                }
+                2 if b.w > 12 => {
+                    let tx = b.x + b.w / 2 - 3;
+                    fb.rect(tx, top - 8, 7, 5, lerp_color(body, rgb(70, 46, 34), 0.5));
+                    fb.rect(tx, top - 8, 7, 1, edge);
+                    fb.rect(tx, top - 3, 1, 3, body);
+                    fb.rect(tx + 6, top - 3, 1, 3, body);
+                }
+                3 => {
+                    for k in 0..8 {
+                        let half = (8 - k) / 3;
+                        fb.rect(b.x + b.w / 2 - half, top - k, half * 2 + 1, 1, body);
+                    }
+                }
+                _ => fb.rect(b.x, top, b.w, 1, edge),
+            }
             if b.aerial {
                 let ax = b.x + b.w / 2;
                 fb.rect(ax, top - 7, 1, 7, body);
                 fb.rect(ax - 3, top - 7, 7, 1, body);
                 fb.rect(ax - 2, top - 5, 5, 1, body);
+            }
+            // By day the windows take the sky, a few of them catching it.
+            if air.darkness <= 0.5 {
+                let cols = ((b.w - 6) / 6).max(1);
+                for (i, _) in b.windows.iter().enumerate() {
+                    let cx = b.x + 3 + (i as i32 % cols) * 6;
+                    let cy = top + 3 + (i as i32 / cols) * 6;
+                    if cy + 2 >= air.horizon {
+                        continue;
+                    }
+                    let glass = lerp_color(
+                        body,
+                        p.mid,
+                        if (seed as usize + i).is_multiple_of(5) {
+                            0.55
+                        } else {
+                            0.28
+                        },
+                    );
+                    fb.rect(cx, cy, 2, 3, lerp_color(glass, body, air.darkness * 2.0));
+                }
             }
             if air.darkness <= 0.02 {
                 continue;
@@ -2460,6 +2851,8 @@ mod tests {
             // where the arithmetic was, and dark enough that they are drawn.
             struck_since: 10.0,
             darkness: 1.0,
+            pal: pal_at(23.0 * 60.0, 420.0, 1140.0, 0.0, &theme),
+            grey: 0.0,
         };
         sky.draw_town(&mut fb, &air);
     }

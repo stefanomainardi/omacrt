@@ -20,6 +20,7 @@ pub mod net;
 pub mod padmap;
 pub mod pads;
 pub mod player;
+pub mod playtime;
 pub mod plugin;
 pub mod profile;
 pub mod rates;

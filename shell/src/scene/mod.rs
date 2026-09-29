@@ -158,6 +158,10 @@ enum Screen {
     AmbientHub {
         sel: usize,
     },
+    /// Paintings on a wall, one after another; `at` is the one up first.
+    Gallery {
+        at: usize,
+    },
 }
 
 /// A row of the music screen.
@@ -250,16 +254,27 @@ const HOME: [(icons::Icon, &str, bool); 8] = [
 /// The Ambient submenu: what the television shows when nothing is playing.
 /// All three are also screensaver pages, and this is where they are found on
 /// purpose rather than by leaving the set alone.
-const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 3] = [
+const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 4] = [
     (icons::PHOTO, "Photo frame", true),
     (icons::CLOCK, "Clock and weather", true),
     (icons::CHART, "System monitor", true),
+    (icons::BRUSH, "Art gallery", true),
 ];
+
+/// Whether this run is taking pictures for a public page (`OMACRT_SHOTS`
+/// set): then the screens leave out the figures that describe somebody's
+/// library, the counts of games, films and favourites.
+fn shots() -> bool {
+    std::env::var_os("OMACRT_SHOTS").is_some()
+}
+
+/// How long a painting stays on the wall before the next is hung.
+const GALLERY_TURN: f64 = 40.0;
 
 /// The three ambient pages in a few words, for the home row that opens them.
 /// A test counts these against `AMBIENT_ITEMS`, so a fourth page cannot be
 /// added without saying so here.
-const AMBIENT_SUMMARY: &str = "photos, weather, monitor";
+const AMBIENT_SUMMARY: &str = "photos, weather, monitor, art";
 
 /// Settings submenu entries.
 /// Where a row of the settings page goes. Anything that comes back to
@@ -372,7 +387,7 @@ const SETTINGS_HEAD_H: i32 = 20;
 
 /// Rows of the clock and weather page, and of the sound page.
 const AMBIENT_ROWS: usize = 3;
-const SOUND_ROWS: usize = 3;
+const SOUND_ROWS: usize = 4;
 
 /// Rows of the Music settings page before the one per visualizer.
 const MUSIC_ROWS: usize = 7;
@@ -392,6 +407,8 @@ struct Launch {
     color: Color,
     started: f64,
     spawned: bool,
+    /// Which of the launch's sounds have been played: 1 the lid, 2 the click.
+    cues: u8,
     /// Geometry the CRT should switch to for this program, when the output
     /// is a wide super resolution the host controls.
     lines: Option<Geometry>,
@@ -423,11 +440,18 @@ pub struct Geometry {
 }
 
 const LAUNCH_SECS: f32 = 1.15;
+/// How long a game takes to come back out of its console.
+const EJECT_SECS: f32 = 0.9;
+/// How long the console stands still with the game in it first. Leaving a
+/// game usually changes the television's mode back, and a set takes most of
+/// a second to lock again: without the wait the game came out while the
+/// picture was still rolling, and nobody saw it.
+const EJECT_HOLD: f64 = 0.7;
 
 /// Power submenu entries.
 const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::DESKTOP, "Back to desktop", false),
-    (icons::PULSE, "Restart launcher", false),
+    (icons::RESET, "Restart launcher", false),
     (icons::POWER, "Power off", false),
 ];
 
@@ -453,15 +477,15 @@ pub(super) enum PauseRow {
 /// Pause menu over a running game.
 const PAUSE_ROWS: [(PauseRow, icons::Icon, &str); 10] = [
     (PauseRow::Resume, icons::GAMEPAD, "Resume"),
-    (PauseRow::Save, icons::FOLDER, "Save state"),
-    (PauseRow::Load, icons::FOLDER, "Load state"),
-    (PauseRow::Rewind, icons::RESUME, "Rewind two seconds"),
-    (PauseRow::FastForward, icons::RESUME, "Fast forward"),
-    (PauseRow::SlowMotion, icons::PULSE, "Slow motion"),
+    (PauseRow::Save, icons::SAVE, "Save state"),
+    (PauseRow::Load, icons::LOAD, "Load state"),
+    (PauseRow::Rewind, icons::REWIND, "Rewind two seconds"),
+    (PauseRow::FastForward, icons::FORWARD, "Fast forward"),
+    (PauseRow::SlowMotion, icons::SLOW, "Slow motion"),
     (PauseRow::Aspect, icons::FIT, "Picture"),
     (PauseRow::Shader, icons::BRUSH, "Shader"),
-    (PauseRow::Reset, icons::PULSE, "Reset game"),
-    (PauseRow::Quit, icons::DESKTOP, "Back to launcher"),
+    (PauseRow::Reset, icons::RESET, "Reset game"),
+    (PauseRow::Quit, icons::LAUNCHER, "Back to launcher"),
 ];
 
 /// What the main loop has to do with the compositor after a pause action.
@@ -494,6 +518,7 @@ fn saver_page_label(page: &str) -> (&'static str, &'static str) {
         "photos" => ("the photographs", "the photo frame"),
         "ambient" => ("the clock and weather", "the weather, drawn, and the time"),
         "system" => ("the system monitor", "what the machine is doing"),
+        "gallery" => ("the art gallery", "three paintings, after Magritte"),
         _ => ("the wordmark", "a text effect on the wordmark"),
     }
 }
@@ -504,7 +529,7 @@ const SAVER_ROWS: usize = 5 + omacrt_shell::settings::PAGES.len();
 const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::FILM, "Local videos", true),
     (icons::RESUME, "YouTube", true),
-    (icons::FOLDER, "Play the link in the clipboard", false),
+    (icons::FOLDER, "Play copied link", false),
 ];
 
 /// YouTube hub entries.
@@ -549,6 +574,19 @@ const ABOUT: &[&str] = &[
     "MIT license.",
 ];
 const TAG_START: f32 = 5.75;
+/// The bridge into the hall: after the copper bar, the laser climbs the
+/// screen and the hall stands up behind it, then the word flies to the far
+/// wall, then the hall powers on.
+const HALL_FROM: f32 = 8.1;
+const HALL_CLIMB: f32 = 1.0;
+const HALL_FLY: f32 = 0.6;
+/// When the word lands and the power-on starts.
+const HALL_LANDS: f32 = HALL_FROM + HALL_CLIMB + HALL_FLY;
+/// When the menu's window starts to come up, and when it takes input.
+const MENU_FROM: f32 = HALL_LANDS + 1.4;
+const MENU_LIVE: f32 = MENU_FROM + 0.2;
+/// Everything lit and settled: where a skipped boot jumps to.
+const BOOT_DONE: f32 = MENU_FROM + 1.2;
 
 /// The project's own name, in one place, so a rename is one edit.
 pub const NAME: &str = "OmaCRT";
@@ -599,6 +637,13 @@ pub struct Scene {
     etch: Option<LaserEtch>,
     tag_sound_played: bool,
     etch_sound_played: bool,
+    /// The arcade hall the home stands in, and what the boot's bridge into
+    /// it keeps between frames.
+    hall: crate::hall::Hall,
+    hall_mask: (Vec<bool>, usize, usize),
+    hall_scratch: Option<Framebuffer>,
+    hall_cues: u8,
+    crowd: crate::crowd::Crowd,
     saver: Option<Saver>,
     last_input: f64,
     idle_secs: f32,
@@ -633,6 +678,20 @@ pub struct Scene {
     recent: Vec<(usize, PathBuf)>,
     /// When each recent game was last started, seconds since the epoch.
     recent_at: std::collections::HashMap<PathBuf, i64>,
+    /// Seconds each game has been played, in all.
+    playtime: std::collections::HashMap<PathBuf, u64>,
+    /// When the running game last started counting: unpaused, not a video.
+    play_since: Option<f64>,
+    /// Which console stands on the systems stage, and since when, so a new
+    /// one arrives rather than appearing.
+    stage_name: String,
+    stage_since: f64,
+    /// The same for the box on the games stage.
+    box_path: std::path::PathBuf,
+    box_since: f64,
+    /// A game coming back out of its console after it ends: the system,
+    /// the game and since when.
+    ejecting: Option<(String, PathBuf, f64)>,
     favorites: Vec<(usize, PathBuf)>,
     pad: PadKind,
     bt: Bluetooth,
@@ -798,6 +857,11 @@ impl Scene {
             etch: None,
             tag_sound_played: false,
             etch_sound_played: false,
+            hall: crate::hall::Hall::default(),
+            hall_mask: crate::hall::sign_mask(),
+            hall_scratch: None,
+            hall_cues: 0,
+            crowd: crate::crowd::Crowd::default(),
             saver: None,
             last_input: 0.0,
             idle_secs,
@@ -853,6 +917,13 @@ impl Scene {
             visual_on: false,
             recent: load_list(&library.config_dir.join("recent.txt"), &library),
             recent_at: load_times(&library.config_dir.join("recent.txt")),
+            playtime: omacrt_shell::playtime::load(&library.config_dir.join("playtime.tsv")),
+            play_since: None,
+            stage_name: String::new(),
+            stage_since: 0.0,
+            box_path: std::path::PathBuf::new(),
+            box_since: 0.0,
+            ejecting: None,
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
             library,
             screen: Screen::Menu,
@@ -917,12 +988,14 @@ impl Scene {
     /// idle television puts up by itself. A game or a film is playing over
     /// everything and gets the silence it is owed.
     pub fn ambience(&self) -> Option<crate::weather_sound::Ambience> {
-        if !self.settings.sound.weather
-            || self.running.is_some()
-            || self.launching.is_some()
-            || self.saver.is_some()
-            || !matches!(self.screen, Screen::Ambient)
-        {
+        if self.running.is_some() || self.launching.is_some() || self.saver.is_some() {
+            return None;
+        }
+        // The home stands in the arcade hall, and the hall has its sound.
+        if matches!(self.screen, Screen::Menu) && self.menu_live && self.settings.sound.hall {
+            return Some(crate::weather_sound::Ambience::Arcade);
+        }
+        if !self.settings.sound.weather || !matches!(self.screen, Screen::Ambient) {
             return None;
         }
         let reading = &self.photos.info.sky;
@@ -987,9 +1060,20 @@ impl Scene {
     /// the way `touch` does. Anything that changes the screen from outside
     /// the television calls this first.
     fn wake(&mut self) {
+        // The screen the idle timer covered comes back, as it does for a key
+        // press, so a game started from the desktop returns to the menu and
+        // not to the screensaver page.
+        if let Some((_, _, back)) = self.saver_run.take()
+            && self.saver.is_none()
+        {
+            self.screen = back;
+            self.screen_since = self.now;
+            self.band_y = -1.0;
+        }
+        if let Some(prev) = self.music_saver.take() {
+            self.screen = prev;
+        }
         self.saver = None;
-        self.saver_run = None;
-        self.music_saver = None;
         self.last_input = self.now;
     }
 
@@ -1015,6 +1099,13 @@ impl Scene {
     }
 
     /// Switch screen and restart the slide-in transition.
+    /// Which painting is on the gallery wall: the one the page came up
+    /// with, moved on by every turn it has taken on its own since.
+    fn gallery_on(&self, at: usize) -> usize {
+        let turns = ((self.now - self.screen_since).max(0.0) / GALLERY_TURN) as usize;
+        (at + turns) % crate::gallery::PAINTINGS.len()
+    }
+
     fn go(&mut self, screen: Screen) {
         self.screen = screen;
         self.screen_since = self.now;
@@ -1216,6 +1307,62 @@ impl Scene {
                 }
             }
             Some("settings") => self.screen = Screen::Settings { sel: 0 },
+            // The return from a game, headlessly: the first game of the
+            // named system coming back out of its console, a second from now.
+            Some(s) if s.starts_with("eject:") => {
+                let system = s.trim_start_matches("eject:").to_string();
+                let path = self
+                    .library
+                    .index
+                    .as_ref()
+                    .and_then(|i| i.items.iter().find(|it| it.system == system))
+                    .map(|it| it.path.clone())
+                    .unwrap_or_default();
+                self.ejecting = Some((system, path, f64::NAN));
+            }
+            // A launch, for rendering the animation headlessly: the first
+            // game of the named system, going into its console. Nothing is
+            // run; the command is `true`.
+            Some(s) if s.starts_with("launch:") => {
+                let system = s.trim_start_matches("launch:").to_string();
+                let game = self
+                    .library
+                    .index
+                    .as_ref()
+                    .and_then(|i| i.items.iter().find(|it| it.system == system))
+                    .map(|it| (it.title.clone(), it.path.clone()));
+                let (title, path) = game.unwrap_or_else(|| (system.clone(), PathBuf::new()));
+                self.running = Some((title.clone(), system.clone()));
+                self.running_path = Some((system.clone(), path));
+                self.launching = Some(Launch {
+                    cmd: std::process::Command::new("true"),
+                    title,
+                    system,
+                    disc: false,
+                    color: self.theme.accent,
+                    started: self.now + 1.0,
+                    spawned: false,
+                    cues: 0,
+                    lines: None,
+                });
+            }
+            // The systems list, with a console already selected when one is
+            // named after a colon, so its stage can be looked at.
+            Some(s) if s == "systems" || s.starts_with("systems:") => {
+                let list = self.browse_systems();
+                let sel = s
+                    .strip_prefix("systems:")
+                    .and_then(|want| {
+                        list.iter()
+                            .position(|&i| self.library.systems[i].name == want)
+                    })
+                    .map(|p| p + Self::VIRTUAL)
+                    .unwrap_or(0);
+                self.screen = Screen::Systems {
+                    sel,
+                    top: sel.saturating_sub(SYS_PAGE - 1),
+                };
+            }
             Some("about") => self.screen = Screen::About { top: 0 },
             Some("saver") => self.screen = Screen::Saver { sel: 0 },
             Some("diag") => {
@@ -1240,6 +1387,18 @@ impl Scene {
             Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },
             Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
             Some("ambient") => self.screen = Screen::Ambient,
+            Some(name) if name.starts_with("ambient:") => {
+                self.screen = Screen::Ambient;
+                self.sky.force_moment(&name["ambient:".len()..]);
+            }
+            Some(name) if name.starts_with("gallery") => {
+                let at = name
+                    .strip_prefix("gallery:")
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0);
+                self.screen = Screen::Gallery { at };
+                self.screen_since = self.now;
+            }
             Some("monitor") => {
                 self.sysmon.sample();
                 self.screen = Screen::Monitor { page: 0 };
@@ -1292,6 +1451,7 @@ impl Scene {
             }
             "frame" | "photos" => self.open_frame(),
             "ambient" | "clock" | "weather" => self.go(Screen::Ambient),
+            "gallery" | "art" | "paintings" => self.go(Screen::Gallery { at: 0 }),
             "idle" | "ambienthub" => self.go(Screen::AmbientHub { sel: 0 }),
             "monitor" | "system" => {
                 self.sysmon.sample();
@@ -1332,22 +1492,68 @@ impl Scene {
         self.pad = name.map(PadKind::from_name).unwrap_or(PadKind::Keyboard);
     }
 
-    fn hint(&self, parts: &[(&str, &str)]) -> String {
+    /// What a button is called on the connected pad, and the colour its role
+    /// is drawn in. The colour follows the role, not the letter, so accepting
+    /// is green on every pad even where the pad calls that button X.
+    fn hint_key<'a>(&self, button: &'a str) -> (&'a str, Option<Color>) {
         let l = self.pad.labels();
-        parts
-            .iter()
-            .map(|(button, what)| {
-                let b = match *button {
-                    "A" => l.accept,
-                    "B" => l.back,
-                    "Y" => l.fav,
-                    "X" => l.alt,
-                    other => other,
-                };
-                format!("{b} {what}")
-            })
-            .collect::<Vec<_>>()
-            .join("  ")
+        let th = &self.theme;
+        match button {
+            "A" => (l.accept, Some(th.green)),
+            "B" => (l.back, Some(th.red)),
+            "Y" => (l.fav, Some(th.yellow)),
+            "X" => (l.alt, Some(th.blue)),
+            other => (other, None),
+        }
+    }
+
+    fn hint_width(&self, parts: &[(&str, &str)]) -> i32 {
+        let mut w = 0;
+        for (button, what) in parts {
+            let (label, role) = self.hint_key(button);
+            let cap = if role.is_some() && label.chars().count() == 1 {
+                9
+            } else {
+                Framebuffer::text_width(label, 1) + 4
+            };
+            w += cap + 3 + Framebuffer::text_width(what, 1) + 10;
+        }
+        (w - 10).max(0)
+    }
+
+    /// The buttons along the bottom, drawn as buttons: a pad's face buttons
+    /// as round caps in the colour of what they do, anything else (a key,
+    /// a direction, a shoulder) as a small sunken plate with its name.
+    fn draw_hint(&self, fb: &mut Framebuffer, x: i32, y: i32, parts: &[(&str, &str)]) -> i32 {
+        let th = &self.theme;
+        let tones = crate::paint::Tones::of(th);
+        let mut cx = x;
+        for (button, what) in parts {
+            let (label, role) = self.hint_key(button);
+            let mut chars = label.chars();
+            match (role, chars.next(), chars.next()) {
+                (Some(c), Some(k), None) => {
+                    cx += crate::paint::keycap(fb, cx, y - 1, k, c, th.bg);
+                }
+                _ => {
+                    let w = Framebuffer::text_width(label, 1) + 4;
+                    fb.rect(cx, y - 1, w, 10, tones.lo);
+                    fb.rect(
+                        cx + 1,
+                        y + 8,
+                        w - 1,
+                        1,
+                        lerp_color(th.selection, th.paper, 0.2),
+                    );
+                    fb.text(cx + 2, y, label, th.fg, 1);
+                    cx += w;
+                }
+            }
+            cx += 3;
+            fb.text(cx, y, what, scale(th.dim, 0.9), 1);
+            cx += Framebuffer::text_width(what, 1) + 10;
+        }
+        cx
     }
 
     /// Compact header used by the browser and the running screen: small icon,
@@ -1356,9 +1562,25 @@ impl Scene {
         let left = (fb.w as f32 * 0.05) as i32 + self.slide();
         // The same mark as everywhere else, at the smallest size its shape
         // holds, and on the same return.
+        let th = &self.theme;
+        let tones = crate::paint::Tones::of(th);
+        let w = fb.w as i32;
+        // A little light from above: the room the menu stands in, in the
+        // dithered steps a fixed palette would have painted it with.
+        crate::paint::gradient_v(
+            fb,
+            0,
+            0,
+            w,
+            120,
+            &[lerp_color(th.bg, th.selection, 0.55), th.bg],
+        );
         let (base, hot) = self.retrace_now();
         self.draw_retrace(fb, left, 8, 24.0, base, 1.0, hot);
-        let mx = fb.w as i32 - left - self.mark_small.cols;
+        let mx = w - left - self.mark_small.cols;
+        for cell in &self.mark_small.cells {
+            effects::draw_cell(fb, mx + 1, 11, 1, cell, tones.shadow);
+        }
         for cell in &self.mark_small.cells {
             effects::draw_cell(fb, mx, 10, 1, cell, cell.final_color);
         }
@@ -1372,14 +1594,35 @@ impl Scene {
             8.0,
             2.6,
         );
-        fb.text(left, 40, prompt, self.theme.dim, 1);
+        // The title on a shelf label: a band that fades out to the right, a
+        // tab of accent in front of it, the words standing on a shadow.
+        let span = w - 2 * left;
+        crate::paint::gradient_h(
+            fb,
+            left,
+            36,
+            span,
+            13,
+            lerp_color(th.selection, th.accent, 0.22),
+            th.bg,
+        );
+        fb.rect(left, 37, 3, 11, th.accent);
+        crate::paint::text_shadow(fb, left + 8, 39, prompt, th.paper, tones.shadow);
+        // The clock in a small sunken window of its own.
         let clock = crate::clock::now(self.now).format("%H:%M").to_string();
-        fb.text(
-            fb.w as i32 - left - Framebuffer::text_width(&clock, 1),
-            40,
-            &clock,
-            scale(self.theme.dim, 0.7),
+        let cw = Framebuffer::text_width(&clock, 1) + 8;
+        let cx = w - left - cw;
+        let well = lerp_color(th.bg, tones.lo, 0.5);
+        crate::paint::bevel(fb, &tones, cx, 36, cw, 13, well, th.bg, false);
+        fb.text(cx + 4, 39, &clock, th.fg, 1);
+        crate::paint::gradient_h(
+            fb,
+            left,
+            50,
+            span,
             1,
+            lerp_color(th.accent, th.bg, 0.3),
+            th.bg,
         );
         52
     }
@@ -1428,6 +1671,7 @@ impl Scene {
         self.tick_conversion();
         self.tick_music(now);
         self.yt_poll();
+        self.tick_playtime();
         if !self.pending_wizards.is_empty()
             && self.menu_live
             && self.running.is_none()
@@ -1470,6 +1714,18 @@ impl Scene {
             }
             return;
         }
+        if let Some((_, _, since)) = self.ejecting.as_mut() {
+            // Timed from the first picture after the game, not from its end:
+            // the mode change in between blocks for up to a second.
+            if since.is_nan() {
+                *since = now + EJECT_HOLD;
+            }
+            if ((now - *since) as f32) < EJECT_SECS {
+                self.draw_ejecting(fb);
+                return;
+            }
+            self.ejecting = None;
+        }
         if self.menu_live && !matches!(self.screen, Screen::Menu) {
             if self.bt.poll() {
                 self.pending.push(Sound::Lock);
@@ -1486,27 +1742,22 @@ impl Scene {
             }
             return;
         }
-        self.draw_post(fb, t);
-        self.draw_logo(fb, t);
-        self.draw_crt_tag(fb, t, false);
-        self.draw_etch(fb, t);
-        self.draw_crt_tag(fb, t, true);
-        if self.menu_live {
-            // Icon and wordmark together, one sweep every nine seconds.
-            let (lx, ly, lsize) = self.logo_final(fb);
-            let mw = self.mark_cols * MARK_SCALE;
-            let mx = (fb.w as i32 - mw) / 2;
-            let bottom = self.mark_final_y(fb) + self.mark_rows * 2 * MARK_SCALE;
-            let x0 = mx.min(lx);
-            let x1 = (mx + mw).max(lx + lsize);
-            self.glint(fb, x0, ly, x1 - x0, bottom - ly, 6.0, 0.0);
+        if t < HALL_FROM + HALL_CLIMB {
+            self.draw_post(fb, t);
+            self.draw_logo(fb, t);
+            self.draw_crt_tag(fb, t, false);
+            self.draw_etch(fb, t);
+            self.draw_crt_tag(fb, t, true);
+        }
+        if t >= HALL_FROM {
+            self.draw_hall_bridge(fb, t);
         }
         self.draw_home(fb, t);
         if t >= 2.2 && !self.chime_played {
             self.chime_played = true;
             self.pending.push(Sound::Chime);
         }
-        if t > 8.2 && !self.menu_live {
+        if t > MENU_LIVE && !self.menu_live {
             self.menu_live = true;
             self.last_input = now;
         }
@@ -1551,16 +1802,28 @@ impl Scene {
         std::mem::take(&mut self.rumble_pending)
     }
 
-    /// The selection band breathes with the beat while music plays.
-    fn band_color(&self) -> Color {
-        if self.music.status.playing() {
-            crate::fb::lerp_color(
-                self.theme.selection,
-                self.theme.accent,
-                self.deck.kick.hit * 0.3,
-            )
-        } else {
-            self.theme.selection
+    /// A passing message, in a small raised window of its own rather than
+    /// loose on the ground. `y` is where the text sits, as it always was.
+    fn draw_message(&self, fb: &mut Framebuffer, x: i32, y: i32, text: &str) {
+        let th = &self.theme;
+        let tones = crate::paint::Tones::of(th);
+        let w = Framebuffer::text_width(text, 1) + 12;
+        crate::paint::bevel(fb, &tones, x, y - 3, w, 13, tones.panel, tones.panel2, true);
+        fb.rect(x + 2, y - 1, 2, 9, th.cyan);
+        fb.text(x + 7, y, text, th.cyan, 1);
+    }
+
+    /// The selection, drawn as a lit key. A sheen crosses it every four
+    /// seconds, the small movement that says which row is alive.
+    fn select_bar(&self, fb: &mut Framebuffer, x: i32, y: i32, w: i32, h: i32) {
+        let tones = crate::paint::Tones::of(&self.theme);
+        let shine = ((self.now % 4.0) / 1.2) as f32;
+        crate::paint::select_bar(fb, &self.theme, &tones, x, y, w, h, shine);
+        if self.music.status.playing() && self.deck.kick.hit > 0.05 {
+            // The beat still lands on it, as a flash of the accent edge.
+            let k = self.deck.kick.hit * 0.6;
+            let edge = crate::fb::lerp_color(self.theme.accent, self.theme.paper, k);
+            fb.rect(x + 1, y, w - 2, 1, edge);
         }
     }
 

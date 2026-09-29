@@ -961,17 +961,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         last_top_commit: None,
         telling: 0,
         hfreq_band: cfg.output.hfreq_khz,
-        stretch: {
-            // The calibration was taken on the standard this machine is set
-            // to, so that frame is what the rate has to be read against.
-            let nominal = cfg
-                .modeline(&cfg.output.standard)
-                .and_then(Modeline::parse)
-                .map(|m| m.field_hz())
-                .filter(|hz| (40.0..=90.0).contains(hz))
-                .unwrap_or(60.0);
-            (nominal / cfg.output.vrr_min_hz.clamp(20.0, 200.0)).clamp(1.0, 1.5)
-        },
+        stretch: cfg.field_room(),
         target_period: None,
         rate_trim: 0,
         client_period: Duration::from_millis(16),

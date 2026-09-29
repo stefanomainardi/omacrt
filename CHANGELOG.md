@@ -7,6 +7,99 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-29
+
+### Added
+
+- Each game's refresh rate is remembered, so an arcade game starts at its
+  board's own rate instead of the last one its core ran at.
+- The time each game has been played is kept and shown under its cover.
+- The home stands in an arcade hall: an aisle between two rows of lit
+  cabinets playing their attract modes, a cosmic carpet, and the wordmark
+  as a neon sign on the far wall, in the theme's colours. The menu sits in a
+  window of dark glass with a neon frame.
+- After the boot's floor, the laser climbs the screen and the hall stands up
+  behind it; the word and the mark fly to the far wall, the sign strikes and
+  the hall powers on, the cabinets pair by pair from the back.
+- The Style page shows the theme under the cursor as a card: the hall's
+  sign in its colours and nine of its colours in tiles.
+- The Power page has the television on its stage, dark while the cursor is
+  on switching off.
+- The Music and Videos hubs have a stage beside them like the systems list:
+  a radio cassette recorder of the eighties for Music, a television with
+  its rabbit ears for Videos, both voxel models.
+- Rare moments on the weather page after Magritte: men in bowler hats
+  standing in the air instead of the rain, a daylight sky over the street
+  at night, the man with the apple, an eye as big as the sky, a rock with a
+  castle floating by, a dove made of sky in a storm, an apple filling the
+  street, the moon in front of a tree, an easel painting the city it hides,
+  and a clock that says it is not one. One every few minutes, fitting the
+  weather and the hour.
+- An art gallery among the Ambient pages and the screensaver's: three
+  paintings after René Magritte redrawn in pixels, Le fils de l'homme,
+  L'empire des lumières and Golconde, each hung in a gilt frame under a
+  spotlight for forty seconds and moving a little in its own mood.
+- The pause menu shows the running game's console on a lit stage, the game
+  in it and its lamp on, with what the row under the cursor is set to.
+- The hall has its sound under the home menu: the room, a murmur, three
+  cabinets playing their tunes far off and a coin going in, well under the
+  menu's own sounds. Settings, Sound, the hall turns it off.
+- People come into the hall a while after the home is up, one scene at a
+  time: somebody plays and loses to a GAME OVER, two play side by side,
+  somebody makes a record and cheers, a man mops the far end of the aisle.
+
+### Changed
+
+- The clock and weather page is redrawn: the sky in the colours of each hour
+  with the sun's light round it, clouds with volume lit from the sun, a far
+  city in the haze behind the town, buildings with roofs of their own and
+  windows that take the sky, the Atomium as a cube on its corner with mirror
+  spheres by day and three legs, and the time in a bevelled face of its own
+  beside an icon for the weather.
+- The screensaver waits five minutes by default instead of one.
+- A new 8x8 font, drawn for the tube: two pixel stems, one pixel horizontals,
+  more air between letters.
+- The selection is a lit bar with a sheen, the title sits on a shaded band,
+  the clock in a sunken window, and messages in a small raised one.
+- Button hints are drawn as buttons, in the colour of what they do.
+- Menu icons are redrawn in the theme's colours, with light and shade, and
+  each action has its own: saving, loading, rewinding, fast forward, slow
+  motion, reset and going back to the launcher no longer share icons.
+- The systems list puts the selected console on a lit stage, with its
+  number of games and video policy. The consoles are voxel models built
+  to their real measurements and drawn as pixel art from three quarters; a
+  newly chosen one comes down onto the stage and turns before it settles.
+- Launching a game shows its console on the stage and the game going in:
+  a cartridge with the cover as its label into the slot; for a disc console
+  the lid swings open, the disc with the cover printed on it goes into the
+  well and the lid shuts; a floppy into the PC's drive, a coin into the
+  cabinet. The power lamp lights when it clicks home.
+- Leaving a game shows it coming back out: the lamp goes off, the
+  cartridge rises out of the slot or the lid opens and the disc lifts, then
+  the list returns.
+- The pad sockets are windows: raised under the cursor, sunk otherwise, the
+  port number on a tab.
+- The games list shows the game's box on the same kind of stage: the cover
+  on its front, its spine in the console's colour, turning in when a game is
+  chosen, with the region and the time played as chips.
+
+### Fixed
+
+- A long title scrolling on the selected row no longer runs under the
+  row's icon.
+- The games stage shows where a game will resume as a chip with the resume
+  icon, instead of words that read as a second clock.
+- The core's line under the systems list no longer runs under the page count
+  when the core has a long name.
+- A game whose refresh rate is built into the timing is no longer shown lower
+  on the screen than the others.
+- A game or video started from the desktop while the screensaver is up now
+  starts, instead of only waking the television.
+- `omacrt mode --hz` holds a rate slower than the television follows at
+  `output.vrr_min_hz`, as `omacrt rate` already did.
+- The installer no longer restarts the Omarchy shell; a changed bar panel
+  appears at the next login.
+
 ## [0.10.0] - 2026-09-18
 
 ### Added
@@ -1385,7 +1478,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.0
 [0.10.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.10.0
 [0.9.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.9.0
 [0.8.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.2

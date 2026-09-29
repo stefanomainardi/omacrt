@@ -515,6 +515,21 @@ impl Config {
             _ => None,
         }
     }
+
+    /// How much longer than a timing's own field this set lets a field run,
+    /// as a ratio. `output.vrr_min_hz` was measured against the frame of the
+    /// standard this machine is set to, so it is read against that frame and
+    /// then holds for any timing: 55 against NTSC's 60.04 is nine per cent,
+    /// and nine per cent is also what a PAL frame may stretch.
+    pub fn field_room(&self) -> f64 {
+        let nominal = self
+            .modeline(&self.output.standard)
+            .and_then(output::Modeline::parse)
+            .map(|m| m.field_hz())
+            .filter(|hz| (40.0..=90.0).contains(hz))
+            .unwrap_or(60.0);
+        (nominal / self.output.vrr_min_hz.clamp(20.0, 200.0)).clamp(1.0, 1.5)
+    }
 }
 
 /// `~/.local/state/omacrt/state.json`: what `on` changed, so `off`
@@ -706,4 +721,21 @@ fn comment_of(line: &str) -> String {
         }
     }
     String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_room_is_read_against_the_frame_it_was_measured_on() {
+        let cfg: Config = toml::from_str(&default_config()).unwrap();
+        let room = cfg.field_room();
+        // 55 Hz against the NTSC frame's 60.04: a field may run nine per
+        // cent long, which puts an arcade board at 53 Hz outside it and
+        // one at 57.5 inside.
+        assert!((room - 60.04 / 55.0).abs() < 0.01, "{room}");
+        assert!(60.04 / 53.0 > room);
+        assert!(60.04 / 57.5 < room);
+    }
 }

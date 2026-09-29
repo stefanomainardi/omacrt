@@ -7,13 +7,17 @@
 //! the timing before the emulator opens, and there is one mode change instead
 //! of two.
 //!
-//! Keyed by core and standard rather than by game, because the rate belongs
-//! to the console and its region: Genesis Plus GX says 49.70 for every
-//! European cartridge and 59.92 for every American one. Two lines a core
-//! instead of one a game, for a collection of twenty thousand.
+//! Keyed two ways. By core and standard, because for a console the rate
+//! belongs to the console and its region: Genesis Plus GX says 49.70 for
+//! every European cartridge and 59.92 for every American one, so a game never
+//! played before still starts at the right rate. And by game, because an
+//! arcade board runs at whatever that board ran at: Mortal Kombat at 54.7,
+//! R-Type at 55, most of the rest at 57.5 or 60. One line for MAME would be
+//! the last game's rate for every game, and a set name says no region, so the
+//! core's line was never even consulted for one.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn path() -> PathBuf {
     crate::crt::state_dir().join("rates.tsv")
@@ -32,8 +36,12 @@ fn key(core: &str, standard: &str) -> String {
 }
 
 fn load() -> BTreeMap<String, f32> {
+    load_from(&path())
+}
+
+fn load_from(file: &Path) -> BTreeMap<String, f32> {
     let mut out = BTreeMap::new();
-    let Ok(text) = std::fs::read_to_string(path()) else {
+    let Ok(text) = std::fs::read_to_string(file) else {
         return out;
     };
     for line in text.lines() {
@@ -55,23 +63,51 @@ pub fn known(core: &str, standard: &str) -> Option<f32> {
     load().get(&key(core, standard)).copied()
 }
 
+fn games_path() -> PathBuf {
+    crate::crt::state_dir().join("game-rates.tsv")
+}
+
+/// The rate this game ran at last time, if it has run before.
+pub fn known_game(game: &Path) -> Option<f32> {
+    known_game_in(&games_path(), game)
+}
+
+fn known_game_in(file: &Path, game: &Path) -> Option<f32> {
+    load_from(file)
+        .get(game.to_string_lossy().as_ref())
+        .copied()
+}
+
+/// Remember the rate a game has just reported.
+pub fn remember_game(game: &Path, hz: f32) {
+    let key = game.to_string_lossy().replace(['\t', '\n', '\r'], " ");
+    if !key.is_empty() {
+        store(&games_path(), key, hz);
+    }
+}
+
 /// Remember a rate a core has just reported. Writes nothing when it is the
 /// same as what is already there, so a game a night does not rewrite a file a
 /// night.
 pub fn remember(core: &str, standard: &str, hz: f32) {
+    store(&path(), key(core, standard), hz);
+}
+
+fn store(file: &Path, k: String, hz: f32) {
     if !(40.0..=90.0).contains(&hz) {
         return;
     }
-    let k = key(core, standard);
-    let mut all = load();
+    let mut all = load_from(file);
     if all.get(&k).is_some_and(|v| (v - hz).abs() < 0.001) {
         return;
     }
     all.insert(k, hz);
     let text: String = all.iter().map(|(k, v)| format!("{k}\t{v:.4}\n")).collect();
-    let p = path();
-    let tmp = p.with_extension("tsv.new");
-    if std::fs::write(&tmp, text).is_ok() && std::fs::rename(&tmp, &p).is_err() {
+    if let Some(dir) = file.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let tmp = file.with_extension("tsv.new");
+    if std::fs::write(&tmp, text).is_ok() && std::fs::rename(&tmp, file).is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
 }
@@ -93,6 +129,42 @@ mod tests {
         );
         assert_eq!(key("genesis_plus_gx_libretro.so", "pal"), want);
         assert_eq!(key("genesis_plus_gx_libretro", "pal"), want);
+    }
+
+    /// A file of this test's own, so the tests can run beside each other.
+    fn file(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("omacrt-rates-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let p = dir.join(format!("{name}.tsv"));
+        let _ = std::fs::remove_file(&p);
+        p
+    }
+
+    fn remember_game_in(file: &Path, game: &Path, hz: f32) {
+        store(file, game.to_string_lossy().into_owned(), hz);
+    }
+
+    #[test]
+    fn two_boards_on_one_core_keep_their_own_rates() {
+        let f = file("boards");
+        let mk = Path::new("/roms/arcade_mame/mk.zip");
+        let outrun = Path::new("/roms/arcade_mame/outrun.zip");
+        assert_eq!(known_game_in(&f, mk), None);
+        remember_game_in(&f, mk, 54.706);
+        remember_game_in(&f, outrun, 60.056);
+        assert_eq!(known_game_in(&f, mk), Some(54.706));
+        assert_eq!(known_game_in(&f, outrun), Some(60.056));
+        let _ = std::fs::remove_file(&f);
+    }
+
+    #[test]
+    fn a_rate_no_television_runs_at_is_not_remembered() {
+        let f = file("refused");
+        let p = Path::new("/roms/x.zip");
+        remember_game_in(&f, p, 0.0);
+        remember_game_in(&f, p, 120.0);
+        assert_eq!(known_game_in(&f, p), None);
+        let _ = std::fs::remove_file(&f);
     }
 
     #[test]

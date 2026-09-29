@@ -187,8 +187,9 @@ letters on its face sit where SDL expects, and a button that shakes it. So the
 ports can be arranged, and a pad identified, without turning the television on.
 
 Changing a plugin's files is not enough for the desktop to show the new
-version: the shell keeps the QML it has already loaded. `omarchy restart shell`
-is what puts it on screen.
+version: the shell keeps the QML it has already loaded, and the new panel
+appears at the next login. Restarting the shell to hurry it can leave the
+desktop black until a reboot.
 
 ## Bluetooth pairing
 

@@ -27,12 +27,16 @@ fn default_cycle_secs() -> u32 {
     240
 }
 
+/// Five minutes: the home has people coming and going in it now, and a
+/// minute put the screensaver over them before most had arrived.
+pub const DEFAULT_SAVER_IDLE: u32 = 300;
+
 /// Everything an idle television can show, in the order pages take turns.
 ///
 /// The launcher draws each of these and knows what to call them; this is the
 /// list itself, because the settings file, its migration and the screen all
 /// have to agree on the names.
-pub const PAGES: [&str; 4] = ["effects", "photos", "ambient", "system"];
+pub const PAGES: [&str; 5] = ["effects", "photos", "ambient", "gallery", "system"];
 
 impl Screensaver {
     /// Is this page in the rotation?
@@ -296,6 +300,10 @@ pub struct Sound {
     /// default: that page comes up on its own when the set is left alone.
     #[serde(default)]
     pub weather: bool,
+    /// The arcade hall under the home menu: a murmur, cabinets playing far
+    /// off, a coin now and then, well under everything the menu says.
+    #[serde(default = "default_true")]
+    pub hall: bool,
 }
 
 impl Default for Sound {
@@ -304,6 +312,7 @@ impl Default for Sound {
             menu: true,
             deck: false,
             weather: false,
+            hall: true,
         }
     }
 }
@@ -342,7 +351,7 @@ impl Default for Settings {
             version: crate::config::VERSION,
             screensaver: Screensaver {
                 enabled: true,
-                idle_secs: 60,
+                idle_secs: DEFAULT_SAVER_IDLE,
                 effect: "random".into(),
                 cycle_secs: default_cycle_secs(),
                 // A new machine shows all of it, which is the point of

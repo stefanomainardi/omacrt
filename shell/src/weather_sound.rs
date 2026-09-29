@@ -41,6 +41,9 @@ pub enum Ambience {
     Snow,
     /// Fog: a low room tone and a horn a long way off.
     Fog,
+    /// The arcade hall under the home menu: the room, a murmur, three
+    /// cabinets playing their attract tunes a long way off, a coin.
+    Arcade,
 }
 
 impl Ambience {
@@ -72,6 +75,7 @@ impl Ambience {
             Ambience::Storm => storm(),
             Ambience::Snow => snow(),
             Ambience::Fog => fog(),
+            Ambience::Arcade => arcade(),
         };
         crush(&mut out, self.hold(), 32.0);
         level(&mut out, self.rms());
@@ -87,7 +91,7 @@ impl Ambience {
     fn hold(self) -> usize {
         match self {
             Ambience::Calm | Ambience::Night => 4,
-            Ambience::Breeze | Ambience::Fog => 8,
+            Ambience::Breeze | Ambience::Fog | Ambience::Arcade => 8,
             Ambience::Snow => 10,
             _ => 6,
         }
@@ -100,6 +104,7 @@ impl Ambience {
     fn rms(self) -> f32 {
         match self {
             Ambience::Snow => 0.004,
+            Ambience::Arcade => 0.005,
             Ambience::Calm => 0.005,
             Ambience::Night => 0.006,
             Ambience::Fog => 0.008,
@@ -121,11 +126,12 @@ impl Ambience {
             Ambience::Storm => "storm",
             Ambience::Snow => "snow",
             Ambience::Fog => "fog",
+            Ambience::Arcade => "arcade",
         }
     }
 
     /// Every one of them, for `--dump-audio` and for the tests.
-    pub const ALL: [Ambience; 8] = [
+    pub const ALL: [Ambience; 9] = [
         Ambience::Calm,
         Ambience::Night,
         Ambience::Breeze,
@@ -134,6 +140,7 @@ impl Ambience {
         Ambience::Storm,
         Ambience::Snow,
         Ambience::Fog,
+        Ambience::Arcade,
     ];
 }
 
@@ -244,6 +251,66 @@ fn rain(strength: f32, cutoff: f32, every: f32) -> Vec<f32> {
         });
         // An interval that wanders: rain that ticks evenly is a metronome.
         at += every * (0.4 + rng.next().abs() * 1.2);
+    }
+    out
+}
+
+fn midi(n: i32) -> f32 {
+    440.0 * 2.0f32.powf((n - 69) as f32 / 12.0)
+}
+
+/// The hall: the room's low tone and a murmur that rises and falls, three
+/// cabinets playing their tunes on square waves in the distance (a lead,
+/// a bass, blips), each filtered for how far off it is, and a coin going in
+/// halfway through. Every tune fits the loop exactly, so it joins.
+fn arcade() -> Vec<f32> {
+    let mut out = bed(260.0, 41);
+    let mut murmur = bed(900.0, 43);
+    for (i, (s, m)) in out.iter_mut().zip(murmur.iter_mut()).enumerate() {
+        let t = i as f32 / RATE as f32;
+        *s = *s * 0.45 + *m * 0.25 * (0.6 + 0.4 * (t * TAU * 0.5).sin());
+    }
+    let tune = |notes: &[i32], every: f32, len: f32, cutoff: f32, gain: f32| -> Vec<f32> {
+        let mut v = canvas();
+        for (k, n) in notes.iter().enumerate() {
+            if *n == 0 {
+                continue;
+            }
+            let hz = midi(*n);
+            note(&mut v, k as f32 * every, len, gain, move |t, f| {
+                square(t, hz) * (1.0 - f).powi(2)
+            });
+        }
+        lowpass(&mut v, cutoff);
+        v
+    };
+    let lead = tune(
+        &[
+            72, 76, 79, 84, 79, 76, 72, 76, 74, 77, 81, 86, 81, 77, 74, 77,
+        ],
+        0.25,
+        0.18,
+        1400.0,
+        0.30,
+    );
+    let bass = tune(&[48, 0, 55, 0, 53, 0, 50, 52], 0.5, 0.35, 380.0, 0.40);
+    let blips = tune(
+        &[96, 0, 91, 0, 0, 93, 0, 0, 96, 0, 88, 0],
+        1.0 / 3.0,
+        0.05,
+        2200.0,
+        0.18,
+    );
+    for (i, s) in out.iter_mut().enumerate() {
+        *s += lead.get(i).copied().unwrap_or(0.0)
+            + bass.get(i).copied().unwrap_or(0.0)
+            + blips.get(i).copied().unwrap_or(0.0);
+    }
+    // A coin into a slot, and its little bounce.
+    for (at, g) in [(2.6f32, 0.5f32), (2.71, 0.25)] {
+        note(&mut out, at, 0.16, g, |t, f| {
+            ((t * 2600.0 * TAU).sin() + 0.6 * (t * 3900.0 * TAU).sin()) * (1.0 - f).powi(3)
+        });
     }
     out
 }

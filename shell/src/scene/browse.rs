@@ -40,7 +40,7 @@ impl Scene {
     // -- game browser (systems, then games; recent and favorites on top) -----
 
     pub(super) const ROWS_PER_PAGE: usize = 13;
-    const VIRTUAL: usize = 3; // recent/, favorites/, collections/
+    pub(super) const VIRTUAL: usize = 3; // recent/, favorites/, collections/
 
     pub(super) fn open_games(&mut self, sys: Option<usize>) {
         self.game_dir = None;
@@ -528,7 +528,7 @@ impl Scene {
     /// Rows of the systems screen: recent/, favorites/, then every system.
     /// Systems the Games browser lists: everything but the videos folder,
     /// which is not a console and has its own row on the home menu.
-    fn browse_systems(&self) -> Vec<usize> {
+    pub(super) fn browse_systems(&self) -> Vec<usize> {
         (0..self.library.systems.len())
             .filter(|&i| !self.library.systems[i].is_video())
             .collect()
@@ -803,6 +803,29 @@ impl Scene {
                 if nav == Nav::Back {
                     self.screen = Screen::AmbientHub { sel: 1 };
                     moved = true;
+                }
+            }
+            Screen::Gallery { at } => {
+                let n = crate::gallery::PAINTINGS.len();
+                // The one on the wall, counting the turns it has taken on
+                // its own since the page came up.
+                let turns = ((self.now - self.screen_since).max(0.0) / GALLERY_TURN) as usize;
+                let on = (*at + turns) % n;
+                match nav {
+                    Nav::Right | Nav::Down => {
+                        *at = (on + 1) % n;
+                        self.screen_since = self.now;
+                        moved = true;
+                    }
+                    Nav::Left | Nav::Up => {
+                        *at = (on + n - 1) % n;
+                        self.screen_since = self.now;
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        self.screen = Screen::AmbientHub { sel: 3 };
+                        moved = true;
+                    }
                 }
             }
             Screen::Frame => match nav {
@@ -1508,16 +1531,23 @@ impl Scene {
             | Screen::About { .. }
             | Screen::Monitor { .. }
             | Screen::Ambient => Action::None,
+            Screen::Gallery { at } => {
+                let next = (self.gallery_on(at) + 1) % crate::gallery::PAINTINGS.len();
+                self.screen = Screen::Gallery { at: next };
+                self.screen_since = self.now;
+                Action::None
+            }
             Screen::AmbientHub { sel } => {
                 self.pending.push(Sound::Select);
                 match sel {
                     0 => self.open_frame(),
                     1 => self.go(Screen::Ambient),
-                    _ => {
+                    2 => {
                         self.sysmon.sample();
                         self.sysmon_at = 0.0;
                         self.go(Screen::Monitor { page: 0 });
                     }
+                    _ => self.go(Screen::Gallery { at: 0 }),
                 }
                 Action::None
             }
@@ -1808,10 +1838,12 @@ impl Scene {
             // later, and acting on it then means changing the mode under a
             // program that is still starting.
             let standard = crate::library::standard_for_path(&entry.game.path);
-            // And the rate this core ran at the last time it was in this
-            // standard, so the timing is right before the emulator opens
-            // rather than one mode change later.
-            let hz = standard.and_then(|s| crate::rates::known(&system.core, s));
+            // And the rate this game ran at last time, else the rate this
+            // core ran at the last time it was in this standard, so the
+            // timing is right before the emulator opens rather than one mode
+            // change later.
+            let hz = crate::rates::known_game(&entry.game.path)
+                .or_else(|| standard.and_then(|s| crate::rates::known(&system.core, s)));
             if l.is_some()
                 || standard.is_some()
                 || hz.is_some()
@@ -1847,6 +1879,7 @@ impl Scene {
                     color: self.theme.yellow,
                     started: self.now - LAUNCH_SECS as f64, // no animation, start right away
                     spawned: false,
+                    cues: 0,
                     lines,
                 });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
@@ -1872,6 +1905,7 @@ impl Scene {
                     color,
                     started: self.now,
                     spawned: false,
+                    cues: 0,
                     lines,
                 });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
@@ -1978,10 +2012,48 @@ impl Scene {
     }
 
     /// The game process ended; back to the list, cursor where it was.
+    /// Start or stop the clock of the running game as it runs, pauses and
+    /// resumes. What decides it is the state, not the events, so a pause
+    /// that went through any of its paths is counted the same way.
+    pub(super) fn tick_playtime(&mut self) {
+        let counting = self.running_path.is_some()
+            && self.paused.is_none()
+            && self.player.is_none()
+            && self.launching.as_ref().is_none_or(|l| l.spawned);
+        match (counting, self.play_since) {
+            (true, None) => self.play_since = Some(self.now),
+            (false, Some(_)) => self.stop_play_clock(),
+            _ => {}
+        }
+    }
+
+    fn stop_play_clock(&mut self) {
+        let Some(since) = self.play_since.take() else {
+            return;
+        };
+        let Some((_, path)) = &self.running_path else {
+            return;
+        };
+        let secs = (self.now - since).max(0.0) as u64;
+        omacrt_shell::playtime::add(
+            &self.library.config_dir.join("playtime.tsv"),
+            &mut self.playtime,
+            path,
+            secs,
+        );
+    }
+
     pub fn game_finished(&mut self, ok: bool) {
+        self.stop_play_clock();
         self.running = None;
-        if let Some((_, path)) = self.running_path.take() {
+        if let Some((system, path)) = self.running_path.take() {
             self.states.forget(&path);
+            // A game that ran comes back out of its console. A video, or a
+            // system with no model, goes straight back to the list.
+            if ok && self.player.is_none() && crate::consoles::has(&system) {
+                // Its clock starts on the first frame drawn after it.
+                self.ejecting = Some((system, path, f64::NAN));
+            }
         }
         self.paused = None;
         self.launching = None;
@@ -2008,40 +2080,36 @@ impl Scene {
         let left = margin + self.slide();
         let max_cols = ((w - 2 * margin) / 8) as usize;
         if on {
-            fb.rect(left, y - 2, w - 2 * margin, 12, self.band_color());
+            self.select_bar(fb, left, y - 2, w - 2 * margin, 12);
         }
         let room = max_cols.saturating_sub(right.chars().count() + 1);
         let full = format!("  {label}");
         let count = full.chars().count();
         let text: String = if on && count > room {
-            // Marquee: pause, scroll left, pause, from the start again.
+            // Marquee: pause, scroll left, pause, from the start again. Only
+            // the label moves; the two columns in front of it belong to the
+            // row's icon, and letters scrolled into them ran under it.
+            let (lead, label_room) = (2, room.saturating_sub(2));
             let span = (count - room + 2) as f64;
             let cycle = span * 0.28 + 1.6;
             let t = (self.now % cycle) - 0.9;
             let off = (t / 0.28).clamp(0.0, span).floor() as usize;
-            let padded = format!("{full}   ");
-            padded.chars().cycle().skip(off).take(room).collect()
+            let padded = format!("{label}   ");
+            let moving: String = padded.chars().cycle().skip(off).take(label_room).collect();
+            format!("{}{moving}", " ".repeat(lead))
         } else {
             full.chars().take(room).collect()
         };
-        fb.text(
-            left,
-            y,
-            &text,
-            if on { self.theme.accent } else { color },
-            1,
-        );
-        fb.text(
-            left + w - 2 * margin - Framebuffer::text_width(right, 1),
-            y,
-            right,
-            if on {
-                self.theme.accent
-            } else {
-                self.theme.dim
-            },
-            1,
-        );
+        let rx = left + w - 2 * margin - Framebuffer::text_width(right, 1);
+        if on {
+            // Light words on their shadow: the bar is already the accent.
+            let shadow = crate::paint::Tones::of(&self.theme).shadow;
+            crate::paint::text_shadow(fb, left, y, &text, self.theme.paper, shadow);
+            crate::paint::text_shadow(fb, rx, y, right, self.theme.paper, shadow);
+        } else {
+            fb.text(left, y, &text, color, 1);
+            fb.text(rx, y, right, self.theme.dim, 1);
+        }
     }
 
     pub(super) fn draw_browser(&mut self, fb: &mut Framebuffer) {
@@ -2060,45 +2128,130 @@ impl Scene {
                     .iter()
                     .map(|&i| self.library.systems[i].clone())
                     .collect();
-                // The selected console sits on the right; rows make room.
-                let panel = 72;
+                // The selected console stands on a lit stage on the right,
+                // and the list gives up its numbers to it: a name is enough
+                // to choose by, and the stage says the rest in the light.
+                let panel = 156.min(w - 2 * left - 124).max(72);
                 self.row_shrink = panel + 8;
-                if sel >= Self::VIRTUAL
-                    && let Some(s) = systems.get(sel - Self::VIRTUAL)
-                {
-                    let name = s.name.clone();
-                    let px = w - left - panel;
-                    let py = y0 + 6;
-                    if let Some(img) = self.art.system_image(&name, panel as usize) {
-                        let img = img.clone();
-                        fb.blit(
-                            px + (panel - img.w as i32) / 2,
-                            py + (panel - img.h as i32) / 2,
-                            &img,
-                        );
-                    } else if let Some((logo, c)) = icons::system_logo(&name) {
-                        fb.bitmap(px + panel / 2 - 10, py + panel / 2 - 10, logo, c, 2, 10);
-                    }
-                    let label = crate::index::catalog(&name)
+                let px = w - left - panel;
+                let stage_h = (h - 34 - y0).max(80);
+                let (brand, name, label, count, policy) = if sel >= Self::VIRTUAL {
+                    let s = &systems[sel - Self::VIRTUAL];
+                    let brand = icons::system_logo(&s.name)
+                        .map(|(_, c)| c)
+                        .unwrap_or(self.theme.accent);
+                    let label = crate::index::catalog(&s.name)
                         .map(|(l, _, _)| l.to_string())
-                        .unwrap_or_else(|| name.clone());
-                    let words: Vec<&str> = label.split(' ').collect();
-                    let mut line = String::new();
-                    let mut ly = py + panel + 6;
-                    for wd in words {
-                        if !line.is_empty() && (line.len() + 1 + wd.len()) * 8 > panel as usize {
-                            fb.text(px, ly, &line, scale(self.theme.dim, 0.9), 1);
-                            ly += 10;
-                            line.clear();
+                        .unwrap_or_else(|| s.name.clone());
+                    let count = browse
+                        .get(sel - Self::VIRTUAL)
+                        .and_then(|&si| self.system_counts.get(si))
+                        .copied()
+                        .unwrap_or(0);
+                    let policy = crate::library::VideoPolicy::parse(&s.video)
+                        .label()
+                        .to_string();
+                    (brand, s.name.clone(), label, count, policy)
+                } else {
+                    let (label, count) = match sel {
+                        0 => ("Recent", self.recent.len()),
+                        1 => ("Favorites", self.favorites.len()),
+                        _ => ("Collections", self.library.collections().len()),
+                    };
+                    let th = &self.theme;
+                    let brand = [th.orange, th.yellow, th.yellow][sel.min(2)];
+                    (
+                        brand,
+                        String::new(),
+                        label.to_string(),
+                        count,
+                        String::new(),
+                    )
+                };
+                let th = self.theme.clone();
+                let (floor, br) = crate::stage::draw(fb, &th, px, y0, panel, stage_h, brand);
+                let cx = px + panel / 2;
+                let lamp = lerp_color(br[4], 0xffecbe, 0.5);
+                // A console that has just been chosen arrives on the stage.
+                if self.stage_name != name {
+                    self.stage_name = name.clone();
+                    self.stage_since = self.now;
+                }
+                if sel < Self::VIRTUAL {
+                    // The virtual rows have no console: their own icon, big,
+                    // stands in the light instead.
+                    let icon = [icons::CLOCK, icons::STAR, icons::FOLDER][sel.min(2)];
+                    crate::stage::shadow(fb, &th, cx, floor + 2, 22, 6);
+                    let big = 4;
+                    let (ix, iy) = (cx - 4 * big, floor - 8 * big + 2);
+                    let mut tile = Framebuffer::new(8, 8);
+                    icons::paint(&mut tile, 0, 0, &icon, &th, th.accent, true, 1.0);
+                    for j in 0..8 {
+                        for i in 0..8 {
+                            let c = tile.at(i, j);
+                            if c != 0 {
+                                fb.rect(ix + i * big, iy + j * big, big, big, c);
+                            }
                         }
-                        if !line.is_empty() {
-                            line.push(' ');
-                        }
-                        line.push_str(wd);
                     }
-                    if !line.is_empty() {
-                        fb.text(px, ly, &line, scale(self.theme.dim, 0.9), 1);
-                    }
+                } else if crate::stage::stand(
+                    fb,
+                    &th,
+                    &name,
+                    cx,
+                    floor,
+                    lamp,
+                    self.now - self.stage_since,
+                ) {
+                } else if let Some(img) = self.art.system_image(&name, 88) {
+                    let img = img.clone();
+                    crate::stage::shadow(fb, &th, cx, floor + 2, img.w as i32 / 2 + 6, 7);
+                    fb.blit(cx - img.w as i32 / 2, floor + 4 - img.h as i32, &img);
+                } else if let Some((logo, c)) = icons::system_logo(&name) {
+                    fb.bitmap(cx - 20, floor - 40, logo, c, 4, 10);
+                }
+                let tones = crate::paint::Tones::of(&th);
+                // The full name when it fits, the short one when it does not:
+                // NES reads better than NINTENDO ENTERTAINM.
+                let cols = (panel / 8) as usize;
+                let title = if label.chars().count() <= cols || name.is_empty() {
+                    label.to_uppercase()
+                } else {
+                    name.to_uppercase()
+                };
+                let title: String = title.chars().take(cols).collect();
+                crate::paint::text_shadow(
+                    fb,
+                    cx - Framebuffer::text_width(&title, 1) / 2,
+                    y0 + 8,
+                    &title,
+                    th.paper,
+                    tones.shadow,
+                );
+                let games = if shots() {
+                    String::new()
+                } else if count == 1 {
+                    "1 game".to_string()
+                } else {
+                    format!("{count} games")
+                };
+                crate::paint::text_shadow(
+                    fb,
+                    cx - Framebuffer::text_width(&games, 1) / 2,
+                    y0 + 19,
+                    &games,
+                    // The theme's own text colour: a tint of the stage's
+                    // light washed out on a light theme.
+                    th.fg,
+                    tones.shadow,
+                );
+                let base = y0 + stage_h - 12;
+                // The core is on the line below the list, with runahead and
+                // whether it is installed; the stage keeps only the picture's
+                // policy.
+                if !policy.is_empty() {
+                    let pw = Framebuffer::text_width(&policy, 1);
+                    crate::paint::text_shadow(fb, cx - pw / 2, base, &policy, br[3], tones.shadow);
                 }
                 let total = Self::VIRTUAL + systems.len();
                 let end = (top + SYS_PAGE).min(total);
@@ -2112,50 +2265,47 @@ impl Scene {
                     };
                     match i {
                         0 => {
-                            self.draw_row(
+                            self.draw_row(fb, y, "Recent", "", on, self.theme.paper);
+                            icons::paint(
                                 fb,
-                                y,
-                                "Recent",
-                                &format!("{:>4}", self.recent.len()),
+                                left + ox + 4,
+                                y + 1,
+                                &icons::CLOCK,
+                                &self.theme,
+                                icon_c,
                                 on,
-                                self.theme.paper,
+                                1.0,
                             );
-                            fb.bitmap(left + ox + 4, y + 1, &icons::CLOCK, icon_c, 1, 8);
                         }
                         1 => {
-                            self.draw_row(
+                            self.draw_row(fb, y, "Favorites", "", on, self.theme.paper);
+                            icons::paint(
                                 fb,
-                                y,
-                                "Favorites",
-                                &format!("{:>4}", self.favorites.len()),
+                                left + ox + 4,
+                                y + 1,
+                                &icons::STAR,
+                                &self.theme,
+                                icon_c,
                                 on,
-                                self.theme.paper,
+                                1.0,
                             );
-                            fb.bitmap(left + ox + 4, y + 1, &icons::STAR, icon_c, 1, 8);
                         }
                         2 => {
-                            self.draw_row(
+                            self.draw_row(fb, y, "Collections", "", on, self.theme.paper);
+                            icons::paint(
                                 fb,
-                                y,
-                                "Collections",
-                                &format!("{:>4}", self.library.collections().len()),
+                                left + ox + 4,
+                                y + 1,
+                                &icons::FOLDER,
+                                &self.theme,
+                                icon_c,
                                 on,
-                                self.theme.paper,
+                                1.0,
                             );
-                            fb.bitmap(left + ox + 4, y + 1, &icons::FOLDER, icon_c, 1, 8);
                         }
                         _ => {
                             let sys = &systems[i - Self::VIRTUAL];
-                            let count = browse
-                                .get(i - Self::VIRTUAL)
-                                .and_then(|&si| self.system_counts.get(si))
-                                .copied()
-                                .unwrap_or(0);
-                            let right = format!(
-                                "{count:>4}  {}",
-                                crate::library::VideoPolicy::parse(&sys.video).label()
-                            );
-                            self.draw_row(fb, y, &sys.name, &right, on, self.theme.paper);
+                            self.draw_row(fb, y, &sys.name, "", on, self.theme.paper);
                             match icons::system_logo(&sys.name) {
                                 Some((logo, c)) => fb.bitmap(
                                     left + ox + 2,
@@ -2165,13 +2315,25 @@ impl Scene {
                                     1,
                                     10,
                                 ),
-                                None => {
-                                    fb.bitmap(left + ox + 4, y + 1, &icons::CONSOLE, icon_c, 1, 8)
-                                }
+                                None => icons::paint(
+                                    fb,
+                                    left + ox + 4,
+                                    y + 1,
+                                    &icons::CONSOLE,
+                                    &self.theme,
+                                    icon_c,
+                                    on,
+                                    1.0,
+                                ),
                             }
                         }
                     }
                 }
+                // The page count takes the right end of the line, so the
+                // core's line stops short of it: a long core name such as
+                // mednafen_psx_hw used to run on underneath the count.
+                let pos = (total > SYS_PAGE).then(|| format!("{}/{}", sel + 1, total));
+                let room = max_cols.saturating_sub(pos.as_ref().map_or(0, |p| p.len() + 2));
                 if sel >= Self::VIRTUAL
                     && let Some(sys) = systems.get(sel - Self::VIRTUAL)
                 {
@@ -2187,7 +2349,7 @@ impl Scene {
                     fb.text(
                         left,
                         h - 28,
-                        &cut(&info, max_cols),
+                        &cut(&info, room),
                         if core_ok {
                             self.theme.dim
                         } else {
@@ -2196,8 +2358,7 @@ impl Scene {
                         1,
                     );
                 }
-                if total > SYS_PAGE {
-                    let pos = format!("{}/{}", sel + 1, total);
+                if let Some(pos) = pos {
                     fb.text(
                         w - left - Framebuffer::text_width(&pos, 1),
                         h - 28,
@@ -2206,8 +2367,7 @@ impl Scene {
                         1,
                     );
                 }
-                let hint = self.hint(&[("A", "open"), ("B", "back")]);
-                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+                self.draw_hint(fb, left, h - 16, &[("A", "open"), ("B", "back")]);
             }
             Screen::Collections { sel, top } => {
                 let y0 = self.draw_header(fb, "Collections");
@@ -2234,17 +2394,19 @@ impl Scene {
                             i == sel,
                             self.theme.paper,
                         );
-                        fb.bitmap(
+                        icons::paint(
+                            fb,
                             left + self.slide() + 4,
                             y + 1,
                             &icons::FOLDER,
+                            &self.theme,
                             if i == sel {
                                 self.theme.accent
                             } else {
                                 self.theme.dim
                             },
-                            1,
-                            8,
+                            i == sel,
+                            1.0,
                         );
                     }
                     let pos = format!("{}/{}", sel + 1, lists.len());
@@ -2256,8 +2418,7 @@ impl Scene {
                         1,
                     );
                 }
-                let hint = self.hint(&[("A", "open"), ("B", "back")]);
-                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+                self.draw_hint(fb, left, h - 16, &[("A", "open"), ("B", "back")]);
             }
             Screen::Games { sys, sel, top } => {
                 let prompt = match sys {
@@ -2315,7 +2476,9 @@ impl Scene {
                 let page = self.page_rows();
                 // Box art of the selected game on the right, once the cursor
                 // rests; scrolling fast shows the frame and no downloads.
-                let cover_box = 84;
+                // The box stands on a lit stage of its own, as the console
+                // does in the systems list.
+                let stage_w = 120.min(w - 2 * left - 150).max(84);
                 let with_covers = n > 0
                     && self
                         .games
@@ -2328,68 +2491,99 @@ impl Scene {
                         })
                         .unwrap_or(false);
                 if with_covers {
-                    self.row_shrink = cover_box + 10;
+                    self.row_shrink = stage_w + 8;
                     let entry = self.games[sel].clone();
                     let system = self.library.systems[entry.sys].name.clone();
-                    let bx = w - left - cover_box;
-                    let by = y0 + 4;
+                    let th = self.theme.clone();
+                    let bx = w - left - stage_w;
+                    let stage_h = (h - 34 - y0).max(80);
+                    let brand = icons::system_logo(&system)
+                        .map(|(_, c)| c)
+                        .unwrap_or(th.accent);
+                    let (floor, br) = crate::stage::draw(fb, &th, bx, y0, stage_w, stage_h, brand);
+                    let cx = bx + stage_w / 2;
+                    let (cw, chh) = ((stage_w - 40) as usize, (stage_h - 62).max(40) as usize);
                     let settled = self.now - self.last_input > 0.12;
                     let img = if settled {
-                        self.art
-                            .cover(
-                                &system,
-                                &entry.game.path,
-                                cover_box as usize,
-                                cover_box as usize,
-                            )
-                            .cloned()
+                        self.art.cover(&system, &entry.game.path, cw, chh).cloned()
                     } else {
                         None
                     };
-                    let frame = scale(self.theme.dim, 0.6);
                     match img {
                         Some(img) => {
-                            let x = bx + (cover_box - img.w as i32) / 2;
-                            let y = by + (cover_box - img.h as i32) / 2;
-                            fb.rect(x - 1, y - 1, img.w as i32 + 2, img.h as i32 + 2, frame);
-                            fb.blit(x, y, &img);
+                            // The box turns in when its cover first shows,
+                            // not when the cursor lands: the cover arrives a
+                            // moment later, and the turn should be seen.
+                            if self.box_path != entry.game.path {
+                                self.box_path = entry.game.path.clone();
+                                self.box_since = self.now;
+                            }
+                            let lamp = lerp_color(br[4], 0xfff0d2, 0.6);
+                            crate::stage::stand_box(
+                                fb,
+                                &th,
+                                &img,
+                                &entry.game.path.to_string_lossy(),
+                                brand,
+                                cx,
+                                floor,
+                                stage_w - 34,
+                                stage_h - 64,
+                                lamp,
+                                self.now - self.box_since,
+                            );
                         }
                         None => {
-                            // Dashed frame; a blinking dot while it loads.
-                            for i in (0..cover_box).step_by(4) {
-                                fb.put(bx + i, by, frame);
-                                fb.put(bx + i, by + cover_box - 1, frame);
-                                fb.put(bx, by + i, frame);
-                                fb.put(bx + cover_box - 1, by + i, frame);
+                            let key =
+                                crate::art::Art::cover_key(&system, &entry.game.path, cw, chh);
+                            let frame = br[2];
+                            let (x, y) = (cx - cw as i32 / 2, floor + 10 - chh as i32);
+                            for i in (0..cw as i32).step_by(4) {
+                                fb.put(x + i, y, frame);
+                                fb.put(x + i, y + chh as i32 - 1, frame);
                             }
-                            let key = crate::art::Art::cover_key(
-                                &system,
-                                &entry.game.path,
-                                cover_box as usize,
-                                cover_box as usize,
-                            );
+                            for i in (0..chh as i32).step_by(4) {
+                                fb.put(x, y + i, frame);
+                                fb.put(x + cw as i32 - 1, y + i, frame);
+                            }
                             if !settled || self.art.loading(&key) {
                                 if (self.now * 3.0) as i64 % 2 == 0 {
-                                    fb.rect(
-                                        bx + cover_box / 2 - 2,
-                                        by + cover_box / 2 - 2,
-                                        4,
-                                        4,
-                                        frame,
-                                    );
+                                    fb.rect(cx - 2, y + chh as i32 / 2 - 2, 4, 4, frame);
                                 }
                             } else {
-                                fb.text_centered(
-                                    bx + cover_box / 2,
-                                    by + cover_box / 2 - 4,
-                                    "no art",
-                                    frame,
-                                    1,
-                                );
+                                fb.text_centered(cx, y + chh as i32 / 2 - 4, "no art", br[3], 1);
                             }
                         }
                     }
-                    // Tags of the file name under the box: region, revision.
+                    let cols = ((stage_w - 12) / 8) as usize;
+                    // At the top of the stage, in the light, a chip like the
+                    // ones at its foot: the time of the state it resumes
+                    // from, else when it was last played. Bare words there
+                    // ("left 09:05") read as a second clock.
+                    let top_line = if let Some(st) = self.states.latest(&entry.game.path) {
+                        Some((st.when_label(), th.green, &icons::RESUME))
+                    } else {
+                        self.recent_at.get(&entry.game.path).map(|at| {
+                            let when = std::time::UNIX_EPOCH
+                                + std::time::Duration::from_secs((*at).max(0) as u64);
+                            (
+                                states::when_label(when),
+                                lerp_color(br[4], th.paper, 0.4),
+                                &icons::CLOCK,
+                            )
+                        })
+                    };
+                    if let Some((text, c, icon)) = top_line {
+                        let text: String = text.chars().take(cols.saturating_sub(2)).collect();
+                        let (x, y) = (bx + 5, y0 + 5);
+                        let cw = Framebuffer::text_width(&text, 1) + 17;
+                        let ground = lerp_color(th.bg, c, 0.25);
+                        fb.rect(x + 1, y, cw - 2, 11, ground);
+                        fb.rect(x, y + 1, cw, 9, ground);
+                        icons::paint(fb, x + 3, y + 2, icon, &self.theme, c, true, 1.0);
+                        fb.text(x + 14, y + 2, &text, c, 1);
+                    }
+                    // At the foot, two chips: the region, and the time played.
                     let stem = entry
                         .game
                         .path
@@ -2397,26 +2591,29 @@ impl Scene {
                         .and_then(|s| s.to_str())
                         .unwrap_or("");
                     let (_, tags, _, _) = crate::index::parse_name(stem);
-                    let mut ty = by + cover_box + 6;
-                    for t in tags.iter().take(3) {
-                        let t: String = t.chars().take((cover_box / 8) as usize).collect();
-                        fb.text(bx, ty, &t, scale(self.theme.dim, 0.9), 1);
-                        ty += 10;
+                    let base = y0 + stage_h - 13;
+                    let chip = |fb: &mut Framebuffer, x: i32, text: &str, c: Color| -> i32 {
+                        let cw = Framebuffer::text_width(text, 1) + 6;
+                        let ground = lerp_color(th.bg, c, 0.25);
+                        fb.rect(x + 1, base, cw - 2, 11, ground);
+                        fb.rect(x, base + 1, cw, 9, ground);
+                        fb.text(x + 3, base + 2, text, c, 1);
+                        cw
+                    };
+                    let mut x = bx + 5;
+                    if let Some(tag) = tags.first() {
+                        let tag: String = tag.chars().take(cols / 2).collect();
+                        x += chip(fb, x, &tag, th.cyan) + 4;
                     }
-                    if let Some(st) = self.states.latest(&entry.game.path) {
-                        let label: String =
-                            st.label().chars().take((cover_box / 8) as usize).collect();
-                        fb.text(bx, ty + 2, &label, self.theme.green, 1);
-                        ty += 10;
-                    }
-                    if let Some(at) = self.recent_at.get(&entry.game.path) {
-                        let when = std::time::UNIX_EPOCH
-                            + std::time::Duration::from_secs((*at).max(0) as u64);
-                        let label: String = format!("played {}", states::when_label(when))
-                            .chars()
-                            .take((cover_box / 8) as usize)
-                            .collect();
-                        fb.text(bx, ty + 2, &label, scale(self.theme.dim, 0.9), 1);
+                    if let Some(label) = self
+                        .playtime
+                        .get(&entry.game.path)
+                        .and_then(|s| omacrt_shell::playtime::label(*s))
+                    {
+                        let t = label.trim_start_matches("time ").to_string();
+                        if x + Framebuffer::text_width(&t, 1) + 6 <= bx + stage_w - 4 {
+                            chip(fb, x, &t, th.green);
+                        }
                     }
                 }
                 if n == 0 && self.yt_query {
@@ -2466,46 +2663,52 @@ impl Scene {
                         let fav = !entry.game.folder && self.is_favorite(&entry);
                         if entry.game.folder {
                             self.draw_row(fb, y, &entry.game.title, "", i == sel, self.theme.paper);
-                            fb.bitmap(
+                            icons::paint(
+                                fb,
                                 left + self.slide() + 4,
                                 y + 1,
                                 &icons::FOLDER,
+                                &self.theme,
                                 if i == sel {
                                     self.theme.accent
                                 } else {
                                     self.theme.dim
                                 },
-                                1,
-                                8,
+                                i == sel,
+                                1.0,
                             );
                             continue;
                         }
                         self.draw_row(fb, y, &entry.game.title, &right, i == sel, self.theme.paper);
                         if fav {
-                            fb.bitmap(
+                            icons::paint(
+                                fb,
                                 left + self.slide() + 4,
                                 y + 1,
                                 &icons::STAR,
+                                &self.theme,
                                 self.theme.yellow,
-                                1,
-                                8,
+                                true,
+                                1.0,
                             );
                         } else if !entry.game.folder
                             && !self.library.systems[entry.sys].is_video()
                             && !self.states.get(&entry.game.path).is_empty()
                         {
                             // A game with a save state: it resumes where it was left.
-                            fb.bitmap(
+                            icons::paint(
+                                fb,
                                 left + self.slide() + 6,
                                 y + 1,
                                 &icons::RESUME,
+                                &self.theme,
                                 if i == sel {
                                     self.theme.accent
                                 } else {
                                     self.theme.green
                                 },
-                                1,
-                                8,
+                                i == sel,
+                                1.0,
                             );
                         }
                     }
@@ -2525,18 +2728,18 @@ impl Scene {
                     self.draw_osk(fb);
                 }
                 let keyboard = self.pad == PadKind::Keyboard;
-                let hint = if self.osk.is_some() {
-                    self.hint(&[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")])
+                let hint: &[(&str, &str)] = if self.osk.is_some() {
+                    &[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")]
                 } else if is_video && matches!(self.games_back, Some(Screen::YouTube { .. })) {
-                    self.hint(&[("A", "play"), ("Y", "later"), ("B", "back")])
+                    &[("A", "play"), ("Y", "later"), ("B", "back")]
                 } else if is_video {
-                    self.hint(&[("A", "play"), ("X", "convert"), ("Y", "fav"), ("B", "back")])
+                    &[("A", "play"), ("X", "convert"), ("Y", "fav"), ("B", "back")]
                 } else if keyboard {
-                    self.hint(&[("A", "run"), ("X", "covers"), ("Y", "fav"), ("/", "find")])
+                    &[("A", "run"), ("X", "covers"), ("Y", "fav"), ("/", "find")]
                 } else {
-                    self.hint(&[("A", "run"), ("X", "covers"), ("Y", "fav"), ("LT", "find")])
+                    &[("A", "run"), ("X", "covers"), ("Y", "fav"), ("LT", "find")]
                 };
-                fb.text(left, h - 16, &hint, scale(self.theme.dim, 0.7), 1);
+                self.draw_hint(fb, left, h - 16, hint);
             }
             Screen::Profile { sel } => {
                 let y0 = self.draw_header(fb, "TV");
@@ -2571,16 +2774,15 @@ impl Scene {
                 fb.text(
                     left,
                     h - 28,
-                    &cut("saved to profile.toml + switchres.ini", max_cols),
+                    &cut("writes profile.toml, switchres.ini", max_cols),
                     scale(self.theme.dim, 0.7),
                     1,
                 );
-                fb.text(
+                self.draw_hint(
+                    fb,
                     left,
-                    h - 16,
-                    "<> change  A select  B back saves",
-                    scale(self.theme.dim, 0.7),
-                    1,
+                    h - 14,
+                    &[("<>", "change"), ("A", "select"), ("B", "back")],
                 );
             }
             Screen::Pads { sel, scan } => {
@@ -2592,7 +2794,14 @@ impl Scene {
                 return;
             }
             Screen::Power { sel } => {
-                self.draw_menu_screen(fb, "Power", &POWER_ITEMS, sel);
+                // The television on its stage, which goes dark while the
+                // cursor is on switching off.
+                let off = POWER_ITEMS
+                    .get(sel)
+                    .is_some_and(|(_, l, _)| *l == "Power off");
+                let set = if off { "television-off" } else { "television" };
+                let red = self.theme.red;
+                self.draw_menu_screen_with(fb, "Power", &POWER_ITEMS, sel, Some((set, red)));
                 return;
             }
             Screen::Saver { sel } => {
@@ -2660,7 +2869,14 @@ impl Scene {
                 return;
             }
             Screen::Videos { sel } => {
-                self.draw_menu_screen(fb, "Videos", &VIDEOS_ITEMS, sel);
+                let tv = self.theme.cyan;
+                self.draw_menu_screen_with(
+                    fb,
+                    "Videos",
+                    &VIDEOS_ITEMS,
+                    sel,
+                    Some(("television", tv)),
+                );
                 return;
             }
             Screen::YouTube { sel } => {
@@ -2683,12 +2899,18 @@ impl Scene {
                 self.draw_ambient(fb);
                 return;
             }
+            Screen::Gallery { at } => {
+                let which = self.gallery_on(at);
+                let t = ((self.now - self.screen_since) % GALLERY_TURN) as f32;
+                crate::gallery::draw(fb, which, t);
+                return;
+            }
             Screen::Menu => {}
         }
         if let Some((msg, _)) = &self.message
             && !matches!(self.screen, Screen::Pads { .. })
         {
-            fb.text(left, h - 28, &cut(msg, max_cols - 8), self.theme.cyan, 1);
+            self.draw_message(fb, left, h - 28, &cut(msg, max_cols - 8));
         }
     }
 
@@ -2719,7 +2941,7 @@ impl Scene {
         ];
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
-        fb.rect(left, band_y, width, row_h - 1, self.theme.selection);
+        self.select_bar(fb, left, band_y, width, row_h - 1);
         for (i, (icon, text, sub)) in items.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
             self.draw_menu_row(fb, left, y, width, icon, text, *sub, i == sel, 1.0);
@@ -2734,8 +2956,7 @@ impl Scene {
             scale(self.theme.dim, 0.9),
             1,
         );
-        let hint = self.hint(&[("A", "choose"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 14, &[("A", "choose"), ("B", "back")]);
     }
 
     /// The cover flow: the selected game's box art large in the middle, the
@@ -2916,13 +3137,15 @@ impl Scene {
             fb.text(left, floor_y + 34, label, self.theme.green, 1);
         }
         if self.is_favorite(&entry) {
-            fb.bitmap(
+            icons::paint(
+                fb,
                 w - left - 8,
                 floor_y + 35,
                 &icons::STAR,
+                &self.theme,
                 self.theme.yellow,
-                1,
-                8,
+                true,
+                1.0,
             );
         }
         let pos = format!("{}/{}", sel + 1, n);
@@ -2935,8 +3158,12 @@ impl Scene {
         );
         let p: String = prompt.chars().take(24).collect();
         fb.text(left, 4, &p, scale(self.theme.dim, 0.8), 1);
-        let hint = self.hint(&[("A", "run"), ("X", "list"), ("Y", "fav"), ("B", "back")]);
-        fb.text(left, h - 14, &hint, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(
+            fb,
+            left,
+            h - 14,
+            &[("A", "run"), ("X", "list"), ("Y", "fav"), ("B", "back")],
+        );
     }
 
     /// The search bar under the header: the query with a blinking cursor and

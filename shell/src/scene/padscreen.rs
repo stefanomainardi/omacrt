@@ -100,39 +100,35 @@ impl Scene {
         }
     }
 
-    /// One socket: its frame, its corners, the number astride the top edge.
+    /// One socket: a window raised under the cursor and sunk into the ground
+    /// otherwise, with its number on a tab astride the top edge.
     fn draw_socket(&self, fb: &mut Framebuffer, x: i32, y: i32, port: usize, c: Color, sel: bool) {
+        let th = &self.theme;
+        let tones = crate::paint::Tones::of(th);
         if sel {
-            fb.rect(x + 2, y + 2, TILE_W - 4, TILE_H - 4, self.theme.selection);
+            let top = crate::fb::lerp_color(th.selection, th.accent, 0.22);
+            crate::paint::bevel(fb, &tones, x, y, TILE_W, TILE_H, top, th.selection, true);
+            fb.rect(x, y + 3, 2, TILE_H - 6, th.accent);
+        } else {
+            let well = crate::fb::lerp_color(th.bg, tones.lo, 0.4);
+            crate::paint::bevel(fb, &tones, x, y, TILE_W, TILE_H, well, th.bg, false);
         }
-        // Rectangles rather than a border: one pixel on each side, with the
-        // corners two thick so the shape reads from the sofa.
-        fb.rect(x, y, TILE_W, 1, c);
-        fb.rect(x, y + TILE_H - 1, TILE_W, 1, c);
-        fb.rect(x, y, 1, TILE_H, c);
-        fb.rect(x + TILE_W - 1, y, 1, TILE_H, c);
-        for (cx, cy) in [
-            (x, y),
-            (x + TILE_W - 5, y),
-            (x, y + TILE_H - 2),
-            (x + TILE_W - 5, y + TILE_H - 2),
-        ] {
-            fb.rect(cx, cy, 5, 2, c);
-        }
-        for (cx, cy) in [
-            (x, y),
-            (x + TILE_W - 2, y),
-            (x, y + TILE_H - 5),
-            (x + TILE_W - 2, y + TILE_H - 5),
-        ] {
-            fb.rect(cx, cy, 2, 5, c);
-        }
-        // Astride the top edge, clear of the corner bracket, on a patch of
-        // background so the line does not run through the number.
         let label = format!("P{}", port + 1);
         let w = Framebuffer::text_width(&label, 1);
-        fb.rect(x + 9, y - 4, w + 6, 10, self.theme.bg);
-        fb.text(x + 12, y - 3, &label, c, 1);
+        let (tab, ink) = if sel {
+            (th.accent, th.bg)
+        } else {
+            (th.selection, c)
+        };
+        fb.rect(x + 7, y - 4, w + 6, 10, tab);
+        fb.rect(
+            x + 7,
+            y - 4,
+            w + 6,
+            1,
+            crate::fb::lerp_color(tab, th.paper, 0.3),
+        );
+        fb.text(x + 10, y - 3, &label, ink, 1);
     }
 
     fn draw_slot(&self, fb: &mut Framebuffer, port: usize, slot: &Slot<'_>, sel: bool) {
@@ -377,20 +373,17 @@ impl Scene {
             );
         }
         let filled = matches!(slots.get(sel), Some(Slot::Pad(_, true)));
-        let hint = if scan {
-            self.hint(&[("A", "pair"), ("X", "look again"), ("B", "back")])
+        let hint: &[(&str, &str)] = if scan {
+            &[("A", "pair"), ("X", "look again"), ("B", "back")]
         } else if filled {
-            self.hint(&[("A", "identify"), ("X", "remap"), ("Y", "forget")])
+            &[("A", "identify"), ("X", "remap"), ("Y", "forget")]
         } else {
-            self.hint(&[("A", "add a pad"), ("Y", "forget")])
+            &[("A", "add a pad"), ("Y", "forget")]
         };
-        fb.text(left, h - 26, &hint, scale(self.theme.dim, 0.7), 1);
-        let hint2 = if scan {
-            String::new()
-        } else {
-            self.hint(&[("L R", "move a port"), ("B", "back")])
-        };
-        fb.text(left, h - 14, &hint2, scale(self.theme.dim, 0.7), 1);
+        self.draw_hint(fb, left, h - 26, hint);
+        if !scan {
+            self.draw_hint(fb, left, h - 14, &[("L R", "move a port"), ("B", "back")]);
+        }
     }
 
     // ------------------------------------------------------------- the input
