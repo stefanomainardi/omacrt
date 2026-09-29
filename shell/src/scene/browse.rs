@@ -2858,7 +2858,14 @@ impl Scene {
                 return;
             }
             Screen::Videos { sel } => {
-                self.draw_menu_screen(fb, "Videos", &VIDEOS_ITEMS, sel);
+                let tv = self.theme.cyan;
+                self.draw_menu_screen_with(
+                    fb,
+                    "Videos",
+                    &VIDEOS_ITEMS,
+                    sel,
+                    Some(("television", tv)),
+                );
                 return;
             }
             Screen::YouTube { sel } => {

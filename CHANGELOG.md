@@ -19,6 +19,9 @@ caveat for a 0.x project: anything may still move.
 - After the boot's floor, the laser climbs the screen and the hall stands up
   behind it; the word and the mark fly to the far wall, the sign strikes and
   the hall powers on, the cabinets pair by pair from the back.
+- The Music and Videos hubs have a stage beside them like the systems list:
+  a radio cassette recorder of the eighties for Music, a television with
+  its rabbit ears for Videos, both voxel models.
 - Rare moments on the weather page after Magritte: men in bowler hats
   standing in the air instead of the rain, a daylight sky over the street
   at night, the man with the apple, an eye as big as the sky, a rock with a

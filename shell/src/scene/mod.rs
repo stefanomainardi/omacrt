@@ -522,7 +522,7 @@ const SAVER_ROWS: usize = 5 + omacrt_shell::settings::PAGES.len();
 const VIDEOS_ITEMS: [(icons::Icon, &str, bool); 3] = [
     (icons::FILM, "Local videos", true),
     (icons::RESUME, "YouTube", true),
-    (icons::FOLDER, "Play the link in the clipboard", false),
+    (icons::FOLDER, "Play copied link", false),
 ];
 
 /// YouTube hub entries.

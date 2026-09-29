@@ -630,7 +630,12 @@ pub(crate) fn bowler(fb: &mut Framebuffer, x: i32, y: i32, size: i32, facing: bo
         for yy in y..y + crown {
             fb.rect(x - hr, yy, 2 * hr + 1, 1, 0x3a2c24);
         }
-        fb.rect(x + hr + 1, y - lift + crown, (u as i32).max(1), lift, coat);
+        // The arm up from the shoulder to the brim, the hand holding it.
+        let arm = ((2.0 * u) as i32).max(1);
+        let shoulder = y + (8.0 * u) as i32;
+        let hand = y - lift + crown;
+        fb.rect(x + hr + 1, hand, arm, shoulder - hand, coat_hi);
+        fb.rect(x + hr + 1, hand - 1, arm, 2, skin);
     }
     fb.rect(
         x - brim,
@@ -735,7 +740,7 @@ fn golconda(fb: &mut Framebuffer, x0: i32, y0: i32, w: i32, h: i32, t: f32) {
                     let m = t.rem_euclid(12.0);
                     if size >= 26 && row == 1 && k == 2 && (6.0..8.0).contains(&m) {
                         lift =
-                            (5.0 * (std::f32::consts::PI * (m - 6.0) / 2.0).sin()).round() as i32;
+                            (9.0 * (std::f32::consts::PI * (m - 6.0) / 2.0).sin()).round() as i32;
                     }
                     bowler(fb, x0 + x, y0 + y, size, (k + row).rem_euclid(3) != 0, lift);
                 }

@@ -617,6 +617,12 @@ impl Scene {
             None => "Music".to_string(),
         };
         let y0 = self.draw_header(fb, &title);
+        // The top of Music has the radio cassette recorder on a stage beside
+        // it; a provider's own list keeps the width for its titles.
+        if self.music_hub.is_none() {
+            let brand = self.theme.magenta;
+            self.row_shrink = self.draw_prop_stage(fb, y0, "boombox", brand);
+        }
         let ox = self.slide();
         let rows = self.music_rows();
         let row_h = 12;

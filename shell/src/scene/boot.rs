@@ -927,6 +927,41 @@ impl Scene {
         }
     }
 
+    /// A lit stage on the right of a hub with one of the voxel models on
+    /// it, the way the systems list shows its console; it arrives the same
+    /// way when the hub opens. Returns how much width it takes from the rows.
+    pub(super) fn draw_prop_stage(
+        &mut self,
+        fb: &mut Framebuffer,
+        y0: i32,
+        name: &str,
+        brand: Color,
+    ) -> i32 {
+        let w = fb.w as i32;
+        let h = fb.h as i32;
+        let left = (w as f32 * 0.05) as i32;
+        let panel = 124;
+        let px = w - left - panel;
+        let stage_h = (h - 34 - y0).max(80);
+        let th = self.theme.clone();
+        let (floor, br) = crate::stage::draw(fb, &th, px, y0, panel, stage_h, brand);
+        if self.stage_name != name {
+            self.stage_name = name.to_string();
+            self.stage_since = self.now;
+        }
+        let lamp = lerp_color(br[4], 0xffecbe, 0.5);
+        crate::stage::stand(
+            fb,
+            &th,
+            name,
+            px + panel / 2,
+            floor,
+            lamp,
+            self.now - self.stage_since,
+        );
+        panel + 8
+    }
+
     /// A submenu drawn like the home rows under the compact header.
     pub(super) fn draw_menu_screen(
         &mut self,
@@ -935,11 +970,28 @@ impl Scene {
         items: &[(icons::Icon, &str, bool)],
         sel: usize,
     ) {
+        self.draw_menu_screen_with(fb, title, items, sel, None);
+    }
+
+    /// A submenu with a stage beside it, `prop` naming the model and the
+    /// colour of its light.
+    pub(super) fn draw_menu_screen_with(
+        &mut self,
+        fb: &mut Framebuffer,
+        title: &str,
+        items: &[(icons::Icon, &str, bool)],
+        sel: usize,
+        prop: Option<(&str, Color)>,
+    ) {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32 + self.slide();
-        let width = w - 2 * (w as f32 * 0.05) as i32;
         let y0 = self.draw_header(fb, title);
+        let shrink = match prop {
+            Some((name, brand)) => self.draw_prop_stage(fb, y0, name, brand),
+            None => 0,
+        };
+        let width = w - 2 * (w as f32 * 0.05) as i32 - shrink;
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
         self.select_bar(fb, left, band_y, width, row_h - 1);

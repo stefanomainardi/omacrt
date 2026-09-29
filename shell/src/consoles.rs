@@ -29,6 +29,8 @@ pub fn model(name: &str) -> Option<Model> {
         "gb" | "gbc" | "gameboy" => gameboy(),
         "gamecube" | "ngc" | "gcn" => gamecube(),
         "scummvm" => pc(),
+        "boombox" => boombox(),
+        "television" => television(),
         _ => return None,
     })
 }
@@ -203,6 +205,8 @@ pub fn has(name: &str) -> bool {
             | "ngc"
             | "gcn"
             | "scummvm"
+            | "boombox"
+            | "television"
     )
 }
 
@@ -720,6 +724,123 @@ fn pc() -> Model {
     m.cube(sx + 2, 4, sz + 2, 20, 1, 6, grass);
     m.cube(sx + 9, 4, sz + 5, 2, 1, 4, hero);
     m.set(31, 4, 16, led);
+    m
+}
+
+/// A disc of cells on the front of a model, facing the viewer: centred on
+/// (cx, cz) across the front, from `y` back `deep` cells.
+#[allow(clippy::too_many_arguments)]
+fn front_disc(m: &mut Model, cx: f32, cz: f32, r: f32, y: i32, deep: i32, mat: u8) {
+    for k in (cz - r) as i32 - 1..=(cz + r) as i32 + 1 {
+        for i in (cx - r) as i32 - 1..=(cx + r) as i32 + 1 {
+            let (u, v) = (i as f32 + 0.5 - cx, k as f32 + 0.5 - cz);
+            if u * u + v * v <= r * r {
+                for j in y..y + deep {
+                    m.set(i, j, k, mat);
+                }
+            }
+        }
+    }
+}
+
+/// A radio cassette recorder of the eighties, at seven millimetres a cell
+/// because it is twice a console's size: 600 by 170 by 300 mm, gunmetal,
+/// a chrome handle, two speakers with their cones set back in chrome rings,
+/// the cassette deck between them with its two reels behind the window,
+/// the tuning scale above it, the piano keys under it, a VU lamp, and the
+/// aerial up from the right. Its lamps are the window and the scale, lit
+/// while something plays.
+fn boombox() -> Model {
+    let (w, d, h) = (86, 24, 62);
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(70, 72, 80));
+    let body_hi = m.mat(rgb(104, 108, 118));
+    let chrome = m.mat(rgb(196, 200, 210));
+    let grille = m.mat(rgb(30, 30, 36));
+    let cone = m.mat(rgb(52, 52, 60));
+    let cap = m.mat(rgb(150, 152, 160));
+    let window = m.lamp(rgb(255, 170, 90));
+    let reel = m.mat(rgb(40, 34, 30));
+    let scale = m.lamp(rgb(255, 200, 110));
+    let vu = m.lamp(rgb(110, 255, 120));
+    let (red, key) = (m.mat(rgb(220, 50, 50)), m.mat(rgb(200, 200, 204)));
+    m.rounded(0, 2, 0, w, d - 2, 36, 3, body);
+    m.cube(0, 2, 34, w, d - 2, 2, body_hi);
+    // The handle: two posts and a bar.
+    for x in [10, 74] {
+        m.cube(x, 10, 36, 2, 4, 7, chrome);
+    }
+    m.cube(10, 10, 42, 66, 4, 2, chrome);
+    // The speakers, set back in their rings.
+    for cx in [18.0f32, 68.0] {
+        front_disc(&mut m, cx, 17.0, 14.0, 2, 1, chrome);
+        front_disc(&mut m, cx, 17.0, 12.5, 2, 2, 0);
+        front_disc(&mut m, cx, 17.0, 12.5, 4, 1, grille);
+        front_disc(&mut m, cx, 17.0, 8.0, 3, 1, cone);
+        front_disc(&mut m, cx, 17.0, 3.0, 3, 1, cap);
+    }
+    // The deck: a window with its two reels, the scale above, the keys.
+    m.cube(34, 2, 11, 18, 1, 15, 0);
+    m.cube(34, 3, 11, 18, 1, 15, window);
+    for rx in [39.0f32, 47.0] {
+        front_disc(&mut m, rx, 18.0, 2.5, 3, 1, reel);
+    }
+    m.cube(32, 2, 28, 22, 1, 4, scale);
+    for i in 0..6 {
+        m.cube(34 + i * 3, 2, 7, 2, 1, 3, if i == 0 { red } else { key });
+    }
+    m.cube(30, 2, 20, 2, 1, 5, vu);
+    // The aerial, up from the right shoulder.
+    for k in 0..19 {
+        m.set(80 - k / 6, 12, 36 + k, chrome);
+    }
+    m
+}
+
+/// A television of the eighties, at seven millimetres a cell: 450 by 390 by
+/// 380 mm, grey plastic, the tube's face bulging a cell out of the cabinet
+/// and glowing with its scanlines, two knobs and the speaker's slots on the
+/// right, feet, and the rabbit ears in a V on top.
+fn television() -> Model {
+    let (w, d, h) = (64, 56, 84);
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(150, 146, 140));
+    let body_lo = m.mat(rgb(100, 96, 92));
+    let bezel = m.mat(rgb(40, 40, 44));
+    let (glass, glass_lo) = (m.lamp(rgb(150, 200, 255)), m.lamp(rgb(100, 150, 220)));
+    let knob = m.mat(rgb(50, 50, 56));
+    let slot = m.mat(rgb(30, 30, 34));
+    let rod = m.mat(rgb(200, 204, 212));
+    m.rounded(0, 2, 3, w, d - 2, 51, 4, body);
+    m.cube(0, 2, 3, w, d - 2, 2, body_lo);
+    for x in [4, w - 8] {
+        m.cube(x, 10, 0, 4, 30, 3, body_lo);
+    }
+    // The tube, a cell proud of the front, in its dark bezel.
+    m.cube(4, 1, 8, 42, 1, 42, bezel);
+    for z in 11..47 {
+        for x in 7..43 {
+            // The corners of a tube are round.
+            let (u, v) = ((x as f32 - 24.5) / 18.0, (z as f32 - 28.5) / 18.0);
+            if u.powi(4) + v.powi(4) <= 1.0 {
+                m.set(x, 0, z, if z % 2 == 0 { glass } else { glass_lo });
+                m.set(x, 1, z, bezel);
+            }
+        }
+    }
+    // The knobs, standing out, and the speaker's slots under them.
+    for z in [40, 30] {
+        front_disc(&mut m, 55.0, z as f32, 3.0, 0, 2, knob);
+    }
+    for z in (10..24).step_by(3) {
+        m.cube(50, 1, z, 10, 1, 1, slot);
+    }
+    // The rabbit ears.
+    for k in 0..30 {
+        m.set(30 - k / 2, 30, 54 + k, rod);
+        m.set(33 + k / 2, 30, 54 + k, rod);
+    }
+    m.cube(28, 26, 54, 8, 8, 2, body_lo);
     m
 }
 
