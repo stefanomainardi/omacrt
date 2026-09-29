@@ -537,10 +537,10 @@ fn cabinet() -> Model {
     let body = m.mat(rgb(58, 48, 70));
     let panel = m.mat(rgb(74, 64, 90));
     let tmold = m.mat(rgb(255, 79, 163));
-    let marquee = m.glow(rgb(255, 120, 190));
+    let marquee = m.lamp(rgb(255, 120, 190));
     let glass = m.glow(rgb(18, 36, 52));
-    let pixel = m.glow(rgb(120, 255, 150));
-    let alien = m.glow(rgb(255, 110, 110));
+    let pixel = m.lamp(rgb(120, 255, 150));
+    let alien = m.lamp(rgb(255, 110, 110));
     let coin = m.glow(rgb(255, 158, 60));
     let stick = m.mat(rgb(220, 40, 40));
     let (b1, b2, b3) = (
@@ -593,8 +593,8 @@ fn gameboy() -> Model {
     let mut m = Model::new(w, d, h);
     let body = m.mat(rgb(196, 196, 190));
     let bezel = m.mat(rgb(84, 84, 104));
-    let screen = m.glow(rgb(140, 170, 40));
-    let pixel = m.glow(rgb(48, 88, 32));
+    let screen = m.lamp(rgb(140, 170, 40));
+    let pixel = m.lamp(rgb(48, 88, 32));
     let dark = m.mat(rgb(40, 40, 46));
     let magenta = m.mat(rgb(160, 30, 90));
     let pill = m.mat(rgb(120, 120, 130));
@@ -696,9 +696,9 @@ fn pc() -> Model {
     let beige = m.mat(rgb(214, 206, 184));
     let shade = m.mat(rgb(186, 178, 156));
     let dark = m.mat(rgb(40, 38, 34));
-    let sky = m.glow(rgb(90, 140, 220));
-    let grass = m.glow(rgb(70, 160, 70));
-    let hero = m.glow(rgb(230, 200, 120));
+    let sky = m.lamp(rgb(90, 140, 220));
+    let grass = m.lamp(rgb(70, 160, 70));
+    let hero = m.lamp(rgb(230, 200, 120));
     let led = m.lamp(rgb(60, 220, 90));
     let disk = m.lamp(rgb(240, 160, 40));
     // The case.
