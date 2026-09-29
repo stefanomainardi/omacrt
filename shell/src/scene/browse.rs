@@ -2477,30 +2477,27 @@ impl Scene {
                     };
                     match img {
                         Some(img) => {
-                            let (iw, ih) = (img.w as i32, img.h as i32);
-                            let x = cx - iw / 2;
-                            let y = floor + 10 - ih;
-                            crate::stage::shadow(fb, &th, cx + 4, floor + 9, iw / 2 + 4, 5);
-                            fb.blit(x, y, &img);
-                            // The plastic of the case catches the lamp on
-                            // its top and left edges; the right edge is in
-                            // its own shadow.
-                            let lamp = lerp_color(br[4], 0xfff0d2, 0.6);
-                            fb.rect(x, y, iw, 1, lamp);
-                            fb.rect(x, y, 1, ih, lerp_color(lamp, br[3], 0.4));
-                            fb.rect(x + iw, y + 1, 1, ih, tones.lo);
-                            // And it stands in the floor's reflection.
-                            for j in 0..12.min(ih) {
-                                let k = 0.22 * (1.0 - j as f32 / 12.0);
-                                for i in 0..iw {
-                                    let src = img.px[(ih - 1 - j) as usize * img.w + i as usize];
-                                    if src >> 24 < 128 {
-                                        continue;
-                                    }
-                                    let p = fb.at(x + i, y + ih + 1 + j);
-                                    fb.put(x + i, y + ih + 1 + j, lerp_color(p, src & 0xffffff, k));
-                                }
+                            // The box turns in when its cover first shows,
+                            // not when the cursor lands: the cover arrives a
+                            // moment later, and the turn should be seen.
+                            if self.box_path != entry.game.path {
+                                self.box_path = entry.game.path.clone();
+                                self.box_since = self.now;
                             }
+                            let lamp = lerp_color(br[4], 0xfff0d2, 0.6);
+                            crate::stage::stand_box(
+                                fb,
+                                &th,
+                                &img,
+                                &entry.game.path.to_string_lossy(),
+                                brand,
+                                cx,
+                                floor,
+                                stage_w - 34,
+                                stage_h - 64,
+                                lamp,
+                                self.now - self.box_since,
+                            );
                         }
                         None => {
                             let key =

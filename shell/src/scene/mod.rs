@@ -641,6 +641,9 @@ pub struct Scene {
     /// one arrives rather than appearing.
     stage_name: String,
     stage_since: f64,
+    /// The same for the box on the games stage.
+    box_path: std::path::PathBuf,
+    box_since: f64,
     favorites: Vec<(usize, PathBuf)>,
     pad: PadKind,
     bt: Bluetooth,
@@ -865,6 +868,8 @@ impl Scene {
             play_since: None,
             stage_name: String::new(),
             stage_since: 0.0,
+            box_path: std::path::PathBuf::new(),
+            box_since: 0.0,
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
             library,
             screen: Screen::Menu,

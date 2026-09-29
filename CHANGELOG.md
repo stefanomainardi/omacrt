@@ -29,8 +29,9 @@ caveat for a 0.x project: anything may still move.
   newly chosen one comes down onto the stage and turns before it settles.
 - The pad sockets are windows: raised under the cursor, sunk otherwise, the
   port number on a tab.
-- The games list shows the cover on the same kind of stage, lit on its edge
-  and reflected in the floor, with the region and the time played as chips.
+- The games list shows the game's box on the same kind of stage: the cover
+  on its front, its spine in the console's colour, turning in when a game is
+  chosen, with the region and the time played as chips.
 
 ### Fixed
 

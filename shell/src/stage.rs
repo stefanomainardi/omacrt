@@ -165,6 +165,66 @@ pub fn shadow(fb: &mut Framebuffer, th: &Theme, cx: i32, y: i32, half_w: i32, ro
     }
 }
 
+/// A game's box standing on the stage: the cover on its front, its spine in
+/// the console's colour, turned a little to show the spine, as a box on a
+/// shelf is seen. A newly chosen one turns in from its spine to its cover.
+#[allow(clippy::too_many_arguments)]
+pub fn stand_box(
+    fb: &mut Framebuffer,
+    th: &Theme,
+    cover: &crate::art::Image,
+    key: &str,
+    brand: Color,
+    cx: i32,
+    floor: i32,
+    max_w: i32,
+    max_h: i32,
+    light: Color,
+    age: f64,
+) {
+    const TURN_IN: f64 = 0.45;
+    const BOX_YAW: f32 = -0.42;
+    const BOX_PITCH: f32 = 0.16;
+    if cover.w == 0 || cover.h == 0 {
+        return;
+    }
+    let bw = 30;
+    let bh = ((bw as f32 * cover.h as f32 / cover.w as f32).round() as i32).clamp(18, 50);
+    let bd = 5;
+    let mut model = crate::voxel::Model::new(bw, bd, bh);
+    let spine = model.mat(lerp_color(brand, 0x101014, 0.45));
+    model.cube(0, 0, 0, bw, bd, bh, spine);
+    let (sy, cy) = BOX_YAW.sin_cos();
+    let (sp, cp) = BOX_PITCH.sin_cos();
+    let width = bw as f32 * cy.abs() + bd as f32 * sy.abs();
+    let height = (bw as f32 * sy.abs() + bd as f32 * cy.abs()) * sp + bh as f32 * cp;
+    let scale = (max_w as f32 / width).min(max_h as f32 / height);
+    let p = (age / TURN_IN).clamp(0.0, 1.0) as f32;
+    let outline = 0x0a0a0e;
+    let render = |yaw: f32| {
+        let v = crate::voxel::View {
+            yaw,
+            pitch: BOX_PITCH,
+            scale,
+        };
+        crate::voxel::render_faced(&model, &v, light, outline, Some(cover))
+    };
+    let img = if p >= 1.0 {
+        RESTING.with(|r| {
+            r.borrow_mut()
+                .entry((format!("box:{key}"), light))
+                .or_insert_with(|| std::rc::Rc::new(render(BOX_YAW)))
+                .clone()
+        })
+    } else {
+        let e = 1.0 - (1.0 - p).powi(3);
+        std::rc::Rc::new(render(BOX_YAW - (1.0 - e) * std::f32::consts::FRAC_PI_2))
+    };
+    let (w, h) = (img.w as i32, img.h as i32);
+    shadow(fb, th, cx + 3, floor + 8, w / 2 + 2, 5);
+    fb.blit(cx - w / 2, floor + 11 - h, &img);
+}
+
 /// How long a console takes to arrive on the stage: it comes down, bounces
 /// once and turns a full circle, slowing into its resting angle.
 pub const ARRIVE: f64 = 0.7;

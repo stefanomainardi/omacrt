@@ -193,6 +193,8 @@ fn yawed(v: V3, a: f32) -> V3 {
 struct Hit {
     mat: u8,
     normal: V3,
+    /// Where on the face the ray struck, in model space.
+    point: V3,
 }
 
 fn cast(m: &Model, o: V3, dir: V3) -> Option<Hit> {
@@ -254,7 +256,14 @@ fn cast(m: &Model, o: V3, dir: V3) -> Option<Hit> {
         if mat != 0 {
             let mut normal = [0.0; 3];
             normal[axis] = -step[axis] as f32;
-            return Some(Hit { mat, normal });
+            let plane = if step[axis] > 0 {
+                cell[axis] as f32
+            } else {
+                cell[axis] as f32 + 1.0
+            };
+            let t = (plane - o[axis]) / dir[axis];
+            let point = [o[0] + dir[0] * t, o[1] + dir[1] * t, o[2] + dir[2] * t];
+            return Some(Hit { mat, normal, point });
         }
         axis = if tmax[0] < tmax[1] {
             if tmax[0] < tmax[2] { 0 } else { 2 }
@@ -271,9 +280,22 @@ fn cast(m: &Model, o: V3, dir: V3) -> Option<Hit> {
     }
 }
 
-/// Draw a model to an image with straight alpha, lit from `lamp` (a
-/// direction in view space, towards the light) and rimmed in `rim`.
+/// Draw a model to an image with straight alpha, lit by the stage's lamp
+/// and rimmed in `rim`.
 pub fn render(m: &Model, v: &View, rim: Color, outline: Color) -> Image {
+    render_faced(m, v, rim, outline, None)
+}
+
+/// The same, with a picture on the front face (the one facing -y), sampled
+/// where each ray strikes it rather than a cell at a time, so a box cover
+/// keeps its own resolution.
+pub fn render_faced(
+    m: &Model,
+    v: &View,
+    rim: Color,
+    outline: Color,
+    front: Option<&Image>,
+) -> Image {
     let centre = [m.w as f32 / 2.0, m.d as f32 / 2.0, m.h as f32 / 2.0];
     // Camera basis in world space: right, up, forward (into the scene).
     let (sp, cp) = v.pitch.sin_cos();
@@ -310,6 +332,7 @@ pub fn render(m: &Model, v: &View, rim: Color, outline: Color) -> Image {
         .map(|mat| crate::stage::ramp(mat.color))
         .collect();
     let mut hits: Vec<Option<(u8, V3)>> = vec![None; iw * ih];
+    let mut texels: Vec<Option<Color>> = vec![None; iw * ih];
     for py in 0..ih {
         for px in 0..iw {
             let a = umin + (px as f32 - 1.0 + 0.5) / v.scale;
@@ -320,6 +343,16 @@ pub fn render(m: &Model, v: &View, rim: Color, outline: Color) -> Image {
                 centre[2] + r[2] * a + u[2] * b - f[2] * 1000.0,
             ];
             if let Some(h) = cast(m, o, f) {
+                if let Some(img) = front
+                    && h.normal[1] < -0.5
+                    && img.w > 0
+                    && img.h > 0
+                {
+                    let u = (h.point[0] / m.w as f32).clamp(0.0, 0.999);
+                    let t = (1.0 - h.point[2] / m.h as f32).clamp(0.0, 0.999);
+                    let (tx, ty) = ((u * img.w as f32) as usize, (t * img.h as f32) as usize);
+                    texels[py * iw + px] = Some(img.px[ty * img.w + tx] & 0xffffff);
+                }
                 hits[py * iw + px] = Some((h.mat, yawed(h.normal, v.yaw)));
             }
         }
@@ -330,7 +363,12 @@ pub fn render(m: &Model, v: &View, rim: Color, outline: Color) -> Image {
             let Some((mat, n)) = hits[y * iw + x] else {
                 continue;
             };
-            let c = if m.mats[mat as usize].glow {
+            let c = if let Some(t) = texels[y * iw + x] {
+                // The picture on the face, darkened as the face turns away
+                // from the lamp.
+                let lit = dot(n, lamp).max(0.0);
+                crate::fb::scale(t, 0.62 + 0.45 * lit)
+            } else if m.mats[mat as usize].glow {
                 m.mats[mat as usize].color
             } else {
                 // One step of the ramp per face, so a flat face is one colour
