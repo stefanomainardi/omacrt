@@ -83,13 +83,10 @@ impl Scene {
         vec![
             // The BIOS pastiche does not sign itself Omacom, and no longer
             // signs itself for Omarchy either: the launcher runs on any
-            // Hyprland desktop, and what it is for is the tube.
+            // Hyprland desktop, and what it is for is the tube. Thirty six
+            // columns at most: "a real television" ran off the edge.
             (format!("{NAME} BIOS 4.01 / 15kHz"), th.green, false),
-            (
-                format!("(C) 2026 {NAME}, for a real television"),
-                th.dim,
-                false,
-            ),
+            (format!("(C) 2026 {NAME}, for a real tube"), th.dim, false),
             (String::new(), th.green, false),
             (format!("CPU  {}", self.info.host), th.paper, false),
             ("MEM  counting...".into(), th.paper, true),
