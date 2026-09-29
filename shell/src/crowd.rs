@@ -152,6 +152,10 @@ enum Tool {
 /// How fast people walk, in the hall's units a second, and the man with
 /// the mop.
 const MOPPING: f32 = 0.16;
+/// Mopping, a step to the next patch of floor every so many seconds, and
+/// how long the step takes.
+const MOP_EVERY: f32 = 1.6;
+const MOP_STEP: f32 = 0.5;
 
 // The floor plan. A door at the far end of each side wall; beside it the
 // gap between the end of the row and the cabinets at the back, which is the
@@ -419,8 +423,23 @@ fn pose_at(legs: &[Leg], t: f32, tall: f32) -> Option<Pose> {
                 } else {
                     v * ramp / 2.0 + v * (e - ramp)
                 };
-                let s = s.clamp(0.0, total);
+                let mut s = s.clamp(0.0, total);
                 let stride = stride(tall) * if *mop { 0.5 } else { 1.0 };
+                // Somebody mopping does not walk slowly: he stands and works
+                // the mop to and fro, and every so often takes one ordinary
+                // step to the next patch of floor. The ground is covered in
+                // those steps, one every MOP_EVERY seconds, each taking
+                // MOP_STEP of them, the legs making half a stride.
+                let mut mop_leg = None;
+                if *mop {
+                    let n = (e / MOP_EVERY).floor();
+                    let k = ((e - n * MOP_EVERY) / MOP_STEP).clamp(0.0, 1.0);
+                    let eased = k * k * (3.0 - 2.0 * k);
+                    let step = MOPPING * MOP_EVERY;
+                    s = ((n + eased) * step).min(total);
+                    let half = (n as i64).rem_euclid(2) as f32 * 0.5;
+                    mop_leg = Some((half + 0.5 * k, (std::f32::consts::PI * k).sin()));
+                }
                 // Where on the path that is.
                 let mut left = s;
                 let (mut x, mut d, mut dir) = (path[0].0, path[0].1, (0.0, 0.0));
@@ -448,8 +467,8 @@ fn pose_at(legs: &[Leg], t: f32, tall: f32) -> Option<Pose> {
                     x,
                     d,
                     facing: facing_of(dir.0, dir.1),
-                    walk: Some((s / stride).fract()),
-                    amount: speed.clamp(0.0, 1.0) * if *mop { 0.6 } else { 1.0 },
+                    walk: Some(mop_leg.map_or((s / stride).fract(), |m| m.0)),
+                    amount: mop_leg.map_or(speed.clamp(0.0, 1.0), |m| m.1),
                     act: None,
                     since: e,
                     cab: None,

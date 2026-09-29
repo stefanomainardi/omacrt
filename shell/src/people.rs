@@ -573,6 +573,19 @@ fn side(pen: &mut Pen, t: &Tones, pose: &Pose) -> ((f32, f32), Option<(f32, f32)
     let playing = pose.act == Act::Play;
     let hip = (s * 0.5, -(reach + 4.0));
     let lean = if playing { 2.5 } else { 0.0 };
+    // The mop goes to and fro about once a second, well out and back, and
+    // the shoulders go with it while the feet hardly move.
+    let mop_sweep = if pose.act == Act::Mop {
+        (pose.t * 6.0).sin() * 7.0
+    } else {
+        0.0
+    };
+    let lean = lean
+        + if pose.act == Act::Mop {
+            1.5 + mop_sweep * 0.2
+        } else {
+            0.0
+        };
     let top = (hip.0 + s * (1.8 + lean), hip.1 - 31.0);
     // The pelvis turns a few degrees with the leg that swings forward and the
     // chest the other way, which from the side slides each hip and shoulder a
@@ -586,7 +599,7 @@ fn side(pen: &mut Pen, t: &Tones, pose: &Pose) -> ((f32, f32), Option<(f32, f32)
         (top.0 - s * 1.0 - s * 1.4 * turn, top.1 + 4.0),
         (top.0 - s * 1.0 + s * 1.4 * turn, top.1 + 4.0),
     ];
-    let sweep = (pose.t * 3.2).sin() * 3.0;
+    let sweep = mop_sweep;
     let handle = (
         (top.0 + s * 11.0, top.1 + 7.0),
         (hip.0 + s * (30.0 + sweep), -1.0),
