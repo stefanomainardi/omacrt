@@ -1007,13 +1007,22 @@ impl Scene {
         }
         let jolt = (click..click + 0.07).contains(&u);
         let game = self.running_path.clone();
-        self.draw_console_scene(fb, system, game, lid, p, lamps, jolt, (floor, br, sy));
+        self.draw_console_scene(
+            fb,
+            system,
+            game,
+            lid,
+            p,
+            lamps,
+            jolt,
+            (floor, br, sy, fb.w as i32 / 2, 170.0),
+        );
     }
 
     /// The console on its stage at one moment of taking or giving back its
     /// game, as the launch and the return both draw it.
     #[allow(clippy::too_many_arguments)]
-    fn draw_console_scene(
+    pub(super) fn draw_console_scene(
         &mut self,
         fb: &mut Framebuffer,
         system: &str,
@@ -1022,9 +1031,8 @@ impl Scene {
         p: f32,
         lamps: bool,
         jolt: bool,
-        (floor, br, sy): (i32, [Color; 5], i32),
+        (floor, br, sy, mid, max_w): (i32, [Color; 5], i32, i32, f32),
     ) {
-        let (w, _) = (fb.w as i32, fb.h as i32);
         let th = self.theme.clone();
         let Some((model, rect, face)) = crate::consoles::scene(system, lid, p, lamps) else {
             return;
@@ -1050,7 +1058,7 @@ impl Scene {
             Some(crate::consoles::Way::Down) => 40,
             _ => 14,
         };
-        let scale = (170.0 / width)
+        let scale = (max_w / width)
             .min((floor - sy - above) as f32 / height)
             .min(3.0);
         let v = crate::voxel::View { yaw, pitch, scale };
@@ -1080,9 +1088,9 @@ impl Scene {
         }
         let half = ((right - left) / 2.0).round() as i32;
         let cx = ((left + right) / 2.0).round() as i32;
-        crate::stage::shadow(fb, &th, w / 2, floor + 8, half, 7);
+        crate::stage::shadow(fb, &th, mid, floor + 8, half, 7);
         fb.blit(
-            w / 2 - cx,
+            mid - cx,
             floor + 10 - bottom.round() as i32 + jolt as i32,
             &img,
         );
@@ -1118,7 +1126,16 @@ impl Scene {
         // The lamp stays lit while the console stands still, and goes out
         // as the game starts to come out.
         let lamps = u < 0.0;
-        self.draw_console_scene(fb, &system, game, lid, p, lamps, false, (floor, br, sy));
+        self.draw_console_scene(
+            fb,
+            &system,
+            game,
+            lid,
+            p,
+            lamps,
+            false,
+            (floor, br, sy, w / 2, 170.0),
+        );
         let fade = 1.0 - span(EJECT_SECS - 0.3, EJECT_SECS);
         if fade < 1.0 {
             fb.apply_gain(fade);

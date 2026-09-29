@@ -277,18 +277,87 @@ impl Scene {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32;
-        let width = w - 2 * (w as f32 * 0.05) as i32;
         let y0 = self.draw_header(fb, &title);
+        // The console on its stage on the right, the game in it and its
+        // lamp lit: what the menu is pausing, where the systems list showed
+        // it before the game went in.
+        let stage_w = 108;
+        let sx = w - left - stage_w;
+        let stage_h = (h - 34 - y0).max(80);
+        let system = self.running_path.as_ref().map(|(s, _)| s.clone());
+        let has_model = system.as_deref().is_some_and(crate::consoles::has);
+        let width = if has_model {
+            sx - left - 6
+        } else {
+            w - 2 * left
+        };
+        if let Some(system) = system.filter(|_| has_model) {
+            let th = self.theme.clone();
+            let brand = icons::system_logo(&system)
+                .map(|(_, c)| c)
+                .unwrap_or(th.accent);
+            let (floor, br) = crate::stage::draw(fb, &th, sx, y0, stage_w, stage_h, brand);
+            let game = self.running_path.clone();
+            self.draw_console_scene(
+                fb,
+                &system,
+                game,
+                0.0,
+                1.0,
+                true,
+                false,
+                (floor, br, y0, sx + stage_w / 2, (stage_w - 18) as f32),
+            );
+            // At the stage's foot, what the row under the cursor is set to,
+            // or else where the game can be resumed from.
+            let chip = PAUSE_ROWS
+                .get(sel)
+                .and_then(|(row, _, _)| self.pause_value(*row))
+                .map(|v| (v, th.cyan))
+                .or_else(|| {
+                    self.running_path
+                        .as_ref()
+                        .and_then(|(_, p)| self.states.latest(p))
+                        .map(|st| (st.label(), th.green))
+                });
+            if let Some((text, c)) = chip {
+                // A value too long for one chip goes on two, split at a word.
+                let cols = ((stage_w - 10) / 8) as usize;
+                let lines: Vec<String> = if text.chars().count() <= cols {
+                    vec![text]
+                } else {
+                    let cut = text[..text.len().min(cols + 1)]
+                        .rfind(' ')
+                        .unwrap_or(cols.min(text.len()));
+                    vec![
+                        text[..cut].to_string(),
+                        text[cut..].trim().chars().take(cols).collect(),
+                    ]
+                };
+                let ground = lerp_color(th.bg, c, 0.25);
+                for (k, line) in lines.iter().enumerate() {
+                    let cw = Framebuffer::text_width(line, 1) + 6;
+                    let up = (lines.len() - 1 - k) as i32 * 12;
+                    let (x, y) = (sx + (stage_w - cw) / 2, y0 + stage_h - 13 - up);
+                    fb.rect(x + 1, y, cw - 2, 11, ground);
+                    fb.rect(x, y + 1, cw, 9, ground);
+                    fb.text(x + 3, y + 2, line, c, 1);
+                }
+            }
+        }
         let row_h = 14;
         let band_y = self.band(y0 + sel as i32 * row_h);
         self.select_bar(fb, left, band_y, width, row_h - 1);
         for (i, (row, icon, label)) in PAUSE_ROWS.iter().enumerate() {
             let y = y0 + i as i32 * row_h;
-            self.draw_menu_row(fb, left, y, width, icon, label, false, i == sel, 1.0);
-            // A choice says what it is set to, on its own right, dim.
-            if let Some(value) = self.pause_value(*row) {
+            let room = ((width - 26) / 8).max(0) as usize;
+            let label: String = label.chars().take(room).collect();
+            self.draw_menu_row(fb, left, y, width, icon, &label, false, i == sel, 1.0);
+            // A choice says what it is set to on its own right, when there
+            // is no stage to say it for the row under the cursor.
+            if let Some(value) = self.pause_value(*row).filter(|_| !has_model) {
                 let room =
-                    ((width - 30 - 18 - Framebuffer::text_width(label, 1)) / 8).max(0) as usize;
+                    ((width - 30 - 18 - Framebuffer::text_width(&label, 1)) / 8).max(0) as usize;
                 let text: String = value.chars().take(room).collect();
                 let tx = left + width - 8 - Framebuffer::text_width(&text, 1);
                 if i == sel {

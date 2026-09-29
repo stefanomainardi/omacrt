@@ -19,6 +19,8 @@ caveat for a 0.x project: anything may still move.
 - After the boot's floor, the laser climbs the screen and the hall stands up
   behind it; the word and the mark fly to the far wall, the sign strikes and
   the hall powers on, the cabinets pair by pair from the back.
+- The pause menu shows the running game's console on a lit stage, the game
+  in it and its lamp on, with what the row under the cursor is set to.
 - People come into the hall a while after the home is up, one scene at a
   time: somebody plays and loses to a GAME OVER, two play side by side,
   somebody makes a record and cheers, a man mops the far end of the aisle.
