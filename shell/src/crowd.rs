@@ -89,13 +89,14 @@ enum Act {
     Cheer,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Leg {
+    /// Along a path of points on the floor, easing in at the start and out
+    /// at the end.
     Walk {
         t0: f32,
         t1: f32,
-        from: (f32, f32),
-        to: (f32, f32),
+        path: Vec<(f32, f32)>,
         mop: bool,
     },
     Stay {
@@ -108,100 +109,150 @@ enum Leg {
     },
 }
 
-// Where people go: in front of the back left cabinet, at the right row's far
-// cabinet, and the places behind the back cabinets they come from.
-const BACK_L: (f32, f32) = (-0.44, 2.72);
-const SIDE_R: (f32, f32) = (0.46, 2.77);
-const HIDE_R: (f32, f32) = (0.44, 3.25);
-const HIDE_L: (f32, f32) = (-0.44, 3.25);
-const OUT_R: (f32, f32) = (0.70, 3.18);
-const OUT_L: (f32, f32) = (-0.72, 3.18);
+/// How fast people walk, in the hall's units a second, and the man with
+/// the mop.
+const SPEED: f32 = 0.55;
+const MOPPING: f32 = 0.16;
+
+// The floor plan. A door at the far end of each side wall; beside it the
+// gap between the end of the row and the cabinets at the back, which is the
+// way in; the lane along the front of the back cabinets, in front of whoever
+// is playing them; and where people stand to play.
+const DOOR_R: [(f32, f32); 3] = [(1.34, 3.13), (0.86, 3.13), (0.62, 2.965)];
+const LANE: f32 = 2.76;
+const AT_BACK_L: (f32, f32) = (-0.44, 2.92);
+const AT_BACK_R: (f32, f32) = (0.44, 2.92);
+const AT_SIDE_R: (f32, f32) = (0.47, 2.71);
 const CAB_BACK_L: usize = 8;
+const CAB_BACK_R: usize = 9;
 const CAB_SIDE_R: usize = 7;
 
-fn walk(t0: f32, t1: f32, from: (f32, f32), to: (f32, f32)) -> Leg {
-    Leg::Walk {
-        t0,
-        t1,
-        from,
-        to,
-        mop: false,
+fn door(right: bool) -> Vec<(f32, f32)> {
+    let s = if right { 1.0 } else { -1.0 };
+    DOOR_R.iter().map(|&(x, d)| (s * x, d)).collect()
+}
+
+/// A scene as it is written: one step after another, each starting where
+/// the last one ended, a walk taking as long as its length asks.
+struct Plan {
+    t: f32,
+    legs: Vec<Leg>,
+}
+
+impl Plan {
+    fn at(t: f32) -> Self {
+        Self {
+            t,
+            legs: Vec::new(),
+        }
+    }
+
+    fn walk(self, path: Vec<(f32, f32)>) -> Self {
+        self.go(path, false)
+    }
+
+    fn mop(self, path: Vec<(f32, f32)>) -> Self {
+        self.go(path, true)
+    }
+
+    fn go(mut self, path: Vec<(f32, f32)>, mop: bool) -> Self {
+        let length: f32 = path.windows(2).map(|w| dist(w[0], w[1])).sum();
+        let secs = length / if mop { MOPPING } else { SPEED } + 0.5;
+        self.legs.push(Leg::Walk {
+            t0: self.t,
+            t1: self.t + secs,
+            path,
+            mop,
+        });
+        self.t += secs;
+        self
+    }
+
+    fn stay(mut self, secs: f32, at: (f32, f32), facing: Facing, act: Act, cab: usize) -> Self {
+        self.legs.push(Leg::Stay {
+            t0: self.t,
+            t1: self.t + secs,
+            at,
+            facing,
+            act,
+            cab,
+        });
+        self.t += secs;
+        self
     }
 }
 
-fn stay(t0: f32, t1: f32, at: (f32, f32), facing: Facing, act: Act, cab: usize) -> Leg {
-    Leg::Stay {
-        t0,
-        t1,
-        at,
-        facing,
-        act,
-        cab,
-    }
+fn dist(a: (f32, f32), b: (f32, f32)) -> f32 {
+    ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt()
 }
 
-/// The scenes, one per cycle in turn: a game lost; two people playing; a
-/// record; the mop.
+fn joined(mut a: Vec<(f32, f32)>, b: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    a.extend_from_slice(b);
+    a
+}
+
+fn back(mut a: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+    a.reverse();
+    a
+}
+
+/// In through a door, to a place to play, and the way back out: nobody cuts
+/// across a cabinet or walks between a player and their game.
+fn to_back(right_door: bool, at: (f32, f32)) -> Vec<(f32, f32)> {
+    let s = if right_door { 1.0 } else { -1.0 };
+    joined(door(right_door), &[(s * 0.40, LANE), (at.0, LANE), at])
+}
+
+fn to_side_r(right_door: bool) -> Vec<(f32, f32)> {
+    let s = if right_door { 1.0 } else { -1.0 };
+    joined(
+        door(right_door),
+        &[(s * 0.40, LANE), (0.28, AT_SIDE_R.1), AT_SIDE_R],
+    )
+}
+
+/// The scenes, one per cycle in turn: a game lost; two people playing side
+/// by side; a record; the mop.
 fn scene(n: u64) -> Vec<(Look, Vec<Leg>)> {
     match n % 4 {
-        0 => vec![(
-            DENIM,
-            vec![
-                walk(0.0, 1.0, HIDE_R, OUT_R),
-                walk(1.0, 3.4, OUT_R, BACK_L),
-                stay(3.4, 12.2, BACK_L, Facing::Away, Act::Play, CAB_BACK_L),
-                stay(12.2, 13.6, BACK_L, Facing::Away, Act::Over, CAB_BACK_L),
-                walk(13.6, 16.0, BACK_L, OUT_R),
-                walk(16.0, 17.0, OUT_R, HIDE_R),
-            ],
-        )],
-        1 => vec![
-            (
-                DENIM,
-                vec![
-                    walk(0.0, 1.0, HIDE_R, OUT_R),
-                    walk(1.0, 3.4, OUT_R, BACK_L),
-                    stay(3.4, 14.0, BACK_L, Facing::Away, Act::Play, CAB_BACK_L),
-                    walk(14.0, 16.4, BACK_L, OUT_R),
-                    walk(16.4, 17.4, OUT_R, HIDE_R),
-                ],
-            ),
-            (
-                MULLET,
-                vec![
-                    walk(4.0, 5.0, HIDE_L, OUT_L),
-                    walk(5.0, 7.6, OUT_L, SIDE_R),
-                    stay(7.6, 16.0, SIDE_R, Facing::Right, Act::Play, CAB_SIDE_R),
-                    walk(16.0, 18.4, SIDE_R, OUT_L),
-                    walk(18.4, 19.4, OUT_L, HIDE_L),
-                ],
-            ),
-        ],
-        2 => vec![(
-            MULLET,
-            vec![
-                walk(0.0, 1.0, HIDE_L, OUT_L),
-                walk(1.0, 3.6, OUT_L, SIDE_R),
-                stay(3.6, 13.0, SIDE_R, Facing::Right, Act::Play, CAB_SIDE_R),
-                stay(13.0, 14.8, SIDE_R, Facing::Toward, Act::Cheer, CAB_SIDE_R),
-                walk(14.8, 17.2, SIDE_R, OUT_L),
-                walk(17.2, 18.2, OUT_L, HIDE_L),
-            ],
-        )],
-        _ => vec![(
-            JANITOR,
-            vec![
-                walk(0.0, 1.2, HIDE_R, (0.70, 3.1)),
-                Leg::Walk {
-                    t0: 1.2,
-                    t1: 8.1,
-                    from: (0.70, 3.1),
-                    to: (-0.70, 3.02),
-                    mop: true,
-                },
-                walk(8.1, 9.3, (-0.70, 3.02), HIDE_L),
-            ],
-        )],
+        0 => {
+            let path = to_back(true, AT_BACK_L);
+            let p = Plan::at(0.0)
+                .walk(path.clone())
+                .stay(8.8, AT_BACK_L, Facing::Away, Act::Play, CAB_BACK_L)
+                .stay(1.4, AT_BACK_L, Facing::Away, Act::Over, CAB_BACK_L)
+                .walk(back(path));
+            vec![(DENIM, p.legs)]
+        }
+        1 => {
+            let a = to_back(true, AT_BACK_R);
+            let b = to_back(false, AT_BACK_L);
+            let one = Plan::at(0.0)
+                .walk(a.clone())
+                .stay(10.0, AT_BACK_R, Facing::Away, Act::Play, CAB_BACK_R)
+                .walk(back(a));
+            let two = Plan::at(3.0)
+                .walk(b.clone())
+                .stay(9.0, AT_BACK_L, Facing::Away, Act::Play, CAB_BACK_L)
+                .walk(back(b));
+            vec![(DENIM, one.legs), (MULLET, two.legs)]
+        }
+        2 => {
+            let path = to_side_r(false);
+            let p = Plan::at(0.0)
+                .walk(path.clone())
+                .stay(9.4, AT_SIDE_R, Facing::Right, Act::Play, CAB_SIDE_R)
+                .stay(1.8, AT_SIDE_R, Facing::Toward, Act::Cheer, CAB_SIDE_R)
+                .walk(back(path));
+            vec![(MULLET, p.legs)]
+        }
+        _ => {
+            let p = Plan::at(0.0)
+                .walk(joined(door(true), &[(0.45, LANE)]))
+                .mop(vec![(0.45, LANE), (-0.45, LANE)])
+                .walk(joined(vec![(-0.45, LANE)], &back(door(false))));
+            vec![(JANITOR, p.legs)]
+        }
     }
 }
 
@@ -219,9 +270,23 @@ struct Pose {
     mop: bool,
 }
 
+fn facing_of(dx: f32, dd: f32) -> Facing {
+    if dx.abs() > dd.abs() * 0.8 {
+        if dx > 0.0 {
+            Facing::Right
+        } else {
+            Facing::Left
+        }
+    } else if dd > 0.0 {
+        Facing::Away
+    } else {
+        Facing::Toward
+    }
+}
+
 fn pose_at(legs: &[Leg], t: f32) -> Option<Pose> {
     for leg in legs {
-        match *leg {
+        match leg {
             Leg::Stay {
                 t0,
                 t1,
@@ -229,52 +294,70 @@ fn pose_at(legs: &[Leg], t: f32) -> Option<Pose> {
                 facing,
                 act,
                 cab,
-            } if (t0..t1).contains(&t) => {
+            } if (*t0..*t1).contains(&t) => {
                 return Some(Pose {
                     x: at.0,
                     d: at.1,
-                    facing,
+                    facing: *facing,
                     walk: None,
                     amount: 0.0,
-                    act: Some(act),
+                    act: Some(*act),
                     since: t - t0,
-                    cab: Some(cab),
+                    cab: Some(*cab),
                     mop: false,
                 });
             }
-            Leg::Walk {
-                t0,
-                t1,
-                from,
-                to,
-                mop,
-            } if (t0..t1).contains(&t) => {
-                let f = (t - t0) / (t1 - t0);
-                let e = f * f * (3.0 - 2.0 * f);
-                let (dx, dd) = (to.0 - from.0, to.1 - from.1);
-                let length = (dx * dx + dd * dd * 0.64).sqrt();
-                let stride = if mop { 0.5 } else { 0.95 };
-                let facing = if dx.abs() > dd.abs() * 0.8 {
-                    if dx > 0.0 {
-                        Facing::Right
-                    } else {
-                        Facing::Left
-                    }
-                } else if dd > 0.0 {
-                    Facing::Away
+            Leg::Walk { t0, t1, path, mop } if (*t0..*t1).contains(&t) => {
+                let total: f32 = path.windows(2).map(|w| dist(w[0], w[1])).sum();
+                let secs = t1 - t0;
+                // Speed up over the first quarter second, slow down over
+                // the last: in between, steady.
+                let ramp = 0.25f32.min(secs / 2.0);
+                let v = total / (secs - ramp);
+                let e = t - t0;
+                let s = if e < ramp {
+                    v * e * e / (2.0 * ramp)
+                } else if e > secs - ramp {
+                    let r = secs - e;
+                    total - v * r * r / (2.0 * ramp)
                 } else {
-                    Facing::Toward
+                    v * ramp / 2.0 + v * (e - ramp)
+                };
+                let s = s.clamp(0.0, total);
+                // Where on the path that is.
+                let mut left = s;
+                let (mut x, mut d, mut dir) = (path[0].0, path[0].1, (0.0, 0.0));
+                for w in path.windows(2) {
+                    let l = dist(w[0], w[1]);
+                    dir = (w[1].0 - w[0].0, w[1].1 - w[0].1);
+                    if left <= l || l == 0.0 {
+                        let f = if l > 0.0 { left / l } else { 0.0 };
+                        x = w[0].0 + dir.0 * f;
+                        d = w[0].1 + dir.1 * f;
+                        break;
+                    }
+                    left -= l;
+                    x = w[1].0;
+                    d = w[1].1;
+                }
+                let stride = if *mop { 0.5 } else { 0.95 };
+                let speed = if e < ramp {
+                    e / ramp
+                } else if e > secs - ramp {
+                    (secs - e) / ramp
+                } else {
+                    1.0
                 };
                 return Some(Pose {
-                    x: from.0 + dx * e,
-                    d: from.1 + dd * e,
-                    facing,
-                    walk: Some((length * e / stride).fract()),
-                    amount: (f.min(1.0 - f) * 5.0).min(1.0) * if mop { 0.6 } else { 1.0 },
+                    x,
+                    d,
+                    facing: facing_of(dir.0, dir.1),
+                    walk: Some((s / stride).fract()),
+                    amount: speed.clamp(0.0, 1.0) * if *mop { 0.6 } else { 1.0 },
                     act: None,
-                    since: t - t0,
+                    since: e,
                     cab: None,
-                    mop,
+                    mop: *mop,
                 });
             }
             _ => {}

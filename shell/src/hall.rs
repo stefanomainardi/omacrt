@@ -41,7 +41,15 @@ const FRONT: f32 = 0.72;
 const RECESS: f32 = 0.10;
 const LEDGE: f32 = 0.10;
 const DEEP: f32 = WALL - FRONT;
-const SLOTS: [f32; 4] = [1.52, 1.88, 2.24, 2.60];
+const SLOTS: [f32; 4] = [1.46, 1.82, 2.18, 2.54];
+/// The doors at the far end of each side wall, between the last cabinet of
+/// the row and the back wall: how deep they start and end, and their top.
+/// People come in and go out through them.
+pub const DOOR_D0: f32 = 2.96;
+pub const DOOR_D1: f32 = 3.30;
+const DOOR_TOP: f32 = -0.36;
+/// How far the corridor behind a door goes.
+const BEYOND: f32 = 1.50;
 const CW: f32 = 0.34;
 /// The wordmark's column where CRT starts.
 const SPLIT: usize = 38;
@@ -255,6 +263,8 @@ struct Room {
     tube: Color,
     tube_hi: Color,
     tube_lo: Color,
+    /// The light in the corridor behind the doors.
+    warm: Color,
 }
 
 fn luma(c: Color) -> f32 {
@@ -280,6 +290,7 @@ impl Room {
             tube: th.cyan,
             tube_hi: lerp_color(th.cyan, 0xffffff, 0.6),
             tube_lo: lerp_color(ink, th.cyan, 0.35),
+            warm: lerp_color(ink, th.orange, 0.38),
         }
     }
 }
@@ -620,6 +631,17 @@ fn carpet(
     if best > 0.1 {
         c = steps(c, lerp_color(b.room.void, tint, 0.45), best * 0.9, x, y);
     }
+    // Light from the corridors, through the doors.
+    let door = (-((x_.abs() - 0.98).powi(2)) / 0.03 - ((d - 3.13) * (d - 3.13)) / 0.02).exp();
+    if door > 0.15 {
+        c = steps(
+            c,
+            lerp_color(b.room.void, b.room.warm, 0.6),
+            door * 0.7 * b.lights.amb,
+            x,
+            y,
+        );
+    }
     let lit = b.lights.sign.0.max(b.lights.sign.1);
     let wash = (1.0 - (DBACK - d) / 0.8).max(0.0) * (1.0 - x_.abs() / 0.7).max(0.0) * lit;
     if wash > 0.0 {
@@ -763,6 +785,15 @@ fn build(cam: Cam, room: Room, lights: &Lights, sign: Color) -> Raster {
             (CEIL, FLOOR),
             None,
             |d, y_, dd, x, y| {
+                // The door: a hole in the wall with a steel frame round it.
+                let in_d = d > DOOR_D0 && d < DOOR_D1;
+                if in_d && y_ > DOOR_TOP {
+                    let edge = (d - DOOR_D0).min(DOOR_D1 - d) < 0.018 || y_ - DOOR_TOP < 0.02;
+                    if !edge {
+                        return None;
+                    }
+                    return Some(b.lit(STEELHI, dd, x, y, 0.6));
+                }
                 let mut c = if (d * 9.0) as i32 % 4 != 0 {
                     room.plum
                 } else {
@@ -810,6 +841,45 @@ fn build(cam: Cam, room: Room, lights: &Lights, sign: Color) -> Raster {
                 Some(b.lit(c, dd, x, y, 0.7))
             },
         );
+    }
+
+    // Behind each door a short corridor with its own light.
+    for side in [-1.0f32, 1.0] {
+        r.patch(
+            Plane::X,
+            side * BEYOND,
+            (2.8, 3.5),
+            (CEIL, FLOOR),
+            None,
+            |d, y_, dd, x, y| {
+                let t = ((y_ - DOOR_TOP) / (FLOOR - DOOR_TOP)).clamp(0.0, 1.0);
+                let c = steps(room.warm, room.plum, t * 0.8 + (d - 3.13).abs(), x, y);
+                Some(b.lit(c, dd, x, y, 0.3))
+            },
+        );
+        let (x0, x1) = if side < 0.0 {
+            (-BEYOND, -WALL)
+        } else {
+            (WALL, BEYOND)
+        };
+        r.patch(
+            Plane::Y,
+            FLOOR,
+            (x0, x1),
+            (2.8, 3.5),
+            None,
+            |_, _, dd, x, y| Some(b.lit(lerp_color(room.ink, room.warm, 0.3), dd, x, y, 0.3)),
+        );
+        for dj in [DOOR_D0, DOOR_D1] {
+            r.patch(
+                Plane::D,
+                dj,
+                (x0, x1),
+                (CEIL, FLOOR),
+                None,
+                |_, _, dd, x, y| Some(b.lit(room.night, dd, x, y, 0.3)),
+            );
+        }
     }
 
     // The back wall, brick.
