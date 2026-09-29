@@ -31,6 +31,12 @@ pub fn model(name: &str) -> Option<Model> {
         "scummvm" => pc(),
         "boombox" => boombox(),
         "television" => television(),
+        // The same set switched off: its tube dark.
+        "television-off" => {
+            let mut m = television();
+            m.lamps_on = false;
+            m
+        }
         _ => return None,
     })
 }
@@ -207,6 +213,7 @@ pub fn has(name: &str) -> bool {
             | "scummvm"
             | "boombox"
             | "television"
+            | "television-off"
     )
 }
 

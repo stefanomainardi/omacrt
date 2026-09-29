@@ -945,8 +945,11 @@ impl Scene {
         let stage_h = (h - 34 - y0).max(80);
         let th = self.theme.clone();
         let (floor, br) = crate::stage::draw(fb, &th, px, y0, panel, stage_h, brand);
-        if self.stage_name != name {
-            self.stage_name = name.to_string();
+        // The same model switched on or off is the same thing on the stage:
+        // it does not arrive again.
+        let base = name.trim_end_matches("-off");
+        if self.stage_name != base {
+            self.stage_name = base.to_string();
             self.stage_since = self.now;
         }
         let lamp = lerp_color(br[4], 0xffecbe, 0.5);

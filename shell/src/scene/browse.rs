@@ -2790,7 +2790,14 @@ impl Scene {
                 return;
             }
             Screen::Power { sel } => {
-                self.draw_menu_screen(fb, "Power", &POWER_ITEMS, sel);
+                // The television on its stage, which goes dark while the
+                // cursor is on switching off.
+                let off = POWER_ITEMS
+                    .get(sel)
+                    .is_some_and(|(_, l, _)| *l == "Power off");
+                let set = if off { "television-off" } else { "television" };
+                let red = self.theme.red;
+                self.draw_menu_screen_with(fb, "Power", &POWER_ITEMS, sel, Some((set, red)));
                 return;
             }
             Screen::Saver { sel } => {

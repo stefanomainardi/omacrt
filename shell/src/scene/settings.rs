@@ -426,12 +426,58 @@ impl Scene {
 
     /// Style: pick a palette, previewed live. The desktop's own themes when
     /// there are any, and the built in ones, which are always there.
+    /// The theme's card: its sign as the hall would light it, and nine of
+    /// its colours in tiles.
+    fn draw_theme_card(&mut self, fb: &mut Framebuffer, x: i32, y: i32, w: i32) {
+        use crate::hall;
+        let th = self.theme.clone();
+        let board = hall::board(&th);
+        let h = 118;
+        fb.rect(x, y, w, h, board);
+        fb.rect(x, y, w, 1, lerp_color(board, th.paper, 0.25));
+        let (cols, rows) = (self.hall_mask.1 as i32, self.hall_mask.2 as i32);
+        let tick = (self.now * hall::TICK_HZ) as u32;
+        let tubes = (
+            hall::Tube::of(th.cyan, board),
+            hall::Tube::of(th.green, board),
+        );
+        hall::draw_sign(
+            fb,
+            &self.hall_mask,
+            (x + (w - cols) / 2, y + 9),
+            tubes,
+            &hall::power_on(99.0),
+            board,
+            tick,
+        );
+        let tiles = [
+            th.bg, th.fg, th.paper, th.accent, th.green, th.cyan, th.magenta, th.yellow, th.red,
+        ];
+        let (tw, tht, gap) = (32, 20, 4);
+        let tx0 = x + (w - (3 * tw + 2 * gap)) / 2;
+        let ty0 = y + 9 + rows + 14;
+        for (i, c) in tiles.iter().enumerate() {
+            let (tx, ty) = (
+                tx0 + (i as i32 % 3) * (tw + gap),
+                ty0 + (i as i32 / 3) * (tht + gap),
+            );
+            fb.rect(tx + 1, ty + 1, tw, tht, lerp_color(board, 0x000000, 0.5));
+            fb.rect(tx, ty, tw, tht, *c);
+            fb.rect(tx, ty, tw, 1, lerp_color(*c, 0xffffff, 0.3));
+        }
+    }
+
     pub(super) fn draw_style(&mut self, fb: &mut Framebuffer, sel: usize) {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32 + self.slide();
-        let width = w - 2 * (w as f32 * 0.05) as i32;
         let y0 = self.draw_header(fb, "Style");
+        // The theme under the cursor, which is the one the screen is wearing
+        // already, as a card on the right: the hall's sign in its colours,
+        // and its colours in tiles.
+        let card = 112;
+        let width = w - 2 * (w as f32 * 0.05) as i32 - card - 8;
+        self.draw_theme_card(fb, w - (w as f32 * 0.05) as i32 - card, y0, card);
         let row_h = 12;
         // The same: the twelve of a television, more where there are lines
         // for them.
@@ -441,9 +487,9 @@ impl Scene {
         // keeps, so the row names what it actually does.
         let follows = self.themes.iter().any(|t| !t.built_in());
         let first = if follows {
-            "system (follow the desktop)".to_string()
+            "system (desktop)".to_string()
         } else {
-            "system (no desktop theme here)".to_string()
+            "system (none here)".to_string()
         };
         let names: Vec<String> = std::iter::once(first)
             .chain(self.themes.iter().map(|t| t.name.clone()))
@@ -456,10 +502,12 @@ impl Scene {
         for (row, i) in (top..(top + page).min(names.len())).enumerate() {
             let y = y0 + row as i32 * row_h;
             let on = i == sel;
+            let room = ((width - 22) / 8).max(0) as usize;
+            let name: String = names[i].chars().take(room).collect();
             fb.text(
                 left + 18,
                 y,
-                &names[i],
+                &name,
                 if on {
                     self.theme.accent
                 } else {

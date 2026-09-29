@@ -19,6 +19,10 @@ caveat for a 0.x project: anything may still move.
 - After the boot's floor, the laser climbs the screen and the hall stands up
   behind it; the word and the mark fly to the far wall, the sign strikes and
   the hall powers on, the cabinets pair by pair from the back.
+- The Style page shows the theme under the cursor as a card: the hall's
+  sign in its colours and nine of its colours in tiles.
+- The Power page has the television on its stage, dark while the cursor is
+  on switching off.
 - The Music and Videos hubs have a stage beside them like the systems list:
   a radio cassette recorder of the eighties for Music, a television with
   its rabbit ears for Videos, both voxel models.
