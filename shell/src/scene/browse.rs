@@ -2016,8 +2016,13 @@ impl Scene {
     pub fn game_finished(&mut self, ok: bool) {
         self.stop_play_clock();
         self.running = None;
-        if let Some((_, path)) = self.running_path.take() {
+        if let Some((system, path)) = self.running_path.take() {
             self.states.forget(&path);
+            // A game that ran comes back out of its console. A video, or a
+            // system with no model, goes straight back to the list.
+            if ok && self.player.is_none() && crate::consoles::has(&system) {
+                self.ejecting = Some((system, path, self.now));
+            }
         }
         self.paused = None;
         self.launching = None;

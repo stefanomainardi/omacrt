@@ -203,8 +203,8 @@ magick /tmp/shot/frame_14.00.ppm -filter point -resize 300% /tmp/shot/a.png
 ```
 
 `--browse` takes a system name or one of the named screens: `systems` (or
-`systems:snes` with that console selected, or `launch:snes` for the launch
-animation), `settings`,
+`systems:snes` with that console selected, `launch:snes` for the launch
+animation, `eject:snes` for the return from a game), `settings`,
 `saver`, `diag`, `about`, `power`, `profile`, `pair`, `style`, `fit`,
 `monitor`, `processes`, `frame`, `ambient`, `music`, `pause`. `--size WxH` renders at another
 shape, and

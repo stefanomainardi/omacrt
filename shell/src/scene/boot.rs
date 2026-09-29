@@ -867,11 +867,31 @@ impl Scene {
                 l.cues |= 2;
             }
         }
+        let jolt = (click..click + 0.07).contains(&u);
+        let game = self.running_path.clone();
+        self.draw_console_scene(fb, system, game, lid, p, lamps, jolt, (floor, br, sy));
+    }
+
+    /// The console on its stage at one moment of taking or giving back its
+    /// game, as the launch and the return both draw it.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_console_scene(
+        &mut self,
+        fb: &mut Framebuffer,
+        system: &str,
+        game: Option<(String, PathBuf)>,
+        lid: f32,
+        p: f32,
+        lamps: bool,
+        jolt: bool,
+        (floor, br, sy): (i32, [Color; 5], i32),
+    ) {
+        let (w, _) = (fb.w as i32, fb.h as i32);
+        let th = self.theme.clone();
         let Some((model, rect, face)) = crate::consoles::scene(system, lid, p, lamps) else {
             return;
         };
-        let cover = self
-            .running_path
+        let cover = game
             .as_ref()
             .and_then(|(sys, path)| self.art.cover(sys, path, 96, 96).cloned());
         let yaw = -0.62f32;
@@ -898,14 +918,41 @@ impl Scene {
             cover.as_ref().map(|img| (img, rect, face)),
             true,
         );
-        let jolt = if (click..click + 0.07).contains(&u) {
-            1
-        } else {
-            0
-        };
         let (iw, ih) = (img.w as i32, img.h as i32);
         crate::stage::shadow(fb, &th, w / 2, floor + 8, iw / 2, 7);
-        fb.blit(w / 2 - iw / 2, floor + 12 - ih + jolt, &img);
+        fb.blit(w / 2 - iw / 2, floor + 12 - ih + jolt as i32, &img);
+    }
+
+    /// Back from a game: the lamp goes out and the game comes out of its
+    /// console, a cartridge rising from the slot, a lid opening and the disc
+    /// lifting from the well, and the picture fades to the list.
+    pub(super) fn draw_ejecting(&mut self, fb: &mut Framebuffer) {
+        let Some((system, path, since)) = self.ejecting.clone() else {
+            return;
+        };
+        let u = (self.now - since) as f32;
+        let (w, h) = (fb.w as i32, fb.h as i32);
+        fb.clear(self.theme.bg);
+        let th = self.theme.clone();
+        let brand = icons::system_logo(&system)
+            .map(|(_, c)| c)
+            .unwrap_or(th.accent);
+        let (sx, sy, sw, sh) = (24, 20, w - 48, h - 20 - 40);
+        let (floor, br) = crate::stage::draw(fb, &th, sx, sy, sw, sh, brand);
+        let span = |a: f32, b: f32| ((u - a) / (b - a)).clamp(0.0, 1.0);
+        let ease_out = |t: f32| 1.0 - (1.0 - t) * (1.0 - t);
+        let lidded = crate::consoles::media(&system).is_some_and(|m| m.lid.is_some());
+        let (lid, p) = if lidded {
+            (ease_out(span(0.05, 0.25)), 1.0 - ease_out(span(0.22, 0.6)))
+        } else {
+            (0.0, 1.0 - ease_out(span(0.08, 0.5)))
+        };
+        let game = Some((system.clone(), path));
+        self.draw_console_scene(fb, &system, game, lid, p, false, false, (floor, br, sy));
+        let fade = 1.0 - span(EJECT_SECS - 0.3, EJECT_SECS);
+        if fade < 1.0 {
+            fb.apply_gain(fade);
+        }
     }
 
     /// Launch animation: a cartridge slides into its slot (or a disc spins

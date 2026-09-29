@@ -425,6 +425,8 @@ pub struct Geometry {
 }
 
 const LAUNCH_SECS: f32 = 1.15;
+/// How long a game takes to come back out of its console.
+const EJECT_SECS: f32 = 0.9;
 
 /// Power submenu entries.
 const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
@@ -646,6 +648,9 @@ pub struct Scene {
     /// The same for the box on the games stage.
     box_path: std::path::PathBuf,
     box_since: f64,
+    /// A game coming back out of its console after it ends: the system,
+    /// the game and since when.
+    ejecting: Option<(String, PathBuf, f64)>,
     favorites: Vec<(usize, PathBuf)>,
     pad: PadKind,
     bt: Bluetooth,
@@ -872,6 +877,7 @@ impl Scene {
             stage_since: 0.0,
             box_path: std::path::PathBuf::new(),
             box_since: 0.0,
+            ejecting: None,
             favorites: load_list(&library.config_dir.join("favorites.txt"), &library),
             library,
             screen: Screen::Menu,
@@ -1246,6 +1252,19 @@ impl Scene {
                 }
             }
             Some("settings") => self.screen = Screen::Settings { sel: 0 },
+            // The return from a game, headlessly: the first game of the
+            // named system coming back out of its console, a second from now.
+            Some(s) if s.starts_with("eject:") => {
+                let system = s.trim_start_matches("eject:").to_string();
+                let path = self
+                    .library
+                    .index
+                    .as_ref()
+                    .and_then(|i| i.items.iter().find(|it| it.system == system))
+                    .map(|it| it.path.clone())
+                    .unwrap_or_default();
+                self.ejecting = Some((system, path, self.now + 1.0));
+            }
             // A launch, for rendering the animation headlessly: the first
             // game of the named system, going into its console. Nothing is
             // run; the command is `true`.
@@ -1626,6 +1645,13 @@ impl Scene {
                 self.draw_running(fb);
             }
             return;
+        }
+        if let Some((_, _, since)) = &self.ejecting {
+            if ((now - since) as f32) < EJECT_SECS {
+                self.draw_ejecting(fb);
+                return;
+            }
+            self.ejecting = None;
         }
         if self.menu_live && !matches!(self.screen, Screen::Menu) {
             if self.bt.poll() {

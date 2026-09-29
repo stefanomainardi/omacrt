@@ -32,6 +32,9 @@ caveat for a 0.x project: anything may still move.
   the lid swings open, the disc with the cover printed on it goes into the
   well and the lid shuts; a floppy into the PC's drive, a coin into the
   cabinet. The power lamp lights when it clicks home.
+- Leaving a game shows it coming back out: the lamp goes off, the
+  cartridge rises out of the slot or the lid opens and the disc lifts, then
+  the list returns.
 - The pad sockets are windows: raised under the cursor, sunk otherwise, the
   port number on a tab.
 - The games list shows the game's box on the same kind of stage: the cover
