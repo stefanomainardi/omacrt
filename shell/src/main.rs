@@ -398,7 +398,11 @@ fn run_record(args: &Args, dir: &PathBuf) -> Result<(), String> {
             eprintln!("script: not launching {title} while recording");
         }
         scene.draw(&mut fb, t as f64);
-        fb.roll(scene.roll(), t);
+        // A recording that opens on a screen skips the power on, so it has no
+        // roll: the boot is started only to put the menu behind that screen.
+        if args.browse.is_none() {
+            fb.roll(scene.roll(), t);
+        }
         fb.apply_gain(scene.power());
         let offset = (t * audio::RATE as f32) as usize;
         for s in scene.take_sounds() {
