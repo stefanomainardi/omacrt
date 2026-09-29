@@ -7,6 +7,16 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Changed
+
+- The people in the hall are redrawn as sprites in the manner of the
+  adventure games of the early nineties, from the side, the front and
+  behind, and walk the way people do: the knee gives as the heel lands and
+  lifts the foot through, the arms swing against the legs, the body rises
+  and falls with each step, at two steps a second.
+- The janitor comes in carrying his mop, stands and works it to and fro,
+  stepping on now and then, and takes it with him when he goes.
+
 ## [0.11.0] - 2026-09-29
 
 ### Added
