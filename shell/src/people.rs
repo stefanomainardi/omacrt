@@ -501,6 +501,23 @@ pub struct Pose {
 
 /// Draw a figure.
 pub fn sprite(pal: &Palette, pose: &Pose) -> Sprite {
+    build(pal, pose, &mut |_, _, _, _| {})
+}
+
+/// A figure at each step of its making, for the study plates: the shapes at
+/// four times the size, then the reduction, the cleaning, the grain, the head
+/// and the edge, each with its width and height.
+pub fn stages(pal: &Palette, pose: &Pose) -> Vec<(&'static str, i32, i32, Vec<Option<Color>>)> {
+    let mut out = Vec::new();
+    build(pal, pose, &mut |name, w, h, px| {
+        out.push((name, w, h, px.to_vec()))
+    });
+    out
+}
+
+type Stage<'a> = dyn FnMut(&'static str, i32, i32, &[Option<Color>]) + 'a;
+
+fn build(pal: &Palette, pose: &Pose, stage: &mut Stage) -> Sprite {
     let t = Tones::of(pal);
     let mut pen = Pen::new();
     let (head_at, mop, grid): (_, _, &[&str]) = match pose.view {
@@ -529,9 +546,13 @@ pub fn sprite(pal: &Palette, pose: &Pose) -> Sprite {
             (h, None, grid)
         }
     };
+    stage("shapes", pen.w, pen.h, &pen.px);
     let mut px = reduce(&pen);
+    stage("reduced", W, H, &px);
     clean(&mut px);
+    stage("cleaned", W, H, &px);
     grain(&mut px, &t);
+    stage("grain", W, H, &px);
     let (hx, hy) = (
         (head_at.0 / SS as f32).round() as i32 - 6,
         (head_at.1 / SS as f32).round() as i32 - 6,
@@ -542,7 +563,9 @@ pub fn sprite(pal: &Palette, pose: &Pose) -> Sprite {
             px[(y * W + x) as usize] = Some(c);
         }
     }
+    stage("head", W, H, &px);
     let mut px = selout(&px);
+    stage("edge", W, H, &px);
     let mut mop = mop.map(|(x, y)| (x * HEIGHT as f32 / 100.0, y * HEIGHT as f32 / 100.0));
     if pose.view == View::Side(false) {
         for y in 0..H {

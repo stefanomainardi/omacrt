@@ -74,6 +74,9 @@ struct Args {
     idle: f32,
     screensaver: Option<Option<effects::Kind>>,
     dump_audio: Option<PathBuf>,
+    /// Where to write every sprite of the hall's people, for the study
+    /// plates and the website's figures.
+    dump_people: Option<PathBuf>,
     /// A time of day to draw instead of now, and how fast it runs.
     clock: Option<String>,
     clock_speed: f32,
@@ -151,6 +154,7 @@ fn parse_args() -> Result<Args, String> {
         idle: omacrt_shell::settings::DEFAULT_SAVER_IDLE as f32,
         screensaver: None,
         dump_audio: None,
+        dump_people: None,
         clock: None,
         clock_speed: 1.0,
         record: None,
@@ -195,6 +199,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--idle" => a.idle = take(&mut it, &arg)?.parse().map_err(|_| "bad idle")?,
             "--dump-audio" => a.dump_audio = Some(PathBuf::from(take(&mut it, &arg)?)),
+            "--dump-people" => a.dump_people = Some(PathBuf::from(take(&mut it, &arg)?)),
             "--clock" => a.clock = Some(take(&mut it, &arg)?),
             "--clock-speed" => {
                 a.clock_speed = take(&mut it, &arg)?
@@ -1961,6 +1966,18 @@ fn main() {
     {
         eprintln!("{e}");
         std::process::exit(2);
+    }
+    if let Some(dir) = &args.dump_people {
+        match crowd::dump_sprites(dir) {
+            Ok(n) => {
+                println!("{n} sprites in {}", dir.display());
+                return;
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
     }
     if let Some(dir) = &args.dump_audio {
         if let Err(e) = std::fs::create_dir_all(dir) {

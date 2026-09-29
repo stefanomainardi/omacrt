@@ -760,6 +760,101 @@ impl Crowd {
     }
 }
 
+/// Every person in every view and pose, written as pictures for studying
+/// and documenting them: the walk in sixteen phases from the side, the front
+/// and behind, and the other acts in a few moments each. Transparent pixels
+/// are written magenta, since the format has no alpha.
+pub fn dump_sprites(dir: &std::path::Path) -> std::io::Result<usize> {
+    std::fs::create_dir_all(dir)?;
+    let mut n = 0;
+    let views = [
+        ("side", people::View::Side(true)),
+        ("front", people::View::Toward),
+        ("back", people::View::Away),
+    ];
+    for (name, look) in [("denim", DENIM), ("mullet", MULLET), ("janitor", JANITOR)] {
+        let pal = look.palette();
+        let write = |file: String, pose: people::Pose| -> std::io::Result<()> {
+            let s = people::sprite(&pal, &pose);
+            let mut fb = Framebuffer::new(people::W as usize, people::H as usize);
+            for y in 0..people::H {
+                for x in 0..people::W {
+                    fb.put(x, y, s.at(x, y).unwrap_or(0xff00ff));
+                }
+            }
+            fb.write_ppm(&dir.join(file))
+        };
+        for (v, view) in views {
+            for k in 0..16 {
+                write(
+                    format!("{name}-{v}-walk-{k:02}.ppm"),
+                    people::Pose {
+                        view,
+                        act: people::Act::Walk,
+                        phase: k as f32 / 16.0,
+                        amount: 1.0,
+                        t: 0.0,
+                    },
+                )?;
+                n += 1;
+            }
+            write(
+                format!("{name}-{v}-stand.ppm"),
+                people::Pose {
+                    view,
+                    act: people::Act::Walk,
+                    phase: 0.0,
+                    amount: 0.0,
+                    t: 0.0,
+                },
+            )?;
+            n += 1;
+        }
+        for (act, a, view) in [
+            ("play", people::Act::Play, people::View::Away),
+            ("playside", people::Act::Play, people::View::Side(true)),
+            ("cheer", people::Act::Cheer, people::View::Toward),
+            ("over", people::Act::Over, people::View::Away),
+            ("mop", people::Act::Mop, people::View::Side(true)),
+            ("carry", people::Act::Carry, people::View::Side(true)),
+        ] {
+            for k in 0..8 {
+                write(
+                    format!("{name}-{act}-{k:02}.ppm"),
+                    people::Pose {
+                        view,
+                        act: a,
+                        phase: k as f32 / 8.0,
+                        amount: if a == people::Act::Carry { 1.0 } else { 0.0 },
+                        t: k as f32 / 8.0,
+                    },
+                )?;
+                n += 1;
+            }
+        }
+        // The same figure at every step of its making, at the moment the
+        // heel strikes, for the plate that shows how a sprite is made.
+        let pose = people::Pose {
+            view: people::View::Side(true),
+            act: people::Act::Walk,
+            phase: 0.0,
+            amount: 1.0,
+            t: 0.0,
+        };
+        for (k, (stage, w, h, px)) in people::stages(&pal, &pose).into_iter().enumerate() {
+            let mut fb = Framebuffer::new(w as usize, h as usize);
+            for y in 0..h {
+                for x in 0..w {
+                    fb.put(x, y, px[(y * w + x) as usize].unwrap_or(0xff00ff));
+                }
+            }
+            fb.write_ppm(&dir.join(format!("{name}-stage-{k}-{stage}.ppm")))?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
 fn dither(x: i32, y: i32) -> f32 {
     (crate::paint::BAYER[(y & 3) as usize][(x & 3) as usize] as f32 + 0.5) / 16.0
 }
