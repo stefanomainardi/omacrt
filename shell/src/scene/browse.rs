@@ -2740,16 +2740,15 @@ impl Scene {
                 fb.text(
                     left,
                     h - 28,
-                    &cut("saved to profile.toml + switchres.ini", max_cols),
+                    &cut("writes profile.toml, switchres.ini", max_cols),
                     scale(self.theme.dim, 0.7),
                     1,
                 );
-                fb.text(
+                self.draw_hint(
+                    fb,
                     left,
-                    h - 16,
-                    "<> change  A select  B back saves",
-                    scale(self.theme.dim, 0.7),
-                    1,
+                    h - 14,
+                    &[("<>", "change"), ("A", "select"), ("B", "back")],
                 );
             }
             Screen::Pads { sel, scan } => {

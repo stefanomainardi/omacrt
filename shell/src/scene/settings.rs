@@ -492,7 +492,7 @@ impl Scene {
             fb,
             left,
             h - 14,
-            &[("^v", "preview"), ("A", "keep"), ("B", "back saves")],
+            &[("^v", "preview"), ("A", "keep"), ("B", "back")],
         );
     }
 
@@ -584,7 +584,9 @@ impl Scene {
         let w = fb.w as i32;
         let h = fb.h as i32;
         let left = (w as f32 * 0.05) as i32 + self.slide();
-        let y0 = self.draw_header(fb, "About");
+        // A few lines down from the header: prose set right under its rule
+        // reads as part of it, where a list has its selection bar between.
+        let y0 = self.draw_header(fb, "About") + 3;
         let row_h = 11;
         // As many lines as there is room for between the header and the hint,
         // which is the fifteen a television shows and five more on a PAL set.
