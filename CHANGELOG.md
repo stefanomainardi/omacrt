@@ -7,6 +7,8 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-29
+
 ### Added
 
 - Each game's refresh rate is remembered, so an arcade game starts at its
@@ -1476,7 +1478,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.0
 [0.10.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.10.0
 [0.9.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.9.0
 [0.8.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.8.2
