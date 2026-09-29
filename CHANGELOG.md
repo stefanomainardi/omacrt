@@ -7,6 +7,12 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Fixed
+
+- Games that draw more lines than the television holds, such as Sega's
+  Model 2 boards at 384, are scaled down smoothly instead of with rows
+  missing from every letter.
+
 ## [0.11.1] - 2026-09-29
 
 ### Changed

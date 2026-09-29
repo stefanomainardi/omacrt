@@ -99,6 +99,20 @@ to, which comes from `default_lines`, not from the core.
 The files Dolphin needs and does not ship, its `Sys` folder, are fetched once
 from the libretro buildbot on the first launch.
 
+### Games taller than the tube
+
+Some boards draw more lines than a 15 kHz television holds. Sega's Model 2,
+which runs in the MAME core (Sega Rally Championship, Daytona USA, Virtua
+Fighter 2), draws 496x384 at 57.52 Hz for a 24 kHz monitor. The tube is given
+its whole frame, 240 lines in NTSC, at the board's own rate, and the emulator
+reduces the picture to it.
+
+A reduction by a whole number is left sharp: a Dreamcast's 480 lines into 240
+keeps every other line. Anything else is filtered, because the emulator's
+nearest neighbour drops lines unevenly, three in every eight from 384 to 240,
+and the letters of a timer come out with rows missing. The filter applies from
+the second launch of a game, once the launcher knows how many lines it draws.
+
 ### ScummVM, where a game is a folder
 
 The core wants a `.scummvm` launcher file holding a game id, beside the game's
