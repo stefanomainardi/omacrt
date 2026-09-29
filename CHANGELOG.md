@@ -7,6 +7,8 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-09-29
+
 ### Changed
 
 - The people in the hall are redrawn as sprites in the manner of the
@@ -1488,7 +1490,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.1
 [0.11.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.0
 [0.10.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.10.0
 [0.9.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.9.0
