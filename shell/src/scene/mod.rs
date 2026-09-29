@@ -392,6 +392,8 @@ struct Launch {
     color: Color,
     started: f64,
     spawned: bool,
+    /// Which of the launch's sounds have been played: 1 the lid, 2 the click.
+    cues: u8,
     /// Geometry the CRT should switch to for this program, when the output
     /// is a wide super resolution the host controls.
     lines: Option<Geometry>,
@@ -1266,6 +1268,7 @@ impl Scene {
                     color: self.theme.accent,
                     started: self.now + 1.0,
                     spawned: false,
+                    cues: 0,
                     lines: None,
                 });
             }

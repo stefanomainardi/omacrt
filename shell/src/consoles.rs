@@ -752,6 +752,8 @@ pub struct Media {
     pub glow: bool,
     /// The lid that opens for it, for a console that takes discs.
     pub lid: Option<Lid>,
+    /// How far it is pressed down once it is in, as the NES's cartridge is.
+    pub press: i32,
 }
 
 /// A lid, as the box of cells it occupies when shut (x0..x1, y0..y1,
@@ -780,6 +782,7 @@ fn cart(x: i32, y: i32, z: i32, w: i32, t: i32, h: i32, color: crate::fb::Color)
         disc: None,
         glow: false,
         lid: None,
+        press: 0,
     }
 }
 
@@ -797,6 +800,7 @@ fn disc(cx: f32, cy: f32, z: i32, r: f32, lid: Lid) -> Media {
         disc: Some(r),
         glow: false,
         lid: Some(lid),
+        press: 0,
     }
 }
 
@@ -938,6 +942,7 @@ pub fn media(name: &str) -> Option<Media> {
             disc: None,
             glow: true,
             lid: None,
+            press: 0,
         },
         "scummvm" => Media {
             x: 23,
@@ -952,6 +957,7 @@ pub fn media(name: &str) -> Option<Media> {
             disc: None,
             glow: false,
             lid: None,
+            press: 0,
         },
         _ => return None,
     })
@@ -1046,13 +1052,20 @@ pub fn scene(name: &str, lid: f32, p: f32, lamps: bool) -> Option<(Model, [f32; 
     let mat = if md.glow {
         m.glow(md.color)
     } else if md.label {
-        m.decal(md.color)
+        m.decal(rgb(230, 230, 232))
     } else {
         m.mat(md.color)
     };
     let (x, mut y, mut z) = (md.x, md.y + front, md.z);
     match md.way {
         Way::Down => z += off,
+        Way::In if md.press > 0 => {
+            // Slid in over the first four fifths, pressed down in the last.
+            let slide = (p / 0.8).min(1.0);
+            let down = ((p - 0.8) / 0.2).clamp(0.0, 1.0);
+            y -= ((1.0 - slide) * TRAVEL as f32).round() as i32;
+            z -= (down * md.press as f32).round() as i32;
+        }
         Way::In => y -= off,
     }
     if !shown {
@@ -1065,6 +1078,21 @@ pub fn scene(name: &str, lid: f32, p: f32, lamps: bool) -> Option<(Model, [f32; 
         m.cylinder(x as f32, y as f32, z, 1.6, 1.6, 1, hole);
         let (xf, yf) = (x as f32, y as f32);
         Some((m, [xf - r, yf - r, xf + r, yf + r], Face::Top))
+    } else if md.label {
+        // A cartridge: its shell, the grip ridges along its top, and the
+        // label set into the upper part of its front with a border of shell
+        // round it.
+        let shell = m.mat(md.color);
+        let ridge = m.mat(crate::fb::lerp_color(md.color, 0, 0.35));
+        m.cube(x, y, z, md.w, md.t, md.h, shell);
+        for i in (x + 1..x + md.w - 1).step_by(2) {
+            m.cube(i, y, z + md.h - 2, 1, md.t, 2, ridge);
+        }
+        let (lx0, lx1) = (x + 2, x + md.w - 2);
+        let (lz0, lz1) = (z + md.h * 35 / 100, z + md.h - 4);
+        m.cube(lx0, y, lz0, lx1 - lx0, 1, lz1 - lz0, mat);
+        let rect = [lx0 as f32, lz0 as f32, lx1 as f32, lz1 as f32];
+        Some((m, rect, Face::Front))
     } else {
         m.cube(x, y, z, md.w, md.t, md.h, mat);
         let rect = [x as f32, z as f32, (x + md.w) as f32, (z + md.h) as f32];

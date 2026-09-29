@@ -850,6 +850,23 @@ impl Scene {
             (0.0, ease_in(span(0.08, 0.55)), 0.55)
         };
         let lamps = u >= click;
+        // The lid's catch as it opens, the lock as the game clicks home,
+        // each once.
+        let cue = |bit: u8, at: f32, s: &Self| -> bool {
+            u >= at && s.launching.as_ref().is_some_and(|l| l.cues & bit == 0)
+        };
+        if lidded && cue(1, 0.05, self) {
+            self.pending.push(Sound::Click);
+            if let Some(l) = self.launching.as_mut() {
+                l.cues |= 1;
+            }
+        }
+        if cue(2, click, self) {
+            self.pending.push(Sound::Lock);
+            if let Some(l) = self.launching.as_mut() {
+                l.cues |= 2;
+            }
+        }
         let Some((model, rect, face)) = crate::consoles::scene(system, lid, p, lamps) else {
             return;
         };

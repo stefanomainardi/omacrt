@@ -1849,6 +1849,7 @@ impl Scene {
                     color: self.theme.yellow,
                     started: self.now - LAUNCH_SECS as f64, // no animation, start right away
                     spawned: false,
+                    cues: 0,
                     lines,
                 });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
@@ -1874,6 +1875,7 @@ impl Scene {
                     color,
                     started: self.now,
                     spawned: false,
+                    cues: 0,
                     lines,
                 });
                 self.running = Some((entry.game.title.clone(), system.name.clone()));
