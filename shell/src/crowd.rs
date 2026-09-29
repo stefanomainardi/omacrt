@@ -115,6 +115,8 @@ enum Act {
     Play,
     Over,
     Cheer,
+    /// Standing with the mop's head on the floor, before and after mopping.
+    Rest,
 }
 
 #[derive(Clone)]
@@ -125,7 +127,7 @@ enum Leg {
         t0: f32,
         t1: f32,
         path: Vec<(f32, f32)>,
-        mop: bool,
+        tool: Tool,
     },
     Stay {
         t0: f32,
@@ -133,8 +135,18 @@ enum Leg {
         at: (f32, f32),
         facing: Facing,
         act: Act,
-        cab: usize,
+        cab: Option<usize>,
     },
+}
+
+/// What somebody has in their hands as they walk.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Tool {
+    None,
+    /// The mop carried, its head off the floor.
+    Carry,
+    /// The mop on the floor, going to and fro.
+    Mop,
 }
 
 /// How fast people walk, in the hall's units a second, and the man with
@@ -175,28 +187,43 @@ impl Plan {
     }
 
     fn walk(self, path: Vec<(f32, f32)>) -> Self {
-        self.go(path, false)
+        self.go(path, Tool::None)
+    }
+
+    fn carry(self, path: Vec<(f32, f32)>) -> Self {
+        self.go(path, Tool::Carry)
     }
 
     fn mop(self, path: Vec<(f32, f32)>) -> Self {
-        self.go(path, true)
+        self.go(path, Tool::Mop)
     }
 
-    fn go(mut self, path: Vec<(f32, f32)>, mop: bool) -> Self {
+    fn go(mut self, path: Vec<(f32, f32)>, tool: Tool) -> Self {
         let length: f32 = path.windows(2).map(|w| dist(w[0], w[1])).sum();
-        let speed = if mop { MOPPING } else { stride(1.0) * CADENCE };
+        let speed = if tool == Tool::Mop {
+            MOPPING
+        } else {
+            stride(1.0) * CADENCE
+        };
         let secs = length / speed + 0.5;
         self.legs.push(Leg::Walk {
             t0: self.t,
             t1: self.t + secs,
             path,
-            mop,
+            tool,
         });
         self.t += secs;
         self
     }
 
-    fn stay(mut self, secs: f32, at: (f32, f32), facing: Facing, act: Act, cab: usize) -> Self {
+    fn stay(
+        mut self,
+        secs: f32,
+        at: (f32, f32),
+        facing: Facing,
+        act: Act,
+        cab: Option<usize>,
+    ) -> Self {
         self.legs.push(Leg::Stay {
             t0: self.t,
             t1: self.t + secs,
@@ -247,8 +274,8 @@ fn scene(n: u64) -> Vec<(Look, Vec<Leg>)> {
             let path = to_back(true, AT_BACK_L);
             let p = Plan::at(0.0)
                 .walk(path.clone())
-                .stay(8.8, AT_BACK_L, Facing::Away, Act::Play, CAB_BACK_L)
-                .stay(1.4, AT_BACK_L, Facing::Away, Act::Over, CAB_BACK_L)
+                .stay(8.8, AT_BACK_L, Facing::Away, Act::Play, Some(CAB_BACK_L))
+                .stay(1.4, AT_BACK_L, Facing::Away, Act::Over, Some(CAB_BACK_L))
                 .walk(back(path));
             vec![(DENIM, p.legs)]
         }
@@ -257,11 +284,11 @@ fn scene(n: u64) -> Vec<(Look, Vec<Leg>)> {
             let b = to_back(false, AT_BACK_L);
             let one = Plan::at(0.0)
                 .walk(a.clone())
-                .stay(10.0, AT_BACK_R, Facing::Away, Act::Play, CAB_BACK_R)
+                .stay(10.0, AT_BACK_R, Facing::Away, Act::Play, Some(CAB_BACK_R))
                 .walk(back(a));
             let two = Plan::at(3.0)
                 .walk(b.clone())
-                .stay(9.0, AT_BACK_L, Facing::Away, Act::Play, CAB_BACK_L)
+                .stay(9.0, AT_BACK_L, Facing::Away, Act::Play, Some(CAB_BACK_L))
                 .walk(back(b));
             vec![(DENIM, one.legs), (MULLET, two.legs)]
         }
@@ -269,16 +296,24 @@ fn scene(n: u64) -> Vec<(Look, Vec<Leg>)> {
             let path = to_side_r(false);
             let p = Plan::at(0.0)
                 .walk(path.clone())
-                .stay(9.4, AT_SIDE_R, Facing::Right, Act::Play, CAB_SIDE_R)
-                .stay(1.8, AT_SIDE_R, Facing::Toward, Act::Cheer, CAB_SIDE_R)
+                .stay(9.4, AT_SIDE_R, Facing::Right, Act::Play, Some(CAB_SIDE_R))
+                .stay(1.8, AT_SIDE_R, Facing::Toward, Act::Cheer, Some(CAB_SIDE_R))
                 .walk(back(path));
             vec![(MULLET, p.legs)]
         }
         _ => {
+            // He comes in with the mop in his hand, walks along the back to
+            // where he starts, puts it down, and mops his way across the
+            // aisle; then he lifts it and carries it out by the other door.
+            // The last step in ends across the aisle rather than toward the
+            // camera, so he arrives in profile, the way he mops.
+            let (from, to) = ((0.30, LANE), (-0.45, LANE));
             let p = Plan::at(0.0)
-                .walk(joined(door(true), &[(0.45, LANE)]))
-                .mop(vec![(0.45, LANE), (-0.45, LANE)])
-                .walk(joined(vec![(-0.45, LANE)], &back(door(false))));
+                .carry(joined(door(true), &[from]))
+                .stay(0.9, from, Facing::Left, Act::Rest, None)
+                .mop(vec![from, to])
+                .stay(0.7, to, Facing::Left, Act::Rest, None)
+                .carry(joined(vec![to], &back(door(false))));
             vec![(JANITOR, p.legs)]
         }
     }
@@ -295,7 +330,7 @@ struct Pose {
     act: Option<Act>,
     since: f32,
     cab: Option<usize>,
-    mop: bool,
+    tool: Tool,
 }
 
 /// Strides a second. Two steps a second is an ordinary walk; the hall's
@@ -359,11 +394,16 @@ fn pose_at(legs: &[Leg], t: f32, tall: f32) -> Option<Pose> {
                     amount: 0.0,
                     act: if arrived.is_some() { None } else { Some(*act) },
                     since: t - t0,
-                    cab: Some(*cab),
-                    mop: false,
+                    cab: *cab,
+                    tool: if *act == Act::Rest {
+                        Tool::Mop
+                    } else {
+                        Tool::None
+                    },
                 });
             }
-            Leg::Walk { t0, t1, path, mop } if (*t0..*t1).contains(&t) => {
+            Leg::Walk { t0, t1, path, tool } if (*t0..*t1).contains(&t) => {
+                let mop = &(*tool == Tool::Mop);
                 let total: f32 = path.windows(2).map(|w| dist(w[0], w[1])).sum();
                 let secs = t1 - t0;
                 // Speed up over the first quarter second, slow down over
@@ -413,7 +453,7 @@ fn pose_at(legs: &[Leg], t: f32, tall: f32) -> Option<Pose> {
                     act: None,
                     since: e,
                     cab: None,
-                    mop: *mop,
+                    tool: *tool,
                 });
             }
             _ => {}
@@ -526,15 +566,13 @@ impl Crowd {
     /// Draw whoever is in the hall, over the hall and under the menu.
     /// The sprite for a person in a pose, drawn once and kept.
     fn sprite(&mut self, look: &Look, pose: &Pose, now: f32) -> std::rc::Rc<people::Sprite> {
-        let act = if pose.mop {
-            people::Act::Mop
-        } else {
-            match pose.act {
-                Some(Act::Play) => people::Act::Play,
-                Some(Act::Cheer) => people::Act::Cheer,
-                Some(Act::Over) => people::Act::Over,
-                None => people::Act::Walk,
-            }
+        let act = match (pose.act, pose.tool) {
+            (Some(Act::Play), _) => people::Act::Play,
+            (Some(Act::Cheer), _) => people::Act::Cheer,
+            (Some(Act::Over), _) => people::Act::Over,
+            (_, Tool::Mop) => people::Act::Mop,
+            (_, Tool::Carry) => people::Act::Carry,
+            _ => people::Act::Walk,
         };
         let view = match (act, pose.facing) {
             (people::Act::Cheer, _) => people::View::Toward,
@@ -545,10 +583,11 @@ impl Crowd {
         };
         // The small motions of playing, cheering and mopping run from when
         // the act began; a mop's sweep from the clock, since it walks.
-        let t = if act == people::Act::Mop {
-            now
-        } else {
-            pose.since
+        let t = match (act, pose.act) {
+            // at rest the mop is still
+            (people::Act::Mop, Some(Act::Rest)) => 0.0,
+            (people::Act::Mop, _) => now,
+            _ => pose.since,
         };
         let p = people::Pose {
             view,
@@ -568,7 +607,7 @@ impl Crowd {
             act: act as u8,
             phase: (p.phase.rem_euclid(1.0) * 960.0) as u16,
             amount: (p.amount * 50.0) as u8,
-            t: if act == people::Act::Walk {
+            t: if matches!(act, people::Act::Walk | people::Act::Carry) {
                 0
             } else {
                 ((t * POSES) as u32 % 4096) as u16

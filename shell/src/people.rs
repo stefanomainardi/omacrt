@@ -63,6 +63,8 @@ pub enum Act {
     Cheer,
     Over,
     Mop,
+    /// Walking with the mop in one hand, its head off the floor.
+    Carry,
 }
 
 pub struct Sprite {
@@ -589,6 +591,9 @@ fn side(pen: &mut Pen, t: &Tones, pose: &Pose) -> ((f32, f32), Option<(f32, f32)
         (top.0 + s * 11.0, top.1 + 7.0),
         (hip.0 + s * (30.0 + sweep), -1.0),
     );
+    // Carried, the mop hangs from the near hand a little ahead of the hip,
+    // its head a hand's breadth off the floor.
+    let carry_hand = (hip.0 + s * 6.0, hip.1 + 1.0);
     let on_handle = |f: f32| {
         (
             handle.0.0 + (handle.1.0 - handle.0.0) * f,
@@ -646,7 +651,13 @@ fn side(pen: &mut Pen, t: &Tones, pose: &Pose) -> ((f32, f32), Option<(f32, f32)
     let arm = |pen: &mut Pen, i: usize, far: bool| {
         let sh = shoulders[i];
         let skin = if far { t.skin[2] } else { t.skin[1] };
-        let (el, wr) = if pose.act == Act::Mop {
+        let carrying = pose.act == Act::Carry && i == 0;
+        let (el, wr) = if carrying {
+            // the near hand holds the handle at the hip, the arm straight
+            let hand = carry_hand;
+            let el = ((sh.0 + hand.0) / 2.0 - s * 0.8, (sh.1 + hand.1) / 2.0 + 1.0);
+            (el, hand)
+        } else if pose.act == Act::Mop {
             // both hands on the handle, the near one higher
             let hand = on_handle(if i == 0 { 0.08 } else { 0.3 });
             let el = ((sh.0 + hand.0) / 2.0 - s * 1.0, (sh.1 + hand.1) / 2.0 + 3.5);
@@ -789,37 +800,50 @@ fn side(pen: &mut Pen, t: &Tones, pose: &Pose) -> ((f32, f32), Option<(f32, f32)
     );
     arm(pen, 0, false);
 
+    if pose.act == Act::Carry {
+        let hand = carry_hand;
+        let foot = (hand.0 + s * 9.0, -7.0);
+        let up = (
+            hand.0 - (foot.0 - hand.0) * 0.45,
+            hand.1 - (foot.1 - hand.1) * 0.45,
+        );
+        mop_head(pen, up, foot, false);
+    }
     let mut mop = None;
     if pose.act == Act::Mop {
         let (a, b) = handle;
-        pen.seg(a, b, 0.95, 0.95, 0x96764a);
-        pen.seg((a.0 - 0.4, a.1), (b.0 - 0.4, b.1), 0.35, 0.35, 0xc8a46c);
-        pen.poly(
-            &[
-                (b.0 - 2.0, -3.6),
-                (b.0 + 2.0, -3.6),
-                (b.0 + 2.4, -2.2),
-                (b.0 - 2.4, -2.2),
-            ],
-            0x787878,
-        );
-        for k in -3..=3 {
-            let k = k as f32;
-            pen.seg(
-                (b.0 + k * 1.1, -2.4),
-                (b.0 + k * 2.2, 0.6),
-                0.6,
-                0.6,
-                if (k as i32) % 2 != 0 {
-                    0xcec8b8
-                } else {
-                    0xa8a496
-                },
-            );
-        }
+        mop_head(pen, a, b, true);
         mop = Some((b.0, 0.0));
     }
     (pen.p(hcx, hcy), mop)
+}
+
+/// A mop from the top of its handle to its head: on the floor its strands
+/// spread; carried they hang together.
+fn mop_head(pen: &mut Pen, a: (f32, f32), b: (f32, f32), down: bool) {
+    pen.seg(a, b, 0.95, 0.95, 0x96764a);
+    pen.seg((a.0 - 0.4, a.1), (b.0 - 0.4, b.1), 0.35, 0.35, 0xc8a46c);
+    pen.poly(
+        &[
+            (b.0 - 2.0, b.1 - 2.6),
+            (b.0 + 2.0, b.1 - 2.6),
+            (b.0 + 2.4, b.1 - 1.2),
+            (b.0 - 2.4, b.1 - 1.2),
+        ],
+        0x787878,
+    );
+    let (spread, drop) = if down { (2.2, 1.6) } else { (1.3, 4.0) };
+    for k in -3..=3 {
+        let c = if k % 2 != 0 { 0xcec8b8 } else { 0xa8a496 };
+        let k = k as f32;
+        pen.seg(
+            (b.0 + k * 1.1, b.1 - 1.4),
+            (b.0 + k * spread, b.1 + drop),
+            0.6,
+            0.6,
+            c,
+        );
+    }
 }
 
 /// The figure walking toward the camera or away from it: the same joint
@@ -1048,6 +1072,11 @@ fn frontal(pen: &mut Pen, t: &Tones, pose: &Pose, away: bool) -> (f32, f32) {
                 pen.ellipse(wr.0, wr.1 + 1.6, 2.2, 2.6, skin);
             }
         }
+    }
+    if pose.act == Act::Carry {
+        // upright beside him, in the hand on the right of the picture
+        let x = 12.5 + sway;
+        mop_head(pen, (x + 0.8, top_y - 2.0), (x + 1.5, -6.5), false);
     }
     // a nod to the game while he plays, the head down at a game lost
     let nod = if pose.act == Act::Play {
