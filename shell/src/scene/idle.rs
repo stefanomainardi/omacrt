@@ -69,7 +69,7 @@ impl Scene {
     fn on_saver_page(&self) -> bool {
         matches!(
             self.screen,
-            Screen::Frame | Screen::Ambient | Screen::Monitor { .. }
+            Screen::Frame | Screen::Ambient | Screen::Monitor { .. } | Screen::Gallery { .. }
         )
     }
 
@@ -120,6 +120,10 @@ impl Scene {
         match omacrt_shell::settings::PAGES.get(page).copied() {
             Some("photos") => self.open_frame(),
             Some("ambient") => self.go(Screen::Ambient),
+            Some("gallery") => {
+                let at = self.rand() as usize % crate::gallery::PAINTINGS.len();
+                self.go(Screen::Gallery { at });
+            }
             Some("system") => {
                 self.sysmon.sample();
                 self.go(Screen::Monitor { page: 0 });

@@ -805,6 +805,29 @@ impl Scene {
                     moved = true;
                 }
             }
+            Screen::Gallery { at } => {
+                let n = crate::gallery::PAINTINGS.len();
+                // The one on the wall, counting the turns it has taken on
+                // its own since the page came up.
+                let turns = ((self.now - self.screen_since).max(0.0) / GALLERY_TURN) as usize;
+                let on = (*at + turns) % n;
+                match nav {
+                    Nav::Right | Nav::Down => {
+                        *at = (on + 1) % n;
+                        self.screen_since = self.now;
+                        moved = true;
+                    }
+                    Nav::Left | Nav::Up => {
+                        *at = (on + n - 1) % n;
+                        self.screen_since = self.now;
+                        moved = true;
+                    }
+                    Nav::Back => {
+                        self.screen = Screen::AmbientHub { sel: 3 };
+                        moved = true;
+                    }
+                }
+            }
             Screen::Frame => match nav {
                 Nav::Right | Nav::Down => {
                     self.next_photo();
@@ -1508,16 +1531,23 @@ impl Scene {
             | Screen::About { .. }
             | Screen::Monitor { .. }
             | Screen::Ambient => Action::None,
+            Screen::Gallery { at } => {
+                let next = (self.gallery_on(at) + 1) % crate::gallery::PAINTINGS.len();
+                self.screen = Screen::Gallery { at: next };
+                self.screen_since = self.now;
+                Action::None
+            }
             Screen::AmbientHub { sel } => {
                 self.pending.push(Sound::Select);
                 match sel {
                     0 => self.open_frame(),
                     1 => self.go(Screen::Ambient),
-                    _ => {
+                    2 => {
                         self.sysmon.sample();
                         self.sysmon_at = 0.0;
                         self.go(Screen::Monitor { page: 0 });
                     }
+                    _ => self.go(Screen::Gallery { at: 0 }),
                 }
                 Action::None
             }
@@ -2849,6 +2879,12 @@ impl Scene {
             }
             Screen::Ambient => {
                 self.draw_ambient(fb);
+                return;
+            }
+            Screen::Gallery { at } => {
+                let which = self.gallery_on(at);
+                let t = ((self.now - self.screen_since) % GALLERY_TURN) as f32;
+                crate::gallery::draw(fb, which, t);
                 return;
             }
             Screen::Menu => {}

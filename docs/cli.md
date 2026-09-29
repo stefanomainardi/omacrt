@@ -494,13 +494,14 @@ Four ways in, and none of them is the settings page:
 
 ## What an idle television shows
 
-Four pages can have the screen when the set is left alone:
+Five pages can have the screen when the set is left alone:
 
 | Page | What it shows |
 | --- | --- |
 | `effects` | The wordmark taken apart and put back, by one of nine text effects |
 | `photos` | The photo frame |
 | `ambient` | The weather drawn, with the time under it |
+| `gallery` | Three paintings after Magritte, each on the wall for forty seconds and moving a little |
 | `system` | The system monitor |
 
 `pages` is which of them are in the rotation, `cycle_secs` is how long each
@@ -511,7 +512,7 @@ uses:
 [screensaver]
 enabled = true
 idle_secs = 300                           # seconds of nothing before it starts
-pages = ["photos", "ambient", "system"]   # what an idle set shows
+pages = ["photos", "ambient", "gallery"]  # what an idle set shows
 cycle_secs = 240                          # how long each page keeps the screen
 effect = "random"                         # the wordmark page's own effect
 ```

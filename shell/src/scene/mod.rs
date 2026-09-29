@@ -158,6 +158,10 @@ enum Screen {
     AmbientHub {
         sel: usize,
     },
+    /// Paintings on a wall, one after another; `at` is the one up first.
+    Gallery {
+        at: usize,
+    },
 }
 
 /// A row of the music screen.
@@ -250,16 +254,20 @@ const HOME: [(icons::Icon, &str, bool); 8] = [
 /// The Ambient submenu: what the television shows when nothing is playing.
 /// All three are also screensaver pages, and this is where they are found on
 /// purpose rather than by leaving the set alone.
-const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 3] = [
+const AMBIENT_ITEMS: [(icons::Icon, &str, bool); 4] = [
     (icons::PHOTO, "Photo frame", true),
     (icons::CLOCK, "Clock and weather", true),
     (icons::CHART, "System monitor", true),
+    (icons::BRUSH, "Art gallery", true),
 ];
 
 /// The three ambient pages in a few words, for the home row that opens them.
 /// A test counts these against `AMBIENT_ITEMS`, so a fourth page cannot be
 /// added without saying so here.
-const AMBIENT_SUMMARY: &str = "photos, weather, monitor";
+/// How long a painting stays on the wall before the next is hung.
+const GALLERY_TURN: f64 = 40.0;
+
+const AMBIENT_SUMMARY: &str = "photos, weather, monitor, art";
 
 /// Settings submenu entries.
 /// Where a row of the settings page goes. Anything that comes back to
@@ -503,6 +511,7 @@ fn saver_page_label(page: &str) -> (&'static str, &'static str) {
         "photos" => ("the photographs", "the photo frame"),
         "ambient" => ("the clock and weather", "the weather, drawn, and the time"),
         "system" => ("the system monitor", "what the machine is doing"),
+        "gallery" => ("the art gallery", "three paintings, after Magritte"),
         _ => ("the wordmark", "a text effect on the wordmark"),
     }
 }
@@ -1081,6 +1090,13 @@ impl Scene {
     }
 
     /// Switch screen and restart the slide-in transition.
+    /// Which painting is on the gallery wall: the one the page came up
+    /// with, moved on by every turn it has taken on its own since.
+    fn gallery_on(&self, at: usize) -> usize {
+        let turns = ((self.now - self.screen_since).max(0.0) / GALLERY_TURN) as usize;
+        (at + turns) % crate::gallery::PAINTINGS.len()
+    }
+
     fn go(&mut self, screen: Screen) {
         self.screen = screen;
         self.screen_since = self.now;
@@ -1362,6 +1378,14 @@ impl Scene {
             Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },
             Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
             Some("ambient") => self.screen = Screen::Ambient,
+            Some(name) if name.starts_with("gallery") => {
+                let at = name
+                    .strip_prefix("gallery:")
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0);
+                self.screen = Screen::Gallery { at };
+                self.screen_since = self.now;
+            }
             Some("monitor") => {
                 self.sysmon.sample();
                 self.screen = Screen::Monitor { page: 0 };
@@ -1414,6 +1438,7 @@ impl Scene {
             }
             "frame" | "photos" => self.open_frame(),
             "ambient" | "clock" | "weather" => self.go(Screen::Ambient),
+            "gallery" | "art" | "paintings" => self.go(Screen::Gallery { at: 0 }),
             "idle" | "ambienthub" => self.go(Screen::AmbientHub { sel: 0 }),
             "monitor" | "system" => {
                 self.sysmon.sample();

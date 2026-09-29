@@ -36,7 +36,7 @@ pub const DEFAULT_SAVER_IDLE: u32 = 300;
 /// The launcher draws each of these and knows what to call them; this is the
 /// list itself, because the settings file, its migration and the screen all
 /// have to agree on the names.
-pub const PAGES: [&str; 4] = ["effects", "photos", "ambient", "system"];
+pub const PAGES: [&str; 5] = ["effects", "photos", "ambient", "gallery", "system"];
 
 impl Screensaver {
     /// Is this page in the rotation?

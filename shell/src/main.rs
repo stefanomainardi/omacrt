@@ -16,6 +16,7 @@ mod effects;
 mod etch;
 mod fb;
 mod font8x8;
+mod gallery;
 mod hall;
 mod icons;
 mod menu;

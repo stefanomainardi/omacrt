@@ -19,6 +19,10 @@ caveat for a 0.x project: anything may still move.
 - After the boot's floor, the laser climbs the screen and the hall stands up
   behind it; the word and the mark fly to the far wall, the sign strikes and
   the hall powers on, the cabinets pair by pair from the back.
+- An art gallery among the Ambient pages and the screensaver's: three
+  paintings after René Magritte redrawn in pixels, Le fils de l'homme,
+  L'empire des lumières and Golconde, each hung in a gilt frame under a
+  spotlight for forty seconds and moving a little in its own mood.
 - The pause menu shows the running game's console on a lit stage, the game
   in it and its lamp on, with what the row under the cursor is set to.
 - People come into the hall a while after the home is up, one scene at a
