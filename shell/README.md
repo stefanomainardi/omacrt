@@ -41,6 +41,7 @@ Options:
 | `--realtime`                               | with `--headless`, hold the loop to the wall clock: anything drawn from live data needs it                                                                             |
 | `--record DIR --record-secs N --script F`  | offline render: every frame as PPM plus `audio.wav`, inputs replayed from a script                                                                                     |
 | `--dump-audio DIR`                         | write every synthesized sound as a WAV and exit                                                                                                                        |
+| `--dump-people DIR`                        | write every sprite of the hall's people, and the steps of making one, as PPM with magenta for clear, and exit                                                          |
 
 `OMACRT_SHOTS=1` in the environment leaves the counts of games, films and
 favourites out of every screen, so a picture for a public page does not
