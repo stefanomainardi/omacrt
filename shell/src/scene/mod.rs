@@ -214,7 +214,13 @@ impl SysInfo {
                 .trim()
                 .to_string()
         };
-        let host = read("/etc/hostname");
+        // The machine's name is somebody's, and a picture for a public page
+        // shows the fallback instead.
+        let host = if shots() {
+            String::new()
+        } else {
+            read("/etc/hostname")
+        };
         let kernel = read("/proc/sys/kernel/osrelease");
         Self {
             host: if host.is_empty() {
