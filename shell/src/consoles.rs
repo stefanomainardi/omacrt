@@ -755,6 +755,10 @@ pub struct Media {
     pub lid: Option<Lid>,
     /// How far it is pressed down once it is in, as the NES's cartridge is.
     pub press: i32,
+    /// How far above its way in a thing pushed in starts, so that seen from
+    /// three quarters it comes down to the slot rather than seeming to slide
+    /// along the floor.
+    pub arc: i32,
 }
 
 /// A lid, as the box of cells it occupies when shut (x0..x1, y0..y1,
@@ -784,6 +788,7 @@ fn cart(x: i32, y: i32, z: i32, w: i32, t: i32, h: i32, color: crate::fb::Color)
         glow: false,
         lid: None,
         press: 0,
+        arc: 0,
     }
 }
 
@@ -802,6 +807,7 @@ fn disc(cx: f32, cy: f32, z: i32, r: f32, lid: Lid) -> Media {
         glow: false,
         lid: Some(lid),
         press: 0,
+        arc: 0,
     }
 }
 
@@ -944,6 +950,7 @@ pub fn media(name: &str) -> Option<Media> {
             glow: true,
             lid: None,
             press: 0,
+            arc: 18,
         },
         "scummvm" => Media {
             x: 23,
@@ -954,11 +961,12 @@ pub fn media(name: &str) -> Option<Media> {
             h: 1,
             color: rgb(40, 60, 140),
             way: Way::In,
-            label: false,
+            label: true,
             disc: None,
             glow: false,
             lid: None,
             press: 0,
+            arc: 10,
         },
         _ => return None,
     })
@@ -1067,13 +1075,10 @@ pub fn scene(name: &str, lid: f32, p: f32, lamps: bool) -> Option<(Model, [f32; 
             y -= ((1.0 - slide) * TRAVEL as f32).round() as i32;
             z -= (down * md.press as f32).round() as i32;
         }
-        // A coin is tossed: it comes down to the slot as it comes in, or
-        // seen from three quarters it would seem to lie on the floor.
-        Way::In if md.glow => {
+        Way::In => {
             y -= off;
-            z += ((1.0 - p) * 18.0).round() as i32;
+            z += ((1.0 - p) * md.arc as f32).round() as i32;
         }
-        Way::In => y -= off,
     }
     if !shown {
         return Some((m, [0.0, 0.0, 1.0, 1.0], Face::Front));
@@ -1085,6 +1090,26 @@ pub fn scene(name: &str, lid: f32, p: f32, lamps: bool) -> Option<(Model, [f32; 
         m.cylinder(x as f32, y as f32, z, 1.6, 1.6, 1, hole);
         let (xf, yf) = (x as f32, y as f32);
         Some((m, [xf - r, yf - r, xf + r, yf + r], Face::Top))
+    } else if md.label && md.t > md.h {
+        // A floppy, lying flat: the metal shutter on the edge that goes in
+        // first, the label with the cover on its top at the other end.
+        let body = m.mat(md.color);
+        let metal = m.mat(rgb(176, 180, 190));
+        m.cube(x, y, z, md.w, md.t, md.h, body);
+        let back = y + md.t;
+        m.cube(
+            x + md.w * 3 / 10,
+            back - 4,
+            z,
+            md.w * 4 / 10,
+            4,
+            md.h,
+            metal,
+        );
+        let (lx0, lx1, ly0, ly1) = (x + 1, x + md.w - 1, y + 1, back - 5);
+        m.cube(lx0, ly0, z + md.h - 1, lx1 - lx0, ly1 - ly0, 1, mat);
+        let rect = [lx0 as f32, ly0 as f32, lx1 as f32, ly1 as f32];
+        Some((m, rect, Face::Top))
     } else if md.label {
         // A cartridge: its shell, the grip ridges along its top, and the
         // label set into the upper part of its front with a border of shell

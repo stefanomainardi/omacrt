@@ -905,8 +905,15 @@ impl Scene {
         let width = bare.w as f32 * c.abs() + bare.d as f32 * s.abs();
         let deep = bare.w as f32 * s.abs() + bare.d as f32 * c.abs();
         let height = deep * pitch.sin() + bare.h as f32 * pitch.cos();
+        // Room above for a game that comes down into it; one pushed in from
+        // the front needs none, and a tall console (the cabinet, the PC)
+        // would otherwise stand small for the sake of it.
+        let above = match crate::consoles::media(system).map(|m| m.way) {
+            Some(crate::consoles::Way::Down) => 40,
+            _ => 14,
+        };
         let scale = (170.0 / width)
-            .min((floor - sy - 40) as f32 / height)
+            .min((floor - sy - above) as f32 / height)
             .min(3.0);
         let v = crate::voxel::View { yaw, pitch, scale };
         let lamp = crate::fb::lerp_color(br[4], 0xffecbe, 0.5);
@@ -943,9 +950,11 @@ impl Scene {
         );
     }
 
-    /// Back from a game: the lamp goes out and the game comes out of its
-    /// console, a cartridge rising from the slot, a lid opening and the disc
-    /// lifting from the well, and the picture fades to the list.
+    /// Back from a game: the console stands with the game in it while the
+    /// television locks to the launcher's mode, then the lamp goes out and
+    /// the game comes out of its console, a cartridge rising from the slot,
+    /// a lid opening and the disc lifting from the well, and the picture
+    /// fades to the list.
     pub(super) fn draw_ejecting(&mut self, fb: &mut Framebuffer) {
         let Some((system, path, since)) = self.ejecting.clone() else {
             return;
@@ -968,7 +977,10 @@ impl Scene {
             (0.0, 1.0 - ease_out(span(0.08, 0.5)))
         };
         let game = Some((system.clone(), path));
-        self.draw_console_scene(fb, &system, game, lid, p, false, false, (floor, br, sy));
+        // The lamp stays lit while the console stands still, and goes out
+        // as the game starts to come out.
+        let lamps = u < 0.0;
+        self.draw_console_scene(fb, &system, game, lid, p, lamps, false, (floor, br, sy));
         let fade = 1.0 - span(EJECT_SECS - 0.3, EJECT_SECS);
         if fade < 1.0 {
             fb.apply_gain(fade);
