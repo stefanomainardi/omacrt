@@ -24,6 +24,7 @@ mod menu;
 mod moments;
 mod pad;
 mod paint;
+mod people;
 mod photos;
 mod scene;
 mod sky;

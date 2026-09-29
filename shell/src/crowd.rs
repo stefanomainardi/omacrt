@@ -16,6 +16,7 @@
 
 use crate::fb::{Color, Framebuffer, lerp_color};
 use crate::hall::{FLOOR, Fx, Hall};
+use crate::people;
 
 /// A person's height in the hall's units; a cabinet is 1.4.
 const PERSON: f32 = 1.32;
@@ -25,7 +26,12 @@ const FIRST: f64 = 8.0;
 /// all four come round in two and a half minutes, well inside the five a
 /// screensaver waits.
 const CYCLE: f64 = 36.0;
+/// The dark round the words over a cabinet.
 const OUTLINE: Color = 0x08060e;
+/// How many poses a second a figure is drawn at. Its place on the floor is
+/// worked out at the same instants as its pose, so the foot that carries the
+/// weight stays where it was put between them.
+const POSES: f32 = 15.0;
 
 #[derive(Clone, Copy)]
 struct Look {
@@ -35,43 +41,65 @@ struct Look {
     top: Color,
     legs: Color,
     shoes: Color,
+    shirt: Color,
     mullet: bool,
     cap: Option<Color>,
-    stripe: Option<Color>,
+    /// Which person this is, for the cache of their sprites.
+    id: u8,
 }
 
+impl Look {
+    fn palette(&self) -> people::Palette {
+        people::Palette {
+            skin: self.skin,
+            hair: self.hair,
+            top: self.top,
+            shirt: self.shirt,
+            legs: self.legs,
+            shoes: self.shoes,
+            mullet: self.mullet,
+            cap: self.cap,
+        }
+    }
+}
+
+// The colours are the bases the sprites shade from, muted and a little warm
+// in the skin, as Fate of Atlantis coloured its people.
 const DENIM: Look = Look {
     tall: 1.0,
-    hair: 0x5c3820,
-    skin: 0xe8b28c,
-    top: 0x3a5cbe,
-    legs: 0x22284e,
-    shoes: 0xececf0,
+    hair: 0x684026,
+    skin: 0xcc8058,
+    top: 0x3e64aa,
+    legs: 0x42465c,
+    shoes: 0xd6d6d4,
+    shirt: 0xd2d0c4,
     mullet: false,
     cap: None,
-    stripe: None,
+    id: 0,
 };
 const MULLET: Look = Look {
     tall: 0.97,
-    hair: 0xe6c46e,
-    skin: 0xf0be96,
-    top: 0xc42c3c,
-    legs: 0x1e1c24,
-    shoes: 0x464650,
+    hair: 0xbc9048,
+    skin: 0xd28860,
+    top: 0xa82c32,
+    legs: 0x34343c,
+    shoes: 0x463c38,
+    shirt: 0x2c2a32,
     mullet: true,
     cap: None,
-    stripe: Some(0xf5f5f5),
+    id: 1,
 };
 const JANITOR: Look = Look {
     tall: 1.0,
-    hair: 0x3c322c,
-    skin: 0xd2a07c,
-    top: 0x54707a,
-    legs: 0x465e68,
-    shoes: 0x1e1c22,
+    hair: 0x463c38,
+    skin: 0xc47c56,
+    top: 0x5c686c,
+    legs: 0x505c60,
+    shoes: 0x2c2826,
+    shirt: 0x969c96,
     mullet: false,
-    cap: Some(0x284638),
-    stripe: None,
+    cap: Some(0x2c4a3c),
+    id: 2,
 };
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -111,7 +139,6 @@ enum Leg {
 
 /// How fast people walk, in the hall's units a second, and the man with
 /// the mop.
-const SPEED: f32 = 0.55;
 const MOPPING: f32 = 0.16;
 
 // The floor plan. A door at the far end of each side wall; beside it the
@@ -157,7 +184,8 @@ impl Plan {
 
     fn go(mut self, path: Vec<(f32, f32)>, mop: bool) -> Self {
         let length: f32 = path.windows(2).map(|w| dist(w[0], w[1])).sum();
-        let secs = length / if mop { MOPPING } else { SPEED } + 0.5;
+        let speed = if mop { MOPPING } else { stride(1.0) * CADENCE };
+        let secs = length / speed + 0.5;
         self.legs.push(Leg::Walk {
             t0: self.t,
             t1: self.t + secs,
@@ -270,6 +298,17 @@ struct Pose {
     mop: bool,
 }
 
+/// Strides a second. Two steps a second is an ordinary walk; the hall's
+/// people used to take one, and looked as if they were wading.
+const CADENCE: f32 = 0.95;
+
+/// The ground a figure covers in one stride, in the hall's units, from the
+/// joint curves the sprites are posed by: the foot on the floor moves back
+/// under the body by exactly as much as the body moves on, or it slides.
+fn stride(tall: f32) -> f32 {
+    people::stride() * PERSON * tall
+}
+
 fn facing_of(dx: f32, dd: f32) -> Facing {
     if dx.abs() > dd.abs() * 0.8 {
         if dx > 0.0 {
@@ -284,8 +323,12 @@ fn facing_of(dx: f32, dd: f32) -> Facing {
     }
 }
 
-fn pose_at(legs: &[Leg], t: f32) -> Option<Pose> {
-    for leg in legs {
+/// How long a figure that has stopped walking stands facing the way it
+/// walked before it turns to what it came for.
+const SETTLE: f32 = 0.25;
+
+fn pose_at(legs: &[Leg], t: f32, tall: f32) -> Option<Pose> {
+    for (n, leg) in legs.iter().enumerate() {
         match leg {
             Leg::Stay {
                 t0,
@@ -295,13 +338,26 @@ fn pose_at(legs: &[Leg], t: f32) -> Option<Pose> {
                 act,
                 cab,
             } if (*t0..*t1).contains(&t) => {
+                // Arriving, an actor in those games stops as he walked, feet
+                // together, and only then turns: the walk does not end on a
+                // pose facing somewhere else.
+                let arrived = n
+                    .checked_sub(1)
+                    .and_then(|m| match &legs[m] {
+                        Leg::Walk { path, .. } if path.len() > 1 => {
+                            let (a, b) = (path[path.len() - 2], path[path.len() - 1]);
+                            Some(facing_of(b.0 - a.0, b.1 - a.1))
+                        }
+                        _ => None,
+                    })
+                    .filter(|f| f != facing && t - t0 < SETTLE);
                 return Some(Pose {
                     x: at.0,
                     d: at.1,
-                    facing: *facing,
+                    facing: arrived.unwrap_or(*facing),
                     walk: None,
                     amount: 0.0,
-                    act: Some(*act),
+                    act: if arrived.is_some() { None } else { Some(*act) },
                     since: t - t0,
                     cab: Some(*cab),
                     mop: false,
@@ -324,6 +380,7 @@ fn pose_at(legs: &[Leg], t: f32) -> Option<Pose> {
                     v * ramp / 2.0 + v * (e - ramp)
                 };
                 let s = s.clamp(0.0, total);
+                let stride = stride(tall) * if *mop { 0.5 } else { 1.0 };
                 // Where on the path that is.
                 let mut left = s;
                 let (mut x, mut d, mut dir) = (path[0].0, path[0].1, (0.0, 0.0));
@@ -340,7 +397,6 @@ fn pose_at(legs: &[Leg], t: f32) -> Option<Pose> {
                     x = w[1].0;
                     d = w[1].1;
                 }
-                let stride = if *mop { 0.5 } else { 0.95 };
                 let speed = if e < ramp {
                     e / ramp
                 } else if e > secs - ramp {
@@ -364,554 +420,6 @@ fn pose_at(legs: &[Leg], t: f32) -> Option<Pose> {
         }
     }
     None
-}
-
-/// A small canvas a figure is built on, feet at its origin.
-struct Canvas {
-    px: Vec<Option<Color>>,
-    z: Vec<f32>,
-}
-
-const CW: i32 = 128;
-const CH: i32 = 170;
-const OX: i32 = 64;
-const OY: i32 = 160;
-
-impl Canvas {
-    fn new() -> Self {
-        Self {
-            px: vec![None; (CW * CH) as usize],
-            z: vec![f32::MIN; (CW * CH) as usize],
-        }
-    }
-
-    fn set(&mut self, x: i32, y: i32, c: Color, z: f32) {
-        let (gx, gy) = (x + OX, y + OY);
-        if gx < 0 || gy < 0 || gx >= CW || gy >= CH {
-            return;
-        }
-        let i = (gy * CW + gx) as usize;
-        if self.z[i] <= z {
-            self.px[i] = Some(c);
-            self.z[i] = z;
-        }
-    }
-
-    fn get(&self, x: i32, y: i32) -> Option<Color> {
-        let (gx, gy) = (x + OX, y + OY);
-        if gx < 0 || gy < 0 || gx >= CW || gy >= CH {
-            return None;
-        }
-        self.px[(gy * CW + gx) as usize]
-    }
-
-    /// A limb from a to b; the half away from the light (on the right) in
-    /// `shade` when there is one.
-    fn capsule(
-        &mut self,
-        a: (f32, f32),
-        b: (f32, f32),
-        r: f32,
-        c: Color,
-        z: f32,
-        shade: Option<Color>,
-    ) {
-        let (x0, x1) = (
-            (a.0.min(b.0) - r - 1.0) as i32,
-            (a.0.max(b.0) + r + 2.0) as i32,
-        );
-        let (y0, y1) = (
-            (a.1.min(b.1) - r - 1.0) as i32,
-            (a.1.max(b.1) + r + 2.0) as i32,
-        );
-        let (vx, vy) = (b.0 - a.0, b.1 - a.1);
-        let ll = (vx * vx + vy * vy).max(1e-6);
-        for y in y0..y1 {
-            for x in x0..x1 {
-                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
-                let t = (((px - a.0) * vx + (py - a.1) * vy) / ll).clamp(0.0, 1.0);
-                let (dx, dy) = (px - (a.0 + vx * t), py - (a.1 + vy * t));
-                if dx * dx + dy * dy <= r * r {
-                    let col = match shade {
-                        Some(s) if dx > r * 0.35 => s,
-                        _ => c,
-                    };
-                    self.set(x, y, col, z);
-                }
-            }
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn ellipse(
-        &mut self,
-        cx: f32,
-        cy: f32,
-        rx: f32,
-        ry: f32,
-        c: Color,
-        z: f32,
-        keep: impl Fn(f32, f32) -> bool,
-    ) {
-        for y in (cy - ry) as i32 - 1..(cy + ry) as i32 + 2 {
-            for x in (cx - rx) as i32 - 1..(cx + rx) as i32 + 2 {
-                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
-                if ((px - cx) / rx).powi(2) + ((py - cy) / ry).powi(2) <= 1.0 && keep(px, py) {
-                    self.set(x, y, c, z);
-                }
-            }
-        }
-    }
-}
-
-fn dark(c: Color, k: f32) -> Color {
-    lerp_color(c, 0x0a0614, k)
-}
-
-/// A figure posed and drawn at `hp` pixels tall. Returns the canvas and,
-/// for the man with the mop, where its head touches the floor.
-fn figure(hp: f32, look: &Look, pose: &Pose, t: f32) -> (Canvas, Option<(f32, f32)>) {
-    let u = hp / 100.0;
-    let mut cv = Canvas::new();
-    let facing = if pose.act == Some(Act::Cheer) {
-        Facing::Toward
-    } else {
-        pose.facing
-    };
-    let side = matches!(facing, Facing::Left | Facing::Right);
-    let sgn = if facing == Facing::Right { 1.0 } else { -1.0 };
-    let (thigh, shin, leg_r) = (25.0 * u, 24.0 * u, 4.4 * u);
-    let amount = pose.amount;
-    let p = pose.walk.unwrap_or(0.0) * std::f32::consts::TAU;
-    let playing = pose.act == Some(Act::Play);
-    let play_t = if playing { pose.since } else { 0.0 };
-
-    // Legs, and where that puts the hips so a foot stays on the floor.
-    let mut legs = [((0.0, 0.0), (0.0, 0.0)); 2];
-    for (k, leg) in legs.iter_mut().enumerate() {
-        let q = p + k as f32 * std::f32::consts::PI;
-        if side {
-            let a1 = 0.46 * q.sin() * amount;
-            let a2 = 0.75 * (q + 1.3).sin().max(0.0) * amount;
-            let knee = (sgn * thigh * a1.sin(), thigh * a1.cos());
-            let ank = (
-                knee.0 + sgn * shin * (a1 - a2).sin(),
-                knee.1 + shin * (a1 - a2).cos(),
-            );
-            *leg = (knee, ank);
-        } else {
-            let sx = if k == 0 { -1.0 } else { 1.0 };
-            let lift = q.sin().max(0.0) * 7.0 * u * amount;
-            *leg = (
-                (sx * 5.0 * u + sx * lift * 0.15, thigh - lift * 0.35),
-                (sx * 5.0 * u, thigh + shin - lift),
-            );
-        }
-    }
-    let reach = legs[0].1.1.max(legs[1].1.1);
-    let jump = if pose.act == Some(Act::Cheer) {
-        (t * 8.0).sin().abs() * 6.0 * u
-    } else {
-        0.0
-    };
-    let shift = if playing && !side {
-        u * if ((t / 3.1) as i32) % 2 != 0 {
-            1.0
-        } else {
-            -1.0
-        }
-    } else {
-        0.0
-    };
-    let slump = if pose.act == Some(Act::Over) { u } else { 0.0 };
-    let hip = (
-        shift
-            + if side && pose.walk.is_some() {
-                sgn * 1.5 * u
-            } else {
-                0.0
-            },
-        -(reach + 3.0 * u) - jump + slump,
-    );
-    let mut torso_top = (hip.0, hip.1 - 33.0 * u);
-    let mut lean = if pose.walk.is_some() && side {
-        sgn * 2.0 * u * amount
-    } else {
-        0.0
-    };
-    if playing {
-        let k = play_t % 6.5;
-        let into = (1.0 - (k - 5.2).abs() / 0.6).max(0.0);
-        if side {
-            lean = sgn * (3.0 + 2.0 * into) * u;
-        } else {
-            torso_top.1 += 1.5 * into * u;
-        }
-    }
-    let shoulder = (torso_top.0 + lean, torso_top.1 + 4.0 * u);
-
-    for (i, (knee, ank)) in legs.iter().enumerate() {
-        let far = side && i == 1;
-        let c = if far {
-            dark(look.legs, 0.35)
-        } else {
-            look.legs
-        };
-        let z = if far { -1.0 } else { 0.0 };
-        let hk = (hip.0 + knee.0, hip.1 + knee.1);
-        let ha = (hip.0 + ank.0, hip.1 + ank.1);
-        let top = (
-            hip.0
-                + if side {
-                    0.0
-                } else if i == 0 {
-                    -3.0 * u
-                } else {
-                    3.0 * u
-                },
-            hip.1,
-        );
-        cv.capsule(top, hk, leg_r, c, z, Some(dark(c, 0.25)));
-        cv.capsule(hk, ha, leg_r * 0.92, c, z, Some(dark(c, 0.25)));
-        if side {
-            let shoe = if far {
-                dark(look.shoes, 0.2)
-            } else {
-                look.shoes
-            };
-            cv.capsule(
-                (ha.0 - sgn * u, ha.1 + u),
-                (ha.0 + sgn * 6.0 * u, ha.1 + 1.5 * u),
-                2.6 * u,
-                shoe,
-                z + 0.5,
-                None,
-            );
-        } else {
-            cv.capsule(
-                (ha.0 - 2.0 * u, ha.1 + u),
-                (ha.0 + 2.0 * u, ha.1 + u),
-                2.8 * u,
-                look.shoes,
-                0.5,
-                None,
-            );
-        }
-    }
-
-    let arm_r = 3.4 * u;
-    let (up, fore) = (16.0 * u, 15.0 * u);
-    let top_c = look.top;
-    let hi_c = lerp_color(look.top, 0xffffff, 0.25);
-    let sh_c = dark(look.top, 0.35);
-    let arm = |cv: &mut Canvas, sx: f32, a_up: f32, a_fore: f32, z: f32, c: Color| {
-        let s0 = (shoulder.0 + sx, shoulder.1);
-        let el = (s0.0 + up * a_up.sin(), s0.1 + up * a_up.cos());
-        let wr = (el.0 + fore * a_fore.sin(), el.1 + fore * a_fore.cos());
-        cv.capsule(s0, el, arm_r, c, z, Some(dark(c, 0.25)));
-        cv.capsule(el, wr, arm_r * 0.9, c, z, Some(dark(c, 0.25)));
-        cv.ellipse(
-            wr.0,
-            wr.1 + u,
-            2.6 * u,
-            2.8 * u,
-            look.skin,
-            z + 0.1,
-            |_, _| true,
-        );
-    };
-
-    let mut mop = None;
-    if pose.act == Some(Act::Cheer) {
-        for sx in [-1.0f32, 1.0] {
-            let s0 = (shoulder.0 + sx * 13.0 * u, shoulder.1 + u);
-            let wave = (t * 8.0 + sx).sin() * 1.5 * u;
-            let el = (s0.0 + sx * 5.0 * u, s0.1 - 12.0 * u + wave);
-            let wr = (el.0 - sx * u, el.1 - 13.0 * u + wave);
-            cv.capsule(s0, el, arm_r, top_c, 1.0, Some(dark(top_c, 0.25)));
-            cv.capsule(el, wr, arm_r * 0.9, top_c, 1.0, Some(dark(top_c, 0.25)));
-            cv.ellipse(wr.0, wr.1 - u, 3.0 * u, 3.0 * u, look.skin, 1.1, |_, _| {
-                true
-            });
-        }
-    } else if pose.mop {
-        let sweep = (t * 3.2).sin() * 7.0 * u;
-        let h1 = (shoulder.0 + sgn * 9.0 * u, shoulder.1 + 16.0 * u);
-        let h2 = (shoulder.0 + sgn * 13.0 * u, shoulder.1 + 25.0 * u);
-        let foot = (sgn * (26.0 * u + sweep), 0.0);
-        let top_end = (h1.0 - sgn * 3.0 * u, h1.1 - 7.0 * u);
-        cv.capsule(top_end, foot, 1.1 * u + 0.4, 0xaa8c5a, 1.5, None);
-        cv.capsule(
-            (foot.0 - 5.0 * u, -1.5 * u),
-            (foot.0 + 5.0 * u, -1.5 * u),
-            2.4 * u,
-            0xc8c8be,
-            1.6,
-            None,
-        );
-        arm(&mut cv, -sgn * 2.0 * u, sgn * 0.9, sgn * 1.2, -2.0, sh_c);
-        cv.capsule(
-            (shoulder.0 + sgn * u, shoulder.1),
-            h2,
-            arm_r,
-            hi_c,
-            2.0,
-            Some(dark(hi_c, 0.25)),
-        );
-        cv.ellipse(h1.0, h1.1, 2.6 * u, 2.8 * u, look.skin, 2.1, |_, _| true);
-        cv.ellipse(h2.0, h2.1, 2.6 * u, 2.8 * u, look.skin, 2.1, |_, _| true);
-        mop = Some(foot);
-    } else if side {
-        if playing {
-            let stick = 0.10 * (t * 5.3).sin();
-            arm(
-                &mut cv,
-                -sgn * 2.0 * u,
-                sgn * (0.95 + stick),
-                sgn * 1.75,
-                -2.0,
-                sh_c,
-            );
-        } else {
-            let sw = -0.42 * p.sin() * amount;
-            arm(
-                &mut cv,
-                0.0,
-                sgn * sw,
-                sgn * (sw + 0.25 + 0.25 * amount),
-                -2.0,
-                sh_c,
-            );
-        }
-    } else if playing && facing == Facing::Away {
-        // From behind the forearms are in front of the body: only the upper
-        // arms and the elbows show, working.
-        let wig = (t * 11.0).sin() * u;
-        let tap = (t * 7.0).sin().max(0.0) * 1.2 * u;
-        for sx in [-1.0f32, 1.0] {
-            let s0 = (shoulder.0 + sx * 13.0 * u, shoulder.1 + u);
-            let el = (
-                s0.0 + sx * 3.0 * u + if sx < 0.0 { wig } else { 0.0 },
-                s0.1 + 14.0 * u + if sx > 0.0 { tap } else { 0.0 },
-            );
-            cv.capsule(
-                s0,
-                el,
-                arm_r,
-                if sx < 0.0 { top_c } else { sh_c },
-                1.0,
-                Some(dark(top_c, 0.25)),
-            );
-        }
-    } else {
-        let sw = p.sin() * amount;
-        for (sx, k) in [(-1.0f32, 1.0f32), (1.0, -1.0)] {
-            let s0 = (shoulder.0 + sx * 13.0 * u, shoulder.1 + u);
-            let fwd = (sw * k).max(0.0);
-            let el = (
-                s0.0 + sx * 1.5 * u,
-                s0.1 + up
-                    - if sw * k > 0.0 {
-                        sw.abs() * 1.5 * u
-                    } else {
-                        0.0
-                    },
-            );
-            let wr = (el.0 + sx * 0.5 * u, el.1 + fore - fwd * 4.0 * u);
-            cv.capsule(s0, el, arm_r, top_c, 1.0, Some(dark(top_c, 0.25)));
-            cv.capsule(el, wr, arm_r * 0.9, top_c, 1.0, Some(dark(top_c, 0.25)));
-            cv.ellipse(wr.0, wr.1 + u, 2.6 * u, 2.8 * u, look.skin, 1.1, |_, _| {
-                true
-            });
-        }
-    }
-
-    // The torso, round at the shoulders, lit from the left.
-    let half_w = if side { 8.5 } else { 13.5 } * u;
-    let (y0, y1) = (torso_top.1 as i32, hip.1 as i32 + 2);
-    for y in y0..y1 {
-        let f = (y as f32 - torso_top.1) / (hip.1 - torso_top.1).max(1.0);
-        let cx = torso_top.0 + lean * (1.0 - f) + (hip.0 - torso_top.0) * f;
-        let dy = y as f32 - torso_top.1;
-        let mut hw = half_w * (1.0 - 0.18 * f);
-        if dy < 4.0 * u {
-            hw -= (4.0 * u - dy) * 0.9;
-        }
-        for x in (cx - hw) as i32..=(cx + hw) as i32 {
-            let mut g = (x as f32 + 0.5 - (cx - hw)) / (2.0 * hw).max(1.0);
-            if side && sgn < 0.0 {
-                g = 1.0 - g;
-            }
-            let mut c = if g < 0.26 {
-                hi_c
-            } else if g > 0.78 {
-                sh_c
-            } else {
-                top_c
-            };
-            if let Some(s) = look.stripe
-                && (f - 0.34).abs() < 0.05
-            {
-                c = s;
-            }
-            if facing == Facing::Away && (x as f32 + 0.5 - cx).abs() < 0.6 && f > 0.15 {
-                c = sh_c;
-            }
-            if f > 0.92 {
-                c = dark(c, 0.3);
-            }
-            cv.set(x, y, c, 0.2);
-        }
-    }
-
-    // The near arm, in front of the body.
-    if side && pose.act != Some(Act::Cheer) && !pose.mop {
-        if playing {
-            let tap = 0.12 * (t * 9.0).sin().max(0.0);
-            arm(
-                &mut cv,
-                sgn * u,
-                sgn * (0.85 - tap),
-                sgn * (1.6 + tap),
-                2.0,
-                hi_c,
-            );
-        } else {
-            let sw = 0.42 * p.sin() * amount;
-            arm(
-                &mut cv,
-                0.0,
-                sgn * sw,
-                sgn * (sw + 0.25 + 0.25 * amount),
-                2.0,
-                top_c,
-            );
-        }
-    }
-
-    // The head: nodding to the game, a look away now and then, bowed at a
-    // game lost.
-    let mut nod = 0.0;
-    let mut glance = false;
-    if playing {
-        nod = (t * 4.2).sin().max(0.0) * 0.9 * u;
-        glance = play_t % 9.0 > 7.6;
-    }
-    if pose.act == Some(Act::Over) {
-        nod = 2.5 * u;
-    }
-    let hx = shoulder.0
-        + if side {
-            sgn * 2.5 * u + lean * 0.4
-        } else {
-            0.0
-        };
-    let hy = torso_top.1 - 9.0 * u + nod;
-    let hr = 8.0 * u;
-    cv.capsule(
-        (torso_top.0, torso_top.1 + 1.0),
-        (hx, hy + hr * 0.6),
-        2.6 * u,
-        dark(look.skin, 0.15),
-        2.5,
-        None,
-    );
-    cv.ellipse(hx, hy, hr * 0.88, hr, look.skin, 3.0, |_, _| true);
-    match facing {
-        Facing::Away if !glance => {
-            cv.ellipse(hx, hy, hr * 0.9, hr * 1.02, look.hair, 3.1, |_, _| true);
-            if look.mullet {
-                cv.capsule(
-                    (hx, hy + hr * 0.4),
-                    (hx, hy + hr * 1.5),
-                    hr * 0.8,
-                    look.hair,
-                    3.1,
-                    None,
-                );
-            }
-        }
-        Facing::Away => {
-            cv.ellipse(hx, hy, hr * 0.9, hr * 1.02, look.hair, 3.1, |x, _| {
-                x < hx + hr * 0.25
-            });
-            cv.ellipse(
-                hx + hr * 0.55,
-                hy + hr * 0.1,
-                hr * 0.3,
-                hr * 0.4,
-                dark(look.skin, 0.1),
-                3.2,
-                |_, _| true,
-            );
-        }
-        Facing::Toward => {
-            cv.ellipse(
-                hx,
-                hy - hr * 0.35,
-                hr * 0.95,
-                hr * 0.72,
-                look.hair,
-                3.1,
-                |_, y| y < hy - hr * 0.15,
-            );
-            if hp > 34.0 {
-                cv.set((hx - 3.0 * u) as i32, hy as i32, 0x1e141e, 3.5);
-                cv.set((hx + 2.5 * u) as i32, hy as i32, 0x1e141e, 3.5);
-            }
-        }
-        _ => {
-            cv.ellipse(
-                hx - sgn * 1.2 * u,
-                hy - 1.8 * u,
-                hr * 0.86,
-                hr * 0.8,
-                look.hair,
-                3.1,
-                |x, y| (x - hx) * sgn < 1.8 * u || y < hy - 2.5 * u,
-            );
-            if look.mullet {
-                cv.capsule(
-                    (hx - sgn * hr * 0.4, hy),
-                    (hx - sgn * hr * 0.5, hy + hr * 1.5),
-                    hr * 0.45,
-                    look.hair,
-                    3.1,
-                    None,
-                );
-            }
-            if hp > 34.0 {
-                cv.set(
-                    (hx + sgn * 4.0 * u) as i32,
-                    (hy - 0.5 * u) as i32,
-                    0x1e141e,
-                    3.5,
-                );
-            }
-        }
-    }
-    if let Some(cap) = look.cap {
-        cv.ellipse(
-            hx,
-            hy - hr * 0.45,
-            hr * 0.98,
-            hr * 0.62,
-            cap,
-            3.3,
-            |_, y| y < hy - hr * 0.1,
-        );
-        if side {
-            cv.capsule(
-                (hx + sgn * hr * 0.3, hy - hr * 0.2),
-                (hx + sgn * hr * 1.3, hy - hr * 0.2),
-                1.2 * u,
-                cap,
-                3.3,
-                None,
-            );
-        }
-    }
-    (cv, mop)
 }
 
 /// A 3 by 5 face for the words over a cabinet.
@@ -965,6 +473,20 @@ fn label(fb: &mut Framebuffer, cx: i32, y: i32, text: &str, c: Color) {
 pub struct Crowd {
     since: Option<f64>,
     wet: Vec<(f32, f32, f64)>,
+    /// Sprites already drawn, by who and in what pose. A pose is held for
+    /// four frames and a walk comes round every stride, so most are drawn
+    /// once and read many times.
+    sprites: std::collections::HashMap<SpriteKey, std::rc::Rc<people::Sprite>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct SpriteKey {
+    id: u8,
+    view: u8,
+    act: u8,
+    phase: u16,
+    amount: u8,
+    t: u16,
 }
 
 impl Crowd {
@@ -987,8 +509,8 @@ impl Crowd {
         let Some((n, t)) = self.at(now) else {
             return fx;
         };
-        for (_, legs) in scene(n) {
-            if let Some(p) = pose_at(&legs, t)
+        for (look, legs) in scene(n) {
+            if let Some(p) = pose_at(&legs, t, look.tall)
                 && let Some(cab) = p.cab
             {
                 fx[cab] = match p.act {
@@ -1002,6 +524,65 @@ impl Crowd {
     }
 
     /// Draw whoever is in the hall, over the hall and under the menu.
+    /// The sprite for a person in a pose, drawn once and kept.
+    fn sprite(&mut self, look: &Look, pose: &Pose, now: f32) -> std::rc::Rc<people::Sprite> {
+        let act = if pose.mop {
+            people::Act::Mop
+        } else {
+            match pose.act {
+                Some(Act::Play) => people::Act::Play,
+                Some(Act::Cheer) => people::Act::Cheer,
+                Some(Act::Over) => people::Act::Over,
+                None => people::Act::Walk,
+            }
+        };
+        let view = match (act, pose.facing) {
+            (people::Act::Cheer, _) => people::View::Toward,
+            (_, Facing::Right) => people::View::Side(true),
+            (_, Facing::Left) => people::View::Side(false),
+            (_, Facing::Toward) => people::View::Toward,
+            (_, Facing::Away) => people::View::Away,
+        };
+        // The small motions of playing, cheering and mopping run from when
+        // the act began; a mop's sweep from the clock, since it walks.
+        let t = if act == people::Act::Mop {
+            now
+        } else {
+            pose.since
+        };
+        let p = people::Pose {
+            view,
+            act,
+            phase: pose.walk.unwrap_or(0.0),
+            amount: pose.amount,
+            t,
+        };
+        let key = SpriteKey {
+            id: look.id,
+            view: match view {
+                people::View::Side(true) => 0,
+                people::View::Side(false) => 1,
+                people::View::Toward => 2,
+                people::View::Away => 3,
+            },
+            act: act as u8,
+            phase: (p.phase.rem_euclid(1.0) * 960.0) as u16,
+            amount: (p.amount * 50.0) as u8,
+            t: if act == people::Act::Walk {
+                0
+            } else {
+                ((t * POSES) as u32 % 4096) as u16
+            },
+        };
+        if self.sprites.len() > 600 {
+            self.sprites.clear();
+        }
+        self.sprites
+            .entry(key)
+            .or_insert_with(|| std::rc::Rc::new(people::sprite(&look.palette(), &p)))
+            .clone()
+    }
+
     pub fn draw(&mut self, fb: &mut Framebuffer, hall: &Hall, fog: Color, now: f64) {
         let Some((n, t)) = self.at(now) else {
             return;
@@ -1023,14 +604,20 @@ impl Crowd {
                 }
             }
         }
+        // People move at fifteen poses a second, as sprites in a game of the
+        // period did, and hold each pose for four frames. Drawn afresh every
+        // frame their edges crawl a fraction of a pixel at a time, which on
+        // a figure forty pixels tall reads as a puppet rather than a drawing.
+        let t = (t * POSES).floor() / POSES;
+        let now = (now * POSES as f64).floor() / POSES as f64;
         let mut here: Vec<(Look, Pose)> = scene(n)
             .iter()
-            .filter_map(|(look, legs)| pose_at(legs, t).map(|p| (*look, p)))
+            .filter_map(|(look, legs)| pose_at(legs, t, look.tall).map(|p| (*look, p)))
             .collect();
         here.sort_by(|a, b| b.1.d.total_cmp(&a.1.d));
         for (look, pose) in &here {
             let hp = PERSON * look.tall * unit / pose.d;
-            let (fig, mop) = figure(hp, look, pose, now as f32);
+            let sprite = self.sprite(look, pose, now as f32);
             let (fx, fy) = Hall::project(fb, pose.x, FLOOR, pose.d);
             let (fx, fy) = (fx.round() as i32, fy.round() as i32);
             // A shadow on the carpet.
@@ -1047,38 +634,45 @@ impl Crowd {
                 .then(|| pose.cab.map(Hall::glow))
                 .flatten();
             let haze = ((pose.d - 2.4) * 0.35).clamp(0.0, 0.3);
-            for gy in 0..CH {
-                for gx in 0..CW {
-                    let (x, y) = (gx - OX, gy - OY);
-                    let here_c = fig.get(x, y);
-                    let edge = here_c.is_none()
-                        && [(1, 0), (-1, 0), (0, 1), (0, -1)]
-                            .iter()
-                            .any(|(dx, dy)| fig.get(x + dx, y + dy).is_some());
-                    let c = match (here_c, edge) {
-                        (Some(c), _) => {
-                            let open = fig.get(x + 1, y).is_none()
-                                || fig.get(x - 1, y).is_none()
-                                || fig.get(x, y - 1).is_none();
-                            match rim {
-                                Some(r) if open => lerp_color(c, r, 0.45),
-                                _ => c,
-                            }
-                        }
-                        (None, true) => OUTLINE,
-                        _ => continue,
+            // The sprite is drawn at fifty pixels and scaled to the height its
+            // depth gives it, a pixel taken for each one it covers, as SCUMM
+            // scaled its actors: the drawing stays the same drawing at every
+            // distance.
+            let scale = hp / people::HEIGHT as f32;
+            let (tw, th) = (
+                (people::W as f32 * scale).round() as i32,
+                (people::H as f32 * scale).round() as i32,
+            );
+            let (ax, ay) = (
+                (people::FOOT.0 as f32 * scale).round() as i32,
+                (people::FOOT.1 as f32 * scale).round() as i32,
+            );
+            for ty in 0..th {
+                let sy = ((ty as f32 + 0.5) / scale) as i32;
+                for tx in 0..tw {
+                    let sx = ((tx as f32 + 0.5) / scale) as i32;
+                    let Some(mut c) = sprite.at(sx, sy) else {
+                        continue;
                     };
-                    let (sx, sy) = (fx + x, fy + y);
-                    if hall.depth_at(sx, sy) > pose.d {
-                        fb.put(sx, sy, lerp_color(c, fog, haze));
+                    // The screen he is playing lights the edges it can reach.
+                    if let Some(r) = rim
+                        && (sprite.at(sx + 1, sy).is_none()
+                            || sprite.at(sx - 1, sy).is_none()
+                            || sprite.at(sx, sy - 1).is_none())
+                    {
+                        c = lerp_color(c, r, 0.45);
+                    }
+                    let (x, y) = (fx + tx - ax, fy + ty - ay);
+                    if hall.depth_at(x, y) > pose.d {
+                        fb.put(x, y, lerp_color(c, fog, haze));
                     }
                 }
             }
-            if let Some(m) = mop
+            if let Some(m) = sprite.mop
                 && pose.walk.is_some()
             {
                 self.wet
-                    .push((pose.x + m.0 * pose.d / unit, pose.d - 0.02, now));
+                    .push((pose.x + m.0 * scale * pose.d / unit, pose.d - 0.02, now));
             }
             // The rare moments' words, over the cabinet.
             if let Some(cab) = pose.cab {
@@ -1121,7 +715,7 @@ mod tests {
         for n in 0..4 {
             for (_, legs) in scene(n) {
                 // Nobody is in the hall once their scene is over.
-                assert!(pose_at(&legs, CYCLE as f32 - 0.5).is_none());
+                assert!(pose_at(&legs, CYCLE as f32 - 0.5, 1.0).is_none());
                 // Every walk joins the next leg where it left off.
                 for w in legs.windows(2) {
                     let end = match w[0] {
@@ -1134,23 +728,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn a_figure_has_a_body() {
-        let pose = Pose {
-            x: 0.0,
-            d: 2.8,
-            facing: Facing::Right,
-            walk: Some(0.3),
-            amount: 1.0,
-            act: None,
-            since: 0.0,
-            cab: None,
-            mop: false,
-        };
-        let (cv, _) = figure(70.0, &DENIM, &pose, 0.0);
-        let n = cv.px.iter().filter(|p| p.is_some()).count();
-        assert!(n > 800, "a figure of {n} pixels");
     }
 }
