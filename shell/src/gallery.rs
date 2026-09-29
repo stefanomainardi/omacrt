@@ -24,13 +24,13 @@ const PW: i32 = 208;
 const PH: i32 = 156;
 
 #[inline]
-fn od(x: i32, y: i32) -> f32 {
+pub(crate) fn od(x: i32, y: i32) -> f32 {
     (crate::paint::BAYER[(y & 3) as usize][(x & 3) as usize] as f32 + 0.5) / 16.0
 }
 
 /// A blend in `n` steps with the ordered dither between them.
 #[inline]
-fn steps(a: Color, b: Color, t: f32, x: i32, y: i32, n: f32) -> Color {
+pub(crate) fn steps(a: Color, b: Color, t: f32, x: i32, y: i32, n: f32) -> Color {
     let q = ((t.clamp(0.0, 1.0) * n + od(x, y)).floor() / n).clamp(0.0, 1.0);
     lerp_color(a, b, q)
 }
@@ -80,7 +80,7 @@ fn cloud_shape(seed: u32, w: f32) -> Vec<(f32, f32, f32)> {
 /// A sky graded top to bottom with clouds in it, each cloud lit from
 /// `light` by the ball whose surface each pixel is on.
 #[allow(clippy::too_many_arguments)]
-fn sky_clouds(
+pub(crate) fn sky_clouds(
     fb: &mut Framebuffer,
     (x0, y0, w, h): (i32, i32, i32, i32),
     top: Color,
@@ -213,7 +213,7 @@ fn disc(
 
 /// A green apple of two lobes, lit from the upper left, its stalk and three
 /// leaves stirring.
-fn apple(fb: &mut Framebuffer, ax: i32, ay: i32, r: i32, t: f32, idx: f32) {
+pub(crate) fn apple(fb: &mut Framebuffer, ax: i32, ay: i32, r: i32, t: f32, idx: f32) {
     for lob in [-3.0f32, 3.0] {
         disc(fb, ax as f32 + lob, ay as f32, r as f32, |dx, dy, x, y| {
             let lit = -dx * 0.55 - dy * 0.75;
@@ -590,7 +590,7 @@ fn empire(fb: &mut Framebuffer, x0: i32, y0: i32, w: i32, h: i32, t: f32) {
 }
 
 /// A man in a dark overcoat and a bowler hat, `size` pixels tall.
-fn bowler(fb: &mut Framebuffer, x: i32, y: i32, size: i32, facing: bool, lift: i32) {
+pub(crate) fn bowler(fb: &mut Framebuffer, x: i32, y: i32, size: i32, facing: bool, lift: i32) {
     let u = size as f32 / 24.0;
     let (coat, coat_hi, skin) = (0x24262e, 0x3c3f4a, 0xd8b8a0);
     let body_top = y + (8.0 * u) as i32;
@@ -800,7 +800,10 @@ mod tests {
             for k in 0..30 {
                 draw(&mut fb, which, k as f32 * 0.08);
             }
-            println!("{title}: {:.2} ms", t0.elapsed().as_secs_f64() * 1000.0 / 30.0);
+            println!(
+                "{title}: {:.2} ms",
+                t0.elapsed().as_secs_f64() * 1000.0 / 30.0
+            );
         }
     }
 }

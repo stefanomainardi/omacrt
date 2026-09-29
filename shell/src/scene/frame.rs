@@ -505,34 +505,42 @@ impl Scene {
         let horizon = crate::sky::Sky::horizon(fb.h);
 
         // ------------------------------------------------------- the time
+        // In a face of its own, five cells by nine at three pixels a cell,
+        // each digit bevelled: lit along its top and left, shaded along its
+        // bottom, a hard shadow under it. The colon beats the seconds.
         let time = now.format("%H:%M").to_string();
-        let size = if w >= 320 { 4 } else { 3 };
-        let clock_y = horizon + 5;
-        fb.text(left, clock_y, &time, self.theme.paper, size);
-        // The colon on the second, the way a clock radio did it. The digits
-        // stay where they are: a proportional blink is a wobble.
-        if now.format("%S").to_string().parse::<u32>().unwrap_or(0) % 2 == 1 {
-            fb.text(
-                left + 2 * 8 * size,
-                clock_y,
-                ":",
-                lerp_color(self.theme.bg, self.theme.paper, 0.30),
-                size,
-            );
-        }
+        let clock_y = horizon + 6;
+        let colon = now.format("%S").to_string().parse::<u32>().unwrap_or(0) % 2 == 0;
+        let face = self.theme.paper;
+        let (hi, lo) = (
+            lerp_color(face, 0xffffff, 0.6),
+            lerp_color(face, self.theme.bg, 0.4),
+        );
+        crate::digits::draw(fb, left, clock_y, &time, 3, (face, hi, lo), colon);
 
-        // The temperature, as big as the space beside the clock allows.
+        // The weather as an icon, and the temperature in the same face,
+        // smaller, in a colour between cold and warm.
         if let Some(t) = reading.temp {
-            let temp = format!("{t:.0}C");
-            let tw = Framebuffer::text_width(&temp, 3);
+            let temp = format!("{t:.0}oC");
             let hot = ((t + 5.0) / 35.0).clamp(0.0, 1.0);
-            fb.text(
-                w - left - tw,
-                clock_y + 6,
+            let c = lerp_color(self.theme.cyan, self.theme.orange, hot);
+            let tw = crate::digits::width(&temp, 2);
+            let tx = w - left - tw;
+            crate::digits::draw(
+                fb,
+                tx,
+                clock_y + 2,
                 &temp,
-                lerp_color(self.theme.cyan, self.theme.orange, hot),
-                3,
+                2,
+                (
+                    c,
+                    lerp_color(c, 0xffffff, 0.5),
+                    lerp_color(c, 0x000000, 0.4),
+                ),
+                true,
             );
+            let night = !reading.daylight(minutes);
+            crate::digits::icon(fb, tx - 24, clock_y + 1, reading.kind, night);
         }
 
         // ------------------------------------------------- the three lines
@@ -565,15 +573,21 @@ impl Scene {
         }
 
         if reading.known {
-            let words = reading.condition.to_uppercase();
-            fb.text(
-                left,
-                row(1),
-                &cut(&words, w - 2 * left - 104),
-                self.theme.paper,
-                1,
-            );
-            if let Some(wind) = reading.wind_kmh {
+            // Now and then, after Magritte, the clock says what it is not.
+            let pipe = self.sky.pipe();
+            let words = if pipe {
+                "CECI N'EST PAS UNE HORLOGE.".to_string()
+            } else {
+                reading.condition.to_uppercase()
+            };
+            // The wind gives the line up to it.
+            let room = if pipe {
+                w - 2 * left
+            } else {
+                w - 2 * left - 104
+            };
+            fb.text(left, row(1), &cut(&words, room), self.theme.paper, 1);
+            if let Some(wind) = reading.wind_kmh.filter(|_| !pipe) {
                 let text = format!("WIND {wind:.0} KM/H");
                 let tw = Framebuffer::text_width(&text, 1);
                 fb.text(w - left - tw, row(1), &text, self.theme.dim, 1);

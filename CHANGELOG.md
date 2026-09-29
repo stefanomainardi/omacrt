@@ -19,6 +19,13 @@ caveat for a 0.x project: anything may still move.
 - After the boot's floor, the laser climbs the screen and the hall stands up
   behind it; the word and the mark fly to the far wall, the sign strikes and
   the hall powers on, the cabinets pair by pair from the back.
+- Rare moments on the weather page after Magritte: men in bowler hats
+  standing in the air instead of the rain, a daylight sky over the street
+  at night, the man with the apple, an eye as big as the sky, a rock with a
+  castle floating by, a dove made of sky in a storm, an apple filling the
+  street, the moon in front of a tree, an easel painting the city it hides,
+  and a clock that says it is not one. One every few minutes, fitting the
+  weather and the hour.
 - An art gallery among the Ambient pages and the screensaver's: three
   paintings after René Magritte redrawn in pixels, Le fils de l'homme,
   L'empire des lumières and Golconde, each hung in a gilt frame under a
@@ -31,6 +38,12 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The clock and weather page is redrawn: the sky in the colours of each hour
+  with the sun's light round it, clouds with volume lit from the sun, a far
+  city in the haze behind the town, buildings with roofs of their own and
+  windows that take the sky, the Atomium as a cube on its corner with mirror
+  spheres by day and three legs, and the time in a bevelled face of its own
+  beside an icon for the weather.
 - The screensaver waits five minutes by default instead of one.
 - A new 8x8 font, drawn for the tube: two pixel stems, one pixel horizontals,
   more air between letters.

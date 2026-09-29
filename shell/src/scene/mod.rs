@@ -1378,6 +1378,10 @@ impl Scene {
             Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },
             Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
             Some("ambient") => self.screen = Screen::Ambient,
+            Some(name) if name.starts_with("ambient:") => {
+                self.screen = Screen::Ambient;
+                self.sky.force_moment(&name["ambient:".len()..]);
+            }
             Some(name) if name.starts_with("gallery") => {
                 let at = name
                     .strip_prefix("gallery:")
