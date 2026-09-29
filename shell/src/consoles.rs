@@ -7,7 +7,7 @@
 //! way sprites of the period did it.
 
 use crate::fb::rgb;
-use crate::voxel::Model;
+use crate::voxel::{Face, Model};
 
 /// Millimetres to voxels.
 fn mm(v: f32) -> i32 {
@@ -48,7 +48,7 @@ fn snes() -> Model {
     let reset = m.mat(rgb(76, 76, 82));
     let port = m.mat(rgb(170, 170, 176));
     let rib = m.mat(rgb(180, 180, 186));
-    let lamp = m.glow(rgb(230, 40, 40));
+    let lamp = m.lamp(rgb(230, 40, 40));
     let (blue, red, green, yellow) = (
         m.mat(rgb(60, 100, 210)),
         m.mat(rgb(220, 50, 50)),
@@ -228,7 +228,7 @@ fn n64() -> Model {
         m.mat(rgb(50, 90, 220)),
         m.mat(rgb(240, 200, 40)),
     );
-    let lamp = m.glow(rgb(230, 40, 40));
+    let lamp = m.lamp(rgb(230, 40, 40));
     let foot = w * 24 / 100;
     let face = 5;
     let deck = 13;
@@ -299,7 +299,7 @@ fn nes() -> Model {
     let red = m.mat(rgb(206, 40, 40));
     let button = m.mat(rgb(72, 72, 76));
     let port = m.mat(rgb(126, 126, 130));
-    let lamp = m.glow(rgb(230, 40, 40));
+    let lamp = m.lamp(rgb(230, 40, 40));
     m.rounded(0, 0, 0, w, d, h, 2, body);
     // The ribbed panel and the dark strip behind it.
     let (px0, px1) = (w * 68 / 100, w * 97 / 100);
@@ -391,7 +391,7 @@ fn psx() -> Model {
     let rim = m.mat(rgb(150, 150, 156));
     let button = m.mat(rgb(166, 166, 172));
     let dark = m.mat(rgb(64, 64, 70));
-    let lamp = m.glow(rgb(60, 220, 90));
+    let lamp = m.lamp(rgb(60, 220, 90));
     let (r, y, g, b) = (
         m.mat(rgb(224, 60, 60)),
         m.mat(rgb(240, 192, 40)),
@@ -491,7 +491,7 @@ fn neogeo() -> Model {
     let gold = m.mat(rgb(206, 168, 72));
     let button = m.mat(rgb(76, 76, 88));
     let port = m.mat(rgb(70, 70, 80));
-    let lamp = m.glow(rgb(230, 40, 40));
+    let lamp = m.lamp(rgb(230, 40, 40));
     let top = h - 5;
     m.rounded(0, 0, 0, w, d, top, 3, body);
     // The ring and the slot inside it.
@@ -699,8 +699,8 @@ fn pc() -> Model {
     let sky = m.glow(rgb(90, 140, 220));
     let grass = m.glow(rgb(70, 160, 70));
     let hero = m.glow(rgb(230, 200, 120));
-    let led = m.glow(rgb(60, 220, 90));
-    let disk = m.glow(rgb(240, 160, 40));
+    let led = m.lamp(rgb(60, 220, 90));
+    let disk = m.lamp(rgb(240, 160, 40));
     // The case.
     m.cube(0, 0, 0, w, d, 12, beige);
     m.cube(0, 0, 11, w, d, 1, shade);
@@ -750,6 +750,20 @@ pub struct Media {
     pub disc: Option<f32>,
     /// A glowing thing, a coin under the lights of a cabinet.
     pub glow: bool,
+    /// The lid that opens for it, for a console that takes discs.
+    pub lid: Option<Lid>,
+}
+
+/// A lid, as the box of cells it occupies when shut (x0..x1, y0..y1,
+/// z0..z1), hinged along its back top edge.
+#[derive(Clone, Copy, Debug)]
+pub struct Lid {
+    pub x0: i32,
+    pub y0: i32,
+    pub z0: i32,
+    pub x1: i32,
+    pub y1: i32,
+    pub z1: i32,
 }
 
 fn cart(x: i32, y: i32, z: i32, w: i32, t: i32, h: i32, color: crate::fb::Color) -> Media {
@@ -765,10 +779,11 @@ fn cart(x: i32, y: i32, z: i32, w: i32, t: i32, h: i32, color: crate::fb::Color)
         label: true,
         disc: None,
         glow: false,
+        lid: None,
     }
 }
 
-fn disc(cx: f32, cy: f32, z: i32, r: f32) -> Media {
+fn disc(cx: f32, cy: f32, z: i32, r: f32, lid: Lid) -> Media {
     Media {
         x: cx.round() as i32,
         y: cy.round() as i32,
@@ -778,9 +793,10 @@ fn disc(cx: f32, cy: f32, z: i32, r: f32) -> Media {
         h: 1,
         color: rgb(200, 204, 214),
         way: Way::Down,
-        label: false,
+        label: true,
         disc: Some(r),
         glow: false,
+        lid: Some(lid),
     }
 }
 
@@ -859,19 +875,55 @@ pub fn media(name: &str) -> Option<Media> {
         }
         "psx" | "playstation" => {
             let (w, d, h) = (mm(270.0), mm(188.0), mm(60.0));
-            disc(w as f32 * 0.52, d as f32 * 0.50, h - 3, 14.0)
+            let top = h - 3;
+            let lid = Lid {
+                x0: 21,
+                y0: 8,
+                z0: top,
+                x1: 61,
+                y1: 47,
+                z1: top + 1,
+            };
+            disc(w as f32 * 0.52, d as f32 * 0.50, top - 1, 14.0, lid)
         }
         "saturn" => {
             let (w, d, h) = (mm(260.0), mm(230.0), mm(83.0));
-            disc(w as f32 * 0.50, d as f32 * 0.57, h - 3, 15.0)
+            let top = h - 6;
+            let lid = Lid {
+                x0: w * 20 / 100,
+                y0: d * 30 / 100,
+                z0: top,
+                x1: w * 80 / 100,
+                y1: d * 85 / 100,
+                z1: top + 4,
+            };
+            disc(w as f32 * 0.50, d as f32 * 0.57, top - 1, 15.0, lid)
         }
         "dreamcast" | "dc" => {
             let (w, d, h) = (mm(190.0), mm(195.0), mm(72.0));
-            disc(w as f32 * 0.52, d as f32 * 0.56, h - 2, 15.0)
+            let top = h - 3;
+            let lid = Lid {
+                x0: 7,
+                y0: 11,
+                z0: top,
+                x1: 50,
+                y1: 51,
+                z1: top + 2,
+            };
+            disc(w as f32 * 0.52, d as f32 * 0.56, top - 1, 15.0, lid)
         }
         "gamecube" | "ngc" | "gcn" => {
             let (w, d, h) = (mm(150.0), mm(161.0), mm(110.0));
-            disc(w as f32 * 0.50, d as f32 * 0.48, h - 4, 11.0)
+            let top = h - 5;
+            let lid = Lid {
+                x0: 5,
+                y0: 5,
+                z0: top,
+                x1: 39,
+                y1: 40,
+                z1: top + 2,
+            };
+            disc(w as f32 * 0.50, d as f32 * 0.48, top - 1, 12.0, lid)
         }
         "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => Media {
             x: 8,
@@ -885,6 +937,7 @@ pub fn media(name: &str) -> Option<Media> {
             label: false,
             disc: None,
             glow: true,
+            lid: None,
         },
         "scummvm" => Media {
             x: 23,
@@ -898,6 +951,7 @@ pub fn media(name: &str) -> Option<Media> {
             label: false,
             disc: None,
             glow: false,
+            lid: None,
         },
         _ => return None,
     })
@@ -906,18 +960,89 @@ pub fn media(name: &str) -> Option<Media> {
 /// How far the thing travels before it is in.
 const TRAVEL: i32 = 22;
 
-/// The console with its game `p` of the way in (0 outside, 1 in), and the
-/// rectangle of the label on the game's front, for the renderer.
-pub fn scene(name: &str, p: f32) -> Option<(Model, Media, [f32; 4])> {
-    let base = model(name)?;
+/// Swing a lid open by `angle` radians about its back top edge. The cells
+/// are lifted out, the well under them is darkened with its spindle, and the
+/// lid is set back in turned, each target cell taking the source cell that
+/// turns onto it so the lid keeps its shape at any angle.
+fn swing(m: &mut Model, lid: Lid, angle: f32, well: u8, spindle: u8) {
+    let (lw, ld, lh) = (lid.x1 - lid.x0, lid.y1 - lid.y0, lid.z1 - lid.z0);
+    let mut shut = vec![0u8; (lw * ld * lh) as usize];
+    for z in 0..lh {
+        for y in 0..ld {
+            for x in 0..lw {
+                let c = m.get(lid.x0 + x, lid.y0 + y, lid.z0 + z);
+                if c != 0 {
+                    shut[((z * ld + y) * lw + x) as usize] = c;
+                    m.set(lid.x0 + x, lid.y0 + y, lid.z0 + z, 0);
+                }
+            }
+        }
+    }
+    // The well the lid covered.
+    for y in lid.y0 + 2..lid.y1 - 2 {
+        for x in lid.x0 + 2..lid.x1 - 2 {
+            // Only where the lid's bottom layer covered the body.
+            if shut[((y - lid.y0) * lw + (x - lid.x0)) as usize] != 0
+                && m.get(x, y, lid.z0 - 1) != 0
+            {
+                m.set(x, y, lid.z0 - 1, well);
+            }
+        }
+    }
+    let (cx, cy) = ((lid.x0 + lid.x1) / 2, (lid.y0 + lid.y1) / 2);
+    m.cylinder(cx as f32, cy as f32, lid.z0 - 1, 2.0, 2.0, 1, spindle);
+    let (hy, hz) = (lid.y1 as f32, lid.z1 as f32);
+    let (s, c) = angle.sin_cos();
+    let reach = ld as f32 + 2.0;
+    for tz in lid.z0..(hz + reach) as i32 {
+        for ty in (hy - reach) as i32..(hy + lh as f32 + 2.0) as i32 {
+            for tx in lid.x0..lid.x1 {
+                let (dy, dz) = (ty as f32 + 0.5 - hy, tz as f32 + 0.5 - hz);
+                let (sy, sz) = (dy * c - dz * s, dy * s + dz * c);
+                let (y, z) = (
+                    (sy + hy - 0.5).round() as i32 - lid.y0,
+                    (sz + hz - 0.5).round() as i32 - lid.z0,
+                );
+                if y < 0 || z < 0 || y >= ld || z >= lh {
+                    continue;
+                }
+                let cell = shut[((z * ld + y) * lw + (tx - lid.x0)) as usize];
+                if cell != 0 {
+                    m.set(tx, ty, tz, cell);
+                }
+            }
+        }
+    }
+}
+
+/// The console at one moment of taking its game: the lid `lid` of the way
+/// open (0 shut, 1 fully), the game `p` of the way in (0 outside, 1 in),
+/// and its lamps on or off. Returns the model, and where the game's label
+/// goes and on which faces, for the renderer.
+pub fn scene(name: &str, lid: f32, p: f32, lamps: bool) -> Option<(Model, [f32; 4], Face)> {
+    let mut base = model(name)?;
+    base.lamps_on = lamps;
     let md = media(name)?;
+    // Below zero the game is not there yet: a disc waits for its lid.
+    let shown = p >= 0.0;
     let p = p.clamp(0.0, 1.0);
     let off = ((1.0 - p) * TRAVEL as f32).round() as i32;
+    // Room above for all of the game as it comes down, and for a lid
+    // standing open; room in front for a game pushed in.
+    let lid_room = md.lid.map_or(0, |l| l.y1 - l.y0 + 2);
     let (front, top) = match md.way {
-        Way::Down => (0, TRAVEL + 2),
+        Way::Down => (0, (TRAVEL + md.h + 2).max(lid_room)),
         Way::In => (TRAVEL + 2, 0),
     };
     let mut m = base.padded(front, top);
+    if let Some(l) = md.lid {
+        let well = m.mat(rgb(30, 30, 36));
+        let spindle = m.mat(rgb(120, 120, 130));
+        let open = lid.clamp(0.0, 1.0) * 1.75;
+        if open > 0.01 {
+            swing(&mut m, l, open, well, spindle);
+        }
+    }
     let mat = if md.glow {
         m.glow(md.color)
     } else if md.label {
@@ -930,17 +1055,21 @@ pub fn scene(name: &str, p: f32) -> Option<(Model, Media, [f32; 4])> {
         Way::Down => z += off,
         Way::In => y -= off,
     }
-    let rect;
+    if !shown {
+        return Some((m, [0.0, 0.0, 1.0, 1.0], Face::Front));
+    }
     if let Some(r) = md.disc {
-        let hub = m.mat(rgb(150, 154, 170));
+        // A disc shows its print on its top; the hole in its middle.
         m.cylinder(x as f32, y as f32, z, r, r, 1, mat);
-        m.cylinder(x as f32, y as f32, z, r * 0.3, r * 0.3, 1, hub);
-        rect = [0.0, 0.0, 1.0, 1.0];
+        let hole = m.mat(rgb(150, 154, 170));
+        m.cylinder(x as f32, y as f32, z, 1.6, 1.6, 1, hole);
+        let (xf, yf) = (x as f32, y as f32);
+        Some((m, [xf - r, yf - r, xf + r, yf + r], Face::Top))
     } else {
         m.cube(x, y, z, md.w, md.t, md.h, mat);
-        rect = [x as f32, z as f32, (x + md.w) as f32, (z + md.h) as f32];
+        let rect = [x as f32, z as f32, (x + md.w) as f32, (z + md.h) as f32];
+        Some((m, rect, Face::Front))
     }
-    Some((m, md, rect))
 }
 
 #[cfg(test)]

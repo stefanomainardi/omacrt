@@ -28,8 +28,10 @@ caveat for a 0.x project: anything may still move.
   to their real measurements and drawn as pixel art from three quarters; a
   newly chosen one comes down onto the stage and turns before it settles.
 - Launching a game shows its console on the stage and the game going in:
-  a cartridge with the cover as its label into the slot, a disc into the lid,
-  a floppy into the drive, a coin into the cabinet.
+  a cartridge with the cover as its label into the slot; for a disc console
+  the lid swings open, the disc with the cover printed on it goes into the
+  well and the lid shuts; a floppy into the PC's drive, a coin into the
+  cabinet. The power lamp lights when it clicks home.
 - The pad sockets are windows: raised under the cursor, sunk otherwise, the
   port number on a tab.
 - The games list shows the game's box on the same kind of stage: the cover

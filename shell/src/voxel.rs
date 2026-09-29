@@ -20,6 +20,17 @@ pub struct Mat {
     pub glow: bool,
     /// Takes the picture passed to `render_faced` on its front faces.
     pub decal: bool,
+    /// A power lamp: lit only while the model's lamps are on.
+    pub lamp: bool,
+}
+
+/// Which faces a picture goes on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Face {
+    /// Facing the front, as a label on a cartridge.
+    Front,
+    /// Facing up, as the print on a disc.
+    Top,
 }
 
 pub struct Model {
@@ -28,6 +39,8 @@ pub struct Model {
     pub h: i32,
     cells: Vec<u8>,
     mats: Vec<Mat>,
+    /// Whether the power lamps are lit.
+    pub lamps_on: bool,
 }
 
 impl Model {
@@ -42,7 +55,9 @@ impl Model {
                 color: 0,
                 glow: false,
                 decal: false,
+                lamp: false,
             }],
+            lamps_on: true,
         }
     }
 
@@ -51,6 +66,7 @@ impl Model {
             color,
             glow: false,
             decal: false,
+            lamp: false,
         })
     }
 
@@ -59,6 +75,17 @@ impl Model {
             color,
             glow: true,
             decal: false,
+            lamp: false,
+        })
+    }
+
+    /// A power lamp: glowing when the model's lamps are on, dark otherwise.
+    pub fn lamp(&mut self, color: Color) -> u8 {
+        self.push(Mat {
+            color,
+            glow: true,
+            decal: false,
+            lamp: true,
         })
     }
 
@@ -69,6 +96,7 @@ impl Model {
             color,
             glow: false,
             decal: true,
+            lamp: false,
         })
     }
 
@@ -83,6 +111,7 @@ impl Model {
     pub fn padded(&self, front: i32, top: i32) -> Model {
         let mut out = Model::new(self.w, self.d + front, self.h + top);
         out.mats = self.mats.clone();
+        out.lamps_on = self.lamps_on;
         for z in 0..self.h {
             for y in 0..self.d {
                 for x in 0..self.w {
@@ -340,17 +369,25 @@ pub fn render_faced(
     front: Option<&Image>,
 ) -> Image {
     let whole = [0.0, 0.0, m.w as f32, m.h as f32];
-    render_decal(m, v, rim, outline, front.map(|img| (img, whole)), false)
+    render_decal(
+        m,
+        v,
+        rim,
+        outline,
+        front.map(|img| (img, whole, Face::Front)),
+        false,
+    )
 }
 
-/// The picture on front faces inside `rect` (x0, z0, x1, z1 in model space),
-/// and only on decal materials when `decal_only`.
+/// A picture on the faces of one direction inside `rect`: x0, z0, x1, z1 in
+/// model space for the front, x0, y0, x1, y1 for the top. Only on decal
+/// materials when `decal_only`.
 pub fn render_decal(
     m: &Model,
     v: &View,
     rim: Color,
     outline: Color,
-    front: Option<(&Image, [f32; 4])>,
+    front: Option<(&Image, [f32; 4], Face)>,
     decal_only: bool,
 ) -> Image {
     let centre = [m.w as f32 / 2.0, m.d as f32 / 2.0, m.h as f32 / 2.0];
@@ -400,14 +437,21 @@ pub fn render_decal(
                 centre[2] + r[2] * a + u[2] * b - f[2] * 1000.0,
             ];
             if let Some(h) = cast(m, o, f) {
-                if let Some((img, rect)) = front
-                    && h.normal[1] < -0.5
+                if let Some((img, rect, face)) = front
+                    && match face {
+                        Face::Front => h.normal[1] < -0.5,
+                        Face::Top => h.normal[2] > 0.5,
+                    }
                     && img.w > 0
                     && img.h > 0
                     && (!decal_only || m.mats[h.mat as usize].decal)
                 {
+                    let across = match face {
+                        Face::Front => h.point[2],
+                        Face::Top => h.point[1],
+                    };
                     let u = ((h.point[0] - rect[0]) / (rect[2] - rect[0])).clamp(0.0, 0.999);
-                    let t = (1.0 - (h.point[2] - rect[1]) / (rect[3] - rect[1])).clamp(0.0, 0.999);
+                    let t = (1.0 - (across - rect[1]) / (rect[3] - rect[1])).clamp(0.0, 0.999);
                     let (tx, ty) = ((u * img.w as f32) as usize, (t * img.h as f32) as usize);
                     texels[py * iw + px] = Some(img.px[ty * img.w + tx] & 0xffffff);
                 }
@@ -426,6 +470,8 @@ pub fn render_decal(
                 // from the lamp.
                 let lit = dot(n, lamp).max(0.0);
                 crate::fb::scale(t, 0.62 + 0.45 * lit)
+            } else if m.mats[mat as usize].lamp && !m.lamps_on {
+                crate::fb::scale(m.mats[mat as usize].color, 0.28)
             } else if m.mats[mat as usize].glow {
                 m.mats[mat as usize].color
             } else {

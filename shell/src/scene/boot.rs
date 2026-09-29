@@ -829,8 +829,28 @@ impl Scene {
             .unwrap_or(th.accent);
         let (sx, sy, sw, sh) = (24, 20, w - 48, h - 20 - 40);
         let (floor, br) = crate::stage::draw(fb, &th, sx, sy, sw, sh, brand);
-        let p = ((u - 0.1) / 0.45).clamp(0.0, 1.0);
-        let Some((model, _, rect)) = crate::consoles::scene(system, p * p) else {
+        // The timeline. A console with a lid opens it, takes the disc,
+        // shuts it and clicks; one with a slot takes the cartridge and
+        // clicks. The power lamp lights on the click.
+        let ease_out = |t: f32| 1.0 - (1.0 - t) * (1.0 - t);
+        let ease_in = |t: f32| t * t;
+        let span = |a: f32, b: f32| ((u - a) / (b - a)).clamp(0.0, 1.0);
+        let lidded = crate::consoles::media(system).is_some_and(|m| m.lid.is_some());
+        let (lid, p, click) = if lidded {
+            let opening = ease_out(span(0.05, 0.25));
+            let closing = ease_in(span(0.62, 0.80));
+            let t = span(0.22, 0.58);
+            let p = if u < 0.18 {
+                -1.0
+            } else {
+                t * t * (3.0 - 2.0 * t)
+            };
+            (opening * (1.0 - closing), p, 0.80)
+        } else {
+            (0.0, ease_in(span(0.08, 0.55)), 0.55)
+        };
+        let lamps = u >= click;
+        let Some((model, rect, face)) = crate::consoles::scene(system, lid, p, lamps) else {
             return;
         };
         let cover = self
@@ -858,10 +878,14 @@ impl Scene {
             &v,
             lamp,
             0x0a0a0e,
-            cover.as_ref().map(|img| (img, rect)),
+            cover.as_ref().map(|img| (img, rect, face)),
             true,
         );
-        let jolt = if (0.55..0.63).contains(&u) { 1 } else { 0 };
+        let jolt = if (click..click + 0.07).contains(&u) {
+            1
+        } else {
+            0
+        };
         let (iw, ih) = (img.w as i32, img.h as i32);
         crate::stage::shadow(fb, &th, w / 2, floor + 8, iw / 2, 7);
         fb.blit(w / 2 - iw / 2, floor + 12 - ih + jolt, &img);
