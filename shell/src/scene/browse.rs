@@ -2021,7 +2021,8 @@ impl Scene {
             // A game that ran comes back out of its console. A video, or a
             // system with no model, goes straight back to the list.
             if ok && self.player.is_none() && crate::consoles::has(&system) {
-                self.ejecting = Some((system, path, self.now));
+                // Its clock starts on the first frame drawn after it.
+                self.ejecting = Some((system, path, f64::NAN));
             }
         }
         self.paused = None;

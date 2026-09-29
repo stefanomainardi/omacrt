@@ -427,6 +427,11 @@ pub struct Geometry {
 const LAUNCH_SECS: f32 = 1.15;
 /// How long a game takes to come back out of its console.
 const EJECT_SECS: f32 = 0.9;
+/// How long the console stands still with the game in it first. Leaving a
+/// game usually changes the television's mode back, and a set takes most of
+/// a second to lock again: without the wait the game came out while the
+/// picture was still rolling, and nobody saw it.
+const EJECT_HOLD: f64 = 0.7;
 
 /// Power submenu entries.
 const POWER_ITEMS: [(icons::Icon, &str, bool); 3] = [
@@ -1263,7 +1268,7 @@ impl Scene {
                     .and_then(|i| i.items.iter().find(|it| it.system == system))
                     .map(|it| it.path.clone())
                     .unwrap_or_default();
-                self.ejecting = Some((system, path, self.now + 1.0));
+                self.ejecting = Some((system, path, f64::NAN));
             }
             // A launch, for rendering the animation headlessly: the first
             // game of the named system, going into its console. Nothing is
@@ -1646,8 +1651,13 @@ impl Scene {
             }
             return;
         }
-        if let Some((_, _, since)) = &self.ejecting {
-            if ((now - since) as f32) < EJECT_SECS {
+        if let Some((_, _, since)) = self.ejecting.as_mut() {
+            // Timed from the first picture after the game, not from its end:
+            // the mode change in between blocks for up to a second.
+            if since.is_nan() {
+                *since = now + EJECT_HOLD;
+            }
+            if ((now - *since) as f32) < EJECT_SECS {
                 self.draw_ejecting(fb);
                 return;
             }
