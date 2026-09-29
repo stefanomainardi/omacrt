@@ -918,9 +918,29 @@ impl Scene {
             cover.as_ref().map(|img| (img, rect, face)),
             true,
         );
-        let (iw, ih) = (img.w as i32, img.h as i32);
-        crate::stage::shadow(fb, &th, w / 2, floor + 8, iw / 2, 7);
-        fb.blit(w / 2 - iw / 2, floor + 12 - ih + jolt as i32, &img);
+        // Placed by the console, not by the picture: the room left in front
+        // for a game pushed in would otherwise lift it off the floor and
+        // push it to one side.
+        let front = (model.d - bare.d) as f32;
+        let (mut left, mut right, mut bottom) = (f32::MAX, f32::MIN, f32::MIN);
+        for x in [0.0, bare.w as f32] {
+            for y in [front, model.d as f32] {
+                for z in [0.0, bare.h as f32] {
+                    let (px, py) = crate::voxel::project(&model, &v, [x, y, z]);
+                    left = left.min(px);
+                    right = right.max(px);
+                    bottom = bottom.max(py);
+                }
+            }
+        }
+        let half = ((right - left) / 2.0).round() as i32;
+        let cx = ((left + right) / 2.0).round() as i32;
+        crate::stage::shadow(fb, &th, w / 2, floor + 8, half, 7);
+        fb.blit(
+            w / 2 - cx,
+            floor + 10 - bottom.round() as i32 + jolt as i32,
+            &img,
+        );
     }
 
     /// Back from a game: the lamp goes out and the game comes out of its

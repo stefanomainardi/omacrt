@@ -748,7 +748,8 @@ pub struct Media {
     /// The game's cover goes on its front as a label.
     pub label: bool,
     pub disc: Option<f32>,
-    /// A glowing thing, a coin under the lights of a cabinet.
+    /// A coin under the lights of a cabinet: round, glowing, its rim a
+    /// shade darker.
     pub glow: bool,
     /// The lid that opens for it, for a console that takes discs.
     pub lid: Option<Lid>,
@@ -930,12 +931,12 @@ pub fn media(name: &str) -> Option<Media> {
             disc(w as f32 * 0.50, d as f32 * 0.48, top - 1, 12.0, lid)
         }
         "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => Media {
-            x: 8,
+            x: 7,
             y: 6,
-            z: 12,
-            w: 4,
+            z: 11,
+            w: 6,
             t: 1,
-            h: 4,
+            h: 6,
             color: rgb(240, 196, 70),
             way: Way::In,
             label: false,
@@ -1066,6 +1067,12 @@ pub fn scene(name: &str, lid: f32, p: f32, lamps: bool) -> Option<(Model, [f32; 
             y -= ((1.0 - slide) * TRAVEL as f32).round() as i32;
             z -= (down * md.press as f32).round() as i32;
         }
+        // A coin is tossed: it comes down to the slot as it comes in, or
+        // seen from three quarters it would seem to lie on the floor.
+        Way::In if md.glow => {
+            y -= off;
+            z += ((1.0 - p) * 18.0).round() as i32;
+        }
         Way::In => y -= off,
     }
     if !shown {
@@ -1093,6 +1100,20 @@ pub fn scene(name: &str, lid: f32, p: f32, lamps: bool) -> Option<(Model, [f32; 
         m.cube(lx0, y, lz0, lx1 - lx0, 1, lz1 - lz0, mat);
         let rect = [lx0 as f32, lz0 as f32, lx1 as f32, lz1 as f32];
         Some((m, rect, Face::Front))
+    } else if md.glow {
+        let rim = m.mat(crate::fb::lerp_color(md.color, 0, 0.4));
+        let r = md.w as f32 / 2.0;
+        for k in 0..md.h {
+            for i in 0..md.w {
+                let (dx, dz) = (i as f32 + 0.5 - r, k as f32 + 0.5 - r);
+                let d2 = dx * dx + dz * dz;
+                if d2 <= r * r {
+                    let c = if d2 > (r - 1.0) * (r - 1.0) { rim } else { mat };
+                    m.cube(x + i, y, z + k, 1, md.t, 1, c);
+                }
+            }
+        }
+        Some((m, [0.0, 0.0, 1.0, 1.0], Face::Front))
     } else {
         m.cube(x, y, z, md.w, md.t, md.h, mat);
         let rect = [x as f32, z as f32, (x + md.w) as f32, (z + md.h) as f32];

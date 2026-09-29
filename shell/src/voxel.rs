@@ -379,26 +379,18 @@ pub fn render_faced(
     )
 }
 
-/// A picture on the faces of one direction inside `rect`: x0, z0, x1, z1 in
-/// model space for the front, x0, y0, x1, y1 for the top. Only on decal
-/// materials when `decal_only`.
-pub fn render_decal(
-    m: &Model,
-    v: &View,
-    rim: Color,
-    outline: Color,
-    front: Option<(&Image, [f32; 4], Face)>,
-    decal_only: bool,
-) -> Image {
-    let centre = [m.w as f32 / 2.0, m.d as f32 / 2.0, m.h as f32 / 2.0];
-    // Camera basis in world space: right, up, forward (into the scene).
+/// The camera's right, up and forward in model space, for a view.
+fn basis(v: &View) -> (V3, V3, V3) {
     let (sp, cp) = v.pitch.sin_cos();
     let right: V3 = [1.0, 0.0, 0.0];
     let fwd: V3 = [0.0, cp, -sp];
     let up: V3 = [0.0, sp, cp];
-    // The same basis in model space, turned against the model's yaw.
-    let (r, u, f) = (yawed(right, -v.yaw), yawed(up, -v.yaw), yawed(fwd, -v.yaw));
-    // The picture's extent: the eight corners of the box, projected.
+    (yawed(right, -v.yaw), yawed(up, -v.yaw), yawed(fwd, -v.yaw))
+}
+
+/// The picture's extent: the eight corners of the model's box, projected.
+fn bounds(m: &Model, r: V3, u: V3) -> (f32, f32, f32, f32) {
+    let centre = [m.w as f32 / 2.0, m.d as f32 / 2.0, m.h as f32 / 2.0];
     let (mut umin, mut umax, mut vmin, mut vmax) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
     for &cx in &[0.0, m.w as f32] {
         for &cy in &[0.0, m.d as f32] {
@@ -412,6 +404,36 @@ pub fn render_decal(
             }
         }
     }
+    (umin, umax, vmin, vmax)
+}
+
+/// Where a point of the model lands in the picture `render` makes of it,
+/// in pixels from its top left corner.
+pub fn project(m: &Model, v: &View, p: [f32; 3]) -> (f32, f32) {
+    let centre = [m.w as f32 / 2.0, m.d as f32 / 2.0, m.h as f32 / 2.0];
+    let (r, u, _) = basis(v);
+    let (umin, _, _, vmax) = bounds(m, r, u);
+    let q = [p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]];
+    (
+        (dot(q, r) - umin) * v.scale + 1.0,
+        (vmax - dot(q, u)) * v.scale + 1.0,
+    )
+}
+
+/// A picture on the faces of one direction inside `rect`: x0, z0, x1, z1 in
+/// model space for the front, x0, y0, x1, y1 for the top. Only on decal
+/// materials when `decal_only`.
+pub fn render_decal(
+    m: &Model,
+    v: &View,
+    rim: Color,
+    outline: Color,
+    front: Option<(&Image, [f32; 4], Face)>,
+    decal_only: bool,
+) -> Image {
+    let centre = [m.w as f32 / 2.0, m.d as f32 / 2.0, m.h as f32 / 2.0];
+    let (r, u, f) = basis(v);
+    let (umin, umax, vmin, vmax) = bounds(m, r, u);
     let iw = ((umax - umin) * v.scale).ceil() as usize + 3;
     let ih = ((vmax - vmin) * v.scale).ceil() as usize + 3;
     // The lamp, above, to the left and in front, in world space.
