@@ -24,7 +24,7 @@ caveat for a 0.x project: anything may still move.
   each action has its own: saving, loading, rewinding, fast forward, slow
   motion, reset and going back to the launcher no longer share icons.
 - The systems list puts the selected console on a lit stage, with its
-  number of games, core and video policy. The consoles are voxel models built
+  number of games and video policy. The consoles are voxel models built
   to their real measurements and drawn as pixel art from three quarters; a
   newly chosen one comes down onto the stage and turns before it settles.
 - Launching a game shows its console on the stage and the game going in:

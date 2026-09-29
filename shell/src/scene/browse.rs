@@ -2100,7 +2100,7 @@ impl Scene {
                 self.row_shrink = panel + 8;
                 let px = w - left - panel;
                 let stage_h = (h - 34 - y0).max(80);
-                let (brand, name, label, count, core, policy) = if sel >= Self::VIRTUAL {
+                let (brand, name, label, count, policy) = if sel >= Self::VIRTUAL {
                     let s = &systems[sel - Self::VIRTUAL];
                     let brand = icons::system_logo(&s.name)
                         .map(|(_, c)| c)
@@ -2116,7 +2116,7 @@ impl Scene {
                     let policy = crate::library::VideoPolicy::parse(&s.video)
                         .label()
                         .to_string();
-                    (brand, s.name.clone(), label, count, s.core.clone(), policy)
+                    (brand, s.name.clone(), label, count, policy)
                 } else {
                     let (label, count) = match sel {
                         0 => ("Recent", self.recent.len()),
@@ -2130,7 +2130,6 @@ impl Scene {
                         String::new(),
                         label.to_string(),
                         count,
-                        String::new(),
                         String::new(),
                     )
                 };
@@ -2208,22 +2207,12 @@ impl Scene {
                     tones.shadow,
                 );
                 let base = y0 + stage_h - 12;
-                if !core.is_empty() {
-                    let room = ((panel - 12) / 8) as usize;
-                    let core_txt: String = core
-                        .chars()
-                        .take(room.saturating_sub(policy.len() + 1))
-                        .collect();
-                    crate::paint::text_shadow(fb, px + 6, base, &core_txt, br[3], tones.shadow);
+                // The core is on the line below the list, with runahead and
+                // whether it is installed; the stage keeps only the picture's
+                // policy.
+                if !policy.is_empty() {
                     let pw = Framebuffer::text_width(&policy, 1);
-                    crate::paint::text_shadow(
-                        fb,
-                        px + panel - 6 - pw,
-                        base,
-                        &policy,
-                        br[3],
-                        tones.shadow,
-                    );
+                    crate::paint::text_shadow(fb, cx - pw / 2, base, &policy, br[3], tones.shadow);
                 }
                 let total = Self::VIRTUAL + systems.len();
                 let end = (top + SYS_PAGE).min(total);
