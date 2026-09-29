@@ -723,6 +723,226 @@ fn pc() -> Model {
     m
 }
 
+/// How the thing a console plays goes into it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Way {
+    /// Dropped in from above: a cartridge into its slot, a disc into its lid.
+    Down,
+    /// Pushed in from the front: the NES's cartridge, a floppy, a coin.
+    In,
+}
+
+/// What a console plays and where it ends up once it is in, in the
+/// console's own voxels: a box `w` across, `t` from front to back and `h`
+/// tall, or a disc of radius `disc`.
+#[derive(Clone, Copy, Debug)]
+pub struct Media {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+    pub w: i32,
+    pub t: i32,
+    pub h: i32,
+    pub color: crate::fb::Color,
+    pub way: Way,
+    /// The game's cover goes on its front as a label.
+    pub label: bool,
+    pub disc: Option<f32>,
+    /// A glowing thing, a coin under the lights of a cabinet.
+    pub glow: bool,
+}
+
+fn cart(x: i32, y: i32, z: i32, w: i32, t: i32, h: i32, color: crate::fb::Color) -> Media {
+    Media {
+        x,
+        y,
+        z,
+        w,
+        t,
+        h,
+        color,
+        way: Way::Down,
+        label: true,
+        disc: None,
+        glow: false,
+    }
+}
+
+fn disc(cx: f32, cy: f32, z: i32, r: f32) -> Media {
+    Media {
+        x: cx.round() as i32,
+        y: cy.round() as i32,
+        z,
+        w: 0,
+        t: 0,
+        h: 1,
+        color: rgb(200, 204, 214),
+        way: Way::Down,
+        label: false,
+        disc: Some(r),
+        glow: false,
+    }
+}
+
+/// Where each console takes its game, from the same measurements as its
+/// model.
+pub fn media(name: &str) -> Option<Media> {
+    Some(match name {
+        "snes" | "sfc" => {
+            let (w, d, h) = (mm(200.0), mm(242.0), mm(72.0));
+            cart(
+                w * 22 / 100,
+                d * 65 / 100 - 2,
+                h - 8,
+                w * 56 / 100,
+                5,
+                24,
+                rgb(150, 150, 158),
+            )
+        }
+        "megadrive" | "genesis" | "md" => {
+            let (w, d) = (mm(280.0), mm(212.0));
+            let (cx, cy) = (w as f32 * 0.64, d as f32 * 0.50);
+            cart(
+                (cx - 12.0) as i32,
+                (cy + 4.0) as i32,
+                11,
+                24,
+                4,
+                28,
+                rgb(30, 30, 34),
+            )
+        }
+        "n64" => {
+            let (w, d) = (mm(260.0), mm(190.0));
+            cart(
+                w * 33 / 100,
+                d * 68 / 100 - 1,
+                12,
+                w * 34 / 100,
+                4,
+                22,
+                rgb(150, 150, 160),
+            )
+        }
+        "gb" | "gbc" | "gameboy" => {
+            let (w, d, h) = (mm(90.0), mm(32.0), mm(148.0));
+            cart(w / 2 - 8, d - 4, h - 12, 16, 2, 19, rgb(150, 150, 150))
+        }
+        "neogeo" => {
+            let (w, d, h) = (mm(325.0), mm(237.0), mm(60.0));
+            let (x0, y0, rw, rd) = (w * 22 / 100, d * 30 / 100, w * 66 / 100, d * 52 / 100);
+            cart(
+                x0 + 8,
+                y0 + (rd - 14) / 2 + 4,
+                h - 15,
+                rw - 16,
+                7,
+                30,
+                rgb(30, 30, 34),
+            )
+        }
+        "nes" | "famicom" => {
+            let (w, h) = (mm(256.0), mm(80.0));
+            let mut m = cart(
+                6,
+                2,
+                h * 55 / 100,
+                w * 68 / 100 - 12,
+                26,
+                4,
+                rgb(150, 150, 150),
+            );
+            m.way = Way::In;
+            m.label = false;
+            m
+        }
+        "psx" | "playstation" => {
+            let (w, d, h) = (mm(270.0), mm(188.0), mm(60.0));
+            disc(w as f32 * 0.52, d as f32 * 0.50, h - 3, 14.0)
+        }
+        "saturn" => {
+            let (w, d, h) = (mm(260.0), mm(230.0), mm(83.0));
+            disc(w as f32 * 0.50, d as f32 * 0.57, h - 3, 15.0)
+        }
+        "dreamcast" | "dc" => {
+            let (w, d, h) = (mm(190.0), mm(195.0), mm(72.0));
+            disc(w as f32 * 0.52, d as f32 * 0.56, h - 2, 15.0)
+        }
+        "gamecube" | "ngc" | "gcn" => {
+            let (w, d, h) = (mm(150.0), mm(161.0), mm(110.0));
+            disc(w as f32 * 0.50, d as f32 * 0.48, h - 4, 11.0)
+        }
+        "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => Media {
+            x: 8,
+            y: 6,
+            z: 12,
+            w: 4,
+            t: 1,
+            h: 4,
+            color: rgb(240, 196, 70),
+            way: Way::In,
+            label: false,
+            disc: None,
+            glow: true,
+        },
+        "scummvm" => Media {
+            x: 23,
+            y: 0,
+            z: 4,
+            w: 12,
+            t: 10,
+            h: 1,
+            color: rgb(40, 60, 140),
+            way: Way::In,
+            label: false,
+            disc: None,
+            glow: false,
+        },
+        _ => return None,
+    })
+}
+
+/// How far the thing travels before it is in.
+const TRAVEL: i32 = 22;
+
+/// The console with its game `p` of the way in (0 outside, 1 in), and the
+/// rectangle of the label on the game's front, for the renderer.
+pub fn scene(name: &str, p: f32) -> Option<(Model, Media, [f32; 4])> {
+    let base = model(name)?;
+    let md = media(name)?;
+    let p = p.clamp(0.0, 1.0);
+    let off = ((1.0 - p) * TRAVEL as f32).round() as i32;
+    let (front, top) = match md.way {
+        Way::Down => (0, TRAVEL + 2),
+        Way::In => (TRAVEL + 2, 0),
+    };
+    let mut m = base.padded(front, top);
+    let mat = if md.glow {
+        m.glow(md.color)
+    } else if md.label {
+        m.decal(md.color)
+    } else {
+        m.mat(md.color)
+    };
+    let (x, mut y, mut z) = (md.x, md.y + front, md.z);
+    match md.way {
+        Way::Down => z += off,
+        Way::In => y -= off,
+    }
+    let rect;
+    if let Some(r) = md.disc {
+        let hub = m.mat(rgb(150, 154, 170));
+        m.cylinder(x as f32, y as f32, z, r, r, 1, mat);
+        m.cylinder(x as f32, y as f32, z, r * 0.3, r * 0.3, 1, hub);
+        rect = [0.0, 0.0, 1.0, 1.0];
+    } else {
+        m.cube(x, y, z, md.w, md.t, md.h, mat);
+        rect = [x as f32, z as f32, (x + md.w) as f32, (z + md.h) as f32];
+    }
+    Some((m, md, rect))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

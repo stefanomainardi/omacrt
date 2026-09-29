@@ -18,6 +18,8 @@ pub struct Mat {
     pub color: Color,
     /// Lamps and lit screens: drawn in their own colour whatever the light.
     pub glow: bool,
+    /// Takes the picture passed to `render_faced` on its front faces.
+    pub decal: bool,
 }
 
 pub struct Model {
@@ -39,18 +41,59 @@ impl Model {
             mats: vec![Mat {
                 color: 0,
                 glow: false,
+                decal: false,
             }],
         }
     }
 
     pub fn mat(&mut self, color: Color) -> u8 {
-        self.mats.push(Mat { color, glow: false });
-        (self.mats.len() - 1) as u8
+        self.push(Mat {
+            color,
+            glow: false,
+            decal: false,
+        })
     }
 
     pub fn glow(&mut self, color: Color) -> u8 {
-        self.mats.push(Mat { color, glow: true });
+        self.push(Mat {
+            color,
+            glow: true,
+            decal: false,
+        })
+    }
+
+    /// A material whose front faces show the picture given to the renderer,
+    /// such as a cartridge's label.
+    pub fn decal(&mut self, color: Color) -> u8 {
+        self.push(Mat {
+            color,
+            glow: false,
+            decal: true,
+        })
+    }
+
+    fn push(&mut self, m: Mat) -> u8 {
+        self.mats.push(m);
         (self.mats.len() - 1) as u8
+    }
+
+    /// The same model in a larger grid, moved back by `front` and with
+    /// `top` more rows above it, so something can come in from the front or
+    /// from above.
+    pub fn padded(&self, front: i32, top: i32) -> Model {
+        let mut out = Model::new(self.w, self.d + front, self.h + top);
+        out.mats = self.mats.clone();
+        for z in 0..self.h {
+            for y in 0..self.d {
+                for x in 0..self.w {
+                    let c = self.get(x, y, z);
+                    if c != 0 {
+                        out.set(x, y + front, z, c);
+                    }
+                }
+            }
+        }
+        out
     }
 
     fn inside(&self, x: i32, y: i32, z: i32) -> bool {
@@ -296,6 +339,20 @@ pub fn render_faced(
     outline: Color,
     front: Option<&Image>,
 ) -> Image {
+    let whole = [0.0, 0.0, m.w as f32, m.h as f32];
+    render_decal(m, v, rim, outline, front.map(|img| (img, whole)), false)
+}
+
+/// The picture on front faces inside `rect` (x0, z0, x1, z1 in model space),
+/// and only on decal materials when `decal_only`.
+pub fn render_decal(
+    m: &Model,
+    v: &View,
+    rim: Color,
+    outline: Color,
+    front: Option<(&Image, [f32; 4])>,
+    decal_only: bool,
+) -> Image {
     let centre = [m.w as f32 / 2.0, m.d as f32 / 2.0, m.h as f32 / 2.0];
     // Camera basis in world space: right, up, forward (into the scene).
     let (sp, cp) = v.pitch.sin_cos();
@@ -343,13 +400,14 @@ pub fn render_faced(
                 centre[2] + r[2] * a + u[2] * b - f[2] * 1000.0,
             ];
             if let Some(h) = cast(m, o, f) {
-                if let Some(img) = front
+                if let Some((img, rect)) = front
                     && h.normal[1] < -0.5
                     && img.w > 0
                     && img.h > 0
+                    && (!decal_only || m.mats[h.mat as usize].decal)
                 {
-                    let u = (h.point[0] / m.w as f32).clamp(0.0, 0.999);
-                    let t = (1.0 - h.point[2] / m.h as f32).clamp(0.0, 0.999);
+                    let u = ((h.point[0] - rect[0]) / (rect[2] - rect[0])).clamp(0.0, 0.999);
+                    let t = (1.0 - (h.point[2] - rect[1]) / (rect[3] - rect[1])).clamp(0.0, 0.999);
                     let (tx, ty) = ((u * img.w as f32) as usize, (t * img.h as f32) as usize);
                     texels[py * iw + px] = Some(img.px[ty * img.w + tx] & 0xffffff);
                 }

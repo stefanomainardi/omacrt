@@ -1244,6 +1244,31 @@ impl Scene {
                 }
             }
             Some("settings") => self.screen = Screen::Settings { sel: 0 },
+            // A launch, for rendering the animation headlessly: the first
+            // game of the named system, going into its console. Nothing is
+            // run; the command is `true`.
+            Some(s) if s.starts_with("launch:") => {
+                let system = s.trim_start_matches("launch:").to_string();
+                let game = self
+                    .library
+                    .index
+                    .as_ref()
+                    .and_then(|i| i.items.iter().find(|it| it.system == system))
+                    .map(|it| (it.title.clone(), it.path.clone()));
+                let (title, path) = game.unwrap_or_else(|| (system.clone(), PathBuf::new()));
+                self.running = Some((title.clone(), system.clone()));
+                self.running_path = Some((system.clone(), path));
+                self.launching = Some(Launch {
+                    cmd: std::process::Command::new("true"),
+                    title,
+                    system,
+                    disc: false,
+                    color: self.theme.accent,
+                    started: self.now + 1.0,
+                    spawned: false,
+                    lines: None,
+                });
+            }
             // The systems list, with a console already selected when one is
             // named after a colon, so its stage can be looked at.
             Some(s) if s == "systems" || s.starts_with("systems:") => {

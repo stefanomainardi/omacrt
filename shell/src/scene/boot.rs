@@ -817,6 +817,56 @@ impl Scene {
         self.draw_hint(fb, left, h - 14, &[("A", "select"), ("B", "back")]);
     }
 
+    /// The launch on a stage: the console, large, lit in its own colour, and
+    /// its game going in, a cartridge with the cover as its label dropped
+    /// into the slot, a disc into the lid, a coin into the cabinet. It clicks
+    /// home at 0.55 s and the console gives a small jolt.
+    fn draw_launch_stage(&mut self, fb: &mut Framebuffer, system: &str, u: f32) {
+        let (w, h) = (fb.w as i32, fb.h as i32);
+        let th = self.theme.clone();
+        let brand = icons::system_logo(system)
+            .map(|(_, c)| c)
+            .unwrap_or(th.accent);
+        let (sx, sy, sw, sh) = (24, 20, w - 48, h - 20 - 40);
+        let (floor, br) = crate::stage::draw(fb, &th, sx, sy, sw, sh, brand);
+        let p = ((u - 0.1) / 0.45).clamp(0.0, 1.0);
+        let Some((model, _, rect)) = crate::consoles::scene(system, p * p) else {
+            return;
+        };
+        let cover = self
+            .running_path
+            .as_ref()
+            .and_then(|(sys, path)| self.art.cover(sys, path, 96, 96).cloned());
+        let yaw = -0.62f32;
+        let pitch = 0.55f32;
+        // Sized on the console alone: the room above it, where the game
+        // starts from, is allowed to run up the stage.
+        let Some(bare) = crate::consoles::model(system) else {
+            return;
+        };
+        let (s, c) = yaw.sin_cos();
+        let width = bare.w as f32 * c.abs() + bare.d as f32 * s.abs();
+        let deep = bare.w as f32 * s.abs() + bare.d as f32 * c.abs();
+        let height = deep * pitch.sin() + bare.h as f32 * pitch.cos();
+        let scale = (170.0 / width)
+            .min((floor - sy - 40) as f32 / height)
+            .min(3.0);
+        let v = crate::voxel::View { yaw, pitch, scale };
+        let lamp = crate::fb::lerp_color(br[4], 0xffecbe, 0.5);
+        let img = crate::voxel::render_decal(
+            &model,
+            &v,
+            lamp,
+            0x0a0a0e,
+            cover.as_ref().map(|img| (img, rect)),
+            true,
+        );
+        let jolt = if (0.55..0.63).contains(&u) { 1 } else { 0 };
+        let (iw, ih) = (img.w as i32, img.h as i32);
+        crate::stage::shadow(fb, &th, w / 2, floor + 8, iw / 2, 7);
+        fb.blit(w / 2 - iw / 2, floor + 12 - ih + jolt, &img);
+    }
+
     /// Launch animation: a cartridge slides into its slot (or a disc spins
     /// up), a click, then the picture cuts to black for the emulator.
     pub(super) fn draw_launching(&mut self, fb: &mut Framebuffer) {
@@ -848,7 +898,9 @@ impl Scene {
         );
         let cx = w / 2;
         let cy = h / 2 - 10;
-        if disc {
+        if crate::consoles::has(&system) {
+            self.draw_launch_stage(fb, &system, u);
+        } else if disc {
             // Disc: spinning hub and spokes, speeding up.
             let spin = u * u * 9.0;
             let r = 30;
