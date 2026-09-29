@@ -43,6 +43,10 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- A long title scrolling on the selected row no longer runs under the
+  row's icon.
+- The games stage shows where a game will resume as a chip with the resume
+  icon, instead of words that read as a second clock.
 - The core's line under the systems list no longer runs under the page count
   when the core has a long name.
 - A game whose refresh rate is built into the timing is no longer shown lower

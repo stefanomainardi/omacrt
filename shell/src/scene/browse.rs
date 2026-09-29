@@ -2056,13 +2056,17 @@ impl Scene {
         let full = format!("  {label}");
         let count = full.chars().count();
         let text: String = if on && count > room {
-            // Marquee: pause, scroll left, pause, from the start again.
+            // Marquee: pause, scroll left, pause, from the start again. Only
+            // the label moves; the two columns in front of it belong to the
+            // row's icon, and letters scrolled into them ran under it.
+            let (lead, label_room) = (2, room.saturating_sub(2));
             let span = (count - room + 2) as f64;
             let cycle = span * 0.28 + 1.6;
             let t = (self.now % cycle) - 0.9;
             let off = (t / 0.28).clamp(0.0, span).floor() as usize;
-            let padded = format!("{full}   ");
-            padded.chars().cycle().skip(off).take(room).collect()
+            let padded = format!("{label}   ");
+            let moving: String = padded.chars().cycle().skip(off).take(label_room).collect();
+            format!("{}{moving}", " ".repeat(lead))
         } else {
             full.chars().take(room).collect()
         };
@@ -2457,7 +2461,6 @@ impl Scene {
                     let entry = self.games[sel].clone();
                     let system = self.library.systems[entry.sys].name.clone();
                     let th = self.theme.clone();
-                    let tones = crate::paint::Tones::of(&th);
                     let bx = w - left - stage_w;
                     let stage_h = (h - 34 - y0).max(80);
                     let brand = icons::system_logo(&system)
@@ -2519,20 +2522,32 @@ impl Scene {
                         }
                     }
                     let cols = ((stage_w - 12) / 8) as usize;
-                    // At the top of the stage, in the light: where the game
-                    // was left, else when it was last played.
+                    // At the top of the stage, in the light, a chip like the
+                    // ones at its foot: the time of the state it resumes
+                    // from, else when it was last played. Bare words there
+                    // ("left 09:05") read as a second clock.
                     let top_line = if let Some(st) = self.states.latest(&entry.game.path) {
-                        Some((st.label(), th.green))
+                        Some((st.when_label(), th.green, &icons::RESUME))
                     } else {
                         self.recent_at.get(&entry.game.path).map(|at| {
                             let when = std::time::UNIX_EPOCH
                                 + std::time::Duration::from_secs((*at).max(0) as u64);
-                            (states::when_label(when), lerp_color(br[4], th.paper, 0.4))
+                            (
+                                states::when_label(when),
+                                lerp_color(br[4], th.paper, 0.4),
+                                &icons::CLOCK,
+                            )
                         })
                     };
-                    if let Some((text, c)) = top_line {
-                        let text: String = text.chars().take(cols).collect();
-                        crate::paint::text_shadow(fb, bx + 6, y0 + 6, &text, c, tones.shadow);
+                    if let Some((text, c, icon)) = top_line {
+                        let text: String = text.chars().take(cols.saturating_sub(2)).collect();
+                        let (x, y) = (bx + 5, y0 + 5);
+                        let cw = Framebuffer::text_width(&text, 1) + 17;
+                        let ground = lerp_color(th.bg, c, 0.25);
+                        fb.rect(x + 1, y, cw - 2, 11, ground);
+                        fb.rect(x, y + 1, cw, 9, ground);
+                        icons::paint(fb, x + 3, y + 2, icon, &self.theme, c, true, 1.0);
+                        fb.text(x + 14, y + 2, &text, c, 1);
                     }
                     // At the foot, two chips: the region, and the time played.
                     let stem = entry
