@@ -26,6 +26,9 @@ pub fn model(name: &str) -> Option<Model> {
         "dreamcast" | "dc" => dreamcast(),
         "neogeo" => neogeo(),
         "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => cabinet(),
+        "gb" | "gbc" | "gameboy" => gameboy(),
+        "gamecube" | "ngc" | "gcn" => gamecube(),
+        "scummvm" => pc(),
         _ => return None,
     })
 }
@@ -193,6 +196,13 @@ pub fn has(name: &str) -> bool {
             | "mame2003"
             | "fbneo"
             | "naomi"
+            | "gb"
+            | "gbc"
+            | "gameboy"
+            | "gamecube"
+            | "ngc"
+            | "gcn"
+            | "scummvm"
     )
 }
 
@@ -574,6 +584,145 @@ fn cabinet() -> Model {
     m
 }
 
+/// The original Game Boy, standing up as it would on a shelf: 90 by 32 by
+/// 148 mm, warm grey, the rounded bottom right corner, the dark bezel with
+/// the green screen, the cross, the two magenta buttons, start and select,
+/// and the speaker's slots.
+fn gameboy() -> Model {
+    let (w, d, h) = (mm(90.0), mm(32.0), mm(148.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(196, 196, 190));
+    let bezel = m.mat(rgb(84, 84, 104));
+    let screen = m.glow(rgb(140, 170, 40));
+    let pixel = m.glow(rgb(48, 88, 32));
+    let dark = m.mat(rgb(40, 40, 46));
+    let magenta = m.mat(rgb(160, 30, 90));
+    let pill = m.mat(rgb(120, 120, 130));
+    let blue = m.mat(rgb(40, 50, 140));
+    m.cube(0, 0, 0, w, d, h, body);
+    // The bottom right corner rounded, through the whole depth.
+    let r = 7;
+    for z in 0..r {
+        for x in w - r..w {
+            let (dx, dz) = ((x - (w - r)) as f32, (r - 1 - z) as f32);
+            if dx * dx + dz * dz > (r * r) as f32 {
+                for y in 0..d {
+                    m.set(x, y, z, 0);
+                }
+            }
+        }
+    }
+    // The bezel and the screen, with a little of a game on it.
+    let (bx, bz, bw, bh) = (3, h * 52 / 100, w - 6, h * 40 / 100);
+    m.cube(bx, 0, bz, bw, 1, bh, bezel);
+    m.cube(bx + 4, 0, bz + 3, bw - 8, 1, bh - 7, screen);
+    for (x, z) in [
+        (bx + 6, bz + 5),
+        (bx + 7, bz + 5),
+        (bx + 12, bz + 8),
+        (bx + 13, bz + 8),
+        (bx + 10, bz + 12),
+    ] {
+        m.set(x, 0, z, pixel);
+    }
+    m.cube(bx + 2, 0, bz + bh - 2, bw - 10, 1, 1, blue);
+    // The cross, the two buttons, start and select, the speaker.
+    let cz = h * 34 / 100;
+    m.cube(4, 0, cz - 1, 7, 1, 3, dark);
+    m.cube(6, 0, cz - 3, 3, 1, 7, dark);
+    m.cube(w - 9, 0, cz, 3, 1, 3, magenta);
+    m.cube(w - 5, 0, cz + 2, 3, 1, 3, magenta);
+    m.cube(w / 2 - 5, 0, h * 20 / 100, 3, 1, 1, pill);
+    m.cube(w / 2, 0, h * 20 / 100, 3, 1, 1, pill);
+    for i in 0..4 {
+        m.cube(w - 12 + i * 2, 0, 3 + i, 1, 1, 5, dark);
+    }
+    m
+}
+
+/// The GameCube: 150 by 161 by 110 mm, indigo. The round lid on the top with
+/// the cube in its middle, the handle at the back, open, reset and power on
+/// the front of the top, and four controller ports low on the front.
+fn gamecube() -> Model {
+    let (w, d, h) = (mm(150.0), mm(161.0), mm(110.0));
+    let mut m = Model::new(w, d, h);
+    let body = m.mat(rgb(84, 70, 140));
+    let lid = m.mat(rgb(100, 86, 160));
+    let rim = m.mat(rgb(60, 50, 104));
+    let grey = m.mat(rgb(170, 170, 180));
+    let dark = m.mat(rgb(30, 26, 44));
+    let logo = m.mat(rgb(190, 180, 220));
+    let top = h - 5;
+    m.rounded(0, 0, 0, w, d, top, 4, body);
+    // The lid.
+    let (cx, cy) = (w as f32 / 2.0, d as f32 * 0.48);
+    m.cylinder(cx, cy, top, 16.0, 16.0, 1, rim);
+    m.cylinder(cx, cy, top, 15.0, 15.0, 2, lid);
+    for (dx, dy) in [
+        (0, 0),
+        (1, 0),
+        (0, 1),
+        (1, 1),
+        (-1, 0),
+        (2, 1),
+        (0, -1),
+        (1, 2),
+    ] {
+        m.set(cx as i32 + dx - 1, cy as i32 + dy - 1, top + 2, logo);
+    }
+    // The handle across the back.
+    m.cube(4, d - 5, top, 2, 4, 5, body);
+    m.cube(w - 6, d - 5, top, 2, 4, 5, body);
+    m.cube(4, d - 5, top + 4, w - 8, 4, 1, body);
+    // Open, reset and power along the front of the top.
+    m.cylinder(w as f32 * 0.18, 5.0, top, 2.5, 2.0, 1, grey);
+    m.cylinder(w as f32 * 0.50, 5.0, top, 2.0, 1.5, 1, grey);
+    m.cylinder(w as f32 * 0.82, 5.0, top, 2.5, 2.0, 1, grey);
+    // Four ports low on the front.
+    for i in 0..4 {
+        let x0 = w * 12 / 100 + i * w * 20 / 100;
+        m.paint_front(x0, 3, 6, 5, grey);
+        m.paint_front(x0 + 1, 5, 4, 1, dark);
+    }
+    m
+}
+
+/// A PC of the years ScummVM's games come from, in voxels rather than
+/// millimetres: a beige desktop case with its floppy drives and lamps, and
+/// on it a monitor whose screen shows a little of an adventure.
+fn pc() -> Model {
+    let (w, d, h) = (40, 34, 42);
+    let mut m = Model::new(w, d, h);
+    let beige = m.mat(rgb(214, 206, 184));
+    let shade = m.mat(rgb(186, 178, 156));
+    let dark = m.mat(rgb(40, 38, 34));
+    let sky = m.glow(rgb(90, 140, 220));
+    let grass = m.glow(rgb(70, 160, 70));
+    let hero = m.glow(rgb(230, 200, 120));
+    let led = m.glow(rgb(60, 220, 90));
+    let disk = m.glow(rgb(240, 160, 40));
+    // The case.
+    m.cube(0, 0, 0, w, d, 12, beige);
+    m.cube(0, 0, 11, w, d, 1, shade);
+    // Two floppy drives, the lamps, the button.
+    m.paint_front(w * 55 / 100, 7, 14, 1, dark);
+    m.paint_front(w * 55 / 100, 4, 14, 1, dark);
+    m.paint_front(4, 5, 2, 1, led);
+    m.paint_front(8, 5, 2, 1, disk);
+    m.paint_front(4, 8, 4, 2, shade);
+    // The monitor on top: a deep tube behind a front with its screen.
+    m.cube(6, 6, 12, 28, 24, 2, shade);
+    m.rounded(9, 12, 14, 22, 18, 22, 4, beige);
+    m.cube(5, 4, 14, 30, 8, 28, beige);
+    let (sx, sz) = (8, 18);
+    m.cube(sx, 4, sz, 24, 1, 20, dark);
+    m.cube(sx + 2, 4, sz + 8, 20, 1, 10, sky);
+    m.cube(sx + 2, 4, sz + 2, 20, 1, 6, grass);
+    m.cube(sx + 9, 4, sz + 5, 2, 1, 4, hero);
+    m.set(31, 4, 16, led);
+    m
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -594,6 +743,9 @@ mod tests {
             "dreamcast",
             "neogeo",
             "arcade",
+            "gb",
+            "gamecube",
+            "scummvm",
         ] {
             let m = model(name).unwrap();
             let t = std::time::Instant::now();
@@ -623,9 +775,13 @@ mod tests {
             "dreamcast",
             "neogeo",
             "arcade",
+            "gb",
+            "gamecube",
+            "scummvm",
         ] {
             let m = model(name).unwrap();
-            assert!(m.w > 20 && m.d > 20 && m.h > 10, "{name} is the wrong size");
+            // A Game Boy stands up and is thin; everything else lies down.
+            assert!(m.w > 20 && m.d > 5 && m.h > 10, "{name} is the wrong size");
             assert_ne!(m.get(m.w / 2, m.d / 2, 1), 0, "{name} has no body");
         }
     }
