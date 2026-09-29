@@ -453,7 +453,7 @@ television, the same switch as Settings, Screensaver.
 
 ## Sound
 
-`[sound]`, and Settings, Sound. Three switches, and the boot show makes its
+`[sound]`, and Settings, Sound. Four switches, and the boot show makes its
 own noise whatever they say:
 
 | Key | Default | What it is |
@@ -461,6 +461,7 @@ own noise whatever they say:
 | `menu` | on | Moving about: the beep on a move, the click of a select, the page turn |
 | `deck` | off | The needle set down when the record deck changes track, or static between two stations |
 | `weather` | off | The weather's own sound while the clock and weather page is up |
+| `hall` | on | The arcade hall under the home menu: its murmur, cabinets playing far off, a coin now and then |
 
 The weather's sound is eight loops, one per sky: rain with drops on it, wind
 that gusts, thunder behind a downpour, snow, a horn in fog, birds on a clear

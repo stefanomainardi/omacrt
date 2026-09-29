@@ -300,6 +300,10 @@ pub struct Sound {
     /// default: that page comes up on its own when the set is left alone.
     #[serde(default)]
     pub weather: bool,
+    /// The arcade hall under the home menu: a murmur, cabinets playing far
+    /// off, a coin now and then, well under everything the menu says.
+    #[serde(default = "default_true")]
+    pub hall: bool,
 }
 
 impl Default for Sound {
@@ -308,6 +312,7 @@ impl Default for Sound {
             menu: true,
             deck: false,
             weather: false,
+            hall: true,
         }
     }
 }

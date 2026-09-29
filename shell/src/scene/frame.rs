@@ -449,7 +449,8 @@ impl Scene {
         match row {
             0 => s.menu = !s.menu,
             1 => s.deck = !s.deck,
-            _ => s.weather = !s.weather,
+            2 => s.weather = !s.weather,
+            _ => s.hall = !s.hall,
         }
     }
 
@@ -461,11 +462,13 @@ impl Scene {
             ("moving about".into(), onoff(s.menu)),
             ("track change".into(), onoff(s.deck)),
             ("the weather".into(), onoff(s.weather)),
+            ("the hall".into(), onoff(s.hall)),
         ];
         let notes = [
             "the beep, the click, the page turn",
             "the needle set down, or radio static",
             "rain, wind, thunder, birds, crickets",
+            "the arcade under the home, far off",
         ];
         self.draw_settings_table(
             fb,

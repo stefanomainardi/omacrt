@@ -39,6 +39,9 @@ caveat for a 0.x project: anything may still move.
   spotlight for forty seconds and moving a little in its own mood.
 - The pause menu shows the running game's console on a lit stage, the game
   in it and its lamp on, with what the row under the cursor is set to.
+- The hall has its sound under the home menu: the room, a murmur, three
+  cabinets playing their tunes far off and a coin going in, well under the
+  menu's own sounds. Settings, Sound, the hall turns it off.
 - People come into the hall a while after the home is up, one scene at a
   time: somebody plays and loses to a GAME OVER, two play side by side,
   somebody makes a record and cheers, a man mops the far end of the aisle.

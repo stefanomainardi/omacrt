@@ -380,7 +380,7 @@ const SETTINGS_HEAD_H: i32 = 20;
 
 /// Rows of the clock and weather page, and of the sound page.
 const AMBIENT_ROWS: usize = 3;
-const SOUND_ROWS: usize = 3;
+const SOUND_ROWS: usize = 4;
 
 /// Rows of the Music settings page before the one per visualizer.
 const MUSIC_ROWS: usize = 7;
@@ -981,12 +981,14 @@ impl Scene {
     /// idle television puts up by itself. A game or a film is playing over
     /// everything and gets the silence it is owed.
     pub fn ambience(&self) -> Option<crate::weather_sound::Ambience> {
-        if !self.settings.sound.weather
-            || self.running.is_some()
-            || self.launching.is_some()
-            || self.saver.is_some()
-            || !matches!(self.screen, Screen::Ambient)
-        {
+        if self.running.is_some() || self.launching.is_some() || self.saver.is_some() {
+            return None;
+        }
+        // The home stands in the arcade hall, and the hall has its sound.
+        if matches!(self.screen, Screen::Menu) && self.menu_live && self.settings.sound.hall {
+            return Some(crate::weather_sound::Ambience::Arcade);
+        }
+        if !self.settings.sound.weather || !matches!(self.screen, Screen::Ambient) {
             return None;
         }
         let reading = &self.photos.info.sky;
