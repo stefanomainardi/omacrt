@@ -22,13 +22,17 @@ use std::f32::consts::TAU;
 use crate::fb::{Color, lerp_color};
 
 /// How tall a sprite is drawn, in pixels, and how many times larger its
-/// shapes are drawn before they are reduced.
-pub const HEIGHT: i32 = 50;
+/// shapes are drawn before they are reduced. The hall's people stand between
+/// 63 and 73 pixels tall, so a sprite drawn at 68 is scaled by less than a
+/// tenth either way and nearly every pixel lands on one pixel: drawn smaller
+/// and enlarged by a third, one pixel in three came out doubled and the heads
+/// drawn by hand lost their shape.
+pub const HEIGHT: i32 = 68;
 const SS: i32 = 4;
 /// The sprite's size, and where its feet are in it.
-pub const W: i32 = 46;
-pub const H: i32 = HEIGHT + 6;
-pub const FOOT: (i32, i32) = (W / 2, H - 3);
+pub const W: i32 = 62;
+pub const H: i32 = HEIGHT + 8;
+pub const FOOT: (i32, i32) = (W / 2, H - 4);
 
 /// A person's colours. Each becomes four tones.
 #[derive(Clone, Copy, PartialEq)]
@@ -211,7 +215,7 @@ impl Pen {
             w,
             h,
             ox: w as f32 / 2.0,
-            oy: (h - 3 * SS) as f32,
+            oy: (FOOT.1 * SS) as f32,
             u: HEIGHT as f32 * SS as f32 / 100.0,
         }
     }
@@ -314,115 +318,143 @@ impl Pen {
 // The heads, drawn by hand. h hair, l its light, H its shadow, b its darkest
 // (the brow), s skin, S skin in shade, d in deep shade, m the mouth, e the
 // eye, c the cap and C its brim or shade.
-const HEAD_SIDE: [&str; 10] = [
-    "..hhhh...",
-    ".hlllhh..",
-    "hhhhhhhh.",
-    "hHhhhhhs.",
-    "HHhSsbbs.",
-    "HHSdssesS",
-    ".HSSssss.",
-    ".HSSsssm.",
-    "..SSsss..",
-    "...dSS...",
+const HEAD_SIDE: [&str; 13] = [
+    "...hhhhh....",
+    ".hhlllllhh..",
+    "hhhhhhhhhhh.",
+    "hHhhhhhhhhs.",
+    "hHhhhhhhsss.",
+    "HHhhSssbbss.",
+    "HHhSdsssesS.",
+    "HHhSdSsssssS",
+    ".HHSSssssss.",
+    ".HHSSsssmm..",
+    "..HSSssss...",
+    "...dSSSS....",
+    "....dSS.....",
 ];
-const HEAD_SIDE_MULLET: [&str; 11] = [
-    "..hhhh...",
-    ".hlllhh..",
-    "hhhhhhhh.",
-    "hHhhhhhs.",
-    "HHhSsbbs.",
-    "HHSdssesS",
-    "HHSSssss.",
-    "HHSSsssm.",
-    "HH.Ssss..",
-    "HH.dSSS..",
-    ".H.......",
+const HEAD_SIDE_MULLET: [&str; 14] = [
+    "...hhhhh....",
+    ".hhlllllhh..",
+    "hhhhhhhhhhh.",
+    "hHhhhhhhhhs.",
+    "hHhhhhhhsss.",
+    "HHhhSssbbss.",
+    "HHhSdsssesS.",
+    "HHhSdSsssssS",
+    "HHHSSssssss.",
+    "HHHSSsssmm..",
+    "HHH.Sssss...",
+    "HHH.dSSS....",
+    ".HH.dSS.....",
+    "..H.........",
 ];
-const HEAD_SIDE_CAP: [&str; 10] = [
-    "..cccc...",
-    ".cccccc..",
-    "cCCCCCCCC",
-    "hHhhhhhs.",
-    "HHhSsbbs.",
-    "HHSdssesS",
-    ".HSSssss.",
-    ".HSSsssm.",
-    "..SSsss..",
-    "...dSS...",
+const HEAD_SIDE_CAP: [&str; 13] = [
+    "...ccccc....",
+    ".ccccccccc..",
+    "cccccccccccc",
+    "hCCCCCCCCCCC",
+    "hHhhhhhhsss.",
+    "HHhhSssbbss.",
+    "HHhSdsssesS.",
+    "HHhSdSsssssS",
+    ".HHSSssssss.",
+    ".HHSSsssmm..",
+    "..HSSssss...",
+    "...dSSSS....",
+    "....dSS.....",
 ];
-const HEAD_FRONT: [&str; 10] = [
-    "..hhhhh..",
-    ".hlllhhh.",
-    "hhhhhhhhh",
-    "hHsssssHh",
-    "HSbsSbsSH",
-    "dSesSesSd",
-    ".SssSssS.",
-    ".SsssssS.",
-    "..SsmsS..",
-    "...SdS...",
+const HEAD_FRONT: [&str; 13] = [
+    "...hhhhhh...",
+    "..hlllllhh..",
+    ".hhhhhhhhhh.",
+    "hhhhhhhhhhhh",
+    "hHssssssssHh",
+    "HSbbsSSbbsSH",
+    "HSsesSSsesSH",
+    "dSsssSSsssSd",
+    ".SsssSSsssS.",
+    ".SssssssssS.",
+    "..SssmmssS..",
+    "...SSssSS...",
+    "....dSSd....",
 ];
-const HEAD_FRONT_CAP: [&str; 10] = [
-    "..ccccc..",
-    ".ccccccc.",
-    "cCCCCCCCc",
-    "hHsssssHh",
-    "HSbsSbsSH",
-    "dSesSesSd",
-    ".SssSssS.",
-    ".SsssssS.",
-    "..SsmsS..",
-    "...SdS...",
+const HEAD_FRONT_CAP: [&str; 13] = [
+    "...cccccc...",
+    "..cccccccc..",
+    ".cccccccccc.",
+    "cCCCCCCCCCCc",
+    "hHssssssssHh",
+    "HSbbsSSbbsSH",
+    "HSsesSSsesSH",
+    "dSsssSSsssSd",
+    ".SsssSSsssS.",
+    ".SssssssssS.",
+    "..SssmmssS..",
+    "...SSssSS...",
+    "....dSSd....",
 ];
-const HEAD_FRONT_OPEN: [&str; 10] = [
-    "..hhhhh..",
-    ".hlllhhh.",
-    "hhhhhhhhh",
-    "hHsssssHh",
-    "HSbsSbsSH",
-    "dSesSesSd",
-    ".SssSssS.",
-    ".SsdddsS.",
-    "..SsdsS..",
-    "...SdS...",
+const HEAD_FRONT_OPEN: [&str; 13] = [
+    "...hhhhhh...",
+    "..hlllllhh..",
+    ".hhhhhhhhhh.",
+    "hhhhhhhhhhhh",
+    "hHssssssssHh",
+    "HSbbsSSbbsSH",
+    "HSsesSSsesSH",
+    "dSsssSSsssSd",
+    ".SsssSSsssS.",
+    ".SssdddsssS.",
+    "..SsdddssS..",
+    "...SSddSS...",
+    "....dSSd....",
 ];
-const HEAD_BACK: [&str; 10] = [
-    "..hhhhh..",
-    ".hlllhhh.",
-    "hhhhhhhhh",
-    "hhhhhhhhH",
-    "hhhhhhhhH",
-    "dhhhhhhHd",
-    ".HhhhhhH.",
-    ".HHhhhHH.",
-    "..HHHHH..",
-    "...SSS...",
+const HEAD_BACK: [&str; 13] = [
+    "...hhhhhh...",
+    "..hlllllhh..",
+    ".hhhhhhhhhh.",
+    "hhhhhhhhhhhh",
+    "hhhhhhhhhhhH",
+    "hhhhhhhhhhhH",
+    "dhhhhhhhhhHd",
+    "dHhhhhhhhhHd",
+    ".HhhhhhhhhH.",
+    ".HHhhhhhhHH.",
+    "..HHHHHHHH..",
+    "...SSSSSS...",
+    "....SSSS....",
 ];
-const HEAD_BACK_MULLET: [&str; 11] = [
-    "..hhhhh..",
-    ".hlllhhh.",
-    "hhhhhhhhh",
-    "hhhhhhhhH",
-    "hhhhhhhhH",
-    "hhhhhhhHH",
-    "HhhhhhhHH",
-    "HHhhhhHHH",
-    "HHhhhhhHH",
-    ".HHHHHHH.",
-    "..HHHHH..",
+const HEAD_BACK_MULLET: [&str; 15] = [
+    "...hhhhhh...",
+    "..hlllllhh..",
+    ".hhhhhhhhhh.",
+    "hhhhhhhhhhhh",
+    "hhhhhhhhhhhH",
+    "hhhhhhhhhhhH",
+    "hhhhhhhhhhHH",
+    "HhhhhhhhhhHH",
+    "HHhhhhhhhHHH",
+    "HHhhhhhhhhHH",
+    ".HHhhhhhhHH.",
+    ".HHHHHHHHHH.",
+    "..HHHHHHHH..",
+    "...HHHHHH...",
+    "....HHHH....",
 ];
-const HEAD_BACK_CAP: [&str; 10] = [
-    "..ccccc..",
-    ".ccccccc.",
-    "cCCCCCCCc",
-    "hhhhhhhhH",
-    "hhhhhhhhH",
-    "dhhhhhhHd",
-    ".HhhhhhH.",
-    ".HHhhhHH.",
-    "..HHHHH..",
-    "...SSS...",
+const HEAD_BACK_CAP: [&str; 13] = [
+    "...cccccc...",
+    "..cccccccc..",
+    ".cccccccccc.",
+    "cCCCCCCCCCCc",
+    "hhhhhhhhhhhH",
+    "hhhhhhhhhhhH",
+    "dhhhhhhhhhHd",
+    "dHhhhhhhhhHd",
+    ".HhhhhhhhhH.",
+    ".HHhhhhhhHH.",
+    "..HHHHHHHH..",
+    "...SSSSSS...",
+    "....SSSS....",
 ];
 
 fn head(grid: &[&str], t: &Tones, flip: bool) -> Vec<(i32, i32, Color)> {
@@ -499,8 +531,8 @@ pub fn sprite(pal: &Palette, pose: &Pose) -> Sprite {
     clean(&mut px);
     grain(&mut px, &t);
     let (hx, hy) = (
-        (head_at.0 / SS as f32).round() as i32 - 4,
-        (head_at.1 / SS as f32).round() as i32 - 5,
+        (head_at.0 / SS as f32).round() as i32 - 6,
+        (head_at.1 / SS as f32).round() as i32 - 6,
     );
     for (x, y, c) in head(grid, &t, false) {
         let (x, y) = (hx + x, hy + y);
