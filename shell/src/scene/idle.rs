@@ -23,7 +23,9 @@ impl Scene {
         if !self.settings.screensaver.enabled {
             return 0.0;
         }
-        if self.idle_secs > 0.0 && self.settings.screensaver.idle_secs == 60 {
+        if self.idle_secs > 0.0
+            && self.settings.screensaver.idle_secs == omacrt_shell::settings::DEFAULT_SAVER_IDLE
+        {
             // Command line override while the setting is at its default.
             return self.idle_secs;
         }

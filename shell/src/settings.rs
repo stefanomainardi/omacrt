@@ -27,6 +27,10 @@ fn default_cycle_secs() -> u32 {
     240
 }
 
+/// Five minutes: the home has people coming and going in it now, and a
+/// minute put the screensaver over them before most had arrived.
+pub const DEFAULT_SAVER_IDLE: u32 = 300;
+
 /// Everything an idle television can show, in the order pages take turns.
 ///
 /// The launcher draws each of these and knows what to call them; this is the
@@ -342,7 +346,7 @@ impl Default for Settings {
             version: crate::config::VERSION,
             screensaver: Screensaver {
                 enabled: true,
-                idle_secs: 60,
+                idle_secs: DEFAULT_SAVER_IDLE,
                 effect: "random".into(),
                 cycle_secs: default_cycle_secs(),
                 // A new machine shows all of it, which is the point of

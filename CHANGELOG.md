@@ -19,9 +19,13 @@ caveat for a 0.x project: anything may still move.
 - After the boot's floor, the laser climbs the screen and the hall stands up
   behind it; the word and the mark fly to the far wall, the sign strikes and
   the hall powers on, the cabinets pair by pair from the back.
+- People come into the hall a while after the home is up, one scene at a
+  time: somebody plays and loses to a GAME OVER, two play side by side,
+  somebody makes a record and cheers, a man mops the far end of the aisle.
 
 ### Changed
 
+- The screensaver waits five minutes by default instead of one.
 - A new 8x8 font, drawn for the tube: two pixel stems, one pixel horizontals,
   more air between letters.
 - The selection is a lit bar with a sheen, the title sits on a shaded band,

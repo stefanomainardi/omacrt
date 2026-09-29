@@ -702,6 +702,10 @@ impl Scene {
             }
             return;
         }
+        if t >= BOOT_DONE {
+            self.crowd.start(self.now);
+        }
+        self.hall.fx = self.crowd.fx(self.now);
         self.hall.draw(fb, &self.theme, &lights, sign_c, tick);
         if t < HALL_LANDS {
             let f = ease(clamp((t - climb_to) / HALL_FLY, 0.0, 1.0));
@@ -718,6 +722,8 @@ impl Scene {
         let (base, hot) = self.retrace_now();
         self.draw_retrace(fb, ox - 16, oy + rows / 2 - 5, 10.0, base, 1.0, hot);
         hall::draw_arrow(fb, ox + cols + 6, oy + rows / 2 - 4, &lights, tick);
+        // Whoever is in the hall stands in front of the sign on the far wall.
+        self.crowd.draw(fb, &self.hall, board, self.now);
         // The sounds of it: the sign striking, a clunk for every pair of
         // cabinets switched on.
         let local = t - HALL_LANDS;

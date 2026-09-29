@@ -510,7 +510,7 @@ uses:
 ```toml
 [screensaver]
 enabled = true
-idle_secs = 60                            # seconds of nothing before it starts
+idle_secs = 300                           # seconds of nothing before it starts
 pages = ["photos", "ambient", "system"]   # what an idle set shows
 cycle_secs = 240                          # how long each page keeps the screen
 effect = "random"                         # the wordmark page's own effect

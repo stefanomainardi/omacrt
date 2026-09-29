@@ -9,6 +9,7 @@ mod audio;
 mod bt;
 mod clock;
 mod consoles;
+mod crowd;
 mod crt_tag;
 mod deck;
 mod effects;
@@ -99,7 +100,7 @@ const USAGE: &str = "usage: omacrt-shell [options]
                     needs the wall clock to move at the same speed as the scene
   --dump T1,T2,...  write frame_<T>.ppm at these seconds after boot
   --dump-dir DIR    where dumps go (default .)
-  --idle SECONDS    start the screensaver after this much idle time (default 60, 0 = never)
+  --idle SECONDS    start the screensaver after this much idle time (default 300, 0 = never)
   --screensaver [NAME]  start directly in the screensaver; NAME picks an effect
   --dump-audio DIR  write every synthesized sound as WAV into DIR and exit
   --clock HH:MM     draw this time of day instead of now (offline renders)
@@ -143,7 +144,7 @@ fn parse_args() -> Result<Args, String> {
         browse: None,
         dump: Vec::new(),
         dump_dir: PathBuf::from("."),
-        idle: 60.0,
+        idle: omacrt_shell::settings::DEFAULT_SAVER_IDLE as f32,
         screensaver: None,
         dump_audio: None,
         clock: None,

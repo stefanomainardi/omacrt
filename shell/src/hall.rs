@@ -24,10 +24,10 @@ pub const LOOP: u32 = 48;
 /// The loop's frame rate.
 pub const TICK_HZ: f64 = 12.5;
 
-const FLOOR: f32 = 1.0;
+pub const FLOOR: f32 = 1.0;
 const CEIL: f32 = -0.78;
 const WALL: f32 = 1.10;
-const DBACK: f32 = 3.35;
+pub const DBACK: f32 = 3.35;
 // The cabinet, top to bottom; Y grows downwards and the eye is at 0.
 const TOP: f32 = -0.40;
 const MARQ: f32 = -0.25;
@@ -108,6 +108,16 @@ impl Lights {
         k[12] = self.sign.0 as u32 * 2 + self.sign.1 as u32;
         k
     }
+}
+
+/// What a cabinet's screen is showing besides its game: the red of a game
+/// lost, the colours of a record.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Fx {
+    #[default]
+    None,
+    Over,
+    Record,
 }
 
 #[derive(Clone, Copy)]
@@ -498,6 +508,7 @@ struct Builder<'a> {
     room: Room,
     lights: &'a Lights,
     sign: Color,
+    fx: [Fx; 10],
 }
 
 impl Builder<'_> {
@@ -690,7 +701,12 @@ fn side_art(sch: &Scheme, x_: f32, y_: f32) -> Color {
 }
 
 fn build(cam: Cam, room: Room, lights: &Lights, sign: Color) -> Raster {
-    let b = Builder { room, lights, sign };
+    let b = Builder {
+        room,
+        lights,
+        sign,
+        fx: [Fx::None; 10],
+    };
     let mut r = Raster::new(cam, room.void);
     let pools = pools();
 
@@ -1078,6 +1094,22 @@ fn shade_screen(b: &Builder, p: &DynPx, x: i32, y: i32, tick: u32) -> Color {
         Cab::Off => return b.lit(lerp_color(VOID0, glow, 0.06), d, x, y, 0.5),
         Cab::On(_) => {}
     }
+    match b.fx[cab] {
+        Fx::Over => {
+            let on = (tick / 3).is_multiple_of(2);
+            let c = if on {
+                RED
+            } else {
+                lerp_color(VOID0, RED, 0.25)
+            };
+            return b.emissive(c, d, x, y, 0.3);
+        }
+        Fx::Record => {
+            let k = (tick + (v * 20.0) as u32) % 4;
+            return b.emissive([YELLOW, PINK, CYAN, WHITE][k as usize], d, x, y, 0.3);
+        }
+        Fx::None => {}
+    }
     let lv = b.lights.cabs[cab].level();
     let ph = ((tick + cab as u32 * 7) % LOOP) as f32 / LOOP as f32;
     let base = lerp_color(VOID0, glow, 0.16);
@@ -1195,6 +1227,10 @@ pub struct Hall {
     base: Vec<Color>,
     moving: Vec<DynPx>,
     cam_w: usize,
+    /// How far away each pixel of the room is, for whatever stands in it.
+    depth: Vec<f32>,
+    /// What each screen shows besides its game, set by whoever plays it.
+    pub fx: [Fx; 10],
 }
 
 impl Hall {
@@ -1214,6 +1250,7 @@ impl Hall {
         if self.key.as_ref() != Some(&key) {
             let r = build(cam, room, lights, sign);
             self.base = r.col;
+            self.depth = r.z;
             self.moving = r
                 .dynamic
                 .iter()
@@ -1233,7 +1270,12 @@ impl Hall {
             self.key = Some(key);
         }
         fb.px.copy_from_slice(&self.base);
-        let b = Builder { room, lights, sign };
+        let b = Builder {
+            room,
+            lights,
+            sign,
+            fx: self.fx,
+        };
         for p in &self.moving {
             let (x, y) = (
                 (p.at as usize % self.cam_w) as i32,
@@ -1244,6 +1286,46 @@ impl Hall {
                 Dyn::Marquee => shade_marquee(&b, p, x, y, tick),
             };
             fb.px[p.at as usize] = c;
+        }
+    }
+
+    /// How far away the room is at a pixel; nothing there is far.
+    pub fn depth_at(&self, x: i32, y: i32) -> f32 {
+        if x < 0 || y < 0 || self.cam_w == 0 {
+            return f32::MAX;
+        }
+        let i = y as usize * self.cam_w + x as usize;
+        if x as usize >= self.cam_w {
+            return f32::MAX;
+        }
+        self.depth.get(i).copied().unwrap_or(f32::MAX)
+    }
+
+    /// Where a point of the room lands on the screen.
+    pub fn project(fb: &Framebuffer, x: f32, y: f32, d: f32) -> (f32, f32) {
+        Cam::of(fb.w, fb.h).proj(x, y, d)
+    }
+
+    /// How many pixels tall one unit of the room is at depth one.
+    pub fn unit(fb: &Framebuffer) -> f32 {
+        Cam::of(fb.w, fb.h).ky
+    }
+
+    /// The glow of a cabinet's screen, for the light on whoever plays it.
+    pub fn glow(cab: usize) -> Color {
+        cabinet(cab).0.glow
+    }
+
+    /// Where the top of a cabinet's marquee is, for a word over it.
+    pub fn cabinet_top(fb: &Framebuffer, cab: usize) -> (f32, f32) {
+        let cam = Cam::of(fb.w, fb.h);
+        match cab {
+            8 => cam.proj(-0.44, TOP, DBACK - 0.30),
+            9 => cam.proj(0.44, TOP, DBACK - 0.30),
+            i => {
+                let s = if i < 4 { -1.0 } else { 1.0 };
+                cam.proj(s * FRONT, TOP, SLOTS[i % 4] + CW / 2.0)
+            }
         }
     }
 
