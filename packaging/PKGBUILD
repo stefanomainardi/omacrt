@@ -34,7 +34,7 @@ source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # this line updated against the published tarball, because the tarball does
 # not exist until the tag is pushed. `SKIP` here would mean the package
 # builds whatever arrives.
-sha256sums=('57875479f45043a7d2610ea709956502b6a984e59dfd682f87fb74c1b0dd7fc0')
+sha256sums=('05803735dd9956d3d42cf59a7f7ae92bfa5d69f1021d6a76108390ae67e837db')
 install="$pkgname.install"
 
 prepare() {
