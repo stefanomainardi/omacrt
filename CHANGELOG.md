@@ -12,6 +12,8 @@ caveat for a 0.x project: anything may still move.
 - Games that draw more lines than the television holds, such as Sega's
   Model 2 boards at 384, are scaled down smoothly instead of with rows
   missing from every letter.
+- An album found by searching Spotify plays, track by track, instead of
+  failing to start.
 
 ## [0.11.1] - 2026-09-29
 
