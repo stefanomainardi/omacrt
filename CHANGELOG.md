@@ -7,6 +7,16 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-09-30
+
+### Fixed
+
+- Games that draw more lines than the television holds, such as Sega's
+  Model 2 boards at 384, are scaled down smoothly instead of with rows
+  missing from every letter.
+- An album found by searching Spotify plays, track by track, instead of
+  failing to start.
+
 ## [0.11.1] - 2026-09-29
 
 ### Changed
@@ -1490,7 +1500,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.11.2...HEAD
+[0.11.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.2
 [0.11.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.1
 [0.11.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.0
 [0.10.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.10.0

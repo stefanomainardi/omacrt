@@ -1757,6 +1757,7 @@ impl Scene {
                     })
                     .unwrap_or(self.output_size);
                 let (w, mut h) = frame;
+                let mut smooth = false;
                 // `frame` leaves the window the height of the tube's own
                 // frame, which is what asks the emulator to scale into it.
                 if !system.is_video() && system.aspect != "frame" {
@@ -1779,6 +1780,16 @@ impl Scene {
                         // built from the raw number lays the picture out for
                         // a screen twice the size of the one it lands on and
                         // the player sees the top half of it.
+                        // A game taller than the frame is reduced to it,
+                        // and with the emulator's nearest neighbour a
+                        // reduction by anything but a whole number drops
+                        // lines unevenly: Sega Rally's 384 lines into 240
+                        // lose three in every eight, and the letters of its
+                        // timer come out with rows missing. Filtered, the
+                        // lines are blended instead. A whole number, a
+                        // Dreamcast's 480 into 240, keeps every other line
+                        // cleanly and is left sharp.
+                        smooth = l > h && l % h != 0;
                         h = l.min(h);
                     }
                 }
@@ -1791,6 +1802,9 @@ impl Scene {
                     "aspect_ratio_index = \"24\"\nvideo_aspect_ratio = \"{:.4}\"\nvideo_scale_integer = \"false\"\nvideo_fullscreen_x = \"{w}\"\nvideo_fullscreen_y = \"{h}\"\ncustom_viewport_x = \"0\"\ncustom_viewport_y = \"0\"\ncustom_viewport_width = \"{w}\"\ncustom_viewport_height = \"{h}\"\nvideo_windowed_position_width = \"{w}\"\nvideo_windowed_position_height = \"{h}\"\nvideo_window_auto_width_max = \"{w}\"\nvideo_window_auto_height_max = \"{h}\"\n",
                     w as f32 / h as f32
                 ));
+                if smooth {
+                    keys.push_str("video_smooth = \"true\"\n");
+                }
                 // The aspect the player chose in the pause menu, which wins
                 // because the emulator keeps the last value of a key. The
                 // frame here is thousands of pixels wide and the set shows it

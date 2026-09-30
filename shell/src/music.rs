@@ -710,7 +710,14 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
                 Reply::List(src, items)
             }
             Request::Play(t) => {
-                let r = call(json!({ "cmd": "track.play", "track": t.to_json() }));
+                // A provider's search answers with albums in the same list as
+                // its tracks, and an album handed to `track.play` is refused
+                // as "unsupported spotify type: album". It is expanded the
+                // way a saved album is.
+                let r = match album_provider(&t.path) {
+                    Some(provider) => load_playlist(provider, &t.path),
+                    None => call(json!({ "cmd": "track.play", "track": t.to_json() })),
+                };
                 follow_sink(&sink);
                 match r {
                     Ok(_) => Reply::Played,
@@ -765,6 +772,14 @@ fn worker(rx: Receiver<Request>, tx: Sender<Reply>, sink: Option<String>) {
             return;
         }
     }
+}
+
+/// The provider of an album's address, `spotify` for `spotify:album:...`, and
+/// nothing for a track, a stream or a web address.
+fn album_provider(path: &str) -> Option<&str> {
+    let (provider, rest) = path.split_once(':')?;
+    let named = !provider.is_empty() && provider.chars().all(|c| c.is_ascii_alphanumeric());
+    (named && rest.starts_with("album:")).then_some(provider)
 }
 
 /// Play a whole row of a provider's list.
@@ -1548,6 +1563,15 @@ mod tests {
         // The shape the fix turns on: Spotify's saved albums arrive in the
         // same list as the playlists, and only their id says so.
         assert!("spotify:album:7m7wD23i4SVxU3IQ7LGMVq".contains(":album:"));
+        // What a search hands back as a track is sometimes an album, and
+        // that is the one form that has to be expanded before it plays.
+        assert_eq!(
+            album_provider("spotify:album:05DePtm7oQMdL3Uzw2Jmsc"),
+            Some("spotify")
+        );
+        assert_eq!(album_provider("spotify:track:6ckozbGmOusAnLT2LEbERy"), None);
+        assert_eq!(album_provider("https://example.com/album:1"), None);
+        assert_eq!(album_provider("/home/music/album:1.flac"), None);
         assert!(!"4e5Le37X6n7VCcMyxyNfVm".contains(":album:"));
         assert!(!"YOUR MUSIC".contains(":album:"));
     }
