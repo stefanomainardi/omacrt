@@ -7,6 +7,12 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- Arcade lists can be filtered with the right trigger: by screen orientation,
+  number of players, the controls a game needs, number of screens, whether
+  MAME can run it, and clones. The choice is kept between sessions.
+
 ## [0.11.2] - 2026-09-30
 
 ### Fixed

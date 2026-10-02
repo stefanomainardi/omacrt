@@ -50,12 +50,13 @@ impl Scene {
             Some(i) => self.entries_for(i),
             None => Vec::new(),
         };
-        self.set_games(list);
+        // The screen first: the arcade filter asks which list is open.
         self.screen = Screen::Games {
             sys,
             sel: 0,
             top: 0,
         };
+        self.set_games(list);
     }
 
     /// Entries of system `i` in the folder currently browsed.
@@ -115,12 +116,12 @@ impl Scene {
     /// Step into a subfolder of the current system.
     fn enter_folder(&mut self, sys: usize, dir: PathBuf) {
         self.game_dir = Some(dir);
-        self.set_games(self.entries_for(sys));
         self.screen = Screen::Games {
             sys: Some(sys),
             sel: 0,
             top: 0,
         };
+        self.set_games(self.entries_for(sys));
         self.pending.push(Sound::Select);
     }
 
@@ -195,6 +196,192 @@ impl Scene {
         self.yt_query = false;
         self.yt_results = false;
         self.apply_search();
+    }
+
+    // ------------------------------------------------------ arcade filter
+
+    /// The arcade system whose list is open, when the filter applies to it:
+    /// a system's own list, not a collection, the favourites or a search
+    /// across every system, where a filter nobody can see would hide games
+    /// for no reason anybody could find.
+    pub(super) fn filtering(&self) -> Option<usize> {
+        let Screen::Games { sys: Some(i), .. } = self.screen else {
+            return None;
+        };
+        if self.open_collection.is_some() || self.games_back.is_some() || self.search_global {
+            return None;
+        }
+        ARCADE
+            .contains(&self.library.systems.get(i)?.name.as_str())
+            .then_some(i)
+    }
+
+    /// The list as the filter leaves it, folders always kept.
+    fn filtered(&self) -> Vec<Entry> {
+        let f = &self.settings.arcade;
+        let table = match self.filtering() {
+            Some(_) if f.active() > 0 => omacrt_shell::arcade::table(),
+            _ => None,
+        };
+        let Some(table) = table else {
+            return self.games_all.clone();
+        };
+        // MAME's verdict is about its own emulation of the board, and it is
+        // sometimes harsher than the game is: 0.289 calls Sega Rally not
+        // working, and it plays. A game somebody has already started here is
+        // never hidden for it.
+        let played = omacrt_shell::settings::ArcadeFilter {
+            working: false,
+            ..f.clone()
+        };
+        self.games_all
+            .iter()
+            .filter(|e| {
+                let rule = if f.working && self.recent.iter().any(|(_, p)| *p == e.game.path) {
+                    &played
+                } else {
+                    f
+                };
+                e.game.folder
+                    || omacrt_shell::arcade::passes(
+                        rule,
+                        omacrt_shell::arcade::set_of(&e.game.path).and_then(|s| table.get(&s)),
+                    )
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// RT on an arcade list: the filter's panel, opened or closed. The first
+    /// time, MAME's machine list is fetched on a thread of its own: twenty
+    /// megabytes is not something the frame loop waits for.
+    pub fn filter_toggle(&mut self) {
+        if self.filter_panel.take().is_some() {
+            self.pending.push(Sound::Move);
+            return;
+        }
+        let Some(i) = self.filtering() else {
+            return;
+        };
+        self.filter_panel = Some(0);
+        self.pending.push(Sound::Select);
+        if omacrt_shell::arcade::table().is_none() && self.arcade_fetch.is_none() {
+            let core = self.library.core_path(&self.library.systems[i]);
+            let core = core.exists().then_some(core);
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(omacrt_shell::arcade::fetch(core.as_deref()));
+            });
+            self.arcade_fetch = Some(rx);
+            self.arcade_note = Some("fetching the MAME list".into());
+        }
+    }
+
+    /// A fetch that has finished: the list read in and the filter applied.
+    pub(super) fn arcade_fetched(&mut self) {
+        let Some(rx) = &self.arcade_fetch else {
+            return;
+        };
+        let Ok(done) = rx.try_recv() else {
+            return;
+        };
+        self.arcade_fetch = None;
+        self.arcade_note = match done {
+            Ok(_) => None,
+            Err(e) => {
+                eprintln!("arcade: {e}");
+                Some("the MAME list could not be fetched".into())
+            }
+        };
+        self.keep_place(|s| s.apply_search());
+    }
+
+    /// Run `f`, then put the cursor back on the game it was on, or as near
+    /// it as the new list allows.
+    fn keep_place(&mut self, f: impl FnOnce(&mut Self)) {
+        let was = match self.screen {
+            Screen::Games { sel, .. } => self.games.get(sel).map(|e| e.game.path.clone()),
+            _ => None,
+        };
+        f(self);
+        let n = self.games.len();
+        let page = self.page_rows();
+        if let Screen::Games { sel, top, .. } = &mut self.screen {
+            let at = was
+                .and_then(|p| self.games.iter().position(|e| e.game.path == p))
+                .unwrap_or(0);
+            *sel = at.min(n.saturating_sub(1));
+            *top = sel.saturating_sub(page / 2);
+        }
+    }
+
+    /// Up, down, left, right, A and B while the panel is open.
+    pub(super) fn filter_nav(&mut self, nav: Nav) {
+        let Some(row) = self.filter_panel else {
+            return;
+        };
+        match nav {
+            Nav::Up if row > 0 => self.filter_panel = Some(row - 1),
+            Nav::Down if row + 1 < FILTER_ROWS => self.filter_panel = Some(row + 1),
+            Nav::Left | Nav::Right => {
+                let step: i32 = if nav == Nav::Right { 1 } else { -1 };
+                filter_step(&mut self.settings.arcade, row, step);
+                self.save_settings();
+                self.keep_place(|s| s.apply_search());
+            }
+            Nav::Back => {
+                self.settings.arcade = Default::default();
+                self.save_settings();
+                self.keep_place(|s| s.apply_search());
+            }
+            _ => return,
+        }
+        self.pending.push(Sound::Move);
+    }
+
+    /// The panel itself, over the list.
+    pub(super) fn draw_filter_panel(&self, fb: &mut Framebuffer) {
+        let (w, h) = (fb.w as i32, fb.h as i32);
+        let pw = (w - 56).min(264);
+        let ph = 24 + FILTER_ROWS as i32 * 13 + 22;
+        let (px, py) = ((w - pw) / 2, (h - ph) / 2 + 4);
+        let glass = scale(self.theme.bg, 0.75);
+        fb.rect(px, py, pw, ph, glass);
+        let edge = self.theme.accent;
+        fb.line(px, py, px + pw - 1, py, edge);
+        fb.line(px, py + ph - 1, px + pw - 1, py + ph - 1, edge);
+        fb.line(px, py, px, py + ph - 1, edge);
+        fb.line(px + pw - 1, py, px + pw - 1, py + ph - 1, edge);
+        fb.text(px + 10, py + 8, "FILTER ARCADE GAMES", self.theme.accent, 1);
+        let f = &self.settings.arcade;
+        let row = self.filter_panel.unwrap_or(0);
+        for i in 0..FILTER_ROWS {
+            let y = py + 24 + i as i32 * 13;
+            let (label, value) = filter_row(f, i);
+            if i == row {
+                fb.rect(px + 6, y - 2, pw - 12, 12, self.theme.selection);
+            }
+            fb.text(px + 12, y, label, self.theme.fg, 1);
+            let v = if i == row {
+                format!("< {value} >")
+            } else {
+                value.to_string()
+            };
+            let colour = if i == row {
+                self.theme.paper
+            } else {
+                self.theme.fg
+            };
+            let vw = Framebuffer::text_width(&v, 1);
+            fb.text(px + pw - 12 - vw, y, &v, colour, 1);
+        }
+        let foot = match (&self.arcade_note, omacrt_shell::arcade::table().is_some()) {
+            (Some(note), _) => note.clone(),
+            (None, false) => "no MAME list yet".into(),
+            (None, true) => format!("{} of {} games", self.games.len(), self.games_all.len()),
+        };
+        let fw = Framebuffer::text_width(&foot, 1);
+        fb.text(px + (pw - fw) / 2, py + ph - 14, &foot, self.theme.green, 1);
     }
 
     // ------------------------------------------------------------ search
@@ -305,11 +492,11 @@ impl Scene {
         }
         let q = self.search.clone().unwrap_or_default().to_lowercase();
         let words: Vec<&str> = q.split_whitespace().collect();
+        let shown = self.filtered();
         self.games = if words.is_empty() {
-            self.games_all.clone()
+            shown
         } else {
-            let mut hits: Vec<(bool, Entry)> = self
-                .games_all
+            let mut hits: Vec<(bool, Entry)> = shown
                 .iter()
                 .filter(|e| {
                     let t = e.game.title.to_lowercase();
@@ -554,6 +741,10 @@ impl Scene {
     }
 
     pub(super) fn navigate_browser(&mut self, nav: Nav) {
+        if self.filter_panel.is_some() {
+            self.filter_nav(nav);
+            return;
+        }
         let mut moved = false;
         let system_rows = self.system_rows();
         let music_rows = self.music_rows().len();
@@ -1354,6 +1545,10 @@ impl Scene {
     }
 
     pub(super) fn activate_browser(&mut self) -> Action {
+        if self.filter_panel.take().is_some() {
+            self.pending.push(Sound::Select);
+            return Action::None;
+        }
         match self.screen {
             Screen::Systems { sel, .. } => {
                 self.pending.push(Sound::Select);
@@ -2478,9 +2673,21 @@ impl Scene {
                         None => "Recent".to_string(),
                     },
                 };
+                let filters = match self.filtering() {
+                    Some(_) => self.settings.arcade.active(),
+                    None => 0,
+                };
+                let prompt = match filters {
+                    0 => prompt,
+                    1 => format!("{prompt} - 1 filter"),
+                    k => format!("{prompt} - {k} filters"),
+                };
                 let n = self.games.len();
                 if self.flow_view && n > 0 && !self.games[sel.min(n - 1)].game.folder {
                     self.draw_flow(fb, &prompt, sel);
+                    if self.filter_panel.is_some() {
+                        self.draw_filter_panel(fb);
+                    }
                     return;
                 }
                 let mut y0 = self.draw_header(fb, &prompt);
@@ -2741,13 +2948,23 @@ impl Scene {
                 if self.osk.is_some() {
                     self.draw_osk(fb);
                 }
+                if self.filter_panel.is_some() {
+                    self.draw_filter_panel(fb);
+                }
                 let keyboard = self.pad == PadKind::Keyboard;
-                let hint: &[(&str, &str)] = if self.osk.is_some() {
+                let arcade = self.filtering().is_some();
+                let hint: &[(&str, &str)] = if self.filter_panel.is_some() {
+                    &[("A", "done"), ("B", "clear all"), ("<>", "change")]
+                } else if self.osk.is_some() {
                     &[("A", "type"), ("X", "del"), ("Y", "space"), ("B", "done")]
                 } else if is_video && matches!(self.games_back, Some(Screen::YouTube { .. })) {
                     &[("A", "play"), ("Y", "later"), ("B", "back")]
                 } else if is_video {
                     &[("A", "play"), ("X", "convert"), ("Y", "fav"), ("B", "back")]
+                } else if arcade && keyboard {
+                    &[("A", "run"), ("Tab", "filter"), ("Y", "fav"), ("/", "find")]
+                } else if arcade {
+                    &[("A", "run"), ("RT", "filter"), ("Y", "fav"), ("LT", "find")]
                 } else if keyboard {
                     &[("A", "run"), ("X", "covers"), ("Y", "fav"), ("/", "find")]
                 } else {
@@ -3302,5 +3519,126 @@ mod list_tests {
         // A list that fits on one page still answers, and goes to its ends.
         assert_eq!(page_step(0, 1, 3, 13), 2);
         assert_eq!(page_step(0, 1, 0, 13), 0, "nothing to move in");
+    }
+}
+
+/// The systems whose sets are named the way MAME names them, which is what
+/// the arcade filter reads.
+const ARCADE: [&str; 6] = ["mame", "mame2003", "arcade", "fbneo", "neogeo", "naomi"];
+
+const FILTER_ROWS: usize = 6;
+
+const SCREENS: [(&str, &str); 3] = [
+    ("", "any"),
+    ("horizontal", "horizontal"),
+    ("vertical", "vertical"),
+];
+const PLAYERS: [(u8, &str); 4] = [
+    (0, "any"),
+    (2, "2 or more"),
+    (3, "3 or more"),
+    (4, "4 or more"),
+];
+const CONTROLS: [(&str, &str); 7] = [
+    ("", "any"),
+    ("joystick", "joystick"),
+    ("twin", "twin sticks"),
+    ("wheel", "wheel and pedals"),
+    ("dial", "dial"),
+    ("trackball", "trackball"),
+    ("gun", "light gun"),
+];
+const MONITORS: [(&str, &str); 3] = [("", "any"), ("one", "one"), ("several", "several")];
+
+/// A row of the panel: what it is called and what it is set to.
+fn filter_row(
+    f: &omacrt_shell::settings::ArcadeFilter,
+    row: usize,
+) -> (&'static str, &'static str) {
+    let named = |list: &[(&'static str, &'static str)], v: &str| {
+        list.iter()
+            .find(|(k, _)| *k == v)
+            .map(|(_, n)| *n)
+            .unwrap_or("any")
+    };
+    match row {
+        0 => ("Screen", named(&SCREENS, &f.screen)),
+        1 => (
+            "Players",
+            PLAYERS
+                .iter()
+                .find(|(k, _)| *k == f.players)
+                .map(|(_, n)| *n)
+                .unwrap_or("any"),
+        ),
+        2 => ("Controls", named(&CONTROLS, &f.controls)),
+        3 => ("Screens", named(&MONITORS, &f.screens)),
+        4 => ("Working only", if f.working { "yes" } else { "no" }),
+        _ => ("Clones", if f.hide_clones { "hidden" } else { "shown" }),
+    }
+}
+
+/// Left or right on a row: the next value round, wrapping at either end.
+fn filter_step(f: &mut omacrt_shell::settings::ArcadeFilter, row: usize, step: i32) {
+    fn turn<T: Clone + PartialEq>(list: &[T], now: &T, step: i32) -> T {
+        let n = list.len() as i32;
+        let at = list.iter().position(|v| v == now).unwrap_or(0) as i32;
+        list[(at + step).rem_euclid(n) as usize].clone()
+    }
+    let keys = |list: &[(&str, &str)]| list.iter().map(|(k, _)| k.to_string()).collect::<Vec<_>>();
+    match row {
+        0 => f.screen = turn(&keys(&SCREENS), &f.screen, step),
+        1 => {
+            let k: Vec<u8> = PLAYERS.iter().map(|(k, _)| *k).collect();
+            f.players = turn(&k, &f.players, step);
+        }
+        2 => f.controls = turn(&keys(&CONTROLS), &f.controls, step),
+        3 => f.screens = turn(&keys(&MONITORS), &f.screens, step),
+        4 => f.working = !f.working,
+        _ => f.hide_clones = !f.hide_clones,
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+    use omacrt_shell::settings::ArcadeFilter;
+
+    #[test]
+    fn every_row_turns_round_and_comes_back() {
+        for row in 0..FILTER_ROWS {
+            let mut f = ArcadeFilter::default();
+            let start = filter_row(&f, row);
+            let mut seen = 0;
+            loop {
+                filter_step(&mut f, row, 1);
+                seen += 1;
+                if filter_row(&f, row) == start {
+                    break;
+                }
+                assert!(seen < 10, "row {row} never came back round");
+            }
+            filter_step(&mut f, row, -1);
+            filter_step(&mut f, row, 1);
+            assert_eq!(
+                filter_row(&f, row),
+                start,
+                "row {row} steps back the way it came"
+            );
+            assert_eq!(
+                f.active(),
+                0,
+                "a full turn of row {row} ends where it began"
+            );
+        }
+    }
+
+    #[test]
+    fn a_value_the_panel_does_not_offer_reads_as_any() {
+        let f = ArcadeFilter {
+            controls: "steering yoke".into(),
+            ..Default::default()
+        };
+        assert_eq!(filter_row(&f, 2).1, "any");
     }
 }

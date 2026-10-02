@@ -573,6 +573,7 @@ fn run(args: &Args) -> Result<(), String> {
     // The "/" that opens the search also arrives as text: swallowed once.
     let mut swallow_slash = false;
     let mut trigger_held = false;
+    let mut right_trigger_held = false;
     let control = match omacrt_shell::crt::control::listen() {
         Ok(rx) => Some(rx),
         Err(e) => {
@@ -1000,6 +1001,7 @@ fn run(args: &Args) -> Result<(), String> {
                         inp.search = true;
                         swallow_slash = true;
                     }
+                    Keycode::Tab if !typing => inp.filter = true,
                     // The pause menu over a running game. The pad has
                     // Select + Start and the home button; on a keyboard this
                     // is the only way in, and it works while a game runs as
@@ -1127,6 +1129,13 @@ fn run(args: &Args) -> Result<(), String> {
                             inp.osk = true;
                         }
                         trigger_held = on;
+                    } else if axis == sdl2::controller::Axis::TriggerRight {
+                        // Right trigger: the arcade filter's panel.
+                        let on = value > 16000;
+                        if on && !right_trigger_held {
+                            inp.filter = true;
+                        }
+                        right_trigger_held = on;
                     } else {
                         stick.set(axis, value);
                     }
@@ -1370,6 +1379,12 @@ fn run(args: &Args) -> Result<(), String> {
                 continue;
             }
             // The search bar and the list jumps.
+            if inp.filter {
+                if scene.boot_started() && !scene.booting() {
+                    scene.filter_toggle();
+                }
+                continue;
+            }
             if inp.search || inp.osk {
                 if scene.boot_started() && !scene.booting() {
                     scene.search_open(inp.osk);
@@ -1703,6 +1718,8 @@ struct Input {
     /// Open the search bar (keyboard), or with the on screen keyboard (pad).
     search: bool,
     osk: bool,
+    /// The arcade filter's panel, opened or closed.
+    filter: bool,
     /// Jump to the next (+1) or previous (-1) initial letter of the list.
     jump: i32,
     /// First (false) or last (true) row.
@@ -1727,6 +1744,7 @@ impl Input {
             || self.backspace
             || self.search
             || self.osk
+            || self.filter
             || self.jump != 0
             || self.edge.is_some()
             || self.watch.is_some()
@@ -1806,6 +1824,7 @@ fn control_input(line: &str) -> Option<Input> {
     match omacrt_shell::crt::control::normalize(line)? {
         "search" => inp.search = true,
         "osk" => inp.osk = true,
+        "filter" => inp.filter = true,
         "del" => inp.backspace = true,
         "next" => inp.jump = 1,
         "prev" => inp.jump = -1,

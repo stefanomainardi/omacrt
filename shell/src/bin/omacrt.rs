@@ -151,6 +151,10 @@ const VERBS: Verbs = &[
                 "fetch box art for the collection, matching titles when names differ",
             ),
             (
+                "library arcade",
+                "fetch MAME's machine list, for the arcade filter",
+            ),
+            (
                 "library set SYS core=X|dir=D",
                 "change a system's core or folder in systems.toml",
             ),
@@ -3092,6 +3096,24 @@ fn cmd_library(args: &[String]) {
     use omacrt_shell::index::{self, Index, LibraryConfig};
     let pos = positional(args);
     match pos.first().map(|s| s.as_str()) {
+        // MAME's machine list, for the filter over an arcade list: which way
+        // a game's screen faces, how many play it, what they hold. The
+        // launcher fetches it itself the first time the filter is opened;
+        // this is the same fetch from a terminal.
+        Some("arcade") => {
+            let lib = library();
+            let core = lib
+                .systems
+                .iter()
+                .find(|s| s.name == "mame")
+                .map(|s| lib.core_path(s))
+                .filter(|p| p.exists());
+            println!("fetching MAME's machine list...");
+            match omacrt_shell::arcade::fetch(core.as_deref()) {
+                Ok(n) => println!("{n} machines kept"),
+                Err(e) => die(&e),
+            }
+        }
         // Every game the scan has seen, for a picker on the desktop or for
         // anything else that wants the collection as lines.
         Some("games") => {

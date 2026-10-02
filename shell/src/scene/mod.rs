@@ -614,6 +614,11 @@ pub struct Scene {
     band_y: f32,
     screen_since: f64,
     settings: Settings,
+    /// The arcade filter's panel over an arcade list, open on this row.
+    filter_panel: Option<usize>,
+    /// MAME's machine list being fetched for the filter, and what it said.
+    arcade_fetch: Option<std::sync::mpsc::Receiver<Result<usize, String>>>,
+    arcade_note: Option<String>,
     diag: Vec<(String, String)>,
     /// A game list opened from the home menu goes back to it, not to Games.
     list_from_home: bool,
@@ -830,6 +835,9 @@ impl Scene {
             band_y: -1.0,
             screen_since: 0.0,
             settings: Settings::load(&library.config_dir),
+            filter_panel: None,
+            arcade_fetch: None,
+            arcade_note: None,
             diag: Vec::new(),
             list_from_home: false,
             virtual_row: 0,
@@ -1313,6 +1321,14 @@ impl Scene {
                 }
             }
             Some("settings") => self.screen = Screen::Settings { sel: 0 },
+            // An arcade list with the filter's panel open over it.
+            Some(s) if s.starts_with("filter:") => {
+                let name = s.trim_start_matches("filter:");
+                if let Some(i) = self.library.systems.iter().position(|x| x.name == name) {
+                    self.open_games(Some(i));
+                    self.filter_panel = Some(0);
+                }
+            }
             // The return from a game, headlessly: the first game of the
             // named system coming back out of its console, a second from now.
             Some(s) if s.starts_with("eject:") => {
@@ -1670,6 +1686,10 @@ impl Scene {
     // -- drawing -------------------------------------------------------------
 
     pub fn draw(&mut self, fb: &mut Framebuffer, now: f64) {
+        self.arcade_fetched();
+        if self.filter_panel.is_some() && self.filtering().is_none() {
+            self.filter_panel = None;
+        }
         self.art.poll();
         self.row_shrink = 0;
         self.now = now;

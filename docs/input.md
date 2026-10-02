@@ -16,6 +16,7 @@ abstract layout, and pads can be plugged in or removed while the shell runs.
 | Back                   | `Esc`, `Backspace` | `B`, `Back`       |
 | Star a game            | `F`                | `Y`               |
 | Search                 | `/`, then type     | left trigger, on screen keyboard |
+| Filter an arcade list  | `Tab`              | right trigger     |
 | Next, previous letter  | `PageDown`, `PageUp` | `RB`, `LB`      |
 | First, last row        | `Home`, `End`      | none              |
 | Pause menu in a game   | `F1`               | `Select`+`Start`, home |
@@ -30,6 +31,10 @@ keyboard: d-pad to move, `A` types, `X` deletes, `Y` is space, `B` puts the
 keyboard away with the filter kept. The shoulder buttons jump to the next or
 previous initial letter, so a list of thousands is read without a
 keyboard.
+
+On an arcade list, `Tab` or the right trigger opens the arcade filter: up and
+down choose a row, left and right change it, `A` closes the panel and `B`
+clears every row. The list behind it follows as the rows change.
 
 The left stick acts as a d-pad with key repeat: one step when it leaves the
 dead zone, then a step every 120 ms while held.

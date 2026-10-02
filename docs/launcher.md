@@ -20,6 +20,13 @@ switches with a blend.
   opens the **cover
   flow**: the selected cover large on a shelf, the neighbours receding at an
   angle, everything mirrored on the floor, sliding with inertia.
+- **Arcade filter.** On an arcade list the right trigger, or `Tab`, opens a
+  panel that leaves out what is not wanted tonight: vertical or horizontal
+  screens, two players or more, the controls a game needs (joystick, twin
+  sticks, wheel and pedals, dial, trackball, light gun), one screen or
+  several, games MAME cannot run yet, and clones. The answers come from
+  MAME's own machine list, fetched once for the version of the core; a game
+  that has been played here is never hidden as not working.
 - **Search.** `/` filters the open list as you type; from the home menu it
   searches the whole collection, tens of thousands of titles answering within
   a frame. Pads get

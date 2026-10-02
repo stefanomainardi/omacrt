@@ -339,6 +339,50 @@ pub struct Settings {
     pub ambient: Ambient,
     #[serde(default)]
     pub sound: Sound,
+    #[serde(default)]
+    pub arcade: ArcadeFilter,
+}
+
+/// What an arcade list leaves out. Empty, zero and false each mean "anything",
+/// so an older file without the section, or with only some of it, shows the
+/// whole list. `crate::arcade::passes` reads it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArcadeFilter {
+    /// `horizontal` or `vertical`.
+    #[serde(default)]
+    pub screen: String,
+    /// At least this many players: 2, 3 or 4.
+    #[serde(default)]
+    pub players: u8,
+    /// `joystick`, `twin`, `wheel`, `dial`, `trackball` or `gun`.
+    #[serde(default)]
+    pub controls: String,
+    /// `one` or `several`.
+    #[serde(default)]
+    pub screens: String,
+    /// Leave out what MAME cannot run yet.
+    #[serde(default)]
+    pub working: bool,
+    /// Leave out every set that is a variant of another.
+    #[serde(default)]
+    pub hide_clones: bool,
+}
+
+impl ArcadeFilter {
+    /// How many of the six ask for something.
+    pub fn active(&self) -> usize {
+        [
+            !self.screen.is_empty(),
+            self.players != 0,
+            !self.controls.is_empty(),
+            !self.screens.is_empty(),
+            self.working,
+            self.hide_clones,
+        ]
+        .into_iter()
+        .filter(|b| *b)
+        .count()
+    }
 }
 
 fn default_theme() -> String {
@@ -366,6 +410,7 @@ impl Default for Settings {
             ambient: Ambient::default(),
             sound: Sound::default(),
             frame: Frame::default(),
+            arcade: ArcadeFilter::default(),
         }
     }
 }

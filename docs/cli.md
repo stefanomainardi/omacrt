@@ -32,6 +32,7 @@ omacrt library [--json]
 omacrt library cores [--json]   # the core each system needs, installed or not, its package
 omacrt library set SYS core=X|dir=D   # change a system's core or folder in systems.toml
 omacrt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
+omacrt library arcade           # MAME's machine list, for the arcade filter
 omacrt library scan [DIR...] [--progress]   # --progress: one plain line per folder
 omacrt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
 omacrt watchdog                 put the display back if it dies; `on` starts it, `off` stops it
@@ -86,6 +87,17 @@ the same title instead, in the region order of `[music] country` in
 downloaded once a fortnight into `art/_index/`.
 The launcher does the same lazily for any cover it misses. Covers are shrunk
 to 320 pixels on the way in.
+
+`library arcade` fetches the machine list MAME publishes with each release,
+for the version the MAME core was built from, and keeps one line per machine
+in `~/.cache/omacrt/arcade/machines.tsv`: whether the screen is vertical, how
+many play, how many screens, the controls, MAME's verdict on the emulation and
+whether the set is a clone. The arcade filter reads it, and the launcher
+fetches it on its own the first time the filter is opened. The filter itself is
+the `[arcade]` section of `settings.toml`: `screen` (`horizontal` or
+`vertical`), `players` (at least 2, 3 or 4), `controls` (`joystick`, `twin`,
+`wheel`, `dial`, `trackball`, `gun`), `screens` (`one` or `several`),
+`working` and `hide_clones`. Any key left out means anything.
 
 ## What `on` does, in order
 
