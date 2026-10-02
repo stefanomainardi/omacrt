@@ -305,6 +305,10 @@ pub struct Audio {
     /// Sink volume applied to the CRT output, percent. PipeWire allows up to
     /// 150; 125 is about +6 dB, enough for a DAC whose line level sits low.
     pub volume: u32,
+    /// Bring every game to the same loudness: RetroArch plays through an
+    /// automatic gain stage on its way to the television. Needs the LSP
+    /// plugins; without them games go to the television as they are.
+    pub level: bool,
 }
 
 impl Default for Output {
@@ -354,6 +358,7 @@ impl Default for Audio {
             route: true,
             system_default: false,
             volume: 125,
+            level: true,
         }
     }
 }
@@ -437,6 +442,9 @@ system_default = false
 # Sink volume for the CRT, percent (up to 150). 125 is about +6 dB, which the
 # RGB-Pi 2 needs to reach a normal television volume.
 volume = 125
+# Bring every game to the same loudness on its way to the television, so a
+# quiet one is not lost and a loud one does not jump out (needs lsp-plugins).
+level = true
 "#;
 
 /// The timings this project ships, and the one place they are written.

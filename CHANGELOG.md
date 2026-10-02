@@ -7,6 +7,14 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- Every game is brought to the same loudness on its way to the television, so
+  switching from one to the next no longer means reaching for the volume
+  (`[audio] level` in `crt.toml`, on by default, needs `lsp-plugins`).
+- Arcade games whose sets RetroArch's databases do not know show their title
+  instead of the set name.
+
 ## [0.12.0] - 2026-10-02
 
 ### Added

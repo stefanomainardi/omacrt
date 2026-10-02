@@ -308,7 +308,15 @@ autostart = false     # true: `boot` switches the tube on at login when the DAC 
 [audio]
 route = true
 volume = 100
+level = true          # every game brought to the same loudness (needs lsp-plugins)
 ```
+
+With `level` on, `on` starts a small PipeWire filter chain in front of the
+television's sink, `omacrt_level`, holding LSP's automatic gain stage set to
+-18 LUFS with at most 12 dB of lift, and RetroArch plays into it; `off` ends
+it. It runs as its own `pipewire -c ~/.local/state/omacrt/level.conf`, so the
+desktop's audio configuration is not touched. Without the LSP plugins installed
+games go to the television as they are.
 
 State lives in `~/.local/state/omacrt/state.json` and the launcher log
 in `~/.local/state/omacrt/shell.log`.

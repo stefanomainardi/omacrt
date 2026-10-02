@@ -1114,8 +1114,13 @@ fn cmd_on(cfg: &Config, standard: Option<&str>) {
         match audio::target(&conn) {
             Some(t) => {
                 let mut state = State::load();
-                let note =
-                    audio::route_to_crt(&t, cfg.audio.volume, cfg.audio.system_default, &mut state);
+                let note = audio::route_to_crt(
+                    &t,
+                    cfg.audio.volume,
+                    cfg.audio.system_default,
+                    cfg.audio.level,
+                    &mut state,
+                );
                 state.save();
                 term::sheet::step("audio", &note);
             }
@@ -1180,8 +1185,13 @@ fn cmd_on_leased(cfg: &Config, conn: &Connector, standard: &str) {
         for _ in 0..30 {
             if let Some(t) = audio::target(conn) {
                 let mut state = State::load();
-                let note =
-                    audio::route_to_crt(&t, cfg.audio.volume, cfg.audio.system_default, &mut state);
+                let note = audio::route_to_crt(
+                    &t,
+                    cfg.audio.volume,
+                    cfg.audio.system_default,
+                    cfg.audio.level,
+                    &mut state,
+                );
                 state.save();
                 term::sheet::step("audio", &note);
                 routed = true;
@@ -4254,6 +4264,7 @@ fn main() {
                         &target,
                         cfg.audio.volume,
                         cfg.audio.system_default,
+                        cfg.audio.level,
                         &mut state
                     )
                 ),

@@ -164,18 +164,187 @@ fn our_streams() -> Vec<(String, String)> {
 }
 
 pub fn move_streams(sink: &str) -> usize {
+    // RetroArch goes through the leveller when it is up and the streams are
+    // going to the television: the leveller's own output is what goes on
+    // to the television, and is not one of these.
+    let level = (sink != LEVEL_SINK && level_ready()).then_some(LEVEL_SINK);
     let mut n = 0;
-    for (id, _) in our_streams() {
-        if run("pactl", &["move-sink-input", &id, sink]).is_some() {
+    for (id, app) in our_streams() {
+        let to = match level {
+            Some(l) if app == "RetroArch" && is_crt_sink(sink) => l,
+            _ => sink,
+        };
+        if run("pactl", &["move-sink-input", &id, to]).is_some() {
             n += 1;
         }
     }
     n
 }
 
+/// Whether a sink is the television's: the DAC is on the GPU's HDMI audio.
+fn is_crt_sink(sink: &str) -> bool {
+    sink.contains("hdmi")
+}
+
+// ------------------------------------------------------------ the leveller
+
+/// One game is mastered loud and the next one quiet, and on a television the
+/// difference is somebody reaching for the remote. While the tube is on,
+/// RetroArch plays into a PipeWire filter chain holding LSP's automatic gain
+/// stage, which brings what passes through it to one loudness and hands it
+/// on to the television. It runs as its own small `pipewire -c` process
+/// rather than in the session's PipeWire, so nothing in the desktop's audio
+/// configuration changes and nothing has to be restarted; `off` ends it.
+pub const LEVEL_SINK: &str = "omacrt_level";
+const LEVEL_PLUGIN: &str = "http://lsp-plug.in/plugins/lv2/autogain_stereo";
+
+/// Where the LSP plugins are, when they are installed: the places PipeWire's
+/// LV2 loader looks without `LV2_PATH`.
+pub fn level_available() -> bool {
+    let home = std::env::var("HOME").unwrap_or_default();
+    [
+        "/usr/lib/lv2",
+        "/usr/local/lib/lv2",
+        &format!("{home}/.lv2"),
+    ]
+    .iter()
+    .any(|d| {
+        std::path::Path::new(d)
+            .join("lsp-plugins.lv2/autogain_stereo.ttl")
+            .exists()
+    })
+}
+
+fn level_conf() -> std::path::PathBuf {
+    super::state_dir().join("level.conf")
+}
+
+/// The chain, sending to `target`. The level is -18 LUFS, nearer what games
+/// are mastered at than the -23 broadcast figure the plugin starts from, and
+/// the gain may rise by 12 dB at most, so a quiet passage or a silent menu is
+/// not lifted by the plugin's own limit of 36. Everything else is the
+/// plugin's own default.
+fn level_config(target: &str) -> String {
+    format!(
+        r#"# Written by omacrt for the tube's session; `omacrt off` ends it.
+context.properties = {{ log.level = 1 }}
+context.spa-libs = {{
+  audio.convert.* = audioconvert/libspa-audioconvert
+  support.*       = support/libspa-support
+}}
+context.modules = [
+  {{ name = libpipewire-module-rt flags = [ ifexists nofail ] }}
+  {{ name = libpipewire-module-protocol-native }}
+  {{ name = libpipewire-module-client-node }}
+  {{ name = libpipewire-module-adapter }}
+  {{ name = libpipewire-module-filter-chain
+    args = {{
+      node.description = "OmaCRT game level"
+      media.name       = "OmaCRT game level"
+      filter.graph = {{
+        nodes = [
+          {{ type = lv2 name = level plugin = "{LEVEL_PLUGIN}"
+            control = {{ "level" = -18.0 "max_on" = 1.0 "max_amp" = 12.0 }} }}
+        ]
+        inputs  = [ "level:in_l" "level:in_r" ]
+        outputs = [ "level:out_l" "level:out_r" ]
+      }}
+      audio.channels = 2
+      audio.position = [ FL FR ]
+      capture.props  = {{ node.name = "{LEVEL_SINK}" media.class = Audio/Sink }}
+      playback.props = {{ node.name = "{LEVEL_SINK}.output" node.passive = true target.object = "{target}" }}
+    }}
+  }}
+]
+"#
+    )
+}
+
+/// The leveller's processes: a `pipewire` whose command line names our file.
+fn level_pids() -> Vec<i32> {
+    let conf = level_conf();
+    let conf = conf.to_string_lossy();
+    let Ok(dir) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    dir.flatten()
+        .filter_map(|e| e.file_name().to_str()?.parse::<i32>().ok())
+        .filter(|pid| {
+            let cmd = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+            let args: Vec<&[u8]> = cmd.split(|b| *b == 0).collect();
+            args.first().is_some_and(|a| a.ends_with(b"pipewire"))
+                && args.iter().any(|a| *a == conf.as_bytes())
+        })
+        .collect()
+}
+
+/// Whether the leveller's sink is there to play into.
+pub fn level_ready() -> bool {
+    run("pactl", &["list", "short", "sinks"])
+        .is_some_and(|t| t.lines().any(|l| l.split('\t').nth(1) == Some(LEVEL_SINK)))
+}
+
+/// Start the leveller in front of `target`, replacing one already running,
+/// since the television's sink can have changed since. Detached from this
+/// process: `on` is a command that exits, and the chain stays until `off`.
+pub fn level_start(target: &str) -> Result<(), String> {
+    if !level_available() {
+        return Err("lsp-plugins is not installed".into());
+    }
+    level_stop();
+    let conf = level_conf();
+    if let Some(dir) = conf.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&conf, level_config(target)).map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new("pipewire");
+    cmd.arg("-c")
+        .arg(&conf)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: setsid touches no memory of this process; it only moves
+        // the child into a session of its own, out of the terminal's.
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+    cmd.spawn().map_err(|e| format!("pipewire: {e}"))?;
+    for _ in 0..30 {
+        if level_ready() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    level_stop();
+    Err("the leveller's sink did not appear".into())
+}
+
+/// End the leveller, if it is running.
+pub fn level_stop() {
+    for pid in level_pids() {
+        // SAFETY: a plain signal to a process found a moment ago by its
+        // command line; a pid reused since then would not carry our file.
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
+    }
+}
+
 /// Card profile to the DAC pin, sink volume, our streams moved there. With
 /// `system_default` the CRT also becomes the default sink for everything.
-pub fn route_to_crt(t: &Target, volume: u32, system_default: bool, state: &mut State) -> String {
+pub fn route_to_crt(
+    t: &Target,
+    volume: u32,
+    system_default: bool,
+    level: bool,
+    state: &mut State,
+) -> String {
     if let Some(prev) = active_profile(&t.card)
         && prev != t.profile
         && state.previous_profile.is_empty()
@@ -205,9 +374,18 @@ pub fn route_to_crt(t: &Target, volume: u32, system_default: bool, state: &mut S
         }
         run("pactl", &["set-default-sink", &t.sink]);
     }
+    // The leveller first, so the games' streams moved below land in it.
+    let levelled = match (level, level && level_start(&t.sink).is_ok()) {
+        (false, _) => {
+            level_stop();
+            ""
+        }
+        (true, true) => ", games levelled",
+        (true, false) => ", games not levelled (lsp-plugins missing?)",
+    };
     let moved = move_streams(&t.sink);
     format!(
-        "{} at {volume}%, {moved} stream(s) moved{}",
+        "{} at {volume}%, {moved} stream(s) moved{}{levelled}",
         t.sink,
         if system_default {
             ", system default"
@@ -221,6 +399,7 @@ pub fn route_to_crt(t: &Target, volume: u32, system_default: bool, state: &mut S
 /// desktop default sink; the system default is restored only when `on`
 /// changed it.
 pub fn route_back(state: &mut State) -> String {
+    level_stop();
     let mut note = String::from("desktop");
     if !state.previous_sink.is_empty() {
         run("pactl", &["set-default-sink", &state.previous_sink]);
@@ -261,6 +440,25 @@ pub fn route_back(state: &mut State) -> String {
     state.previous_sink.clear();
     state.audio_card.clear();
     note
+}
+
+#[cfg(test)]
+mod level_tests {
+    #[test]
+    fn the_chain_sends_to_the_television_and_names_the_plugin_controls() {
+        let c = super::level_config("alsa_output.pci-0000_03_00.1.hdmi-stereo-extra3");
+        assert!(c.contains(r#"target.object = "alsa_output.pci-0000_03_00.1.hdmi-stereo-extra3""#));
+        assert!(c.contains(super::LEVEL_PLUGIN));
+        // The three controls set, by the symbols the plugin's own TTL gives.
+        for k in [
+            r#""level" = -18.0"#,
+            r#""max_on" = 1.0"#,
+            r#""max_amp" = 12.0"#,
+        ] {
+            assert!(c.contains(k), "{k}");
+        }
+        assert!(c.contains(r#"node.name = "omacrt_level""#));
+    }
 }
 
 #[cfg(test)]

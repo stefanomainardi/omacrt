@@ -1125,6 +1125,12 @@ impl Library {
             self.launch_keys(system, &cores_cfg, extra, resume),
         )?;
         let mut cmd = std::process::Command::new(&self.retroarch);
+        // Through the leveller to the television, when `on` started it. The
+        // pulse driver takes its sink from PULSE_SINK, which the launcher
+        // otherwise passes on unchanged.
+        if crate::crt::audio::level_ready() {
+            cmd.env("PULSE_SINK", crate::crt::audio::LEVEL_SINK);
+        }
         cmd.arg("--config")
             .arg(cfg)
             .arg("--appendconfig")
