@@ -16,6 +16,15 @@ unit and install the plugins into `~/.config/omarchy/plugins`. These steps
 require choosing the television's connector and the user account that runs
 the desktop.
 
+`supermodel-omacrt/` builds Supermodel, the Sega Model 3 emulator, patched to
+start as a Wayland client, which the television needs (see
+`docs/systems.md`). It replaces the AUR `supermodel` package:
+
+```bash
+cd packaging/supermodel-omacrt
+makepkg -si
+```
+
 `sha256sums` carries the real checksum of the tag tarball GitHub builds. It
 can only be filled in after the tag is pushed, since the tarball does not
 exist before then, so cutting a release is: bump the version, tag, push, then

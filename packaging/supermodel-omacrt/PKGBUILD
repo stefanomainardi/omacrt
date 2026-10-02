@@ -1,0 +1,53 @@
+# Supermodel, the Sega Model 3 emulator, with one change so it also runs as a
+# Wayland client: that is how omacrt's display process, flyback, hosts the
+# programs on the television, and it has no X server.
+#
+# Supermodel carries its own copy of GLEW. Its glewInit() loads the OpenGL
+# functions and then looks for an X display for the GLX extensions; under
+# Wayland there is none, the call answers GLEW_ERROR_NO_GLX_DISPLAY, and
+# Supermodel gives up although every function it uses is already loaded.
+# The change lets that one answer through. Everything else is the AUR
+# package's build of the same upstream tag.
+#
+#   cd packaging/supermodel-omacrt && makepkg -si
+#
+# It provides and replaces `supermodel`, so pacman offers to remove the AUR
+# package when this one is installed.
+
+pkgname=supermodel-omacrt
+_tag=0.3a-20260928-git-8b4de23
+pkgver=${_tag//-/_}
+pkgrel=1
+pkgdesc='Sega Model 3 arcade emulator, patched to run as a Wayland client for omacrt'
+url='https://github.com/trzy/Supermodel'
+license=('GPL3')
+arch=('x86_64')
+depends=('glu' 'sdl2_net')
+provides=('supermodel')
+conflicts=('supermodel')
+source=("https://github.com/trzy/Supermodel/archive/refs/tags/v${_tag}.tar.gz")
+sha512sums=('1f2f9c978bae7d3961543d3b4ca4c6ca7173dd8413c1a1b89b511160073e6e65a98b75927923930b47d6f213d8477f322c4daeac0467e1af7b3ba7e29f1f31be')
+
+prepare() {
+  cd "Supermodel-${_tag}"
+  # The source has CRLF line endings, which the expression keeps.
+  sed -i 's/if (GLEW_OK != err)\(\r\?\)$/if (GLEW_OK != err \&\& GLEW_ERROR_NO_GLX_DISPLAY != err)\1/' \
+    Src/OSD/SDL/Main.cpp
+  grep -q 'GLEW_ERROR_NO_GLX_DISPLAY != err' Src/OSD/SDL/Main.cpp
+}
+
+build() {
+  cd "Supermodel-${_tag}"
+  make -f Makefiles/Makefile.UNIX NET_BOARD=1
+}
+
+package() {
+  cd "Supermodel-${_tag}"
+  install -Dm755 bin/supermodel "$pkgdir/usr/bin/supermodel-binary"
+  ln -s supermodel-binary "$pkgdir/usr/bin/supermodel"
+  install -Dm644 Docs/README.txt "$pkgdir/usr/share/doc/$pkgname/README.txt"
+  install -dm755 "$pkgdir/usr/share/supermodel/Assets"
+  cp Assets/* "$pkgdir/usr/share/supermodel/Assets/"
+  install -Dm644 Config/Games.xml "$pkgdir/usr/share/supermodel/Config/Games.xml"
+  install -Dm644 Config/Music.xml "$pkgdir/usr/share/supermodel/Config/Music.xml"
+}
