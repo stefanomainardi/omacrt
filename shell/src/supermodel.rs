@@ -111,7 +111,8 @@ pub fn log_path() -> PathBuf {
 /// Select BUTTON7 and Start BUTTON8; its own defaults put Start and the coin
 /// on 9 and 10, which a pad does not have. The triggers are the pedals and
 /// the shoulders the gears, with A and B as pedals too for anyone who
-/// prefers buttons. A trigger rests at the bottom of its axis rather than in
+/// prefers buttons. The d-pad does what the left stick does: it is a hat,
+/// which Supermodel reads apart from the stick. A trigger rests at the bottom of its axis rather than in
 /// the middle, so its off value is moved there: otherwise the first half of
 /// the travel does nothing.
 const INI: &str = r#"; Written by omacrt for a pad on the television. Edit freely: omacrt only
@@ -122,6 +123,24 @@ InputCoin1 = "KEY_3,JOY1_BUTTON7"
 InputServiceA = "KEY_5"
 InputTestA = "KEY_6"
 InputSteering = "JOY1_XAXIS"
+InputSteeringLeft = "KEY_LEFT,JOY1_POV1_LEFT"
+InputSteeringRight = "KEY_RIGHT,JOY1_POV1_RIGHT"
+InputJoyUp = "KEY_UP,JOY1_UP,JOY1_POV1_UP"
+InputJoyDown = "KEY_DOWN,JOY1_DOWN,JOY1_POV1_DOWN"
+InputJoyLeft = "KEY_LEFT,JOY1_LEFT,JOY1_POV1_LEFT"
+InputJoyRight = "KEY_RIGHT,JOY1_RIGHT,JOY1_POV1_RIGHT"
+InputAnalogJoyUp = "KEY_UP,JOY1_POV1_UP"
+InputAnalogJoyDown = "KEY_DOWN,JOY1_POV1_DOWN"
+InputAnalogJoyLeft = "KEY_LEFT,JOY1_POV1_LEFT"
+InputAnalogJoyRight = "KEY_RIGHT,JOY1_POV1_RIGHT"
+InputSkiUp = "KEY_UP,JOY1_POV1_UP"
+InputSkiDown = "KEY_DOWN,JOY1_POV1_DOWN"
+InputSkiLeft = "KEY_LEFT,JOY1_POV1_LEFT"
+InputSkiRight = "KEY_RIGHT,JOY1_POV1_RIGHT"
+InputFishingRodUp = "KEY_UP,JOY1_POV1_UP"
+InputFishingRodDown = "KEY_DOWN,JOY1_POV1_DOWN"
+InputFishingRodLeft = "KEY_LEFT,JOY1_POV1_LEFT"
+InputFishingRodRight = "KEY_RIGHT,JOY1_POV1_RIGHT"
 InputAccelerator = "KEY_UP,JOY1_BUTTON1,JOY1_RZAXIS_POS"
 InputBrake = "KEY_DOWN,JOY1_BUTTON2,JOY1_ZAXIS_POS"
 InputGearShiftUp = "KEY_Y,JOY1_BUTTON6"
