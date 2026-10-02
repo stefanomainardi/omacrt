@@ -7,6 +7,8 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-02
+
 ### Added
 
 - Sega Model 3 games (Sega Rally 2, Daytona USA 2, Scud Race, Virtua Fighter
@@ -1532,7 +1534,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.14.0
 [0.13.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.13.0
 [0.12.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.12.0
 [0.11.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.2
