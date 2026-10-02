@@ -20,6 +20,9 @@ switches with a blend.
   opens the **cover
   flow**: the selected cover large on a shelf, the neighbours receding at an
   angle, everything mirrored on the floor, sliding with inertia.
+- **Play time.** The systems list carries a fourth row under Recent,
+  Favorites and Collections: the games played most, ranked like the high
+  score table of a cabinet, with the time each has been played and the total.
 - **Arcade filter.** On an arcade list the right trigger, or `Tab`, opens a
   panel that leaves out what is not wanted tonight: vertical or horizontal
   screens, two players or more, the controls a game needs (joystick, twin

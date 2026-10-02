@@ -60,6 +60,8 @@ enum Screen {
         sel: usize,
         top: usize,
     },
+    /// The games played most, as a high score table.
+    PlayTime,
     /// `sys` is None for the virtual lists (recent, favorites, collections).
     Games {
         sys: Option<usize>,
@@ -1321,6 +1323,7 @@ impl Scene {
                 }
             }
             Some("settings") => self.screen = Screen::Settings { sel: 0 },
+            Some("playtime") => self.screen = Screen::PlayTime,
             // An arcade list with the filter's panel open over it.
             Some(s) if s.starts_with("filter:") => {
                 let name = s.trim_start_matches("filter:");
@@ -1484,6 +1487,7 @@ impl Scene {
                 self.go(Screen::Monitor { page: 1 });
             }
             "settings" => self.go(Screen::Settings { sel: 0 }),
+            "playtime" | "stats" => self.go(Screen::PlayTime),
             "profile" | "picture" => self.go(Screen::Profile { sel: 0 }),
             "style" | "theme" => self.go(Screen::Style { sel: 0 }),
             "pads" | "pair" => self.go(Screen::Pads {

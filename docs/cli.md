@@ -345,7 +345,7 @@ omacrt shell screen music
 omacrt shell screen frame
 ```
 
-Names: `home`, `games`, `videos`, `youtube`, `music`, `favorites`, `recent`,
+Names: `home`, `games`, `videos`, `youtube`, `music`, `favorites`, `recent`, `playtime`,
 `frame`, `ambient`, `monitor`, `processes`, `settings`, `picture`, `style`,
 `pads`, `diagnostics`, `about`, `power`. Nothing happens while a game or a film is on:
 a menu entry pressed by accident must not take the television away from what

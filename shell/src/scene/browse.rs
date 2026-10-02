@@ -40,7 +40,7 @@ impl Scene {
     // -- game browser (systems, then games; recent and favorites on top) -----
 
     pub(super) const ROWS_PER_PAGE: usize = 13;
-    pub(super) const VIRTUAL: usize = 3; // recent/, favorites/, collections/
+    pub(super) const VIRTUAL: usize = 4; // recent/, favorites/, collections/, play time
 
     pub(super) fn open_games(&mut self, sys: Option<usize>) {
         self.game_dir = None;
@@ -196,6 +196,76 @@ impl Scene {
         self.yt_query = false;
         self.yt_results = false;
         self.apply_search();
+    }
+
+    // ------------------------------------------------------------ play time
+
+    /// The games played most, as the high score table of a cabinet: rank,
+    /// title, time, and a dotted bar against the first. The first three are
+    /// lit, the first in gold.
+    pub(super) fn draw_play_time(&mut self, fb: &mut Framebuffer) {
+        let (w, h) = (fb.w as i32, fb.h as i32);
+        let left = 16;
+        let y0 = self.draw_header(fb, "Play time");
+        let mut played: Vec<(&PathBuf, u64)> = self.playtime.iter().map(|(p, s)| (p, *s)).collect();
+        played.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        let th = self.theme.clone();
+        let gold = th.yellow;
+        fb.text_centered(w / 2, y0 + 4, "BEST PLAYED", gold, 1);
+        if played.is_empty() {
+            fb.text_centered(w / 2, y0 + 40, "nothing played yet", th.fg, 1);
+            self.draw_hint(fb, left, h - 16, &[("B", "back")]);
+            return;
+        }
+        let head = y0 + 20;
+        fb.text(left + 8, head, "RANK", th.dim, 1);
+        fb.text(left + 48, head, "GAME", th.dim, 1);
+        fb.text(w - left - 8 - 32, head, "TIME", th.dim, 1);
+        let rows = ((h - head - 44) / 14).clamp(1, 20) as usize;
+        let best = played[0].1.max(1);
+        let names: Vec<String> = self
+            .library
+            .systems
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        for (i, (path, secs)) in played.iter().take(rows).enumerate() {
+            let y = head + 12 + i as i32 * 14;
+            let colour = match i {
+                0 => gold,
+                1 | 2 => th.paper,
+                _ => th.fg,
+            };
+            fb.text(left + 8, y, &ordinal(i + 1), colour, 1);
+            let title = match self.library.system_of(path) {
+                Some(si) if si < names.len() => {
+                    crate::covers::title_for(&names[si], &crate::library::clean_title(path))
+                }
+                _ => crate::library::clean_title(path),
+            };
+            let time = short_time(*secs);
+            let tw = Framebuffer::text_width(&time, 1);
+            // The time column is as wide as `10h00` on every row, so the
+            // titles end in one straight edge a space short of it.
+            let room = ((w - left - 8 - 5 * 8 - 8) - (left + 48)) / 8;
+            let title: String = title.chars().take(room.max(4) as usize).collect();
+            fb.text(left + 48, y, &title, colour, 1);
+            fb.text(w - left - 8 - tw, y, &time, colour, 1);
+            let bar = ((w - 2 * left - 120) as f32 * *secs as f32 / best as f32) as i32;
+            let dots = if i == 0 { gold } else { th.accent };
+            for x in (left + 48..left + 48 + bar.max(1)).step_by(2) {
+                fb.put(x, y + 10, dots);
+            }
+        }
+        let total: u64 = played.iter().map(|(_, s)| s).sum();
+        let foot = format!(
+            "TOTAL {}  -  {} GAME{}",
+            short_time(total),
+            played.len(),
+            if played.len() == 1 { "" } else { "S" }
+        );
+        fb.text_centered(w / 2, h - 30, &foot, th.green, 1);
+        self.draw_hint(fb, left, h - 16, &[("B", "back")]);
     }
 
     // ------------------------------------------------------ arcade filter
@@ -779,6 +849,12 @@ impl Scene {
                 }
                 if back {
                     self.screen = Screen::Menu;
+                    moved = true;
+                }
+            }
+            Screen::PlayTime => {
+                if matches!(nav, Nav::Back | Nav::Left) {
+                    self.screen = Screen::Systems { sel: 3, top: 0 };
                     moved = true;
                 }
             }
@@ -1566,6 +1642,7 @@ impl Scene {
                         self.open_virtual(&list);
                     }
                     2 => self.go(Screen::Collections { sel: 0, top: 0 }),
+                    3 => self.go(Screen::PlayTime),
                     i => match self.system_at_row(i) {
                         Some(sys) => self.open_games(Some(sys)),
                         None => return Action::None,
@@ -1573,6 +1650,7 @@ impl Scene {
                 }
                 Action::None
             }
+            Screen::PlayTime => Action::None,
             Screen::Collections { sel, .. } => {
                 let lists = self.library.collections();
                 if let Some((_, items)) = lists.get(sel) {
@@ -2365,10 +2443,11 @@ impl Scene {
                     let (label, count) = match sel {
                         0 => ("Recent", self.recent.len()),
                         1 => ("Favorites", self.favorites.len()),
-                        _ => ("Collections", self.library.collections().len()),
+                        2 => ("Collections", self.library.collections().len()),
+                        _ => ("Play time", self.playtime.len()),
                     };
                     let th = &self.theme;
-                    let brand = [th.orange, th.yellow, th.yellow][sel.min(2)];
+                    let brand = [th.orange, th.yellow, th.yellow, th.orange][sel.min(3)];
                     (
                         brand,
                         String::new(),
@@ -2389,7 +2468,7 @@ impl Scene {
                 if sel < Self::VIRTUAL {
                     // The virtual rows have no console: their own icon, big,
                     // stands in the light instead.
-                    let icon = [icons::CLOCK, icons::STAR, icons::FOLDER][sel.min(2)];
+                    let icon = [icons::CLOCK, icons::STAR, icons::FOLDER, icons::CHART][sel.min(3)];
                     crate::stage::shadow(fb, &th, cx, floor + 2, 22, 6);
                     let big = 4;
                     let (ix, iy) = (cx - 4 * big, floor - 8 * big + 2);
@@ -2512,6 +2591,19 @@ impl Scene {
                                 1.0,
                             );
                         }
+                        3 => {
+                            self.draw_row(fb, y, "Play time", "", on, self.theme.paper);
+                            icons::paint(
+                                fb,
+                                left + ox + 4,
+                                y + 1,
+                                &icons::CHART,
+                                &self.theme,
+                                icon_c,
+                                on,
+                                1.0,
+                            );
+                        }
                         _ => {
                             let sys = &systems[i - Self::VIRTUAL];
                             self.draw_row(fb, y, &sys.name, "", on, self.theme.paper);
@@ -2578,6 +2670,7 @@ impl Scene {
                 }
                 self.draw_hint(fb, left, h - 16, &[("A", "open"), ("B", "back")]);
             }
+            Screen::PlayTime => self.draw_play_time(fb),
             Screen::Collections { sel, top } => {
                 let y0 = self.draw_header(fb, "Collections");
                 let lists = self.library.collections();
@@ -3640,5 +3733,53 @@ mod filter_tests {
             ..Default::default()
         };
         assert_eq!(filter_row(&f, 2).1, "any");
+    }
+}
+
+/// `1ST`, `2ND`, `3RD`, `4TH`, the way a high score table ranks.
+fn ordinal(n: usize) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (1, r) if r != 11 => "ST",
+        (2, r) if r != 12 => "ND",
+        (3, r) if r != 13 => "RD",
+        _ => "TH",
+    };
+    format!("{n}{suffix}")
+}
+
+/// A time as short as a table column wants it: `1h11`, `11m`, `<1m`.
+fn short_time(secs: u64) -> String {
+    let mins = secs / 60;
+    match mins {
+        0 => "<1m".into(),
+        m if m < 60 => format!("{m}m"),
+        m => format!("{}h{:02}", m / 60, m % 60),
+    }
+}
+
+#[cfg(test)]
+mod play_time_tests {
+    use super::*;
+
+    #[test]
+    fn ranks_read_the_way_a_cabinet_writes_them() {
+        let got: Vec<String> = [1, 2, 3, 4, 11, 12, 13, 21, 22]
+            .iter()
+            .map(|n| ordinal(*n))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                "1ST", "2ND", "3RD", "4TH", "11TH", "12TH", "13TH", "21ST", "22ND"
+            ]
+        );
+    }
+
+    #[test]
+    fn times_fit_the_column() {
+        assert_eq!(short_time(5), "<1m");
+        assert_eq!(short_time(670), "11m");
+        assert_eq!(short_time(4285), "1h11");
+        assert_eq!(short_time(36_000), "10h00");
     }
 }

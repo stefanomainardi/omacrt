@@ -14,6 +14,9 @@ caveat for a 0.x project: anything may still move.
   (`[audio] level` in `crt.toml`, on by default, needs `lsp-plugins`).
 - Arcade games whose sets RetroArch's databases do not know show their title
   instead of the set name.
+- Play time: a fourth row in the systems list ranks the games played most,
+  like the high score table of a cabinet.
+- `omacrt-install --system` offers to poll USB pads every millisecond.
 
 ## [0.12.0] - 2026-10-02
 
