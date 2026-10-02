@@ -138,6 +138,15 @@ replaces the file Supermodel writes for itself on a first run, which puts
 Start on a button a pad does not have, and leaves alone one anybody has
 edited.
 
+Scud Race and Daytona USA 2 were built for two cabinets linked by a network
+board, and out of the box each is the master of a pair: alone, it stops at
+"network board not present". An operator set LINK ID to SINGLE in the test
+menu. The launcher does the same in Supermodel's saved copy of the game's
+EEPROM before every start: the link word and a flag beside it, in both
+copies of the settings, and the CRC-16 over them. A first run has nothing
+saved yet and stops at the error once; the file it leaves behind is set
+right when it ends, and the launcher says to start it again.
+
 Supermodel's sound ignores the sink the launcher asks for, so the launcher
 moves the stream to the television, through the loudness leveller, once it
 opens.

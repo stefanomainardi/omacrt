@@ -11,7 +11,8 @@ caveat for a 0.x project: anything may still move.
 
 - Sega Model 3 games (Sega Rally 2, Daytona USA 2, Scud Race, Virtua Fighter
   3) play on the television through Supermodel, drawn at the tube's own line
-  count, with a pad ready to use and Select and Start to leave. Supermodel
+  count, with a pad ready to use and Select and Start to leave. Scud Race and
+  Daytona USA 2, built for two linked cabinets, are set up for one. Supermodel
   needs the patched package in `packaging/supermodel-omacrt` to run on the
   television.
 - Arcade games the libretro thumbnails have no box art for show their

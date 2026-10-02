@@ -2339,8 +2339,14 @@ impl Scene {
     pub fn game_finished(&mut self, ok: bool) {
         self.stop_play_clock();
         self.running = None;
+        let mut one_cabinet = false;
         if let Some((system, path)) = self.running_path.take() {
             self.states.forget(&path);
+            // A twin cabinet set run for the first time stopped at its
+            // network error; the NVRAM it saved on the way out is set to a
+            // single cabinet now, and the next start plays.
+            one_cabinet =
+                system == "model3" && !omacrt_shell::supermodel::single_cabinet(&path).is_empty();
             // A game that ran comes back out of its console. A video, or a
             // system with no model, goes straight back to the list.
             if ok && self.player.is_none() && crate::consoles::has(&system) {
@@ -2356,6 +2362,11 @@ impl Scene {
             .push(if ok { Sound::Lock } else { Sound::Crunch });
         if !ok {
             self.message = Some(("retroarch exited with an error".into(), self.now + 4.0));
+        } else if one_cabinet {
+            self.message = Some((
+                "set up for one cabinet: start it again".into(),
+                self.now + 6.0,
+            ));
         }
     }
 

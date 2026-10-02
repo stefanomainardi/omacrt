@@ -174,6 +174,125 @@ fn is_stock(ini: &str) -> bool {
         .any(|l| l.trim() == ";; Default settings.")
 }
 
+// ------------------------------------------------------- twin cabinets
+
+/// Sets built for two cabinets linked by a network board. Out of the box
+/// each is the master of a pair and waits for the other cabinet: without a
+/// network board it stops at "network board not present", with Supermodel's
+/// simulated one at "network checking", for ever. The operator's fix is
+/// LINK ID = SINGLE in the test menu. Each family is listed whole, because
+/// the NVRAM is named after the set Supermodel finds in the zip, which need
+/// not be the file's name: a `scud.zip` holding the Australian set saves
+/// `scudau.nv`.
+const TWIN: &[&[&str]] = &[
+    &["scud", "scudau", "scudplus", "scudplusa"],
+    &["daytona2", "dayto2pe"],
+];
+
+fn nvram_dir() -> PathBuf {
+    data_home().join("NVRAM")
+}
+
+/// Set every twin set of this file's family that has an NVRAM to a single
+/// cabinet, and the names of those that needed it. A first run has no
+/// NVRAM yet: the game comes up with its own defaults and stops, and the
+/// file it saves on the way out is set right here when it ends.
+pub fn single_cabinet(rom: &Path) -> Vec<String> {
+    let stem = rom.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let Some(family) = TWIN.iter().find(|f| f.contains(&stem)) else {
+        return Vec::new();
+    };
+    let mut changed = Vec::new();
+    for name in family.iter() {
+        let path = nvram_dir().join(format!("{name}.nv"));
+        let Ok(mut bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        if set_single(&mut bytes) && crate::store::save(&path, &bytes).is_ok() {
+            changed.push(name.to_string());
+        }
+    }
+    changed
+}
+
+/// Where the 93C46 EEPROM's 64 words start in Supermodel's NVRAM file: a
+/// chain of blocks, each a length, a name and a comment ahead of its data.
+fn eeprom_offset(file: &[u8]) -> Option<usize> {
+    let mut pos = 0;
+    while pos + 12 <= file.len() {
+        let dword = |i: usize| u32::from_le_bytes(file[i..i + 4].try_into().unwrap()) as usize;
+        let (len, name_len, comment_len) = (dword(pos), dword(pos + 4), dword(pos + 8));
+        let name = file.get(pos + 12..pos + 12 + name_len.saturating_sub(1))?;
+        let data = pos + 12 + name_len + comment_len;
+        if name == b"93C46" {
+            return (data + 128 <= file.len()).then_some(data);
+        }
+        if len == 0 {
+            return None;
+        }
+        pos += len;
+    }
+    None
+}
+
+/// LINK ID = SINGLE in a twin set's EEPROM, the way its test menu sets it.
+/// The settings are 29 words behind a "M3SEGA" header and a checksum, kept
+/// twice over. Their first word is the link, 1 for the factory's master and
+/// 2 for single; the tenth is a flag the menu clears along with it. Watched
+/// on Scud Race and Daytona USA 2, where the menu changes exactly those two
+/// words in both copies and the checksum, a CRC-16/XMODEM over the first
+/// copy. False when the file is not laid out that way, or is already set.
+fn set_single(file: &mut [u8]) -> bool {
+    let Some(at) = eeprom_offset(file) else {
+        return false;
+    };
+    let mut w: Vec<u16> = file[at..at + 128]
+        .chunks(2)
+        .map(|b| u16::from_le_bytes([b[0], b[1]]))
+        .collect();
+    let Some(h) = (0..2).find(|&h| w[h..h + 3] == [0x4d33, 0x5345, 0x4741]) else {
+        return false;
+    };
+    let (sum, block) = (h + 3, h + 6);
+    let copy = block + 29;
+    let mirrored = (0..29)
+        .filter(|i| copy + i < 64)
+        .all(|i| w[block + i] == w[copy + i]);
+    if !mirrored || w[sum] != xmodem(&w[block..block + 29]) || !(1..=3).contains(&w[block]) {
+        return false;
+    }
+    if w[block] == 2 && w[block + 9] == 0 {
+        return false;
+    }
+    for start in [block, copy] {
+        w[start] = 2;
+        if start + 9 < 64 {
+            w[start + 9] = 0;
+        }
+    }
+    w[sum] = xmodem(&w[block..block + 29]);
+    for (i, word) in w.iter().enumerate() {
+        file[at + 2 * i..at + 2 * i + 2].copy_from_slice(&word.to_le_bytes());
+    }
+    true
+}
+
+/// CRC-16/XMODEM over words read high byte first, as the board reads them.
+fn xmodem(words: &[u16]) -> u16 {
+    let mut c: u16 = 0;
+    for b in words.iter().flat_map(|w| w.to_be_bytes()) {
+        c ^= (b as u16) << 8;
+        for _ in 0..8 {
+            c = if c & 0x8000 != 0 {
+                (c << 1) ^ 0x1021
+            } else {
+                c << 1
+            };
+        }
+    }
+    c
+}
+
 /// The tube's frame, out of the keys the launcher writes for RetroArch: the
 /// size the emulator lays its picture out for. Nothing on a desktop, where
 /// the game opens in a window.
@@ -240,6 +359,80 @@ pub fn command(binary: &Path, rom: &Path, frame: Option<(u32, u32)>) -> Command 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Scud Race's EEPROM as the factory leaves it, and as its test menu
+    /// leaves it after LINK ID = SINGLE, read off Supermodel's NVRAM files.
+    const SCUD_MASTER: [u16; 64] = [
+        0x4d33, 0x5345, 0x4741, 0x593b, 0xa218, 0x0104, 0x0001, 0x0001, 0xffff, 0xff01, 0x0101,
+        0x0001, 0x0200, 0x0000, 0x0000, 0x0100, 0x0101, 0x0100, 0x8080, 0x0300, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0001, 0x0001, 0xffff, 0xff01, 0x0101, 0x0001, 0x0200, 0x0000, 0x0000,
+        0x0100, 0x0101, 0x0100, 0x8080, 0x0300, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    ];
+    const SCUD_SINGLE: [u16; 64] = [
+        0x4d33, 0x5345, 0x4741, 0x0791, 0xa218, 0x0104, 0x0002, 0x0001, 0xffff, 0xff01, 0x0101,
+        0x0001, 0x0200, 0x0000, 0x0000, 0x0000, 0x0101, 0x0100, 0x8080, 0x0300, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0002, 0x0001, 0xffff, 0xff01, 0x0101, 0x0001, 0x0200, 0x0000, 0x0000,
+        0x0000, 0x0101, 0x0100, 0x8080, 0x0300, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+        0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    ];
+
+    /// An NVRAM file the way Supermodel writes one: a header block, the
+    /// EEPROM's block, then the backup RAM's.
+    fn nvram(words: &[u16; 64]) -> Vec<u8> {
+        let block = |name: &str, comment: &str, data: &[u8]| {
+            let mut b = Vec::new();
+            let len = 12 + name.len() + 1 + comment.len() + 1 + data.len();
+            for v in [len, name.len() + 1, comment.len() + 1] {
+                b.extend_from_slice(&(v as u32).to_le_bytes());
+            }
+            for s in [name, comment] {
+                b.extend_from_slice(s.as_bytes());
+                b.push(0);
+            }
+            b.extend_from_slice(data);
+            b
+        };
+        let eeprom: Vec<u8> = words
+            .iter()
+            .flat_map(|w| w.to_le_bytes())
+            .chain([0; 38])
+            .collect();
+        let mut f = block(
+            "Supermodel NVRAM State",
+            "Supermodel Version 0.3a",
+            b"\x05\0\0\0scudau\0",
+        );
+        f.extend(block("93C46", "Src/Model3/93C46.cpp", &eeprom));
+        f.extend(block("Backup RAM", "Src/Model3/Model3.cpp", &[0; 64]));
+        f
+    }
+
+    #[test]
+    fn a_twin_set_is_set_to_one_cabinet_as_its_test_menu_does() {
+        assert_eq!(xmodem(&SCUD_MASTER[6..35]), SCUD_MASTER[3]);
+        let mut file = nvram(&SCUD_MASTER);
+        assert!(set_single(&mut file));
+        assert_eq!(file, nvram(&SCUD_SINGLE));
+        // Once set, it is left alone.
+        assert!(!set_single(&mut file));
+    }
+
+    #[test]
+    fn an_eeprom_laid_out_otherwise_is_not_touched() {
+        let mut other = SCUD_MASTER;
+        other[0] = 0x1234;
+        let mut file = nvram(&other);
+        assert!(!set_single(&mut file));
+        // A checksum that does not add up means the layout is not the one
+        // this was watched on.
+        let mut bad = SCUD_MASTER;
+        bad[3] ^= 1;
+        assert!(!set_single(&mut nvram(&bad)));
+        assert!(!set_single(&mut b"not an nvram file".to_vec()));
+    }
 
     #[test]
     fn the_frame_is_read_from_the_launch_keys() {

@@ -1146,6 +1146,9 @@ impl Library {
             if let Err(e) = crate::supermodel::ensure_assets(&bin) {
                 eprintln!("supermodel: could not copy its Assets: {e}");
             }
+            for name in crate::supermodel::single_cabinet(&game.path) {
+                eprintln!("supermodel: {name} set to a single cabinet");
+            }
             let mut cmd = crate::supermodel::command(
                 &bin,
                 &game.path,
