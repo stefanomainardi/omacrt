@@ -2129,8 +2129,14 @@ impl Scene {
             // core ran at the last time it was in this standard, so the
             // timing is right before the emulator opens rather than one mode
             // change later.
-            let hz = crate::rates::known_game(&entry.game.path)
-                .or_else(|| standard.and_then(|s| crate::rates::known(&system.core, s)));
+            // Supermodel prints no rate for the launcher to learn, and every
+            // Model 3 board runs at the same one, so it is known up front.
+            let hz = if system.player == "supermodel" {
+                Some(omacrt_shell::supermodel::HZ)
+            } else {
+                crate::rates::known_game(&entry.game.path)
+                    .or_else(|| standard.and_then(|s| crate::rates::known(&system.core, s)))
+            };
             if l.is_some()
                 || standard.is_some()
                 || hz.is_some()
@@ -2638,8 +2644,7 @@ impl Scene {
                 if sel >= Self::VIRTUAL
                     && let Some(sys) = systems.get(sel - Self::VIRTUAL)
                 {
-                    let core = self.library.core_path(sys);
-                    let core_ok = core.exists();
+                    let core_ok = self.library.player_present(sys);
                     let info = format!(
                         "{}{}  runahead {}  rewind {}",
                         sys.core,
@@ -3617,7 +3622,9 @@ mod list_tests {
 
 /// The systems whose sets are named the way MAME names them, which is what
 /// the arcade filter reads.
-const ARCADE: [&str; 6] = ["mame", "mame2003", "arcade", "fbneo", "neogeo", "naomi"];
+const ARCADE: [&str; 7] = [
+    "mame", "mame2003", "arcade", "fbneo", "neogeo", "naomi", "model3",
+];
 
 const FILTER_ROWS: usize = 6;
 

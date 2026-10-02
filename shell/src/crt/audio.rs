@@ -154,7 +154,12 @@ fn our_streams() -> Vec<(String, String)> {
             // Plain "mpv" stays in the list for players started before this.
             if matches!(
                 app.as_str(),
-                "omacrt-shell" | "RetroArch" | "omacrt-player" | "mpv" | "PipeWire ALSA [cliamp]"
+                "omacrt-shell"
+                    | "RetroArch"
+                    | "Supermodel"
+                    | "omacrt-player"
+                    | "mpv"
+                    | "PipeWire ALSA [cliamp]"
             ) {
                 out.push((id.clone(), app));
             }
@@ -171,7 +176,7 @@ pub fn move_streams(sink: &str) -> usize {
     let mut n = 0;
     for (id, app) in our_streams() {
         let to = match level {
-            Some(l) if app == "RetroArch" && is_crt_sink(sink) => l,
+            Some(l) if matches!(app.as_str(), "RetroArch" | "Supermodel") && is_crt_sink(sink) => l,
             _ => sink,
         };
         if run("pactl", &["move-sink-input", &id, to]).is_some() {
@@ -179,6 +184,20 @@ pub fn move_streams(sink: &str) -> usize {
         }
     }
     n
+}
+
+/// Wait for a program's stream to appear, up to a few seconds, then move the
+/// streams to the sink. For a program whose SDL opens the default sink by
+/// name and so ignores PULSE_SINK: Supermodel, and the launcher itself.
+pub fn move_when_playing(app: &str, sink: &str) -> bool {
+    for _ in 0..20 {
+        if our_streams().iter().any(|(_, a)| a == app) {
+            move_streams(sink);
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    false
 }
 
 /// Whether a sink is the television's: the DAC is on the GPU's HDMI audio.

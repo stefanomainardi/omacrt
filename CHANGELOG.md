@@ -7,6 +7,14 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- Sega Model 3 games (Sega Rally 2, Daytona USA 2, Scud Race, Virtua Fighter
+  3) play on the television through Supermodel, drawn at the tube's own line
+  count, with a pad ready to use and Select and Start to leave. Supermodel
+  needs the patched package in `packaging/supermodel-omacrt` to run on the
+  television.
+
 ## [0.13.0] - 2026-10-02
 
 ### Added

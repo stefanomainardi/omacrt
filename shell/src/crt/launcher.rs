@@ -200,6 +200,7 @@ pub fn focus() -> (bool, String) {
         let who = match playing() {
             Some("retroarch") => "com.libretro.RetroArch",
             Some("mpv") => "omacrt-player",
+            Some("supermodel") => crate::supermodel::APP_ID,
             _ => SHELL_CLASS,
         };
         return (
@@ -210,6 +211,7 @@ pub fn focus() -> (bool, String) {
     match playing() {
         Some("retroarch") => output::focus_class("com.libretro.RetroArch"),
         Some("mpv") => output::focus_class("omacrt-player"),
+        Some("supermodel") => output::focus_class(crate::supermodel::APP_ID),
         _ => output::focus_class(SHELL_CLASS),
     }
 }
@@ -220,6 +222,11 @@ pub fn playing() -> Option<&'static str> {
         Some("retroarch")
     } else if run("pgrep", &["-x", "mpv"]).is_some() {
         Some("mpv")
+    } else if run("pgrep", &["-x", "supermodel"]).is_some()
+        // The package's binary, as the kernel's fifteen characters name it.
+        || run("pgrep", &["-x", "supermodel-bina"]).is_some()
+    {
+        Some("supermodel")
     } else {
         None
     }

@@ -1341,6 +1341,12 @@ fn run(args: &Args) -> Result<(), String> {
             }
 
             if scene.is_running() {
+                // Supermodel has no hotkeys the pause menu could press, so the
+                // menu's chord stops it instead, the way leaving a game would.
+                if inp.menu && scene.running_player().as_deref() == Some("supermodel") {
+                    stop_game(&child, &mut stop_asked);
+                    continue;
+                }
                 if inp.menu {
                     let out = scene.toggle_pause();
                     after_pause(out, following, playing_hz, fb.h as u32);
@@ -1532,6 +1538,17 @@ fn run(args: &Args) -> Result<(), String> {
             match cmd.spawn() {
                 Ok(c) => {
                     eprintln!("running {title}: {cmd:?}");
+                    // Supermodel's SDL ignores PULSE_SINK, as ours does: its
+                    // stream is moved to the television once it opens.
+                    if scene.running_player().as_deref() == Some("supermodel")
+                        && let Ok(sink) = std::env::var("PULSE_SINK")
+                    {
+                        std::thread::spawn(move || {
+                            if !omacrt_shell::crt::audio::move_when_playing("Supermodel", &sink) {
+                                eprintln!("supermodel: no sound stream to move to {sink}");
+                            }
+                        });
+                    }
                     child = Some(c);
                 }
                 Err(e) => {

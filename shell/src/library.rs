@@ -237,6 +237,9 @@ fn opts(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 pub fn default_lines(system: &str) -> Option<u32> {
     Some(match system {
         "nes" | "pcengine" | "pcenginecd" | "psx" | "n64" | "mastersystem" | "gamegear" => 240,
+        // Supermodel draws the 3D at whatever size it is given, so a Model 3
+        // board is drawn at the tube's own frame rather than reduced to it.
+        "model3" => 240,
         "snes" | "megadrive" | "megacd" | "32x" | "neogeo" | "arcade" | "saturn" | "mame" => 224,
         "dreamcast" | "naomi" | "ps2" | "gamecube" | "wii" | "xbox" => 480,
         "gb" | "gbc" | "gba" | "nds" | "psp" | "ngp" | "wonderswan" | "lynx" => 240,
@@ -516,6 +519,26 @@ fn default_systems() -> Vec<System> {
         analog_dpad: None,
         player: "mpv".into(),
         lines: None,
+        shift_x: 0,
+        shift_y: 0,
+        aspect: String::new(),
+        shader: String::new(),
+    }))
+    // Sega Model 3, through Supermodel rather than a RetroArch core: see
+    // `crate::supermodel`. Its folder comes from the index.
+    .chain(std::iter::once(System {
+        name: "model3".into(),
+        dir: String::new(),
+        core: "supermodel".into(),
+        extensions: vec!["zip".into()],
+        video: "super".into(),
+        options: BTreeMap::new(),
+        devices: Vec::new(),
+        runahead: 0,
+        rewind: false,
+        analog_dpad: None,
+        player: "supermodel".into(),
+        lines: Some(240),
         shift_x: 0,
         shift_y: 0,
         aspect: String::new(),
@@ -910,6 +933,16 @@ impl Library {
         self.resolve_core(&system.core)
     }
 
+    /// Whether what plays this system is installed: mpv is taken as given,
+    /// Supermodel is a program of its own, everything else a libretro core.
+    pub fn player_present(&self, system: &System) -> bool {
+        match system.player.as_str() {
+            "mpv" => true,
+            "supermodel" => crate::supermodel::binary().is_some(),
+            _ => self.core_path(system).exists(),
+        }
+    }
+
     pub fn resolve_core(&self, core: &str) -> PathBuf {
         if core.contains('/') || core.ends_with(".so") {
             expand(core)
@@ -1098,6 +1131,30 @@ impl Library {
                 crate::player::command("mpv", &self.mpv_socket(), &input_conf, &osd, colors);
             cmd.args(fit_args);
             crate::player::add_target(&mut cmd, file);
+            return Ok(cmd);
+        }
+        if system.player == "supermodel" {
+            let Some(bin) = crate::supermodel::binary() else {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Supermodel is not installed (packaging/supermodel-omacrt in the omacrt source)",
+                ));
+            };
+            if let Ok(true) = crate::supermodel::ensure_ini() {
+                eprintln!("supermodel: wrote a Supermodel.ini for a pad");
+            }
+            if let Err(e) = crate::supermodel::ensure_assets(&bin) {
+                eprintln!("supermodel: could not copy its Assets: {e}");
+            }
+            let mut cmd = crate::supermodel::command(
+                &bin,
+                &game.path,
+                crate::supermodel::frame_from_keys(extra),
+            );
+            // Through the leveller to the television, as RetroArch goes.
+            if crate::crt::audio::level_ready() {
+                cmd.env("PULSE_SINK", crate::crt::audio::LEVEL_SINK);
+            }
             return Ok(cmd);
         }
         // A core that needs files nobody ships with it gets them now, once.

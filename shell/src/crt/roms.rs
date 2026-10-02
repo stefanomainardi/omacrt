@@ -39,7 +39,7 @@ pub fn scan(lib: &Library) -> Vec<Scan> {
             } else {
                 0
             };
-            let core_present = s.is_video() || lib.core_path(s).exists();
+            let core_present = lib.player_present(s);
             Scan {
                 name: s.name.clone(),
                 dir: if indexed {

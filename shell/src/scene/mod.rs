@@ -1824,6 +1824,17 @@ impl Scene {
     }
 
     /// The game running now, by the path it was launched from.
+    /// The player of the game on the tube: `retroarch`, `supermodel`.
+    pub fn running_player(&self) -> Option<String> {
+        let (_, system) = self.running.as_ref()?;
+        let s = self.library.systems.iter().find(|s| &s.name == system)?;
+        Some(if s.player.is_empty() {
+            "retroarch".into()
+        } else {
+            s.player.clone()
+        })
+    }
+
     pub fn running_game_path(&self) -> Option<PathBuf> {
         self.running_path.as_ref().map(|(_, p)| p.clone())
     }

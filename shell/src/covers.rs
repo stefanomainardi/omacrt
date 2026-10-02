@@ -48,6 +48,7 @@ pub fn label(system: &str) -> Option<&'static str> {
         "ngp" => "SNK - Neo Geo Pocket Color",
         "arcade" => "FBNeo - Arcade Games",
         "mame" => "MAME",
+        "model3" => "MAME",
         "mame2003" => "MAME 2003-Plus",
         "c64" => "Commodore - 64",
         "amiga" => "Commodore - Amiga",
@@ -500,6 +501,7 @@ fn rdb_names(system: &str) -> &'static [&'static str] {
     match system {
         "arcade" => &["FBNeo - Arcade Games", "MAME"],
         "mame" => &["MAME", "FBNeo - Arcade Games"],
+        "model3" => &["MAME"],
         "mame2003" => &["MAME 2003-Plus", "MAME"],
         "neogeo" => &["FBNeo - Arcade Games", "MAME"],
         "naomi" => &["MAME", "FBNeo - Arcade Games"],
@@ -595,7 +597,7 @@ fn set_names(system: &str) -> Option<SetNames> {
 }
 
 /// The systems whose files are named after MAME's sets.
-const ARCADE_SYSTEMS: [&str; 7] = [
+const ARCADE_SYSTEMS: [&str; 8] = [
     "mame",
     "mame2003",
     "arcade",
@@ -603,6 +605,7 @@ const ARCADE_SYSTEMS: [&str; 7] = [
     "neogeo",
     "naomi",
     "atomiswave",
+    "model3",
 ];
 
 /// The title of an arcade set, when the file is named after the set and a

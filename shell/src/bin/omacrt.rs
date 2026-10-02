@@ -3425,7 +3425,7 @@ fn cmd_library(args: &[String]) {
                     .unwrap_or_else(|| s.name.clone());
                 rows.push(json!({
                     "system": s.name, "label": label, "core": s.core,
-                    "installed": path.is_file(), "path": path, "package": package, "aur": aur,
+                    "installed": lib.player_present(s), "path": path, "package": package, "aur": aur,
                 }));
             }
             if has(args, "--json") {

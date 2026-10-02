@@ -25,7 +25,7 @@ pub fn model(name: &str) -> Option<Model> {
         "psx" | "playstation" => psx(),
         "dreamcast" | "dc" => dreamcast(),
         "neogeo" => neogeo(),
-        "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => cabinet(),
+        "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" | "model3" => cabinet(),
         "gb" | "gbc" | "gameboy" => gameboy(),
         "gamecube" | "ngc" | "gcn" => gamecube(),
         "scummvm" => pc(),
@@ -1064,7 +1064,7 @@ pub fn media(name: &str) -> Option<Media> {
             };
             disc(w as f32 * 0.50, d as f32 * 0.48, top - 1, 12.0, lid)
         }
-        "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" => Media {
+        "arcade" | "mame" | "mame2003" | "fbneo" | "naomi" | "model3" => Media {
             x: 7,
             y: 6,
             z: 11,

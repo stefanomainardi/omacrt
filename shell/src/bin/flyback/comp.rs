@@ -1559,9 +1559,13 @@ impl Crt {
     /// background and its control pipe, it never needs the keyboard while a
     /// program runs; the program needs it to count as focused.
     pub fn focus_top(&mut self) {
-        let program = ["com.libretro.RetroArch", "omacrt-player"]
-            .iter()
-            .find_map(|id| self.window_with_app_id(id));
+        let program = [
+            "com.libretro.RetroArch",
+            "omacrt-player",
+            "omacrt-supermodel",
+        ]
+        .iter()
+        .find_map(|id| self.window_with_app_id(id));
         let target = program.or_else(|| self.space.elements().last().cloned());
         let surface = target.and_then(|w| w.toplevel().map(|t| t.wl_surface().clone()));
         if let Some(kbd) = self.seat.get_keyboard() {

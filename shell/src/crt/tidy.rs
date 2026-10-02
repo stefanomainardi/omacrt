@@ -46,7 +46,7 @@ fn is_one_of_ours(line: &str) -> bool {
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_default();
-    name == "mpv" || name.starts_with("retroarch")
+    name == "mpv" || name.starts_with("retroarch") || name.starts_with("supermodel")
 }
 
 /// Every process id that is one of our emulators or players and carries our
@@ -58,6 +58,7 @@ pub fn ours() -> Vec<(u32, String)> {
     let marks = [
         config.join("retroarch.cfg").to_string_lossy().to_string(),
         config.join("mpv.sock").to_string_lossy().to_string(),
+        crate::supermodel::log_path().to_string_lossy().to_string(),
     ];
     let me = std::process::id();
     let mut out = Vec::new();

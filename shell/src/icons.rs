@@ -433,7 +433,7 @@ pub fn system_logo(name: &str) -> Option<(&'static Logo, u32)> {
         "gb" | "gbc" | "gameboy" => (&LOGO_GB, 0x8bc34a),
         "gba" => (&LOGO_GBA, 0x6c5ce7),
         "neogeo" => (&LOGO_NEOGEO, 0xf1c40f),
-        "arcade" | "mame" | "fbneo" => (&LOGO_ARCADE, 0xff4fa3),
+        "arcade" | "mame" | "fbneo" | "model3" => (&LOGO_ARCADE, 0xff4fa3),
         "psx" | "playstation" => (&LOGO_PSX, 0xc8c8c8),
         "n64" => (&LOGO_N64, 0x2ecc71),
         "dreamcast" | "dc" => (&LOGO_DC, 0xff8f3f),

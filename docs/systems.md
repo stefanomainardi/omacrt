@@ -57,9 +57,10 @@ snes9x_superscope_crosshair = "0"
   and 16 bit systems at the cost of running the core twice per frame. Leave
   `0` on 3D systems.
 - **`rewind`.** Enables the rewind buffer. Off for 3D systems.
-- **`player`.** `retroarch` (default) or `mpv`. An `mpv` system is a video
-  folder: files play fullscreen through mpv, the shell keeps the pad and draws
-  the overlay. The built-in `videos` system points at `~/Videos`.
+- **`player`.** `retroarch` (default), `mpv` or `supermodel`. An `mpv`
+  system is a video folder: files play fullscreen through mpv, the shell
+  keeps the pad and draws the overlay. The built-in `videos` system points at
+  `~/Videos`. `supermodel` is the built-in `model3` system, below.
 
 ## Built-in defaults
 
@@ -112,6 +113,40 @@ keeps every other line. Anything else is filtered, because the emulator's
 nearest neighbour drops lines unevenly, three in every eight from 384 to 240,
 and the letters of a timer come out with rows missing. The filter applies from
 the second launch of a game, once the launcher knows how many lines it draws.
+
+### Sega Model 3, through Supermodel
+
+Model 3 is the one board on the tube that RetroArch does not run: no libretro
+core emulates it. The `model3` system (Sega Rally 2, Daytona USA 2, Scud Race,
+Virtua Fighter 3) is played by Supermodel, a program of its own, which the
+launcher starts the way it starts RetroArch and stops with Select and Start.
+
+The board draws 496x384 at 57.524 Hz for a 24 kHz monitor. Supermodel can draw
+its 3D at any size, so it is handed the tube's whole frame and the scene comes
+out drawn at 240 lines rather than reduced to them; only the text and gauges,
+a 2D layer, are scaled, with Supermodel's own filter. The tube runs at the
+board's rate.
+
+Supermodel wants its sets flat in one folder, because a variant such as
+`dayto2pe` loads the files it shares with `daytona2` from beside it. The scan
+finds them in a folder called `model3`, `arcade_model3` or `Sega Model 3`.
+
+On a first launch the launcher writes `~/.config/supermodel/Config/Supermodel.ini`
+for a pad: Select is the coin, Start starts, the left stick steers, the right
+trigger accelerates and the left one brakes, the shoulders change gear. It
+replaces the file Supermodel writes for itself on a first run, which puts
+Start on a button a pad does not have, and leaves alone one anybody has
+edited.
+
+Supermodel's sound ignores the sink the launcher asks for, so the launcher
+moves the stream to the television, through the loudness leveller, once it
+opens.
+
+The AUR package does not start on the tube: the display process is a Wayland
+compositor with no X server, and Supermodel's copy of GLEW gives up when it
+finds no X display although it has everything it needs. `packaging/supermodel-omacrt`
+builds the same upstream release with that one check relaxed, and replaces the
+AUR package.
 
 ### ScummVM, where a game is a folder
 

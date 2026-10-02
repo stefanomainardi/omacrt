@@ -31,6 +31,7 @@ pub mod settings;
 pub mod shapes;
 pub mod states;
 pub mod store;
+pub mod supermodel;
 pub mod term;
 pub mod theme;
 pub mod videofit;
