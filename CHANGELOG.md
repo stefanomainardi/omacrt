@@ -14,6 +14,8 @@ caveat for a 0.x project: anything may still move.
   count, with a pad ready to use and Select and Start to leave. Supermodel
   needs the patched package in `packaging/supermodel-omacrt` to run on the
   television.
+- Arcade games the libretro thumbnails have no box art for show their
+  original flyer, from the Arcade Database.
 
 ## [0.13.0] - 2026-10-02
 

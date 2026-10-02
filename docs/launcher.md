@@ -16,7 +16,8 @@ switches with a blend.
   them too, and `omacrt library covers` fetches the lot at once. Arcade
   files named after the emulated set, `mslug` for Metal Slug, are read
   through the databases RetroArch ships, so those lists show titles and find
-  their covers as well. `X`
+  their covers as well; one the thumbnails lack shows its flyer from the
+  Arcade Database. `X`
   opens the **cover
   flow**: the selected cover large on a shelf, the neighbours receding at an
   angle, everything mirrored on the floor, sliding with inertia.

@@ -369,21 +369,29 @@ pub fn fetch_cover(label: &str, stem: &str, dest: &Path, regions: &[&str]) -> bo
 /// Fetch a cover file from the repository into `dest`, shrunk for a 240 line
 /// screen when ffmpeg is around (full size thumbnails are half a megabyte).
 pub fn download(label: &str, name: &str, dest: &Path) -> bool {
-    if let Some(dir) = dest.parent()
-        && std::fs::create_dir_all(dir).is_err()
-    {
-        return false;
-    }
     let url = format!(
         "{THUMBS}/{}/Named_Boxarts/{}.png",
         percent_encode(label),
         percent_encode(name)
     );
+    match fetch_to_part(&url, dest) {
+        Some(tmp) => store(&tmp, dest),
+        None => false,
+    }
+}
+
+/// Download `url` beside `dest`, and the path of what came, if anything did.
+fn fetch_to_part(url: &str, dest: &Path) -> Option<PathBuf> {
+    if let Some(dir) = dest.parent()
+        && std::fs::create_dir_all(dir).is_err()
+    {
+        return None;
+    }
     let tmp = dest.with_extension("part");
-    let ok = crate::net::curl(30, 26_214_400)
+    let ok = crate::net::curl_https_redirect(30, 26_214_400)
         .arg("-o")
         .arg(&tmp)
-        .arg(&url)
+        .arg(url)
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
@@ -392,12 +400,17 @@ pub fn download(label: &str, name: &str, dest: &Path) -> bool {
     let size = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
     if !ok || size < 512 {
         let _ = std::fs::remove_file(&tmp);
-        return false;
+        return None;
     }
+    Some(tmp)
+}
+
+/// Shrink a downloaded picture into the cache.
+fn store(tmp: &Path, dest: &Path) -> bool {
     let shrunk = dest.with_extension("small");
     let small = std::process::Command::new("ffmpeg")
         .args(["-v", "error", "-y", "-i"])
-        .arg(&tmp)
+        .arg(tmp)
         .args([
             "-vf",
             "scale='min(320,iw)':-1",
@@ -414,22 +427,133 @@ pub fn download(label: &str, name: &str, dest: &Path) -> bool {
         .map(|s| s.success())
         .unwrap_or(false);
     let done = if small && std::fs::rename(&shrunk, dest).is_ok() {
-        let _ = std::fs::remove_file(&tmp);
+        let _ = std::fs::remove_file(tmp);
         true
     } else {
         let _ = std::fs::remove_file(&shrunk);
-        std::fs::rename(&tmp, dest).is_ok()
+        std::fs::rename(tmp, dest).is_ok()
     };
     if done {
         let _ = std::fs::remove_file(dest.with_extension("missing"));
+        let _ = std::fs::remove_file(dest.with_extension("none"));
     }
     done
+}
+
+// ------------------------------------------------------------ arcade flyers
+
+/// The Arcade Database, which keeps a picture of every MAME set. libretro's
+/// repository has box art for few arcade games and none at all for some
+/// boards (Model 3), so an arcade set it does not know asks here.
+const ADB: &str = "https://adb.arcadeitalia.net";
+
+/// The size of the picture the Arcade Database answers with when it has
+/// none of the kind asked for.
+const ADB_PLACEHOLDER: (u32, u32) = (140, 105);
+
+/// The set name of an arcade game, when the file is named after one: what
+/// the Arcade Database is asked for.
+pub fn arcade_set(system: &str, stem: &str) -> Option<String> {
+    let set_like = !stem.is_empty()
+        && stem.len() <= 16
+        && stem
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+    (ARCADE_SYSTEMS.contains(&system) && set_like).then(|| stem.to_string())
+}
+
+/// A set's flyer into the cache, which is to an arcade game what the box is
+/// to a console's: the set's own, else its parent's (a revision rarely had
+/// a flyer of its own), else the title screen. True when a file is in place.
+pub fn fetch_flyer(set: &str, dest: &Path) -> bool {
+    if adb_image(set, "flyer", dest) {
+        return true;
+    }
+    if let Some(parent) = adb_parent(set)
+        && adb_image(&parent, "flyer", dest)
+    {
+        return true;
+    }
+    adb_image(set, "title", dest)
+}
+
+fn adb_image(set: &str, kind: &str, dest: &Path) -> bool {
+    let url = format!("{ADB}/?mame={set}&type={kind}&resize=0");
+    let Some(tmp) = fetch_to_part(&url, dest) else {
+        return false;
+    };
+    let real = std::fs::read(&tmp).is_ok_and(|b| {
+        png_size(&b).is_some_and(|s| s != ADB_PLACEHOLDER)
+            // A title screen of a game that draws nothing at the moment
+            // it is taken is a few kilobytes of black.
+            && (kind != "title" || b.len() > 8192)
+    });
+    if !real {
+        let _ = std::fs::remove_file(&tmp);
+        return false;
+    }
+    store(&tmp, dest)
+}
+
+/// The set a clone belongs to, from the Arcade Database's scraper answer.
+fn adb_parent(set: &str) -> Option<String> {
+    let url = format!("{ADB}/service_scraper.php?ajax=query_mame&game_name={set}");
+    let out = crate::net::curl_https_redirect(30, 1_048_576)
+        .arg(&url)
+        .output()
+        .ok()?;
+    parent_from_scraper(&out.stdout)
+}
+
+fn parent_from_scraper(body: &[u8]) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let parent = v["result"][0]["cloneof"].as_str()?;
+    arcade_set("mame", parent)
+}
+
+/// Width and height out of a PNG's header.
+fn png_size(b: &[u8]) -> Option<(u32, u32)> {
+    if b.len() < 24 || &b[..8] != b"\x89PNG\r\n\x1a\n" || &b[12..16] != b"IHDR" {
+        return None;
+    }
+    let be = |i: usize| u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+    Some((be(16), be(20)))
 }
 
 #[cfg(test)]
 mod tests {
     // The names come off a web page: a `%` followed by anything, and any
     // character at all, has to survive being read.
+    #[test]
+    fn only_a_set_name_on_an_arcade_system_is_asked_of_the_arcade_database() {
+        assert_eq!(
+            super::arcade_set("model3", "srally2").as_deref(),
+            Some("srally2")
+        );
+        assert_eq!(super::arcade_set("mame", "sf2ce").as_deref(), Some("sf2ce"));
+        assert_eq!(super::arcade_set("snes", "zelda"), None);
+        assert_eq!(super::arcade_set("mame", "Street Fighter II"), None);
+        assert_eq!(super::arcade_set("mame", "a&b=c"), None);
+    }
+
+    #[test]
+    fn the_parent_is_read_from_the_scraper_answer() {
+        let clone = br#"{"release":6,"result":[{"game_name":"scudplus","cloneof":"scud"}]}"#;
+        assert_eq!(super::parent_from_scraper(clone).as_deref(), Some("scud"));
+        let parent = br#"{"release":6,"result":[{"game_name":"scud","cloneof":""}]}"#;
+        assert_eq!(super::parent_from_scraper(parent), None);
+        assert_eq!(super::parent_from_scraper(b"<html>"), None);
+    }
+
+    #[test]
+    fn the_size_of_a_png_is_read_from_its_header() {
+        let mut b = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        b.extend_from_slice(&140u32.to_be_bytes());
+        b.extend_from_slice(&105u32.to_be_bytes());
+        assert_eq!(super::png_size(&b), Some(super::ADB_PLACEHOLDER));
+        assert_eq!(super::png_size(b"GIF89a"), None);
+    }
+
     #[test]
     fn a_name_from_the_server_is_decoded_without_slicing_a_character() {
         assert_eq!(super::percent_decode("Metal%20Slug"), "Metal Slug");

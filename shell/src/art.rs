@@ -53,6 +53,9 @@ enum Source {
         label: String,
         stem: String,
         cache: PathBuf,
+        /// The set name, for an arcade game named after one: asked of the
+        /// Arcade Database when the repository has nothing.
+        set: Option<String>,
     },
     /// Decode a file that is already on disk.
     Local(PathBuf),
@@ -184,6 +187,7 @@ impl Art {
             };
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
             let cache = crate::covers::cache_path(system, stem);
+            let set = crate::covers::arcade_set(system, stem);
             // Arcade files are named after the set: the cache keeps the file
             // name, the repository is asked for the title.
             let stem = crate::covers::title_for(system, stem);
@@ -194,6 +198,7 @@ impl Art {
                     label: label.to_string(),
                     stem: stem.to_string(),
                     cache,
+                    set,
                 },
                 max_w,
                 max_h,
@@ -226,13 +231,26 @@ impl Art {
 fn fetch(req: &Request) -> Option<Image> {
     let path = match &req.source {
         Source::Local(p) => p.clone(),
-        Source::Cover { label, stem, cache } => {
+        Source::Cover {
+            label,
+            stem,
+            cache,
+            set,
+        } => {
+            // An arcade set marks having been asked of both sources apart
+            // from having been asked of the repository alone, so a set
+            // marked missing before the second source existed is tried again.
+            let marker = cache.with_extension(if set.is_some() { "none" } else { "missing" });
             if !cache.exists() {
-                if cache.with_extension("missing").exists() {
+                if marker.exists() {
                     return None;
                 }
-                if !crate::covers::fetch_cover(label, stem, cache, &req.regions) {
-                    let _ = std::fs::write(cache.with_extension("missing"), b"");
+                let found = crate::covers::fetch_cover(label, stem, cache, &req.regions)
+                    || set
+                        .as_deref()
+                        .is_some_and(|s| crate::covers::fetch_flyer(s, cache));
+                if !found {
+                    let _ = std::fs::write(&marker, b"");
                     return None;
                 }
             }

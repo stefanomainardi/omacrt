@@ -85,6 +85,10 @@ collection without region tags, the name index of that system is searched for
 the same title instead, in the region order of `[music] country` in
 `settings.toml`, and then for the closest title by words. The index is
 downloaded once a fortnight into `art/_index/`.
+An arcade game named after its set that the repository has no box art for
+gets its flyer from the Arcade Database (`adb.arcadeitalia.net`) instead: the
+set's own, else its parent's, else its title screen. Model 3 has nothing at
+all in the repository, so every cover there comes this way.
 The launcher does the same lazily for any cover it misses. Covers are shrunk
 to 320 pixels on the way in.
 

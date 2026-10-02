@@ -3365,7 +3365,7 @@ fn cmd_library(args: &[String]) {
                     term::sheet::step(&system.name, "no thumbnail index reachable");
                     continue;
                 };
-                let (mut have, mut exact, mut fuzzy, mut none) = (0, 0, 0, 0);
+                let (mut have, mut exact, mut fuzzy, mut flyers, mut none) = (0, 0, 0, 0, 0);
                 let mut done = 0;
                 for g in &games {
                     if done >= limit {
@@ -3373,6 +3373,7 @@ fn cmd_library(args: &[String]) {
                     }
                     let stem = g.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
                     let dest = covers::cache_path(&system.name, stem);
+                    let set = covers::arcade_set(&system.name, stem);
                     if dest.exists() && !force {
                         have += 1;
                         continue;
@@ -3385,29 +3386,38 @@ fn cmd_library(args: &[String]) {
                     // Arcade files are named after the set, the repository by
                     // title: the databases RetroArch ships pair them.
                     let stem = covers::title_for(&system.name, stem);
-                    match index.best(&stem, &regions) {
-                        Some(name) => {
-                            if covers::download(label, name, &dest) {
-                                if name == covers::thumb_name(&stem) {
-                                    exact += 1;
-                                } else {
-                                    fuzzy += 1;
-                                }
+                    let found = match index.best(&stem, &regions) {
+                        Some(name) if covers::download(label, name, &dest) => {
+                            if name == covers::thumb_name(&stem) {
+                                exact += 1;
                             } else {
-                                none += 1;
+                                fuzzy += 1;
                             }
+                            true
                         }
-                        None => {
-                            let _ = std::fs::write(dest.with_extension("missing"), b"");
-                            none += 1;
-                        }
+                        _ => false,
+                    };
+                    if found {
+                        continue;
                     }
+                    // An arcade set the repository does not know has its
+                    // flyer on the Arcade Database.
+                    if set
+                        .as_deref()
+                        .is_some_and(|s| covers::fetch_flyer(s, &dest))
+                    {
+                        flyers += 1;
+                        continue;
+                    }
+                    let marker = if set.is_some() { "none" } else { "missing" };
+                    let _ = std::fs::write(dest.with_extension(marker), b"");
+                    none += 1;
                 }
                 eprint!("\r\x1b[2K");
                 term::sheet::step(
                     &system.name,
                     format!(
-                        "{:>5} games: {have} had art, {exact} exact, {fuzzy} matched by title, {none} without",
+                        "{:>5} games: {have} had art, {exact} exact, {fuzzy} matched by title, {flyers} flyers, {none} without",
                         games.len()
                     ),
                 );
