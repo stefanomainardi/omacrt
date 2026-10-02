@@ -7,6 +7,8 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-02
+
 ### Added
 
 - Arcade lists can be filtered with the right trigger: by screen orientation,
@@ -1506,7 +1508,8 @@ First light: the television leased away from the desktop and driven by its own
 compositor, a launcher drawn at 320x240, games at native line counts, the bar
 plugin, music through cliamp and video through mpv.
 
-[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/stefanomainardi/omacrt/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.12.0
 [0.11.2]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.2
 [0.11.1]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.1
 [0.11.0]: https://github.com/stefanomainardi/omacrt/releases/tag/v0.11.0
