@@ -151,9 +151,14 @@ a game list. Both are plain text files in the config directory, one
 
 The base `retroarch.cfg` enables automatic frame delay and leaves vsync on;
 run-ahead is per system. On the host side, USB polling at 1 kHz helps with
-some pads, so add `usbhid.jspoll=1` to the kernel command line of the CRT boot
-entry. Wired pads over the game controller API keep the shell itself under a
-frame of input lag.
+some pads: a pad asks in its own descriptor how often it is read, and cheap
+ones ask for every eight milliseconds. `sudo bin/omacrt-install --system`
+offers to set it. On Omarchy it writes `usbhid.jspoll=1` into
+`/etc/limine-entry-tool.d/omacrt-usbhid.conf` and rebuilds the boot image with
+`limine-update`; `OMACRT_JSPOLL=1` answers yes without the question, and
+`--uninstall-system` takes it back out. Elsewhere, add `usbhid.jspoll=1` to the
+kernel command line by hand. Wired pads over the game controller API keep the
+shell itself under a frame of input lag.
 
 ## The index: any layout, scanned once
 

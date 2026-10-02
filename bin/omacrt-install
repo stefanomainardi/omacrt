@@ -16,7 +16,9 @@
 #                                      connector non-desktop at every boot so
 #                                      omacrt can lease it (see
 #                                      docs/15khz.md); the connector name comes from
-#                                      OMACRT_CONNECTOR (default HDMI-A-1)
+#                                      OMACRT_CONNECTOR (default HDMI-A-1);
+#                                      it also offers to poll USB pads every
+#                                      millisecond (OMACRT_JSPOLL=1 answers yes)
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -172,6 +174,53 @@ menu_remove() {
   step "Television removed from the Omarchy menu"
 }
 
+# USB pads polled every millisecond. A pad says in its own descriptor how
+# often it wants to be asked, and cheap ones ask for every eight: up to half a
+# frame between the press and the launcher or the game hearing it. usbhid is
+# built into Omarchy's kernel, so the setting has to be on the kernel command
+# line to reach a pad that is already plugged in at boot; Omarchy's Limine
+# reads drop-ins from /etc/limine-entry-tool.d, the place Omarchy itself adds
+# its own parameters. Offered, never imposed: it rebuilds the boot image.
+jspoll_dropin=/etc/limine-entry-tool.d/omacrt-usbhid.conf
+jspoll_now() {
+  if [ -w /sys/module/usbhid/parameters/jspoll ]; then
+    echo "$1" > /sys/module/usbhid/parameters/jspoll
+  fi
+}
+jspoll_offer() {
+  if [ -f "$jspoll_dropin" ]; then
+    jspoll_now 1
+    step "USB pads are already polled every millisecond"
+    return 0
+  fi
+  if [ ! -d /etc/limine-entry-tool.d ] || ! command -v limine-update >/dev/null 2>&1; then
+    echo "to poll USB pads every millisecond, add usbhid.jspoll=1 to the kernel command line (docs/systems.md)"
+    return 0
+  fi
+  local answer="${OMACRT_JSPOLL:-}"
+  if [ -z "$answer" ] && [ -t 0 ]; then
+    printf 'poll USB pads every millisecond? This adds usbhid.jspoll=1 to the kernel command line and rebuilds the boot image [y/N] '
+    read -r answer || answer=""
+  fi
+  case "$answer" in
+    y|Y|yes|1) ;;
+    *)
+      echo "USB pads keep the polling they ask for (OMACRT_JSPOLL=1 chooses it without the question)"
+      return 0
+      ;;
+  esac
+  printf '%s\n' "# omacrt: USB pads polled every millisecond (bin/omacrt-install --system)" \
+    'KERNEL_CMDLINE[default]+=" usbhid.jspoll=1"' > "$jspoll_dropin"
+  step "rebuilding the boot image (limine-update)"
+  if ! limine-update; then
+    rm -f "$jspoll_dropin"
+    echo "limine-update failed, so the drop-in was taken back out" >&2
+    return 0
+  fi
+  jspoll_now 1
+  step "USB pads are polled every millisecond: from now on for a pad plugged in, at every boot for all of them"
+}
+
 for arg in "$@"; do
   case "$arg" in
     --system)
@@ -208,6 +257,7 @@ for arg in "$@"; do
       systemctl daemon-reload
       systemctl enable --now omacrt-lease.service
       systemctl --no-pager --lines=3 status omacrt-lease.service || true
+      jspoll_offer
       echo "done: $conn is handed to omacrt at boot (reverse: systemctl disable --now omacrt-lease.service)"
       exit 0
       ;;
@@ -256,6 +306,12 @@ for arg in "$@"; do
       rm -f /etc/systemd/system/omacrt-lease.service
       rm -rf /usr/local/lib/omacrt
       systemctl daemon-reload
+      if [ -f "$jspoll_dropin" ]; then
+        rm -f "$jspoll_dropin"
+        jspoll_now 0
+        step "rebuilding the boot image without usbhid.jspoll (limine-update)"
+        limine-update || echo "limine-update failed; run it again to drop usbhid.jspoll" >&2
+      fi
       echo "done: the connector goes back to the desktop at the next boot"
       exit 0
       ;;
