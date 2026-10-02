@@ -594,6 +594,17 @@ fn set_names(system: &str) -> Option<SetNames> {
     value
 }
 
+/// The systems whose files are named after MAME's sets.
+const ARCADE_SYSTEMS: [&str; 7] = [
+    "mame",
+    "mame2003",
+    "arcade",
+    "fbneo",
+    "neogeo",
+    "naomi",
+    "atomiswave",
+];
+
 /// The title of an arcade set, when the file is named after the set and a
 /// database knows it. Anything else is returned unchanged.
 pub fn title_for(system: &str, stem: &str) -> String {
@@ -602,10 +613,19 @@ pub fn title_for(system: &str, stem: &str) -> String {
     if stem.contains(' ') || stem.chars().any(|c| c.is_ascii_uppercase()) || stem.len() > 16 {
         return stem.to_string();
     }
-    match set_names(system).and_then(|m| m.get(&stem.to_ascii_lowercase()).cloned()) {
-        Some(t) => t,
-        None => stem.to_string(),
+    let set = stem.to_ascii_lowercase();
+    if let Some(t) = set_names(system).and_then(|m| m.get(&set).cloned()) {
+        return t;
     }
+    // RetroArch's databases trail MAME by years, and a set they do not know
+    // would show as its bare name. MAME's own list, fetched for the arcade
+    // filter, names every set of the version the core is.
+    if ARCADE_SYSTEMS.contains(&system)
+        && let Some(t) = crate::arcade::title(&set)
+    {
+        return t;
+    }
+    stem.to_string()
 }
 
 #[cfg(test)]

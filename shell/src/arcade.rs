@@ -85,10 +85,11 @@ fn attr<'a>(line: &'a str, name: &str) -> Option<&'a str> {
 /// XML library, and nothing held but the machine being read. BIOSes, devices,
 /// mechanical machines and anything MAME marks as not runnable are left out,
 /// because none of them is a game somebody picks.
-pub fn parse(reader: impl BufRead) -> Vec<(String, Machine)> {
+pub fn parse(reader: impl BufRead) -> Vec<(String, Machine, String)> {
     let mut out = Vec::new();
     let mut name: Option<String> = None;
     let mut keep = false;
+    let mut title = String::new();
     let mut m = blank();
     let mut types: Vec<String> = Vec::new();
     for line in reader.lines().map_while(Result::ok) {
@@ -102,8 +103,14 @@ pub fn parse(reader: impl BufRead) -> Vec<(String, Machine)> {
             m = blank();
             m.clone = attr(s, "cloneof").is_some();
             types.clear();
+            title.clear();
         } else if name.is_none() {
             continue;
+        } else if let Some(t) = s
+            .strip_prefix("<description>")
+            .and_then(|t| t.strip_suffix("</description>"))
+        {
+            title = unescape(t);
         } else if s.starts_with("<display ") {
             if m.screens == 0 {
                 m.vertical = matches!(attr(s, "rotate"), Some("90" | "270"));
@@ -126,10 +133,20 @@ pub fn parse(reader: impl BufRead) -> Vec<(String, Machine)> {
             && keep
         {
             m.controls = kind(&types);
-            out.push((n, m));
+            out.push((n, m, std::mem::take(&mut title)));
         }
     }
     out
+}
+
+/// The five entities XML has; MAME's titles use the ampersand and the
+/// apostrophe more than anything, `Ghosts'n Goblins`, `Dungeons & Dragons`.
+fn unescape(t: &str) -> String {
+    t.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 fn blank() -> Machine {
@@ -148,32 +165,37 @@ fn path() -> PathBuf {
 }
 
 /// One machine per line: name, vertical, players, screens, controls, status,
-/// clone. Small enough to read whole at startup and grep by hand.
-fn write_table(machines: &[(String, Machine)], version: &str) -> String {
+/// clone, title. Small enough to read whole at startup and grep by hand.
+fn write_table(machines: &[(String, Machine, String)], version: &str) -> String {
     let mut out = format!("# MAME {version} machine list, reduced by omacrt\n");
-    for (n, m) in machines {
+    for (n, m, title) in machines {
         let status = match m.status {
             Status::Good => 'g',
             Status::Imperfect => 'i',
             Status::Preliminary => 'p',
         };
+        let title = title.replace(['\t', '\n'], " ");
         out.push_str(&format!(
-            "{n}\t{}\t{}\t{}\t{}\t{status}\t{}\n",
+            "{n}\t{}\t{}\t{}\t{}\t{status}\t{}\t{title}\n",
             m.vertical as u8, m.players, m.screens, m.controls, m.clone as u8
         ));
     }
     out
 }
 
-fn read_table(text: &str) -> HashMap<String, Machine> {
-    let mut out = HashMap::new();
+/// The table back as machines and titles. A file written before titles were
+/// kept has seven columns and gives no titles; `omacrt library arcade`
+/// writes it again with them.
+fn read_table(text: &str) -> (HashMap<String, Machine>, HashMap<String, String>) {
+    let mut machines = HashMap::new();
+    let mut titles = HashMap::new();
     for line in text.lines().filter(|l| !l.starts_with('#')) {
         let f: Vec<&str> = line.split('\t').collect();
-        if f.len() != 7 {
+        if f.len() < 7 {
             continue;
         }
         let num = |s: &str| s.parse::<u8>().unwrap_or(0);
-        out.insert(
+        machines.insert(
             f[0].to_string(),
             Machine {
                 vertical: f[1] == "1",
@@ -188,25 +210,41 @@ fn read_table(text: &str) -> HashMap<String, Machine> {
                 clone: f[6] == "1",
             },
         );
+        if let Some(t) = f.get(7).filter(|t| !t.is_empty()) {
+            titles.insert(f[0].to_string(), t.to_string());
+        }
     }
-    out
+    (machines, titles)
 }
 
-static TABLE: Mutex<Option<Arc<HashMap<String, Machine>>>> = Mutex::new(None);
+type Machines = Arc<HashMap<String, Machine>>;
+type Titles = Arc<HashMap<String, String>>;
 
-/// The machine list, read from the cache the first time it is asked for.
-/// Nothing when it has not been fetched yet.
-pub fn table() -> Option<Arc<HashMap<String, Machine>>> {
+static TABLE: Mutex<Option<(Machines, Titles)>> = Mutex::new(None);
+
+fn loaded() -> Option<(Machines, Titles)> {
     let mut held = TABLE.lock().ok()?;
     if held.is_none() {
         let text = std::fs::read_to_string(path()).ok()?;
-        let map = read_table(&text);
-        if map.is_empty() {
+        let (machines, titles) = read_table(&text);
+        if machines.is_empty() {
             return None;
         }
-        *held = Some(Arc::new(map));
+        *held = Some((Arc::new(machines), Arc::new(titles)));
     }
     held.clone()
+}
+
+/// The machine list, read from the cache the first time it is asked for.
+/// Nothing when it has not been fetched yet.
+pub fn table() -> Option<Machines> {
+    loaded().map(|(m, _)| m)
+}
+
+/// MAME's title for a set, `Ace Driver: Racing Evolution (World, AD2 Ver.B)`
+/// for `acedrive`, when the list has been fetched.
+pub fn title(set: &str) -> Option<String> {
+    loaded().and_then(|(_, t)| t.get(set).cloned())
 }
 
 /// Read the cache again on the next `table`, after a fetch wrote it.
@@ -340,6 +378,7 @@ mod tests {
 		<driver status="good" emulation="good"/>
 	</machine>
 	<machine name="galaga" sourcefile="namco/galaga.cpp">
+		<description>Galaga &amp; Friends&apos; Run</description>
 		<display tag="screen" type="raster" rotate="90"/>
 		<input players="2" coins="2">
 			<control type="joy" player="1" buttons="1" ways="2"/>
@@ -364,7 +403,10 @@ mod tests {
 "#;
 
     fn machines() -> HashMap<String, Machine> {
-        parse(LIST.as_bytes()).into_iter().collect()
+        parse(LIST.as_bytes())
+            .into_iter()
+            .map(|(n, m, _)| (n, m))
+            .collect()
     }
 
     #[test]
@@ -393,11 +435,13 @@ mod tests {
     #[test]
     fn the_table_comes_back_as_it_went() {
         let list = parse(LIST.as_bytes());
-        let back = read_table(&write_table(&list, "0289"));
+        let (back, titles) = read_table(&write_table(&list, "0289"));
         assert_eq!(back.len(), list.len());
-        for (n, m) in &list {
+        for (n, m, _) in &list {
             assert_eq!(back[n], *m, "{n}");
         }
+        assert_eq!(titles["outrun"], "Out Run");
+        assert_eq!(titles["galaga"], "Galaga & Friends' Run");
     }
 
     #[test]
