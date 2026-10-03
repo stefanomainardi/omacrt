@@ -78,6 +78,8 @@ Nothing is downloaded during installation. While running, the project fetches:
 - box art and the per system name index from `thumbnails.libretro.com`
 - the flyer of an arcade game that repository has no box art for, from the
   Arcade Database at `adb.arcadeitalia.net`
+- your RetroAchievements progress, from `retroachievements.org`, only when
+  you have set up an account (see below)
 - the hi2txt description of an arcade game's saved high score table, from
   the hi2txt-xml repository on `raw.githubusercontent.com`, only for a game
   that has saved one
@@ -89,13 +91,13 @@ Nothing is downloaded during installation. While running, the project fetches:
   both only when the ambient page is set up
 - your own photographs from your own Immich server, if you set one up
 
-Nine of the ten go out through `curl`, and all nine ask one function for
+Ten of the eleven go out through `curl`, and all ten ask one function for
 it. `net::curl` restricts the protocol list to HTTP and HTTPS, on the request
 and on any redirect, sets a timeout and a size cap, fails on an error status
 and never saves the error page, and passes arguments as arguments. So a
 crafted URL cannot make it read a local file and a redirect cannot leave those
 two protocols. None of that is a decision at the call site: what a caller
-chooses is how long and how large its own fetch may be. The tenth is
+chooses is how long and how large its own fetch may be. The eleventh is
 YouTube, which goes through `yt-dlp` and its own network stack, with the
 target after a `--` and never through a shell.
 
@@ -145,6 +147,26 @@ the whole address is a credential. It is handed to curl the same way, on
 standard input, and the cached calendar is written `0600` in a directory
 created `0700`. So are the settings that hold the address, the captions
 beside your photographs, and the list of what you have been watching.
+
+## Your RetroAchievements account, if you have one
+
+Achievements need `~/.config/omacrt/retroachievements.toml`, written by
+you: a username, the password RetroArch logs in with, and the web API key
+from the site's settings page, which the launcher reads progress with. The
+launcher warns on stderr when other users can read the file.
+
+The password goes to RetroArch in the per launch configuration,
+`~/.config/omacrt/launch.cfg`, which is written `0600` every time whether or
+not it carries one. RetroArch saves everything it holds into its main
+configuration when it exits, appended keys included, and that file is
+readable by any user, so whenever an account is set up the launch
+configuration also tells it not to save at exit.
+
+The web API key is part of the address the site is asked, and that address
+is handed to curl on its standard input, like the photograph server's key,
+so neither shows in the process list. Those requests follow no redirect.
+The answer, which games you have played and how far, is cached in
+`~/.cache/omacrt/cheevos.json` for an hour.
 
 ## What is executed
 

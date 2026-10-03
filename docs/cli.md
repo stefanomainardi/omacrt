@@ -34,6 +34,7 @@ omacrt library set SYS core=X|dir=D|shift_x=N|shift_y=N   # change a system's co
 omacrt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
 omacrt library arcade           # MAME's machine list, for the arcade filter
 omacrt library hiscore [SET...] # the record each arcade cabinet keeps
+omacrt library cheevos          # the RetroAchievements account and its progress
 omacrt library scan [DIR...] [--progress]   # --progress: one plain line per folder
 omacrt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
 omacrt watchdog                 put the display back if it dies; `on` starts it, `off` stops it
@@ -92,6 +93,23 @@ set's own, else its parent's, else its title screen. Model 3 has nothing at
 all in the repository, so every cover there comes this way.
 The launcher does the same lazily for any cover it misses. Covers are shrunk
 to 320 pixels on the way in.
+
+`library cheevos` says whether a RetroAchievements account is set up and
+lists the account's progress. The account lives in
+`~/.config/omacrt/retroachievements.toml`, written by hand and `chmod 600`:
+
+```toml
+username = "you"
+password = "what RetroArch logs in with"
+api_key = "the web API key from the site's settings page"
+hardcore = false
+```
+
+RetroArch earns the achievements with the username and password; the
+launcher reads progress with the API key and shows it under a game's cover
+as `RA 12/96`, with `B` once a game is beaten and `M` once it is mastered.
+Hardcore mode stays off unless the file asks for it, because it turns off
+save states and rewind.
 
 `library hiscore` reads the record each arcade game keeps. FinalBurn Neo and
 MAME save a game's high score table when it closes, as a dump of the game's

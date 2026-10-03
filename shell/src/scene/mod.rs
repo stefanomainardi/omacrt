@@ -705,6 +705,8 @@ pub struct Scene {
     centring: Option<Centring>,
     /// Arcade records, by set: when the dump was written and what it holds.
     records: Records,
+    /// RetroAchievements progress, when an account is set up.
+    achievements: Achievements,
     /// A picture shift for the main loop to put on the tube, with the
     /// timing it already has.
     shift_request: Option<(i32, i32)>,
@@ -971,6 +973,7 @@ impl Scene {
             paused: None,
             centring: None,
             records: Records::new(),
+            achievements: Achievements::new(),
             shift_request: None,
             mark_small: grid,
         };
@@ -2130,5 +2133,62 @@ impl Records {
             });
         }
         held.and_then(|(_, v)| v)
+    }
+}
+
+/// The account's RetroAchievements progress, read on a thread of its own
+/// from the cache or the site, and again after a game, which is when it
+/// changes.
+pub(super) struct Achievements {
+    book: Option<omacrt_shell::cheevos::Book>,
+    loading: bool,
+    /// Read from the site rather than the cache on the next look.
+    stale: bool,
+    tx: std::sync::mpsc::Sender<Option<omacrt_shell::cheevos::Book>>,
+    rx: std::sync::mpsc::Receiver<Option<omacrt_shell::cheevos::Book>>,
+}
+
+impl Achievements {
+    pub fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel();
+        Self {
+            book: None,
+            loading: false,
+            stale: false,
+            tx,
+            rx,
+        }
+    }
+
+    /// Ask the site again at the next look: a game has just ended.
+    pub fn refresh(&mut self) {
+        self.stale = true;
+    }
+
+    pub fn of(&mut self, system: &str, title: &str) -> Option<omacrt_shell::cheevos::Progress> {
+        while let Ok(book) = self.rx.try_recv() {
+            self.loading = false;
+            if book.is_some() {
+                self.book = book;
+            }
+        }
+        if (self.book.is_none() || self.stale) && !self.loading {
+            self.loading = true;
+            let fresh = std::mem::take(&mut self.stale);
+            let tx = self.tx.clone();
+            std::thread::spawn(move || {
+                let dir = omacrt_shell::crt::config_dir();
+                let list = omacrt_shell::cheevos::Config::load(&dir).and_then(|cfg| {
+                    let cached = if fresh {
+                        None
+                    } else {
+                        omacrt_shell::cheevos::cached()
+                    };
+                    cached.or_else(|| omacrt_shell::cheevos::fetch(&cfg))
+                });
+                let _ = tx.send(list.map(omacrt_shell::cheevos::Book::new));
+            });
+        }
+        self.book.as_ref()?.get(system, title).cloned()
     }
 }

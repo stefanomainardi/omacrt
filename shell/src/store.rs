@@ -74,7 +74,15 @@ fn save_with_mode(
     // Keep the copy that is about to be replaced, but never overwrite a good
     // backup with a file we have not managed to replace yet.
     if path.is_file() {
-        let _ = fs::copy(path, backup_path(path));
+        let backup = backup_path(path);
+        let _ = fs::copy(path, &backup);
+        // A copy keeps the mode of what it copied, and a file that has just
+        // become private may have been readable before: the backup of a
+        // private file is private too.
+        if let Some(m) = mode {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&backup, fs::Permissions::from_mode(m));
+        }
     }
     let tmp = temp_beside(path);
     {
@@ -250,6 +258,18 @@ mod tests {
         save_private(&file, b"key = \"still nobody else's\"\n").expect("save again");
         assert_eq!(mode_of(&file), 0o600);
         assert_eq!(mode_of(&backup_path(&file)), 0o600, "the backup is open");
+        // A file that was written open and is now saved private leaves a
+        // private backup too, though the copy it was made from was open.
+        let open = dir.join("inner").join("launch.cfg");
+        save(&open, b"was open\n").expect("save open");
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o644)).expect("chmod");
+        save_private(&open, b"now private\n").expect("save private");
+        assert_eq!(mode_of(&open), 0o600);
+        assert_eq!(
+            mode_of(&backup_path(&open)),
+            0o600,
+            "the backup of a private file is open"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 }

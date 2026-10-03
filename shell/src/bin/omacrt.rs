@@ -155,6 +155,10 @@ const VERBS: Verbs = &[
                 "fetch MAME's machine list, for the arcade filter",
             ),
             (
+                "library cheevos",
+                "RetroAchievements: whether the account is set up, and each game's progress",
+            ),
+            (
                 "library hiscore [SET...]",
                 "the record each arcade cabinet keeps, read from its saved high scores",
             ),
@@ -3114,6 +3118,37 @@ fn cmd_library(args: &[String]) {
         // a game's screen faces, how many play it, what they hold. The
         // launcher fetches it itself the first time the filter is opened;
         // this is the same fetch from a terminal.
+        Some("cheevos") => {
+            let dir = omacrt_shell::crt::config_dir();
+            let path = omacrt_shell::cheevos::Config::path(&dir);
+            let Some(cfg) = omacrt_shell::cheevos::Config::load(&dir) else {
+                die(&format!(
+                    "no account: write {} with username, password (for RetroArch) and api_key \
+                     (the web API key, for the launcher), then chmod 600 it",
+                    path.display()
+                ));
+            };
+            println!(
+                "account {}: RetroArch {}, hardcore {}",
+                cfg.username,
+                if cfg.password.is_empty() {
+                    "has no password to log in with"
+                } else {
+                    "logs in"
+                },
+                if cfg.hardcore { "on" } else { "off" }
+            );
+            if cfg.api_key.trim().is_empty() {
+                die("no api_key: the launcher cannot read progress without the web API key");
+            }
+            let Some(list) = omacrt_shell::cheevos::fetch(&cfg) else {
+                die("the site did not answer, or refused the key");
+            };
+            println!("{} games played", list.len());
+            for p in list.iter().filter(|p| p.possible > 0).take(20) {
+                println!("  {:<12} {}", p.label().trim_start_matches("RA "), p.title);
+            }
+        }
         // The records the arcade games keep: every set with a saved table,
         // or the sets named.
         Some("hiscore") => {

@@ -1180,10 +1180,13 @@ impl Library {
         }
         std::fs::write(&cores_cfg, options)?;
         let launch_cfg = self.config_dir.join("launch.cfg");
-        std::fs::write(
-            &launch_cfg,
-            self.launch_keys(system, &cores_cfg, extra, resume),
-        )?;
+        let mut keys = self.launch_keys(system, &cores_cfg, extra, resume);
+        // The RetroAchievements account, when one is set up. The file can
+        // carry its password, so it is written for its owner alone, always.
+        if let Some(cheevos) = crate::cheevos::Config::load(&self.config_dir) {
+            keys.push_str(&cheevos.retroarch_keys());
+        }
+        crate::store::save_private(&launch_cfg, keys)?;
         let mut cmd = std::process::Command::new(&self.retroarch);
         // Through the leveller to the television, when `on` started it. The
         // pulse driver takes its sink from PULSE_SINK, which the launcher

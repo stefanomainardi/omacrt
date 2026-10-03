@@ -2340,6 +2340,7 @@ impl Scene {
     pub fn game_finished(&mut self, ok: bool) {
         self.stop_play_clock();
         self.centring = None;
+        self.achievements.refresh();
         self.running = None;
         let mut one_cabinet = false;
         if let Some((system, path)) = self.running_path.take() {
@@ -2939,6 +2940,17 @@ impl Scene {
                         let text = format!("HI {hi}");
                         if Framebuffer::text_width(&text, 1) + 6 <= stage_w - 10 {
                             x += chip(fb, x, &text, th.yellow) + 4;
+                        }
+                    }
+                    if let Some(p) = self.achievements.of(&system, &entry.game.title) {
+                        let text = p.label();
+                        let c = if p.award.is_some() {
+                            th.yellow
+                        } else {
+                            th.magenta
+                        };
+                        if x + Framebuffer::text_width(&text, 1) + 6 <= bx + stage_w - 4 {
+                            x += chip(fb, x, &text, c) + 4;
                         }
                     }
                     if let Some(tag) = tags.first() {
