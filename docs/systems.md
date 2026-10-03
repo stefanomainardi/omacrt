@@ -188,6 +188,14 @@ also with `omacrt library set SYS shift_x=N`. Moving the picture changes the
 porches of the timing and not its line rate, so the set keeps its lock.
 - **h size.** Horizontal size 0.80 to 1.20 for `switchres.ini`.
 - **invert sync.** Flips sync polarity for sets that need it.
+- **red, green, blue.** A gain on each colour channel, 0.70 to 1.30, put in
+  the output's gamma table by the display process, so it corrects everything
+  on the tube at once. Colour bars and a grey ramp appear under the three rows
+  while one of them is selected: a converter that drives one gun lower than
+  the others tints the grey. RetroRGB measured the RGB-Pi 2's green more than
+  100 mV below its red and blue. The gains reach the tube from the next start
+  of the display process; changing one while it runs is live only on a
+  display process at least as new as this setting.
 - **test pattern.** Runs the first ROM whose title contains `240p` (the free
   240p Test Suite) through its system's core.
 

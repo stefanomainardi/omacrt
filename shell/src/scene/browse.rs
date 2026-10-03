@@ -983,7 +983,7 @@ impl Scene {
                 }
             }
             Screen::Profile { sel } => {
-                let rows = 7;
+                let rows = 10;
                 match nav {
                     Nav::Up if *sel > 0 => {
                         *sel -= 1;
@@ -1679,8 +1679,8 @@ impl Scene {
                 self.run_entry(&entry)
             }
             Screen::Profile { sel } => match sel {
-                5 => self.run_test_pattern(),
-                6 => {
+                8 => self.run_test_pattern(),
+                9 => {
                     if let Err(e) = self.profile.save(&self.library.config_dir) {
                         eprintln!("profile: {e}");
                     }
@@ -3086,7 +3086,8 @@ impl Scene {
             Screen::Profile { sel } => {
                 let y0 = self.draw_header(fb, "TV");
                 let p = self.profile.clone();
-                let rows: [(&str, String); 7] = [
+                let [red, green, blue] = p.gains();
+                let rows: [(&str, String); 10] = [
                     ("monitor", p.monitor.clone()),
                     ("h shift", format!("{:+}", p.h_shift)),
                     ("v shift", format!("{:+}", p.v_shift)),
@@ -3099,27 +3100,49 @@ impl Scene {
                             "off".into()
                         },
                     ),
+                    ("red", format!("{red:.2}")),
+                    ("green", format!("{green:.2}")),
+                    ("blue", format!("{blue:.2}")),
                     ("test pattern", "240p suite".into()),
                     ("save", String::new()),
                 ];
                 for (i, (label, value)) in rows.iter().enumerate() {
                     let y = y0 + i as i32 * row_h;
-                    let right = if i < 5 {
+                    let right = if i < 8 {
                         format!("< {value} >")
                     } else {
                         value.clone()
                     };
                     self.draw_row(fb, y, label, &right, i == sel, self.theme.paper);
                 }
-                let idx = format!("preset {}/{}", p.preset_index() + 1, PRESETS.len());
-                fb.text(left, h - 40, &idx, scale(self.theme.dim, 0.7), 1);
-                fb.text(
-                    left,
-                    h - 28,
-                    &cut("writes profile.toml, switchres.ini", max_cols),
-                    scale(self.theme.dim, 0.7),
-                    1,
-                );
+                if (5..=7).contains(&sel) {
+                    // Colour bars under the gains, so the channel being set
+                    // is judged against the others: white, the three mixes,
+                    // the three primaries, and a ramp of grey that should
+                    // stay grey all the way along.
+                    let bars = [
+                        0xffffff, 0xffff00, 0x00ffff, 0x00ff00, 0xff00ff, 0xff0000, 0x0000ff,
+                    ];
+                    let (bx, bw, by) = (left, w - 2 * left, h - 46);
+                    let cw = bw / bars.len() as i32;
+                    for (k, c) in bars.iter().enumerate() {
+                        fb.rect(bx + k as i32 * cw, by, cw, 18, *c);
+                    }
+                    for x in 0..bw {
+                        let v = (x * 255 / (bw - 1).max(1)) as u32;
+                        fb.rect(bx + x, by + 20, 1, 8, (v << 16) | (v << 8) | v);
+                    }
+                } else {
+                    let idx = format!("preset {}/{}", p.preset_index() + 1, PRESETS.len());
+                    fb.text(left, h - 40, &idx, scale(self.theme.dim, 0.7), 1);
+                    fb.text(
+                        left,
+                        h - 28,
+                        &cut("writes profile.toml, switchres.ini", max_cols),
+                        scale(self.theme.dim, 0.7),
+                        1,
+                    );
+                }
                 self.draw_hint(
                     fb,
                     left,

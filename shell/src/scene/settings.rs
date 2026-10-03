@@ -281,6 +281,20 @@ impl Scene {
             }
             3 => self.profile.h_size = (self.profile.h_size + dir as f32 * 0.01).clamp(0.8, 1.2),
             4 => self.profile.invert_sync = !self.profile.invert_sync,
+            5..=7 => {
+                let gain = match row {
+                    5 => &mut self.profile.red,
+                    6 => &mut self.profile.green,
+                    _ => &mut self.profile.blue,
+                };
+                *gain = (*gain + dir as f32 * 0.01).clamp(
+                    omacrt_shell::profile::GAIN_MIN,
+                    omacrt_shell::profile::GAIN_MAX,
+                );
+                // Straight to the display process, which owns the output's
+                // gamma table: the picture changes under the key.
+                let _ = omacrt_shell::crt::display::send(&self.profile.colour_command());
+            }
             _ => {}
         }
     }

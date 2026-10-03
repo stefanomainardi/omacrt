@@ -28,6 +28,35 @@ pub struct Profile {
     pub h_size: f32,
     /// Sync polarity flip for picky sets.
     pub invert_sync: bool,
+    /// Gain on each of the three colour channels, from `GAIN_MIN` to
+    /// `GAIN_MAX`, 1.0 for untouched. A converter that drives one gun lower
+    /// than the others tints the whole picture, and the RGB-Pi 2 has been
+    /// measured with its green more than 100 mV below red and blue. The
+    /// display process puts these in the output's gamma table.
+    #[serde(default = "unity")]
+    pub red: f32,
+    #[serde(default = "unity")]
+    pub green: f32,
+    #[serde(default = "unity")]
+    pub blue: f32,
+}
+
+fn unity() -> f32 {
+    1.0
+}
+
+/// How far a channel may be turned down or up.
+pub const GAIN_MIN: f32 = 0.70;
+pub const GAIN_MAX: f32 = 1.30;
+
+/// A gamma table for one channel: `len` steps from black to `gain` of full
+/// scale, straight, held at full scale where a gain above one runs past it.
+pub fn ramp(gain: f32, len: usize) -> Vec<u16> {
+    let gain = gain.clamp(GAIN_MIN, GAIN_MAX) as f64;
+    let last = len.saturating_sub(1).max(1) as f64;
+    (0..len)
+        .map(|i| ((i as f64 / last * gain).clamp(0.0, 1.0) * 65535.0).round() as u16)
+        .collect()
 }
 
 impl Default for Profile {
@@ -38,6 +67,9 @@ impl Default for Profile {
             v_shift: 0,
             h_size: 1.0,
             invert_sync: false,
+            red: 1.0,
+            green: 1.0,
+            blue: 1.0,
         }
     }
 }
@@ -57,6 +89,23 @@ impl Profile {
         let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
         crate::store::save(&Self::path(config_dir), text)?;
         crate::store::save(&config_dir.join("switchres.ini"), self.switchres_ini())
+    }
+
+    /// The three channel gains, each held inside its range.
+    pub fn gains(&self) -> [f32; 3] {
+        [self.red, self.green, self.blue].map(|g| {
+            if g.is_finite() {
+                g.clamp(GAIN_MIN, GAIN_MAX)
+            } else {
+                1.0
+            }
+        })
+    }
+
+    /// The control line that tells the display process the gains.
+    pub fn colour_command(&self) -> String {
+        let [r, g, b] = self.gains();
+        format!("colour {r:.3} {g:.3} {b:.3}")
     }
 
     pub fn preset_index(&self) -> usize {
@@ -102,5 +151,39 @@ impl Profile {
             "crt_switch_center_adjust = \"{}\"\ncrt_switch_porch_adjust = \"{}\"\n",
             self.h_shift, self.v_shift
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_unity_ramp_runs_from_black_to_full_scale() {
+        let r = ramp(1.0, 256);
+        assert_eq!((r[0], r[255]), (0, 65535));
+        assert!(r.windows(2).all(|w| w[0] <= w[1]));
+    }
+
+    #[test]
+    fn a_lowered_channel_tops_out_below_full_and_a_raised_one_clips() {
+        assert_eq!(
+            *ramp(0.9, 256).last().unwrap(),
+            (0.9f32 as f64 * 65535.0).round() as u16
+        );
+        let up = ramp(1.2, 256);
+        assert_eq!(*up.last().unwrap(), 65535);
+        assert_eq!(up[230], 65535, "a gain above one holds at full scale");
+        assert!(up[200] < 65535, "and runs straight below it");
+    }
+
+    #[test]
+    fn an_old_profile_without_gains_loads_at_unity() {
+        let p: Profile = toml::from_str(
+            "monitor = \"generic_15\"\nh_shift = 0\nv_shift = 0\nh_size = 1.0\ninvert_sync = false\n",
+        )
+        .unwrap();
+        assert_eq!(p.gains(), [1.0, 1.0, 1.0]);
+        assert_eq!(p.colour_command(), "colour 1.000 1.000 1.000");
     }
 }

@@ -1343,6 +1343,10 @@ impl Scene {
         self.chime_played = true;
         match system {
             Some("profile") => self.screen = Screen::Profile { sel: 0 },
+            Some(name) if name.starts_with("profile:") => {
+                let sel = name["profile:".len()..].parse().unwrap_or(0);
+                self.screen = Screen::Profile { sel };
+            }
             Some("pair") => {
                 self.screen = Screen::Pads {
                     sel: 0,

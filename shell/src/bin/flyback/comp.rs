@@ -192,6 +192,9 @@ pub struct Crt {
     /// The connector the lease gave us, kept so the refresh behaviour can be
     /// asked about after start-up.
     conn_handle: smithay::reexports::drm::control::connector::Handle,
+    /// The device and the CRTC whose gamma table carries the TV profile's
+    /// colour gains.
+    gamma: (DrmDeviceFd, smithay::reexports::drm::control::crtc::Handle),
     /// When a modeline was last asked for, until the first vblank in it.
     /// `use_mode` only tests the timing and stores it; the modeset itself
     /// happens on the next commit, so the time the television is dark is the
@@ -796,6 +799,17 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         }
     };
 
+    // The TV profile's colour gains, when it has any. A converter that
+    // drives one gun lower than the others is corrected here, once, for
+    // everything on the tube, rather than in each program.
+    let gains = omacrt_shell::profile::Profile::load(&omacrt_shell::crt::config_dir()).gains();
+    if gains != [1.0, 1.0, 1.0] {
+        match set_colour(&drm_fd, crtc, gains) {
+            Ok(()) => println!("colour: {:.3} {:.3} {:.3}", gains[0], gains[1], gains[2]),
+            Err(e) => eprintln!("colour: {e}"),
+        }
+    }
+
     // The DAC wants composite sync once the signal is up.
     if let Some(conn) = output::connectors()
         .into_iter()
@@ -951,6 +965,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         pacer_armed: false,
         vrr_on,
         conn_handle,
+        gamma: (drm_fd.clone(), crtc),
         mode_at: None,
         last_vblank: None,
         last_vblank_hw: None,
@@ -1453,6 +1468,20 @@ impl Crt {
                         }
                     }
                     _ => eprintln!("record: use `record start <file.mp4>` or `record stop`"),
+                }
+            }
+            // `colour R G B`: the channel gains, from the TV profile's page.
+            "colour" => {
+                let g: Vec<f32> = arg
+                    .split_whitespace()
+                    .filter_map(|v| v.parse().ok())
+                    .collect();
+                match g[..] {
+                    [r, g, b] => match set_colour(&self.gamma.0, self.gamma.1, [r, g, b]) {
+                        Ok(()) => println!("colour: {r:.3} {g:.3} {b:.3}"),
+                        Err(e) => eprintln!("colour: {e}"),
+                    },
+                    _ => eprintln!("colour: use `colour R G B`, each about 1.0"),
                 }
             }
             "monitor" => match arg.trim() {
@@ -3160,3 +3189,22 @@ delegate_output!(Crt);
 delegate_dmabuf!(Crt);
 delegate_viewporter!(Crt);
 delegate_presentation!(Crt);
+
+/// Put a gain on each colour channel through the CRTC's gamma table: a
+/// straight ramp from black to the gain, the same length as the table.
+fn set_colour(
+    fd: &DrmDeviceFd,
+    crtc: smithay::reexports::drm::control::crtc::Handle,
+    gains: [f32; 3],
+) -> Result<(), String> {
+    let len = fd
+        .get_crtc(crtc)
+        .map_err(|e| format!("crtc: {e}"))?
+        .gamma_length() as usize;
+    if len < 2 {
+        return Err("this output has no gamma table".into());
+    }
+    let ramp = |k: usize| omacrt_shell::profile::ramp(gains[k], len);
+    fd.set_gamma(crtc, &ramp(0), &ramp(1), &ramp(2))
+        .map_err(|e| format!("gamma: {e}"))
+}
