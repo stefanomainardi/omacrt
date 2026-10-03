@@ -64,8 +64,8 @@ const VERBS: Verbs = &[
                 "put the display back if it dies; started by `on`, ends with `off`",
             ),
             (
-                "mode [ntsc|pal|film|480i|576i] [--lines N] [--hz H] [--shift-x X] [--shift-y Y]",
-                "standard, active lines, the program's own field rate, picture shift",
+                "mode [ntsc|pal|film|480i|576i] [--lines N] [--hz H] [--shift-x X] [--shift-y Y] [--keep]",
+                "standard, active lines, the program's own field rate, picture shift; --keep redoes the mode the tube has",
             ),
             (
                 "rate [HZ|off]",
@@ -155,7 +155,7 @@ const VERBS: Verbs = &[
                 "fetch MAME's machine list, for the arcade filter",
             ),
             (
-                "library set SYS core=X|dir=D",
+                "library set SYS core=X|dir=D|shift_x=N|shift_y=N",
                 "change a system's core or folder in systems.toml",
             ),
             ("library roots add|remove DIR", ""),
@@ -3329,7 +3329,7 @@ fn cmd_library(args: &[String]) {
                 die("library set needs a system and key=value, e.g. library set arcade core=fbneo");
             };
             let Some((key, value)) = assign.split_once('=') else {
-                die("library set needs key=value (core, dir, aspect or shader)");
+                die("library set needs key=value (core, dir, aspect, shader, shift_x or shift_y)");
             };
             library::set_system_field(system, key, value).unwrap_or_else(|e| die(&e));
             term::sheet::step(system, format!("{key} = {value}"));
@@ -3901,14 +3901,23 @@ fn main() {
             }
             let flag =
                 |name: &str| -> Option<i32> { value(args, name).and_then(|v| v.parse().ok()) };
-            let lines = flag("--lines").map(|v| v.max(0) as u32);
+            // `--keep` asks for the timing the tube already has, with only
+            // what else is named changed: how a picture is centred while a
+            // game runs, without putting it back in a frame of another height
+            // or at another rate.
+            let keep = has(args, "--keep");
+            let lines = flag("--lines")
+                .map(|v| v.max(0) as u32)
+                .or_else(|| (keep && state.lines > 0).then_some(state.lines));
             // The rate the program actually runs at, which is not the
             // standard's. A picture produced at one rate and scanned at
             // another repeats a field whenever the two slip a whole frame
             // apart, and a European console against PAL does that every 2.6
             // seconds. Building it into the timing costs nothing: the mode is
             // being changed for this game anyway.
-            let hz: Option<f64> = value(args, "--hz").and_then(|v| v.parse().ok());
+            let hz: Option<f64> = value(args, "--hz")
+                .and_then(|v| v.parse().ok())
+                .or_else(|| (keep && state.hz > 0.0).then_some(state.hz));
             // A line count is what a system asks for, and it decides the
             // standard on its own: more lines than a progressive 15 kHz frame
             // holds is an interlaced picture, fewer is a progressive one. This
@@ -3960,9 +3969,16 @@ fn main() {
                         ),
                     }
                 }
-                if shift != (0, 0) {
+                // The television's own centring under the system's or the
+                // game's, as the road through Hyprland has always done. This
+                // road left it out, so the TV profile's shift moved nothing
+                // on a leased connector.
+                let profile =
+                    omacrt_shell::profile::Profile::load(&omacrt_shell::crt::config_dir());
+                let total = (profile.h_shift + shift.0, profile.v_shift + shift.1);
+                if total != (0, 0) {
                     let scale = ml.width() as f32 / 320.0;
-                    ml = ml.shifted((shift.0 as f32 * scale) as i32, shift.1);
+                    ml = ml.shifted((total.0 as f32 * scale).round() as i32, total.1);
                 }
                 match display::mode_outcome(&ml.to_hypr()) {
                     display::Outcome::Done => {}
@@ -3990,6 +4006,7 @@ fn main() {
                 state.lines = ml.height();
                 state.shift_x = shift.0;
                 state.shift_y = shift.1;
+                state.hz = ml.field_hz();
                 state.save();
                 println!(
                     "{} {}x{} {:.3} kHz {:.3} Hz",

@@ -7,6 +7,16 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- Centre picture in the pause menu: move the running game's picture on the
+  tube live, and keep the place for that game, its system or every game.
+
+### Fixed
+
+- The TV profile's h shift and v shift move the picture on the television;
+  they had no effect while the display process drove it.
+
 ## [0.14.0] - 2026-10-02
 
 ### Added

@@ -45,6 +45,9 @@ switches with a blend.
   state alone.
 - **Pause menu.** Select + Start, the home button, or F1: resume, save state,
   load state, rewind, fast forward, slow motion, reset, back to the launcher.
+  **Centre picture** puts a pattern of the frame's edges on the tube and
+  moves the picture live with the arrows, for this game, its system or every
+  game (the shoulders choose); A keeps it, B puts everything back.
   The compositor presses RetroArch's real hotkeys, so nothing depends on a
   network command. Every game with a save state carries a small arrow and says
   when it was left.

@@ -5,6 +5,7 @@
 pub mod ambient;
 pub mod arcade;
 pub mod assets;
+pub mod centring;
 pub mod colour;
 pub mod config;
 pub mod coredata;

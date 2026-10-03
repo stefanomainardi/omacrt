@@ -596,6 +596,11 @@ fn run(args: &Args) -> Result<(), String> {
     // The game running now, so the height its core reports can be written
     // down against it.
     let mut playing_path: Option<PathBuf> = None;
+    // A picture shift waiting to go to the tube: `Some(None)` re-applies the
+    // TV profile with the shift already there. Held here and sent one at a
+    // time, because a key held on the centring page asks for a dozen a
+    // second and mode changes in flight together can land in any order.
+    let mut shift_wanted: Option<Option<(i32, i32)>> = None;
     let mut port_plan: Vec<omacrt_shell::pads::Device> = Vec::new();
     let mut ports_checked = false;
     let mut lines_changed = false;
@@ -1612,9 +1617,17 @@ fn run(args: &Args) -> Result<(), String> {
         if let Ok((ow, oh)) = canvas.output_size() {
             scene.set_output_size(ow, oh);
         }
+        if let Some(s) = scene.take_shift_request() {
+            shift_wanted = Some(Some(s));
+        }
         if scene.take_profile_preview() && child.is_none() {
             scene.save_profile();
-            crt_mode_async(None);
+            shift_wanted = Some(None);
+        }
+        crt_mode_reap();
+        if let Some(w) = shift_wanted.filter(|_| crt_mode_idle()) {
+            shift_wanted = None;
+            crt_keep_async(w);
         }
         scene.draw(&mut fb, t);
         fb.roll(scene.roll(), t as f32);
@@ -2271,6 +2284,26 @@ fn crt_mode_async(geometry: Option<Geometry>) {
         Ok(child) => PENDING_MODE.with(|p| p.borrow_mut().push(child)),
         Err(e) => eprintln!("could not ask for a mode: {e}"),
     }
+}
+
+/// Move the picture with the timing the tube already has: the same frame
+/// and rate, only the porches changed, so the set keeps its lock.
+fn crt_keep_async(shift: Option<(i32, i32)>) {
+    let mut cmd = crt_mode_command(None);
+    cmd.arg("--keep");
+    if let Some((x, y)) = shift {
+        cmd.arg("--shift-x").arg(x.to_string());
+        cmd.arg("--shift-y").arg(y.to_string());
+    }
+    match cmd.spawn() {
+        Ok(child) => PENDING_MODE.with(|p| p.borrow_mut().push(child)),
+        Err(e) => eprintln!("could not ask for a mode: {e}"),
+    }
+}
+
+/// Whether no mode change is in flight.
+fn crt_mode_idle() -> bool {
+    PENDING_MODE.with(|p| p.borrow().is_empty())
 }
 
 thread_local! {

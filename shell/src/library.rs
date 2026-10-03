@@ -1602,11 +1602,26 @@ pub fn viewport_keys(fw: u32, fh: u32, screen: f32, wanted: f32) -> String {
 /// index. The file is ours (the header says so), so it is rewritten whole;
 /// per system option tables survive the round trip.
 pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), String> {
-    if !matches!(key, "core" | "dir" | "aspect" | "shader") {
+    if !matches!(
+        key,
+        "core" | "dir" | "aspect" | "shader" | "shift_x" | "shift_y"
+    ) {
         return Err(format!(
-            "{key}: only core, dir, aspect and shader can be set"
+            "{key}: only core, dir, aspect, shader, shift_x and shift_y can be set"
         ));
     }
+    // A shift is read back as a number, and a number written as a string
+    // would make the whole file fail to load.
+    let typed = if matches!(key, "shift_x" | "shift_y") {
+        toml::Value::Integer(
+            value
+                .trim()
+                .parse::<i64>()
+                .map_err(|_| format!("{key}: {value} is not a whole number"))?,
+        )
+    } else {
+        toml::Value::String(value.into())
+    };
     let path = default_path();
     let text = crate::config::read(&path).unwrap_or_default();
     let mut root: toml::Value = if text.trim().is_empty() {
@@ -1650,7 +1665,7 @@ pub fn set_system_field(system: &str, key: &str, value: &str) -> Result<(), Stri
     let t = entry
         .as_table_mut()
         .ok_or("systems.toml: bad system entry")?;
-    t.insert(key.into(), toml::Value::String(value.into()));
+    t.insert(key.into(), typed);
     // The version is written by hand at the top: a plain key has to come
     // before the `[[system]]` tables, which is not the order the map would
     // serialize it in.

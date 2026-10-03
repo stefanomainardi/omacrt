@@ -2137,15 +2137,16 @@ impl Scene {
                 crate::rates::known_game(&entry.game.path)
                     .or_else(|| standard.and_then(|s| crate::rates::known(&system.core, s)))
             };
-            if l.is_some()
-                || standard.is_some()
-                || hz.is_some()
-                || system.shift_x != 0
-                || system.shift_y != 0
-            {
+            // A game centred on its own page is started where it was left;
+            // every other game where its system's pictures sit.
+            let shift = omacrt_shell::centring::effective(
+                (system.shift_x, system.shift_y),
+                &entry.game.path,
+            );
+            if l.is_some() || standard.is_some() || hz.is_some() || shift != (0, 0) {
                 Some(Geometry {
                     lines: l,
-                    shift: Some((system.shift_x, system.shift_y)),
+                    shift: Some(shift),
                     follow: pinned.is_none(),
                     standard,
                     hz,
@@ -2338,6 +2339,7 @@ impl Scene {
 
     pub fn game_finished(&mut self, ok: bool) {
         self.stop_play_clock();
+        self.centring = None;
         self.running = None;
         let mut one_cabinet = false;
         if let Some((system, path)) = self.running_path.take() {

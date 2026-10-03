@@ -550,6 +550,9 @@ pub struct State {
     pub lines: u32,
     pub shift_x: i32,
     pub shift_y: i32,
+    /// The field rate of the timing the tube has, which `omacrt mode --keep`
+    /// builds again when only the picture's place changes.
+    pub hz: f64,
     pub previous_profile: String,
     pub previous_sink: String,
     pub audio_card: String,

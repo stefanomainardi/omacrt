@@ -13,7 +13,7 @@ omacrt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
 omacrt off                      launcher closed, audio back, output disabled
 omacrt boot                     login reset: output off, audio back to the desktop
 omacrt toggle
-omacrt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y]
+omacrt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y] [--keep]   # --keep: the timing the tube has, only the shift changed
 omacrt shell start|stop|restart|focus
 omacrt shell key <input>...   # home up down left right fire back fav alt start
                                    # search osk del next prev first last
@@ -30,7 +30,7 @@ omacrt bios import DIR [--all]
 omacrt bios discover [--json]   # folders on the roots and disks that hold BIOS files
 omacrt library [--json]
 omacrt library cores [--json]   # the core each system needs, installed or not, its package
-omacrt library set SYS core=X|dir=D   # change a system's core or folder in systems.toml
+omacrt library set SYS core=X|dir=D|shift_x=N|shift_y=N   # change a system's core, folder or picture shift in systems.toml
 omacrt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
 omacrt library arcade           # MAME's machine list, for the arcade filter
 omacrt library scan [DIR...] [--progress]   # --progress: one plain line per folder

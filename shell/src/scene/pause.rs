@@ -47,6 +47,11 @@ impl Scene {
     }
 
     fn resume_game(&mut self) -> PauseOutcome {
+        // Leaving with the centring page up is leaving without A: nothing
+        // is kept that was not asked to be.
+        if let Some(c) = self.centring.clone() {
+            self.close_centring(&c, false);
+        }
         let _ = omacrt_shell::game::pause_toggle();
         self.paused = None;
         self.pending.push(Sound::Select);
@@ -75,6 +80,10 @@ impl Scene {
         let Some(mut sel) = self.paused else {
             return PauseOutcome::None;
         };
+        if self.centring.is_some() {
+            self.centring_input(nav, fire, jump);
+            return PauseOutcome::None;
+        }
         if let Some(to) = pause_jump(sel, jump, PAUSE_ROWS.len()) {
             sel = to;
             self.paused = Some(sel);
@@ -139,6 +148,10 @@ impl Scene {
             PauseRow::Aspect | PauseRow::Shader => {
                 // A is the same as right on a choice: one list, one direction.
                 self.pause_choice(row, 1);
+                PauseOutcome::None
+            }
+            PauseRow::Centre => {
+                self.open_centring();
                 PauseOutcome::None
             }
             PauseRow::Reset => {
@@ -234,6 +247,13 @@ impl Scene {
                 } else {
                     label.to_string()
                 })
+            }
+            PauseRow::Centre => {
+                let path = self.running_path.as_ref().map(|(_, p)| p.clone())?;
+                let (x, y) =
+                    omacrt_shell::centring::effective((system.shift_x, system.shift_y), &path);
+                let own = omacrt_shell::centring::game(&path).is_some();
+                Some(format!("{}x{x:+} y{y:+}", if own { "game " } else { "" }))
             }
             PauseRow::Shader => {
                 let shaders = crate::library::installed_shaders();
@@ -345,7 +365,10 @@ impl Scene {
                 }
             }
         }
-        let row_h = 14;
+        // Fourteen pixels a row where they fit. A 224 line game pauses in a
+        // 224 line frame, and eleven rows of fourteen would run into the line
+        // a message is written on.
+        let row_h = ((h - 30 - y0) / PAUSE_ROWS.len() as i32).clamp(11, 14);
         let band_y = self.band(y0 + sel as i32 * row_h);
         self.select_bar(fb, left, band_y, width, row_h - 1);
         for (i, (row, icon, label)) in PAUSE_ROWS.iter().enumerate() {
@@ -376,6 +399,7 @@ impl Scene {
         // A choice is changed, not selected: the hint says so on its row.
         let hint: &[(&str, &str)] = match PAUSE_ROWS.get(sel).map(|(row, _, _)| *row) {
             Some(PauseRow::Aspect) | Some(PauseRow::Shader) => &[("A", "change"), ("B", "back")],
+            Some(PauseRow::Centre) => &[("A", "open"), ("B", "back")],
             _ => &[("A", "select"), ("B", "back")],
         };
         self.draw_hint(fb, left, h - 14, hint);
@@ -412,6 +436,244 @@ impl Scene {
 
 /// Where a shoulder press takes the selection, or nothing when it is already
 /// there. Backward goes to the first row, forward to the last.
+impl Scene {
+    /// Open the centring page for the running game, at the level the game
+    /// is placed by now: its own when it has one, its system's otherwise.
+    fn open_centring(&mut self) {
+        let Some((system, path)) = self.running_path.clone() else {
+            return;
+        };
+        let sys = self
+            .library
+            .systems
+            .iter()
+            .find(|s| s.name == system)
+            .map(|s| (s.shift_x, s.shift_y))
+            .unwrap_or((0, 0));
+        let game = omacrt_shell::centring::game(&path);
+        let profile = (self.profile.h_shift, self.profile.v_shift);
+        let (x, y) = game.unwrap_or(sys);
+        self.centring = Some(Centring {
+            scope: if game.is_some() { 0 } else { 1 },
+            x,
+            y,
+            profile,
+            system: sys,
+            game,
+        });
+        self.pending.push(Sound::Select);
+    }
+
+    /// What the centring page's level is set to, as saved when it opened.
+    fn centring_saved(c: &Centring, scope: usize) -> (i32, i32) {
+        match scope {
+            0 => c.game.unwrap_or(c.system),
+            1 => c.system,
+            _ => c.profile,
+        }
+    }
+
+    fn centring_input(&mut self, nav: Option<Nav>, fire: bool, jump: i32) {
+        let Some(mut c) = self.centring.clone() else {
+            return;
+        };
+        if nav == Some(Nav::Back) {
+            self.close_centring(&c, false);
+            return;
+        }
+        if fire {
+            self.close_centring(&c, true);
+            return;
+        }
+        let lim = omacrt_shell::centring::LIMIT;
+        let mut moved = true;
+        match nav {
+            Some(Nav::Left) => c.x = (c.x - 1).max(-lim),
+            Some(Nav::Right) => c.x = (c.x + 1).min(lim),
+            Some(Nav::Up) => c.y = (c.y - 1).max(-lim),
+            Some(Nav::Down) => c.y = (c.y + 1).min(lim),
+            _ => moved = false,
+        }
+        if jump != 0 {
+            // A level changed without saving is put back: the picture shows
+            // what the new level holds, so what is on the tube is always what
+            // the numbers say.
+            c.scope = (c.scope as i32 + jump).rem_euclid(3) as usize;
+            (c.x, c.y) = Self::centring_saved(&c, c.scope);
+            self.profile.h_shift = c.profile.0;
+            self.profile.v_shift = c.profile.1;
+            moved = true;
+        }
+        if moved {
+            self.pending.push(Sound::Move);
+            self.centring_show(&c);
+            self.centring = Some(c);
+        }
+    }
+
+    /// Put the page's picture on the tube: the level being set at its new
+    /// place, every other level as it is saved.
+    fn centring_show(&mut self, c: &Centring) {
+        let shift = match c.scope {
+            0 | 1 => (c.x, c.y),
+            _ => {
+                // The television's own level lives in the TV profile, which
+                // the mode command reads from disk.
+                self.profile.h_shift = c.x;
+                self.profile.v_shift = c.y;
+                self.save_profile();
+                c.game.unwrap_or(c.system)
+            }
+        };
+        self.shift_request = Some(shift);
+    }
+
+    /// Leave the page, keeping what it set or putting every level back.
+    fn close_centring(&mut self, c: &Centring, keep: bool) {
+        self.centring = None;
+        let Some((system, path)) = self.running_path.clone() else {
+            return;
+        };
+        if !keep {
+            self.profile.h_shift = c.profile.0;
+            self.profile.v_shift = c.profile.1;
+            self.save_profile();
+            self.shift_request = Some(c.game.unwrap_or(c.system));
+            self.pending.push(Sound::Select);
+            return;
+        }
+        let saved = match c.scope {
+            0 => omacrt_shell::centring::set_game(&path, Some((c.x, c.y)))
+                .map(|_| "centred for this game".to_string())
+                .map_err(|e| e.to_string()),
+            1 => {
+                // A system saved from a game's page is what that game is to
+                // follow from now on, so the game gives up its own place.
+                let r = crate::library::set_system_field(&system, "shift_x", &c.x.to_string())
+                    .and_then(|_| {
+                        crate::library::set_system_field(&system, "shift_y", &c.y.to_string())
+                    })
+                    .and_then(|_| {
+                        omacrt_shell::centring::set_game(&path, None).map_err(|e| e.to_string())
+                    });
+                if r.is_ok()
+                    && let Some(s) = self.library.systems.iter_mut().find(|s| s.name == system)
+                {
+                    s.shift_x = c.x;
+                    s.shift_y = c.y;
+                }
+                r.map(|_| format!("centred for every {system} game"))
+            }
+            _ => Ok("centred for every game".to_string()),
+        };
+        match saved {
+            Ok(said) => {
+                self.pending.push(Sound::Lock);
+                self.message = Some((said, self.now + 3.0));
+            }
+            Err(e) => {
+                self.pending.push(Sound::Crunch);
+                self.message = Some((format!("cannot save: {e}"), self.now + 4.0));
+            }
+        }
+    }
+
+    /// The centring page: the edges of the frame the tube has, nested a few
+    /// pixels apart so how much the set hides on each side can be counted,
+    /// ticks along the edges, the middle marked, and one line at the foot.
+    /// Nothing in the middle of the screen, because the edges are what is
+    /// being looked at.
+    pub(super) fn draw_centring(&mut self, fb: &mut Framebuffer) {
+        let Some(c) = self.centring.clone() else {
+            return;
+        };
+        let th = self.theme.clone();
+        let (w, h) = (fb.w as i32, fb.h as i32);
+        fb.clear(0x000000);
+        let edge = |fb: &mut Framebuffer, s: i32, col: Color| {
+            fb.rect(s, s, w - 2 * s, 1, col);
+            fb.rect(s, h - 1 - s, w - 2 * s, 1, col);
+            fb.rect(s, s, 1, h - 2 * s, col);
+            fb.rect(w - 1 - s, s, 1, h - 2 * s, col);
+        };
+        edge(fb, 0, th.yellow);
+        edge(fb, 4, th.dim);
+        edge(fb, 8, th.dim);
+        for x in (16..w).step_by(16) {
+            let len = if x % 32 == 0 { 5 } else { 3 };
+            fb.rect(x, 0, 1, len, th.fg);
+            fb.rect(x, h - len, 1, len, th.fg);
+        }
+        for y in (16..h).step_by(16) {
+            let len = if y % 32 == 0 { 5 } else { 3 };
+            fb.rect(0, y, len, 1, th.fg);
+            fb.rect(w - len, y, len, 1, th.fg);
+        }
+        let n = 14;
+        for (x, y, dx, dy) in [
+            (0, 0, 1, 1),
+            (w - 1, 0, -1, 1),
+            (0, h - 1, 1, -1),
+            (w - 1, h - 1, -1, -1),
+        ] {
+            for i in 0..n {
+                for k in 0..2 {
+                    fb.put(x + dx * i, y + dy * k, th.green);
+                    fb.put(x + dx * k, y + dy * i, th.green);
+                }
+            }
+        }
+        fb.rect(w / 2 - 10, h / 2, 21, 1, th.dim);
+        fb.rect(w / 2, h / 2 - 10, 1, 21, th.dim);
+        // The line at the foot: the game, where it is, which level, keys.
+        let (bx, by, bw, bh) = (16, h - 44, w - 32, 30);
+        fb.rect(bx, by, bw, bh, th.bg);
+        fb.rect(bx, by, bw, 1, th.selection);
+        fb.rect(bx, by + bh - 1, bw, 1, th.selection);
+        fb.rect(bx, by, 1, bh, th.selection);
+        fb.rect(bx + bw - 1, by, 1, bh, th.selection);
+        let title = self
+            .running
+            .as_ref()
+            .map(|(t, _)| t.clone())
+            .unwrap_or_default();
+        let room = ((bw - 12) / 8) as usize;
+        let t: String = title.chars().take(room.saturating_sub(10)).collect();
+        fb.text(bx + 6, by + 4, &t, th.paper, 1);
+        let place = format!("x{:+} y{:+}", c.x, c.y);
+        fb.text(
+            bx + bw - 6 - Framebuffer::text_width(&place, 1),
+            by + 4,
+            &place,
+            th.green,
+            1,
+        );
+        let system = self
+            .running_path
+            .as_ref()
+            .map(|(s, _)| s.clone())
+            .unwrap_or_default();
+        let mut x = bx + 6;
+        for (i, label) in ["game", system.as_str(), "all"].iter().enumerate() {
+            let cw = Framebuffer::text_width(label, 1) + 6;
+            if i == c.scope {
+                fb.rect(x, by + 15, cw, 11, th.selection);
+                fb.rect(x, by + 25, cw, 1, th.accent);
+                fb.text(x + 3, by + 17, label, th.paper, 1);
+            } else {
+                fb.text(x + 3, by + 17, label, th.dim, 1);
+            }
+            x += cw + 4;
+        }
+        // Measured first, because the keys are named for the device in use
+        // (Enter on a keyboard, A on a pad) and their width changes with it.
+        let keys: &[(&str, &str)] = &[("A", "keep"), ("B", "undo")];
+        let mut scratch = Framebuffer::new(fb.w, 12);
+        let hint_w = self.draw_hint(&mut scratch, 0, 2, keys) - 10;
+        self.draw_hint(fb, bx + bw - 6 - hint_w, by + 17, keys);
+    }
+}
+
 fn pause_jump(sel: usize, jump: i32, rows: usize) -> Option<usize> {
     if jump == 0 || rows == 0 {
         return None;

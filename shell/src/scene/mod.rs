@@ -477,13 +477,27 @@ pub(super) enum PauseRow {
     FastForward,
     SlowMotion,
     Aspect,
+    Centre,
     Shader,
     Reset,
     Quit,
 }
 
+/// The centring page: which level is being set and where the picture is,
+/// and what every level was when the page opened, for B to put back.
+#[derive(Clone, Debug)]
+pub(super) struct Centring {
+    /// 0 this game, 1 its system, 2 every game (the TV profile).
+    pub scope: usize,
+    pub x: i32,
+    pub y: i32,
+    pub profile: (i32, i32),
+    pub system: (i32, i32),
+    pub game: Option<(i32, i32)>,
+}
+
 /// Pause menu over a running game.
-const PAUSE_ROWS: [(PauseRow, icons::Icon, &str); 10] = [
+const PAUSE_ROWS: [(PauseRow, icons::Icon, &str); 11] = [
     (PauseRow::Resume, icons::GAMEPAD, "Resume"),
     (PauseRow::Save, icons::SAVE, "Save state"),
     (PauseRow::Load, icons::LOAD, "Load state"),
@@ -491,6 +505,7 @@ const PAUSE_ROWS: [(PauseRow, icons::Icon, &str); 10] = [
     (PauseRow::FastForward, icons::FORWARD, "Fast forward"),
     (PauseRow::SlowMotion, icons::SLOW, "Slow motion"),
     (PauseRow::Aspect, icons::FIT, "Picture"),
+    (PauseRow::Centre, icons::TV, "Centre picture"),
     (PauseRow::Shader, icons::BRUSH, "Shader"),
     (PauseRow::Reset, icons::RESET, "Reset game"),
     (PauseRow::Quit, icons::LAUNCHER, "Back to launcher"),
@@ -686,6 +701,11 @@ pub struct Scene {
     running_path: Option<(String, PathBuf)>,
     /// Selected row of the pause menu while the running game is paused.
     paused: Option<usize>,
+    /// The centring page opened from the pause menu, while it is up.
+    centring: Option<Centring>,
+    /// A picture shift for the main loop to put on the tube, with the
+    /// timing it already has.
+    shift_request: Option<(i32, i32)>,
     mark_small: effects::Grid,
     profile: Profile,
     recent: Vec<(usize, PathBuf)>,
@@ -947,6 +967,8 @@ impl Scene {
             running: None,
             running_path: None,
             paused: None,
+            centring: None,
+            shift_request: None,
             mark_small: grid,
         };
         scene.refresh_counts();
@@ -1295,6 +1317,11 @@ impl Scene {
 
     /// True once when a TV profile shift changed; the host saves the profile
     /// and moves the picture so the change shows while adjusting.
+    /// A picture shift the centring page wants on the tube now.
+    pub fn take_shift_request(&mut self) -> Option<(i32, i32)> {
+        self.shift_request.take()
+    }
+
     pub fn take_profile_preview(&mut self) -> bool {
         std::mem::take(&mut self.profile_preview)
     }
@@ -1408,6 +1435,19 @@ impl Scene {
                 self.running = Some(("Chrono Trigger".into(), "snes".into()));
                 self.running_path = Some(("snes".into(), std::path::PathBuf::from("ct.sfc")));
                 self.paused = Some(6);
+            }
+            Some("centre") => {
+                self.running = Some(("Chrono Trigger".into(), "snes".into()));
+                self.running_path = Some(("snes".into(), std::path::PathBuf::from("ct.sfc")));
+                self.paused = Some(7);
+                self.centring = Some(Centring {
+                    scope: 0,
+                    x: 2,
+                    y: -1,
+                    profile: (0, 0),
+                    system: (0, 0),
+                    game: None,
+                });
             }
             Some("ambienthub") => self.screen = Screen::AmbientHub { sel: 0 },
             Some("saversettings") => self.screen = Screen::Saver { sel: 0 },
@@ -1729,7 +1769,9 @@ impl Scene {
         }
         let t = self.t();
         if self.running.is_some() {
-            if self.paused.is_some() {
+            if self.centring.is_some() {
+                self.draw_centring(fb);
+            } else if self.paused.is_some() {
                 self.draw_pause(fb);
             } else if self.player.is_some() {
                 self.draw_player(fb);

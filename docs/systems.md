@@ -172,9 +172,20 @@ it out.
 
 - **monitor.** A Switchres preset: `generic_15`, `ntsc`, `pal`, `arcade_15`,
   `arcade_15_25`, `arcade_15_25_31`, `arcade_31`.
-- **h shift, v shift.** Picture centering, -16 to 16. Written as
-  `crt_switch_center_adjust` and `crt_switch_porch_adjust` for RetroArch and
-  as `h_shift` and `v_shift` in `switchres.ini`.
+- **h shift, v shift.** Picture centering, -16 to 16, in the launcher's
+  pixels and in lines. This is the television's own level, applied to every
+  mode the tube is given.
+
+### Where a picture sits
+
+A picture is placed at three levels, each a correction on the one before:
+the TV profile for the set, `shift_x` and `shift_y` in a system's entry in
+`systems.toml` for a console whose timing puts its picture somewhere else,
+and `~/.config/omacrt/centring.tsv` for a single game. A game's entry
+replaces its system's rather than adding to it. All three are set from the
+pause menu's **Centre picture** page while the game runs, and the system's
+also with `omacrt library set SYS shift_x=N`. Moving the picture changes the
+porches of the timing and not its line rate, so the set keeps its lock.
 - **h size.** Horizontal size 0.80 to 1.20 for `switchres.ini`.
 - **invert sync.** Flips sync polarity for sets that need it.
 - **test pattern.** Runs the first ROM whose title contains `240p` (the free
