@@ -11,6 +11,8 @@ caveat for a 0.x project: anything may still move.
 
 - Centre picture in the pause menu: move the running game's picture on the
   tube live, and keep the place for that game, its system or every game.
+- An arcade game's own record shows under its flyer, read from the high
+  score table its emulator saves (`omacrt library hiscore` lists them).
 - Red, green and blue gains in the TV settings, with colour bars to set them
   against, for a converter that drives one colour lower than the others.
 

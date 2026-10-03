@@ -2933,6 +2933,14 @@ impl Scene {
                         cw
                     };
                     let mut x = bx + 5;
+                    // An arcade cabinet's own record, the way it showed it
+                    // between games.
+                    if let Some(hi) = self.records.of(&system, &entry.game.path) {
+                        let text = format!("HI {hi}");
+                        if Framebuffer::text_width(&text, 1) + 6 <= stage_w - 10 {
+                            x += chip(fb, x, &text, th.yellow) + 4;
+                        }
+                    }
                     if let Some(tag) = tags.first() {
                         let tag: String = tag.chars().take(cols / 2).collect();
                         x += chip(fb, x, &tag, th.cyan) + 4;

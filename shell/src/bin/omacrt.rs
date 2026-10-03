@@ -155,8 +155,12 @@ const VERBS: Verbs = &[
                 "fetch MAME's machine list, for the arcade filter",
             ),
             (
+                "library hiscore [SET...]",
+                "the record each arcade cabinet keeps, read from its saved high scores",
+            ),
+            (
                 "library set SYS core=X|dir=D|shift_x=N|shift_y=N",
-                "change a system's core or folder in systems.toml",
+                "change a system's core, folder or picture shift in systems.toml",
             ),
             ("library roots add|remove DIR", ""),
             (
@@ -3110,6 +3114,43 @@ fn cmd_library(args: &[String]) {
         // a game's screen faces, how many play it, what they hold. The
         // launcher fetches it itself the first time the filter is opened;
         // this is the same fetch from a terminal.
+        // The records the arcade games keep: every set with a saved table,
+        // or the sets named.
+        Some("hiscore") => {
+            let named: Vec<String> = pos.iter().skip(1).map(|s| s.to_string()).collect();
+            let sets: Vec<String> = if named.is_empty() {
+                let dirs = [
+                    omacrt_shell::coredata::system_dir().join("mame/hiscore"),
+                    omacrt_shell::crt::home().join(".config/retroarch/saves/FinalBurn Neo/fbneo"),
+                ];
+                let mut all: Vec<String> = dirs
+                    .iter()
+                    .filter_map(|d| std::fs::read_dir(d).ok())
+                    .flatten()
+                    .flatten()
+                    .filter_map(|e| {
+                        let p = e.path();
+                        (p.extension()? == "hi")
+                            .then(|| p.file_stem()?.to_str().map(String::from))?
+                    })
+                    .collect();
+                all.sort();
+                all.dedup();
+                all
+            } else {
+                named
+            };
+            if sets.is_empty() {
+                die("no saved high score tables yet: play an arcade game and quit it");
+            }
+            for set in sets {
+                let title = omacrt_shell::arcade::title(&set).unwrap_or_default();
+                match omacrt_shell::hiscore::record(&set) {
+                    Some(v) => println!("{set:<12} {v:>12}  {title}"),
+                    None => println!("{set:<12} {:>12}  {title}", "-"),
+                }
+            }
+        }
         Some("arcade") => {
             let lib = library();
             let core = lib

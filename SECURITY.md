@@ -78,6 +78,9 @@ Nothing is downloaded during installation. While running, the project fetches:
 - box art and the per system name index from `thumbnails.libretro.com`
 - the flyer of an arcade game that repository has no box art for, from the
   Arcade Database at `adb.arcadeitalia.net`
+- the hi2txt description of an arcade game's saved high score table, from
+  the hi2txt-xml repository on `raw.githubusercontent.com`, only for a game
+  that has saved one
 - radio stations and their logos from the Radio Browser directory
 - album art through Spotify's public oEmbed endpoint
 - YouTube results and streams through `yt-dlp`, when you ask for them
@@ -86,13 +89,13 @@ Nothing is downloaded during installation. While running, the project fetches:
   both only when the ambient page is set up
 - your own photographs from your own Immich server, if you set one up
 
-Eight of the nine go out through `curl`, and all eight ask one function for
+Nine of the ten go out through `curl`, and all nine ask one function for
 it. `net::curl` restricts the protocol list to HTTP and HTTPS, on the request
 and on any redirect, sets a timeout and a size cap, fails on an error status
 and never saves the error page, and passes arguments as arguments. So a
 crafted URL cannot make it read a local file and a redirect cannot leave those
 two protocols. None of that is a decision at the call site: what a caller
-chooses is how long and how large its own fetch may be. The ninth is
+chooses is how long and how large its own fetch may be. The tenth is
 YouTube, which goes through `yt-dlp` and its own network stack, with the
 target after a `--` and never through a shell.
 

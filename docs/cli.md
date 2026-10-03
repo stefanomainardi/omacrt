@@ -33,6 +33,7 @@ omacrt library cores [--json]   # the core each system needs, installed or not, 
 omacrt library set SYS core=X|dir=D|shift_x=N|shift_y=N   # change a system's core, folder or picture shift in systems.toml
 omacrt library covers [SYS...] [--limit N] [--force]   # box art for the collection, titles matched
 omacrt library arcade           # MAME's machine list, for the arcade filter
+omacrt library hiscore [SET...] # the record each arcade cabinet keeps
 omacrt library scan [DIR...] [--progress]   # --progress: one plain line per folder
 omacrt library discover [--json] | roots add|remove DIR | assign DIR SYSTEM | unknown | systems
 omacrt watchdog                 put the display back if it dies; `on` starts it, `off` stops it
@@ -91,6 +92,15 @@ set's own, else its parent's, else its title screen. Model 3 has nothing at
 all in the repository, so every cover there comes this way.
 The launcher does the same lazily for any cover it misses. Covers are shrunk
 to 320 pixels on the way in.
+
+`library hiscore` reads the record each arcade game keeps. FinalBurn Neo and
+MAME save a game's high score table when it closes, as a dump of the game's
+memory laid out its own way; the hi2txt project describes that layout for
+thousands of games, and the description for a set is fetched the first time
+the set is looked at and kept in `~/.cache/omacrt/hiscore/`. Only the common
+part of hi2txt's format is read, and a game described with anything beyond
+it shows no record rather than a wrong one. The launcher shows the same
+record under an arcade game's flyer.
 
 `library arcade` fetches the machine list MAME publishes with each release,
 for the version the MAME core was built from, and keeps one line per machine

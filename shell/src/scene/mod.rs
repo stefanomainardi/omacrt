@@ -703,6 +703,8 @@ pub struct Scene {
     paused: Option<usize>,
     /// The centring page opened from the pause menu, while it is up.
     centring: Option<Centring>,
+    /// Arcade records, by set: when the dump was written and what it holds.
+    records: Records,
     /// A picture shift for the main loop to put on the tube, with the
     /// timing it already has.
     shift_request: Option<(i32, i32)>,
@@ -968,6 +970,7 @@ impl Scene {
             running_path: None,
             paused: None,
             centring: None,
+            records: Records::new(),
             shift_request: None,
             mark_small: grid,
         };
@@ -1478,6 +1481,26 @@ impl Scene {
             }
             Some("style") => self.screen = Screen::Style { sel: 0 },
             Some("fit") => self.screen = Screen::VideoFit { sel: 0 },
+            // `system:stem` opens a system's list with that game selected.
+            Some(n)
+                if n.split_once(':')
+                    .is_some_and(|(sys, _)| self.library.systems.iter().any(|s| s.name == sys)) =>
+            {
+                let (sys, stem) = n.split_once(':').unwrap_or((n, ""));
+                let i = self.library.systems.iter().position(|s| s.name == sys);
+                self.open_games(i);
+                if let Some(at) = self
+                    .games
+                    .iter()
+                    .position(|e| e.game.path.file_stem().and_then(|f| f.to_str()) == Some(stem))
+                {
+                    self.screen = Screen::Games {
+                        sys: i,
+                        sel: at,
+                        top: at.saturating_sub(5),
+                    };
+                }
+            }
             Some(n) => match self.library.systems.iter().position(|s| s.name == n) {
                 Some(i) => self.open_games(Some(i)),
                 None => self.screen = Screen::Systems { sel: 0, top: 0 },
@@ -2063,4 +2086,49 @@ fn watch_title(target: &str, given: &str) -> String {
         return host.to_string();
     }
     crate::library::clean_title(Path::new(target))
+}
+
+/// The records arcade cabinets keep, read on a thread of their own: the
+/// first look at a set fetches its hi2txt definition, and nothing in the
+/// frame loop waits on a socket.
+pub(super) struct Records {
+    known: std::collections::HashMap<String, (Option<std::time::SystemTime>, Option<u64>)>,
+    pending: std::collections::HashSet<String>,
+    tx: std::sync::mpsc::Sender<(String, Option<std::time::SystemTime>, Option<u64>)>,
+    rx: std::sync::mpsc::Receiver<(String, Option<std::time::SystemTime>, Option<u64>)>,
+}
+
+impl Records {
+    pub fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel();
+        Self {
+            known: Default::default(),
+            pending: Default::default(),
+            tx,
+            rx,
+        }
+    }
+
+    /// The record of an arcade game, as last read; a dump written since is
+    /// read again in the background.
+    pub fn of(&mut self, system: &str, game: &Path) -> Option<u64> {
+        while let Ok((set, at, v)) = self.rx.try_recv() {
+            self.pending.remove(&set);
+            self.known.insert(set, (at, v));
+        }
+        let stem = game.file_stem()?.to_str()?;
+        let set = omacrt_shell::covers::arcade_set(system, stem)?;
+        let at = omacrt_shell::hiscore::dump_path(&set)
+            .and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+        let held = self.known.get(&set).copied();
+        if held.map(|(t, _)| t) != Some(at) && at.is_some() && !self.pending.contains(&set) {
+            self.pending.insert(set.clone());
+            let tx = self.tx.clone();
+            std::thread::spawn(move || {
+                let v = omacrt_shell::hiscore::record(&set);
+                let _ = tx.send((set, at, v));
+            });
+        }
+        held.and_then(|(_, v)| v)
+    }
 }

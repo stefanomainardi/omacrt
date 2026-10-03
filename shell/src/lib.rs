@@ -12,6 +12,7 @@ pub mod coredata;
 pub mod covers;
 pub mod crt;
 pub mod game;
+pub mod hiscore;
 pub mod immich;
 pub mod index;
 pub mod leasefiles;
