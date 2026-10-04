@@ -1492,11 +1492,19 @@ impl Scene {
                 let (sys, stem) = n.split_once(':').unwrap_or((n, ""));
                 let i = self.library.systems.iter().position(|s| s.name == sys);
                 self.open_games(i);
-                if let Some(at) = self
+                // By file name, else by the start of the title, since a list
+                // that keeps one entry a title may show another region's file.
+                let want = stem.to_lowercase();
+                let at = self
                     .games
                     .iter()
                     .position(|e| e.game.path.file_stem().and_then(|f| f.to_str()) == Some(stem))
-                {
+                    .or_else(|| {
+                        self.games
+                            .iter()
+                            .position(|e| e.game.title.to_lowercase().starts_with(&want))
+                    });
+                if let Some(at) = at {
                     self.screen = Screen::Games {
                         sys: i,
                         sel: at,

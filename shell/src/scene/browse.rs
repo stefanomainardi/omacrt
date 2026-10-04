@@ -2958,7 +2958,12 @@ impl Scene {
                     }
                     if let Some(tag) = tags.first() {
                         let tag: String = tag.chars().take(cols / 2).collect();
-                        x += chip(fb, x, &tag, th.cyan) + 4;
+                        // After a record or an achievement there may be no
+                        // room left, and a chip cut by the stage's edge reads
+                        // as a fault.
+                        if x + Framebuffer::text_width(&tag, 1) + 6 <= bx + stage_w - 4 {
+                            x += chip(fb, x, &tag, th.cyan) + 4;
+                        }
                     }
                     if let Some(label) = self
                         .playtime
