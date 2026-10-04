@@ -3067,14 +3067,18 @@ impl Scene {
                             );
                         }
                     }
-                    let pos = format!("{}/{}", sel + 1, n);
-                    fb.text(
-                        w - left - Framebuffer::text_width(&pos, 1),
-                        h - 28,
-                        &pos,
-                        self.theme.dim,
-                        1,
-                    );
+                    // The size of somebody's collection is not for a public
+                    // page.
+                    if !shots() {
+                        let pos = format!("{}/{}", sel + 1, n);
+                        fb.text(
+                            w - left - Framebuffer::text_width(&pos, 1),
+                            h - 28,
+                            &pos,
+                            self.theme.dim,
+                            1,
+                        );
+                    }
                 }
                 let is_video = sys
                     .map(|i| self.library.systems[i].is_video())
