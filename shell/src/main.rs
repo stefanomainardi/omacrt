@@ -720,11 +720,13 @@ fn run(args: &Args) -> Result<(), String> {
                     // rate to ask for: back to the mode's own.
                     let _ = omacrt_shell::crt::display::send("rate off");
                     if lines_changed {
-                        // Back to the standard the machine is configured for.
-                        // `mode` with nothing to say would keep whatever the
-                        // game moved the tube to, and a launcher left at 50 Hz
-                        // flickers.
-                        let back = (standard_now != configured_standard).then_some(Geometry {
+                        // Back to the standard the machine is configured for,
+                        // named every time. `mode` with nothing to say keeps
+                        // whatever the game moved the tube to: a launcher left
+                        // at 50 Hz flickers, and one left at 480i after a
+                        // GameCube game stays interlaced, because the game's
+                        // standard was the configured one all along.
+                        let back = Some(Geometry {
                             lines: None,
                             shift: None,
                             follow: true,

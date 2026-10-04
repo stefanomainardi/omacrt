@@ -269,7 +269,10 @@ pub fn leaseable(connector: &str) -> bool {
             let Ok(info) = dev.get_connector(*h, false) else {
                 continue;
             };
-            let name = format!("{:?}", info.interface()).replace('-', "");
+            // The kernel's own short name (`DP`, `HDMI-A`), not the Debug
+            // form: that spells a DisplayPort connector `DisplayPort` and
+            // never matched one.
+            let name = info.interface().as_str().replace('-', "");
             if name != kind || info.interface_id().to_string() != num {
                 continue;
             }

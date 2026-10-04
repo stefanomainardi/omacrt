@@ -292,6 +292,16 @@ fn focus_note() -> String {
     }
 }
 
+/// The command that hands a connector over at boot. The installer's unit
+/// defaults to HDMI-A-1, so any other connector has to be named to it.
+fn install_line(connector: &str) -> String {
+    if connector == "HDMI-A-1" {
+        "sudo bin/omacrt-install --system".into()
+    } else {
+        format!("sudo OMACRT_CONNECTOR={connector} bin/omacrt-install --system")
+    }
+}
+
 fn die(msg: &str) -> ! {
     eprintln!("omacrt: {msg}");
     exit(1)
@@ -1687,7 +1697,7 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
             sh.section("next");
             if boot_step {
                 sh.verb(
-                    "sudo bin/omacrt-install --system",
+                    &install_line(&chosen.name),
                     "hand the connector over at boot",
                 );
             }
@@ -1703,7 +1713,10 @@ fn cmd_setup(cfg: &Config, args: &[String]) -> i32 {
             }
             println!("\nnext");
             if boot_step {
-                println!("  sudo bin/omacrt-install --system   hand the connector over at boot");
+                println!(
+                    "  {}   hand the connector over at boot",
+                    install_line(&chosen.name)
+                );
             }
             println!("  omacrt doctor                     what is still missing");
             println!("  omacrt library scan ~/Games       index the collection");
@@ -4000,9 +4013,9 @@ fn main() {
             // holds is an interlaced picture, fewer is a progressive one. This
             // is what makes a 480 line console readable without anybody having
             // to name a mode.
-            // `applied` is what goes to the tube; `std` is what gets saved, so
-            // that a 480 line game does not leave the launcher interlaced when
-            // it ends.
+            // `applied` is what goes to the tube, and what gets saved. A game
+            // that moved the tube to 480i does not leave the launcher there:
+            // the launcher names its configured standard when the game ends.
             let applied = crt::applied_standard_with(std, lines.unwrap_or(0), cfg.output.interlace);
             // The picture shift is a calibration of the television, not a
             // parameter of this call: a game that asks for a line count must

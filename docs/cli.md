@@ -203,21 +203,23 @@ stored modeline can only be replaced by another modeline (`mode = "WxH"` is
 ignored). Validated on the RGB-Pi 2:
 
 ```text
-ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"   # 15.73 kHz, 60.04 Hz
-pal  = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"   # 15.63 kHz, 50.08 Hz
+ntsc = "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync"   # 15.73 kHz, 60.04 Hz
+pal  = "72 3520 3740 4078 4608 288 291 294 312 -hsync -vsync"   # 15.63 kHz, 50.08 Hz
 ```
 
-Two interlaced timings sit next to them, for video and not games. They
-keep the same line rate and draw two fields per frame, so the tube shows 480
-or 576 lines:
+Two interlaced timings sit next to them. They keep the same line rate and
+draw two fields per frame, so the tube shows 480 or 576 lines:
 
 ```text
-ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
-pal_i  = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
+ntsc_i = "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace"
+pal_i  = "72 3520 3740 4078 4608 576 582 588 625 -hsync -vsync interlace"
 ```
 
-`mode 480i` and `mode 576i` apply them, and the launcher draws at the full
-line count. The refresh in `status` is the frame rate, half the field rate:
+`mode 480i` and `mode 576i` apply them. With `interlace = true` under
+`[output]`, a game whose console drew 480 lines (Dreamcast, Naomi, PS2,
+GameCube, Wii, Xbox) gets one too, and the launcher's own screens go back to
+240 progressive when it ends. Those screens stay 320 by 240 and are scaled
+into an interlaced mode. The refresh in `status` is the frame rate, half the field rate:
 29.96 Hz means 59.93 fields.
 
 A stock `amdgpu` accepts both modelines and programs them, and then scans them
@@ -325,12 +327,13 @@ connector = ""        # empty: first HDMI output with a Mortaca (RGB-Pi 2) EDID
 position = "auto"
 csync = "xor"         # and | xor | separate
 standard = "ntsc"
+interlace = false     # true only on a kernel that can scan out interlace
 
 [modelines]
-ntsc = "72 3520 3695 4033 4577 240 242 245 262 -hsync -vsync"
-pal = "72 3840 3948 4290 4608 288 291 294 312 -hsync -vsync"
-ntsc_i = "72 3520 3695 4033 4577 480 484 490 525 -hsync -vsync interlace"
-pal_i = "72 3840 3948 4290 4608 576 582 588 625 -hsync -vsync interlace"
+ntsc = "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync"
+pal = "72 3520 3740 4078 4608 288 291 294 312 -hsync -vsync"
+ntsc_i = "72 3520 3781 4119 4577 480 484 490 525 -hsync -vsync interlace"
+pal_i = "72 3520 3740 4078 4608 576 582 588 625 -hsync -vsync interlace"
 
 [shell]
 bin = "omacrt-shell"

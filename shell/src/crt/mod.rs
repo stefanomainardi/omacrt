@@ -378,6 +378,11 @@ position = "auto"
 csync = "xor"
 # Standard used by `omacrt on` without an argument: "ntsc" or "pal".
 standard = "ntsc"
+# Give a game that draws 480 lines (Dreamcast, PS2, GameCube) a real 480i
+# picture. Needs a kernel that can scan out interlace (the 15 kHz patches):
+# stock amdgpu takes the mode and shows a narrow strip. Off, those games are
+# shown at 240 progressive, which is soft but right.
+interlace = false
 # Let the vertical blanking stretch frame by frame. Off: a television's
 # vertical oscillator is locked to what it has been given, and a field whose
 # length keeps changing makes the picture move. A program's own field rate is
@@ -659,7 +664,10 @@ pub fn set_value(key: &str, value: &str) -> Result<(), String> {
         .split_once('.')
         .ok_or_else(|| format!("{key}: expected section.key, e.g. audio.volume"))?;
     let allowed: &[(&str, &[&str])] = &[
-        ("output", &["connector", "position", "csync", "standard"]),
+        (
+            "output",
+            &["connector", "position", "csync", "standard", "interlace"],
+        ),
         ("audio", &["route", "system_default", "volume"]),
         ("shell", &["autostart"]),
         ("modelines", &["ntsc", "pal", "film", "ntsc_i", "pal_i"]),

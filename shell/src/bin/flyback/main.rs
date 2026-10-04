@@ -239,7 +239,7 @@ fn props(want: &str) {
             let Ok(info) = dev.get_connector(*h, false) else {
                 continue;
             };
-            let name = format!("{:?}-{}", info.interface(), info.interface_id());
+            let name = format!("{}-{}", info.interface().as_str(), info.interface_id());
             if !name.contains(
                 want.trim_start_matches("HDMI-A-")
                     .trim_start_matches(|c: char| !c.is_ascii_digit()),

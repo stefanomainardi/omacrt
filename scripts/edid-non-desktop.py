@@ -47,9 +47,24 @@ if "--freesync" in sys.argv:
     args = [a for a in args if a != sys.argv[sys.argv.index("--freesync") + 1]]
 
 src = open(args[0], "rb").read()
-if len(src) < 256 or src[128] != 0x02:
-    sys.exit("need an EDID with a CTA-861 extension block")
-base, cta = src[:128], bytearray(src[128:256])
+if len(src) < 128:
+    # A television has no EDID of its own, and a passive VGA path often
+    # carries none. The kernel has nothing to mark non-desktop then; one has
+    # to be given to it with drm.edid_firmware (docs/15khz.md).
+    sys.exit("no EDID on this connector: load one with drm.edid_firmware first")
+base = bytearray(src[:128])
+if len(src) >= 256 and src[128] == 0x02:
+    cta = bytearray(src[128:256])
+else:
+    # A base block alone, which is what VGA monitors and the 15 kHz EDIDs
+    # made by Switchres carry. The vendor block has to live in a CTA-861
+    # extension, so an empty one is added: revision 3, no data blocks, no
+    # detailed timings, and the base block told it now has one extension.
+    cta = bytearray(128)
+    cta[0], cta[1], cta[2] = 0x02, 0x03, 4
+    base[126] = 1
+    base[127] = (-sum(base[:127])) & 0xFF
+base = bytes(base)
 dtd_off = cta[2]
 data = bytes(cta[4:dtd_off])
 i, dtds = dtd_off, b""

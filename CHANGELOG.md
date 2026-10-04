@@ -7,6 +7,24 @@ caveat for a 0.x project: anything may still move.
 
 ## [Unreleased]
 
+### Added
+
+- `interlace` in `crt.toml`'s `[output]` section and in `omacrt config set`.
+
+### Changed
+
+- `omacrt setup` names the connector in the boot handover command when it is
+  not `HDMI-A-1`.
+
+### Fixed
+
+- A DisplayPort connector can be handed to the television; it was never
+  recognised as offered for leasing.
+- The boot handover works with an EDID that has no CTA-861 extension, as
+  VGA adapters and 15 kHz EDIDs made by Switchres carry.
+- With `interlace = true`, the launcher goes back to 240 progressive after a
+  480 line game instead of staying interlaced.
+
 ## [0.15.0] - 2026-10-04
 
 ### Added
