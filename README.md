@@ -33,6 +33,61 @@ Images were captured from the framebuffer with `omacrt shot`; the boot animation
 uses `omacrt record`. Scanlines come from the television and are absent from
 these captures. More demonstrations are on [omacrt.com](https://omacrt.com).
 
+## Features
+
+**The television**
+
+- One output leased to Flyback, OmaCRT's own compositor; the other screens
+  stay on the desktop.
+- 15 kHz modes, 240 lines for NTSC and 288 for PAL, switched per game to its
+  own line count and refresh rate.
+- The picture centred and sized live from the pause menu, for one game, a
+  system or the whole set, and a colour gain per channel for the converter.
+- Button to scanout latency measured, and shown by `omacrt status`.
+
+**Games**
+
+- Any folder layout indexed into systems, with box art, console models on a
+  stage, a cover flow and search.
+- RetroArch for consoles and arcade boards; Supermodel for Sega Model 3,
+  drawn at the tube's 240 lines.
+- A pause menu over the game: save states, a resume prompt, rewind, fast
+  forward, picture and shader.
+- Pads mapped on the tube and kept in port order, with rumble where the
+  console had it.
+- Every game at the same loudness on the television.
+- Play time per game, a high score table of the games played most, and
+  RetroAchievements progress under each cover.
+
+**Arcade**
+
+- MAME and FinalBurn Neo sets shown by title, with their original flyers as
+  covers.
+- Filters by orientation, players, controls, emulation status and clones.
+- Each cabinet's own record, read from the high score table it saves.
+
+**Music and video**
+
+- A hi-fi deck over cliamp: radio by country and genre, Spotify, local
+  files, seven visualizers, synced lyrics and a ten band equaliser.
+- Local films and YouTube fitted to a 4:3 tube.
+
+**When nothing is playing**
+
+- An arcade hall as the home screen, with people walking in.
+- Idle pages in turn: the weather painted over a town, a photo frame from
+  your own Immich server, a gallery and a system monitor.
+
+**The desktop**
+
+- On Omarchy, a bar plugin, a library overlay and a menu entry; plain
+  Hyprland runs the same launcher.
+- `omacrt`, one command line for the tube, the library, pads and audio, with
+  a `doctor` self test.
+
+See the [launcher guide](docs/launcher.md), [Omarchy integration](docs/omarchy.md)
+and [keyboard and pad bindings](docs/input.md).
+
 ## Why
 
 OmaCRT began as a way to play games on a CRT from an everyday desktop and
@@ -132,23 +187,6 @@ establish compatibility with an untested television.
 | [`docs/sets.md`](docs/sets.md)                       | Hardware test reports and how to submit one                 |
 | [Development study](https://omacrt.com/log/flyback/) | Design and measurement notes, videos and diagrams           |
 
-## What is on the television
-
-- **Games.** A collection indexed from any disk in any folder layout, box art,
-  console pictures, a cover flow, search across tens of thousands of titles,
-  pads mapped on the tube, save states in sight, a pause menu over the game.
-- **Music.** cliamp as the engine: radio by country and genre, Spotify and the
-  other providers it knows, a hi-fi deck with cassette, turntable and VU
-  meters, seven visualizers, synced lyrics, a ten band equaliser.
-- **Video.** Local films fitted to the tube, YouTube searched and played from
-  the television, a link sent from the desktop.
-- **When nothing is playing.** Four pages take turns: the wordmark under a
-  text effect, a photo frame reading the house's own Immich server, the
-  weather drawn as a window, and a system monitor as a 16 bit status screen.
-
-See the [launcher guide](docs/launcher.md), [Omarchy integration](docs/omarchy.md)
-and [keyboard and pad bindings](docs/input.md).
-
 ## Hardware
 
 | Part       | What worked                                                                                            |
@@ -188,6 +226,9 @@ sudo bin/omacrt-install --system  # once: the boot time EDID override that hands
 omacrt library scan ~/Games       # index your collection, any folder layout
 omacrt on                         # tube on: 15 kHz timing, DAC sync, audio, launcher
 ```
+
+Sega Model 3 needs Supermodel built to start under Wayland:
+`cd packaging/supermodel-omacrt && makepkg -si`.
 
 There is an Arch package in [`packaging/`](packaging/README.md) for people who
 would rather not build by hand, and `bin/omacrt-install --uninstall`

@@ -55,6 +55,9 @@ to it over a documented interface.
 
 - [RetroArch](https://www.retroarch.com) (GPL 3.0) and its cores, each under
   its own licence.
+- [Supermodel](https://github.com/trzy/Supermodel) (GPL 3.0), for Sega Model 3,
+  built from source by `packaging/supermodel-omacrt` with one line changed so
+  it starts under Wayland.
 - [mpv](https://mpv.io) (GPL 2.0 or later) and
   [yt-dlp](https://github.com/yt-dlp/yt-dlp) (Unlicense).
 - [cliamp](https://github.com/bjarneo/cliamp), the music engine, spoken to over
@@ -84,6 +87,20 @@ to it over a documented interface.
 - **The libretro buildbot** (<https://buildbot.libretro.com>): the extra files
   a core needs and does not ship, Dolphin's `Sys` folder among them, fetched
   once on a first launch.
+- **MAME's machine list** (<https://github.com/mamedev/mame/releases>): the
+  `-listxml` archive MAME publishes with each release, fetched once for the
+  version the core was built from and reduced to what the arcade filter
+  needs, in `~/.cache/omacrt/arcade`.
+- **The Arcade Database** (<https://adb.arcadeitalia.net>): the original flyer
+  of an arcade game the libretro thumbnails have no box art for, fetched on
+  demand into `~/.cache/omacrt`. The flyers belong to their publishers.
+- **hi2txt-xml** (<https://github.com/GreatStoneEx/hi2txt-xml>, GPL 2.0):
+  the description of each arcade game's saved high score table, fetched for a
+  set the first time it is looked at and kept in `~/.cache/omacrt/hiscore`.
+  Nothing from it is bundled.
+- **RetroAchievements** (<https://retroachievements.org>): your own progress,
+  read through the site's web API with the key from your account, when you
+  set one up.
 - **wttr.in** (<https://wttr.in>): one line of weather for the ambient page,
   no key and no account.
 - **An Immich server**, if you set one up: your own photographs, over your own

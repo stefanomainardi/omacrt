@@ -78,6 +78,8 @@ Nothing is downloaded during installation. While running, the project fetches:
 - box art and the per system name index from `thumbnails.libretro.com`
 - the flyer of an arcade game that repository has no box art for, from the
   Arcade Database at `adb.arcadeitalia.net`
+- MAME's machine list for the arcade filter, the archive MAME publishes with
+  each release on `github.com`, once per MAME version
 - your RetroAchievements progress, from `retroachievements.org`, only when
   you have set up an account (see below)
 - the hi2txt description of an arcade game's saved high score table, from
@@ -91,13 +93,13 @@ Nothing is downloaded during installation. While running, the project fetches:
   both only when the ambient page is set up
 - your own photographs from your own Immich server, if you set one up
 
-Ten of the eleven go out through `curl`, and all ten ask one function for
+Eleven of the twelve go out through `curl`, and all eleven ask one function for
 it. `net::curl` restricts the protocol list to HTTP and HTTPS, on the request
 and on any redirect, sets a timeout and a size cap, fails on an error status
 and never saves the error page, and passes arguments as arguments. So a
 crafted URL cannot make it read a local file and a redirect cannot leave those
 two protocols. None of that is a decision at the call site: what a caller
-chooses is how long and how large its own fetch may be. The eleventh is
+chooses is how long and how large its own fetch may be. The twelfth is
 YouTube, which goes through `yt-dlp` and its own network stack, with the
 target after a `--` and never through a shell.
 
