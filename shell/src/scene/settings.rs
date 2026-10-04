@@ -279,7 +279,10 @@ impl Scene {
                 self.profile.v_shift = (self.profile.v_shift + dir).clamp(-16, 16);
                 self.profile_preview = true;
             }
-            3 => self.profile.h_size = (self.profile.h_size + dir as f32 * 0.01).clamp(0.8, 1.2),
+            3 => {
+                self.profile.h_size = (self.profile.h_size + dir as f32 * 0.01).clamp(0.8, 1.2);
+                self.profile_preview = true;
+            }
             4 => self.profile.invert_sync = !self.profile.invert_sync,
             5..=7 => {
                 let gain = match row {

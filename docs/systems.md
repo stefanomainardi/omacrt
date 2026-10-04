@@ -186,7 +186,12 @@ replaces its system's rather than adding to it. All three are set from the
 pause menu's **Centre picture** page while the game runs, and the system's
 also with `omacrt library set SYS shift_x=N`. Moving the picture changes the
 porches of the timing and not its line rate, so the set keeps its lock.
-- **h size.** Horizontal size 0.80 to 1.20 for `switchres.ini`.
+- **h size.** Horizontal size, 0.80 to 1.20. With the clock and the length of
+  the line fixed, fewer active samples make a narrower picture: the samples
+  given up go half to each porch, so the picture stays centred and the line
+  rate never moves. The program on the tube is given the new width to draw
+  into. Widening stops where the porches reach their minimum, which on the
+  stock NTSC line is about 1.14.
 - **invert sync.** Flips sync polarity for sets that need it.
 - **red, green, blue.** A gain on each colour channel, 0.70 to 1.30, put in
   the output's gamma table by the display process, so it corrects everything

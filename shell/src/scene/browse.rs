@@ -2025,7 +2025,10 @@ impl Scene {
                 let frame = crate::library::standard_for_path(&entry.game.path)
                     .and_then(|std| {
                         let cfg = omacrt_shell::crt::Config::load();
+                        // The width the set's horizontal size leaves, which
+                        // is the width the mode command gives the tube.
                         omacrt_shell::crt::output::Modeline::parse(cfg.modeline(std)?)
+                            .map(|m| m.sized(self.profile.h_size))
                             .map(|m| (m.width(), m.height()))
                     })
                     .unwrap_or(self.output_size);

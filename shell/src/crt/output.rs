@@ -498,6 +498,37 @@ impl Modeline {
         m
     }
 
+    /// Make the picture narrower or wider on the tube by `factor` of its
+    /// width, about its middle, with the line rate untouched.
+    ///
+    /// A set's horizontal size is how much of each line carries picture.
+    /// With the clock and the total length of the line fixed, fewer active
+    /// samples is a narrower picture, and the samples given up go half to
+    /// each porch so the picture stays where it was centred. The program
+    /// drawing it is given the new width to draw into. The porches keep the
+    /// same minimums as a shift, so a factor the line has no room for is held
+    /// at the most it has; the width stays a multiple of eight.
+    pub fn sized(&self, factor: f32) -> Self {
+        if !factor.is_finite() || (factor - 1.0).abs() < 0.001 {
+            return self.clone();
+        }
+        let w = self.h[0] as i32;
+        let front = (self.h[1] - self.h[0]) as i32;
+        let back = (self.h[3] - self.h[2]) as i32;
+        let want = ((w as f32 * factor) / 8.0).round() as i32 * 8;
+        // Half the change goes to each porch; neither may fall below its
+        // minimum, and the picture keeps at least half its width.
+        let room = 2 * (front - 8).min(back - 16).max(0);
+        let new_w = want.clamp(w / 2, w + room / 8 * 8);
+        let delta = w - new_w;
+        let half = delta / 2;
+        let mut m = self.clone();
+        m.h[0] = new_w as u32;
+        m.h[1] = (self.h[1] as i32 - half) as u32;
+        m.h[2] = (self.h[2] as i32 - half) as u32;
+        m
+    }
+
     pub fn to_hypr(&self) -> String {
         format!(
             "modeline {} {} {} {} {} {} {} {} {} {}",
@@ -1148,5 +1179,48 @@ mod field_rate {
         let tight = m.at_field_hz(59.9227, 0.0).unwrap();
         assert!((tight.vfreq_hz() - 59.9227).abs() > 0.01);
         assert_eq!(tight.h[3], m.h[3], "the line rate must not have moved");
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+
+    const NTSC: &str = "72 3520 3781 4119 4577 240 242 245 262 -hsync -vsync";
+
+    #[test]
+    fn a_narrower_picture_keeps_the_line_rate_and_its_middle() {
+        let m = Modeline::parse(NTSC).unwrap();
+        let n = m.sized(0.95);
+        assert_eq!(n.width(), 3344);
+        assert_eq!(n.h[3], m.h[3], "the line is as long as it was");
+        assert!((n.hfreq_khz() - m.hfreq_khz()).abs() < 1e-9);
+        assert!(
+            (n.centre_us() - m.centre_us()).abs() < 1e-9,
+            "the middle moved"
+        );
+        assert_eq!(
+            n.h[2] - n.h[1],
+            m.h[2] - m.h[1],
+            "the sync pulse is as long"
+        );
+    }
+
+    #[test]
+    fn a_wider_picture_stops_where_the_porches_run_out() {
+        let m = Modeline::parse(NTSC).unwrap();
+        let w = m.sized(1.20);
+        assert!(w.width() > m.width());
+        assert!(w.h[1] - w.h[0] >= 8, "front porch kept");
+        assert!(w.h[3] - w.h[2] >= 16, "back porch kept");
+        assert_eq!(w.width() % 8, 0);
+        assert!((w.centre_us() - m.centre_us()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn unity_leaves_the_timing_alone() {
+        let m = Modeline::parse(NTSC).unwrap();
+        assert_eq!(m.sized(1.0).h, m.h);
+        assert_eq!(m.sized(f32::NAN).h, m.h);
     }
 }

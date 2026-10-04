@@ -22,6 +22,8 @@ caveat for a 0.x project: anything may still move.
 
 - The TV profile's h shift and v shift move the picture on the television;
   they had no effect while the display process drove it.
+- The TV profile's h size makes the picture narrower or wider on the
+  television; it had no effect at all.
 
 ## [0.14.0] - 2026-10-02
 

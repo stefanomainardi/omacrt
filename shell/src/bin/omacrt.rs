@@ -982,6 +982,7 @@ fn apply_mode(
     // The TV profile's shift is global; the caller adds the system's own.
     // Shifts are in launcher pixels (320 wide), scaled to the mode's width.
     let profile = omacrt_shell::profile::Profile::load(&omacrt_shell::crt::config_dir());
+    let ml = ml.sized(profile.h_size);
     let sx = (ml.width() as f64 / 320.0).max(1.0);
     let dx = ((profile.h_shift + shift.0) as f64 * sx).round() as i32;
     let dy = profile.v_shift + shift.1;
@@ -4051,6 +4052,9 @@ fn main() {
                 // on a leased connector.
                 let profile =
                     omacrt_shell::profile::Profile::load(&omacrt_shell::crt::config_dir());
+                // The set's horizontal size, before the shift is worked out
+                // in samples of the line that results.
+                ml = ml.sized(profile.h_size);
                 let total = (profile.h_shift + shift.0, profile.v_shift + shift.1);
                 if total != (0, 0) {
                     let scale = ml.width() as f32 / 320.0;
