@@ -10,7 +10,8 @@ omacrt setup [--connector NAME] [--standard ntsc|pal] [--dry-run] [--force]
 omacrt status [--json]          output, mode, latency, DAC, audio, launcher, library, BIOS
 omacrt version                  which version this is
 omacrt on [ntsc|pal]            modeline, DAC csync, audio to the TV, launcher
-omacrt off                      launcher closed, audio back, output disabled
+omacrt off [--release]          launcher closed, audio back, output disabled
+                                     --release: the connector back to the desktop until the next login
 omacrt boot                     login reset: output off, audio back to the desktop
 omacrt toggle
 omacrt mode ntsc|pal|film|480i|576i [--lines N] [--shift-x X] [--shift-y Y] [--keep]   # --keep: the timing the tube has, only the shift changed

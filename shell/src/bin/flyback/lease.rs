@@ -241,6 +241,14 @@ impl Lease {
         })
     }
 
+    /// The compositor connection's socket, for a caller that waits on it:
+    /// the keeper, which shares this file with the display process.
+    #[allow(dead_code)]
+    pub fn poll_fd(&self) -> std::os::fd::RawFd {
+        use std::os::fd::AsRawFd;
+        self.conn.backend().poll_fd().as_raw_fd()
+    }
+
     /// Service the compositor connection without blocking. Returns false once
     /// the lease is gone, which is either a polite `Finished` from the
     /// compositor or the connection to it breaking: a compositor that dies

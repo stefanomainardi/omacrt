@@ -42,6 +42,36 @@ cannot be told to stop touching an output's timing, and will not give a
 client the scanout. Leasing is the supported way to ask for all three at
 once, and it makes everything after this possible.
 
+### It borrows the lease from a keeper, so it can be restarted
+
+A lease does not survive the client that took it, and Hyprland does not
+lend a connector twice in one session. Both are in the code rather than in
+the protocol's promises: when the client's `wp_drm_lease_v1` object goes,
+Aquamarine's `CDRMLease::~CDRMLease` calls `drmModeRevokeLease`, and
+`DRMLease.cpp` keeps a list of connectors already sent and never sends one
+again. A compositor that took the lease itself could therefore never be
+restarted, after a crash or for an update, without the tube going dark until
+the next login.
+
+So the lease is taken by `flyback-keeper`, a process of about two hundred
+lines with no GPU, no buffers and no clients of its own. It holds the Wayland
+connection the lease lives on, listens on `$XDG_RUNTIME_DIR/omacrt/keeper.sock`
+(this user only), and lends the lease's DRM descriptor to one Flyback at a
+time over `SCM_RIGHTS`. In the kernel the lease's master belongs to the open
+file, not to a process, so the descriptor that arrives carries everything, and
+the lease lasts for as long as the keeper's own copy is open.
+
+A Flyback that dies, cleanly or not, closes its end of the socket, and the
+next one asks again. Because every Flyback shares the keeper's open file, the
+framebuffers and buffer handles a dead one made are still on it; a new Flyback
+removes them all before it makes any of its own (`hold.rs`, `sweep`). A
+Flyback started by hand with no keeper running takes the lease itself, as it
+always did.
+
+What a restart still costs is the clients. The launcher, RetroArch and mpv are
+Wayland clients of Flyback, and a compositor cannot be swapped out under its
+clients, so they go with it; the watchdog brings the launcher back.
+
 ### It programs a 15 kHz modeline, and refuses everything else
 
 The timing comes from `crt.toml`. Before any of it reaches the kernel it goes
@@ -232,6 +262,9 @@ four files, on smithay 0.7.
 | --- | --- |
 | `shell/src/bin/flyback/main.rs` | entry point, the probe mode, DRM property dumps |
 | `shell/src/bin/flyback/lease.rs` | the `wp_drm_lease_v1` client: ask the desktop what it offers, take the connector |
+| `shell/src/bin/flyback/hold.rs` | the lease from the keeper or from the compositor, and the sweep of what a previous Flyback left |
+| `shell/src/bin/flyback-keeper.rs` | the keeper: takes the lease, keeps its connection, lends the descriptor |
+| `shell/src/crt/keeper.rs` | the keeper's protocol, its state and the client side, with tests |
 | `shell/src/bin/flyback/comp.rs` | the compositor: globals, the frame scheduler, the DRM output, the control pipe, recording |
 | `shell/src/bin/flyback/host.rs` | the optional preview window on the desktop, so the tube can be watched without looking at it |
 | `shell/src/crt/output.rs` | `Modeline`, its parser, and `Modeline::fault` |

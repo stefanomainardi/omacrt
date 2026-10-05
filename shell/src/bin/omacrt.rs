@@ -49,7 +49,10 @@ const VERBS: Verbs = &[
                 "on [ntsc|pal]",
                 "15 kHz modeline, DAC csync, audio to the TV, launcher",
             ),
-            ("off", "launcher closed, audio back, output disabled"),
+            (
+                "off [--release]",
+                "launcher closed, audio back, output disabled; --release gives the connector back for the session",
+            ),
             (
                 "restart",
                 "off and on again, which is what puts a new build on the air",
@@ -595,6 +598,19 @@ fn status(cfg: &Config) -> Value {
         // installed and not yet running.
         "stale": display::is_stale(display::pid(), &display::binary()),
     });
+    // The keeper holds the lease for the session; the display process borrows
+    // the tube from it. Its own answer, since only it knows who holds what.
+    st["keeper"] = match crt::keeper::status() {
+        Ok(text) => {
+            let w: Vec<&str> = text.split_whitespace().collect();
+            json!({
+                "holding": true,
+                "connector": w.first(),
+                "holder": w.get(3).and_then(|p| p.parse::<i64>().ok()),
+            })
+        }
+        Err(_) => json!({ "holding": false }),
+    };
     let pids = launcher::pids();
     st["shell"] = json!({
         "running": !pids.is_empty(),
@@ -770,6 +786,17 @@ fn print_status(st: &Value) {
                 "  default sink"
             } else {
                 ""
+            }
+        );
+    }
+    let k = &st["keeper"];
+    if k["holding"].as_bool().unwrap_or(false) {
+        println!(
+            "Keeper:     holding {}{}",
+            k["connector"].as_str().unwrap_or("?"),
+            match k["holder"].as_i64() {
+                Some(p) => format!(", lent to display process {p}"),
+                None => ", nobody driving it".into(),
             }
         );
     }
@@ -3924,7 +3951,21 @@ fn main() {
             }
         }
         "on" => cmd_on(&cfg, positional(args).first().map(|s| s.as_str())),
-        "off" => cmd_off(&cfg),
+        "off" => {
+            cmd_off(&cfg);
+            // The keeper holds the lease for the session, so `off` and `on`
+            // can follow each other all evening. `--release` ends it and
+            // hands the connector back to the desktop, for good until the
+            // next login.
+            if has(args, "--release") {
+                match crt::keeper::release() {
+                    Ok(_) => println!(
+                        "keeper:     released; the connector is the desktop's until the next login"
+                    ),
+                    Err(e) => println!("keeper:     {e}"),
+                }
+            }
+        }
         // Nothing to pass. It used to ignore whatever came after it, so
         // `omacrt watchdog --stop` - a reasonable guess, and one that was
         // made - started a second watchdog instead of stopping the first.
@@ -3948,9 +3989,10 @@ fn main() {
             }
         }
         // Off and on again, in one word. An install writes new binaries and
-        // leaves the running ones alone: a lease cannot be handed to a new
-        // process while the old one holds it, and the timing is programmed at
-        // start-up, so nothing short of this puts an update on the air.
+        // leaves the running ones alone, and the timing is programmed at
+        // start-up, so this is what puts an update on the air. The lease
+        // stays with the keeper throughout: the new display process borrows
+        // the tube the old one gave back.
         "restart" => {
             if status(&cfg)["active"].as_bool().unwrap_or(false) {
                 cmd_off(&cfg);

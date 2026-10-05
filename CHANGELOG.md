@@ -17,6 +17,12 @@ caveat for a 0.x project: anything may still move.
 
 ### Changed
 
+- The television's lease is held for the whole session by a small process of
+  its own, `flyback-keeper`. The display process can now be restarted: the
+  watchdog brings the tube back after a crash, `omacrt off` and `omacrt on`
+  work any number of times in a session, and `omacrt restart` puts an update
+  to the display process on the air. `omacrt off --release` gives the
+  connector back to the desktop. Takes effect from the next login.
 - `omacrt setup` names the connector in the boot handover command when it is
   not `HDMI-A-1`.
 

@@ -320,6 +320,13 @@ pub fn binary() -> PathBuf {
     resolve(BINARY, exe.as_deref(), std::env::var_os("PATH").as_deref())
 }
 
+/// A binary that ships with this one, found the same way: beside this
+/// program, then on the PATH, then in a checkout's build folder.
+pub fn sibling(name: &str) -> PathBuf {
+    let exe = std::env::current_exe().ok();
+    resolve(name, exe.as_deref(), std::env::var_os("PATH").as_deref())
+}
+
 /// The compositor's process and file name. It is what a reader of the bar or
 /// the report is being told is driving the tube, so it is public.
 pub const BINARY: &str = "flyback";
@@ -397,6 +404,15 @@ pub fn start(connector: &str) -> Result<String, String> {
 pub fn start_with_sink(connector: &str, sink: Option<&str>) -> Result<String, String> {
     if running() {
         return Ok("already running".into());
+    }
+    // The keeper first: it takes the lease and keeps it for the session, so
+    // this display process, and any that replaces it, borrows the tube from
+    // it. An install without the keeper's binary leaves the display process
+    // to take the lease itself, as it did before there was one.
+    if let Err(e) = super::keeper::start(connector)
+        && !(e.contains("No such file") || e.contains("not found"))
+    {
+        return Err(format!("keeper: {e}"));
     }
     let _ = std::fs::create_dir_all(super::state_dir());
     let log = crate::logfile::open(&log_path()).map_err(|e| e.to_string())?;

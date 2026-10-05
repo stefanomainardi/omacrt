@@ -39,6 +39,14 @@ a fallback already in place, and it stays that way. What needs Omarchy lives in
 
 None of these is theoretical.
 
+**Never stop `flyback-keeper` during a session.** It holds the television's
+DRM lease, and Hyprland revokes a lease when its holder disconnects and never
+lends that connector again until the next login. The display process borrows
+the lease from it and can be restarted (`omacrt restart`, or the watchdog
+after a crash); the keeper cannot. A keeper built from new code starts at the
+next login, and nothing else should ever start one. `omacrt off --release`
+is the deliberate way to end it.
+
 **Never touch `~/.config/omarchy/plugins` while the session is locked, and
 never ask the shell to rescan plugins while it is locked.** The Omarchy shell
 watches those folders and reloads plugin code on any file change; under the
@@ -134,6 +142,7 @@ alone.
 | `crt/mod.rs` | `Config` (`crt.toml`), `State` (`state.json`), paths, `run` |
 | `crt/output.rs` | Modelines, standards, the mode the tube is set to |
 | `crt/display.rs` | Starting and talking to the leased display process |
+| `crt/keeper.rs` | The lease keeper's protocol and state: the lease lent over a socket |
 | `crt/launcher.rs` | Starting, stopping and focusing the launcher |
 | `crt/control.rs` | The launcher's control pipe: one input or screen name per line |
 | `crt/dac.rs` | The DAC over I2C: sync mode, status |

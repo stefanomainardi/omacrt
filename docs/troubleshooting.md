@@ -157,7 +157,16 @@ answer. A connector already built as a desktop monitor stays one. The DRM
 lease protocol says a compositor should offer a connector again "when a leased
 connector becomes available again", and this one does not.
 
-So the display process never gives a lease up on its own any more. When the
+Since the keeper, the lease is not the display process's to give up. It is
+held by `flyback-keeper` for the whole session, and the display process
+borrows it: a display process that dies is restarted by the watchdog and
+takes the tube back, `omacrt off` and `omacrt on` can follow each other all
+evening, and an update to the display process is `omacrt restart` away.
+`omacrt status` shows the keeper and who it has lent the tube to. What is
+still one way is the keeper itself: stopping it, or `omacrt off --release`,
+hands the connector back to the desktop until the next login.
+
+The display process still never gives a lease up over a fault. When the
 connector starts refusing page flips it resets the buffers, asks for the
 timing again and retries with growing pauses, writing one line each time.
 Retrying may not fix a card whose display block has stopped answering, but it

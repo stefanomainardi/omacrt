@@ -53,6 +53,7 @@ macro_rules! eprintln {
 }
 
 mod comp;
+mod hold;
 mod host;
 mod lease;
 

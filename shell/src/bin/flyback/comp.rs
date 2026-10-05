@@ -66,7 +66,7 @@
 //! while holding it. There is no compositor left to run at that point.
 
 use crate::drm_mode;
-use crate::lease::Lease;
+use crate::hold::Hold;
 use omacrt_shell::crt::output::Modeline;
 use omacrt_shell::crt::{Config, dac, display, output};
 use smithay::backend::allocator::Fourcc;
@@ -350,7 +350,7 @@ pub struct Crt {
     /// or `None` before the first one. Kept only so the log says it once
     /// rather than sixty times a second.
     scanout_direct: Option<bool>,
-    lease: Lease,
+    lease: Hold,
     running: bool,
     frames: u64,
     last_stats: Instant,
@@ -715,17 +715,19 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         ));
     }
 
-    let mut lease = Lease::take(&want)?;
+    // From the keeper when `omacrt on` started one, so the lease outlives
+    // this process; straight from the compositor when started by hand.
+    let (lease, fd) = Hold::take(&want)?;
     println!(
-        "leased {} (DRM connector {})",
-        lease.name, lease.connector_id
+        "leased {} (DRM connector {}){}",
+        lease.name,
+        lease.connector_id,
+        if lease.kept() {
+            ", from the keeper"
+        } else {
+            ""
+        }
     );
-    // A granted lease always carries the descriptor; without it there is no
-    // output to drive, and the display process saying so beats a panic that
-    // the watchdog would restart in a loop.
-    let Some(fd) = lease.fd.take() else {
-        return Err("the lease arrived without a file descriptor".into());
-    };
 
     // DRM side: device, buffers, renderer.
     let dev_id = smithay::reexports::rustix::fs::fstat(fd.as_fd())

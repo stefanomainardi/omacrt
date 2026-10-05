@@ -273,7 +273,7 @@ for arg in "$@"; do
         step "the binaries belong to the package; remove it with pacman"
       else
         step "removing the binaries from $bin_dir"
-        for b in omacrt omacrt-shell flyback omacrt-pick; do
+        for b in omacrt omacrt-shell flyback flyback-keeper omacrt-pick; do
           rm -f "$bin_dir/$b"
         done
       fi
@@ -345,7 +345,7 @@ else
   picker="$repo/bin/omacrt-pick"
 fi
 
-for b in omacrt omacrt-shell flyback; do
+for b in omacrt omacrt-shell flyback flyback-keeper; do
   [ -x "$built_dir/$b" ] || { echo "missing $built_dir/$b" >&2; exit 1; }
 done
 [ -f "$picker" ] || { echo "missing $picker" >&2; exit 1; }
@@ -364,6 +364,10 @@ else
   install -m 755 "$built_dir/omacrt" "$bin_dir/omacrt"
   install -m 755 "$built_dir/omacrt-shell" "$bin_dir/omacrt-shell"
   install -m 755 "$built_dir/flyback" "$bin_dir/flyback"
+  # The keeper holds the tube's lease for the whole session. Replacing the
+  # file leaves a running keeper as it is; the new one starts at the next
+  # login, the only time a keeper ever starts.
+  install -m 755 "$built_dir/flyback-keeper" "$bin_dir/flyback-keeper"
   # The desktop picker: a script, not a binary, but it belongs beside them.
   install -m 755 "$picker" "$bin_dir/omacrt-pick"
 fi
