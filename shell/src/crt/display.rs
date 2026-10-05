@@ -605,6 +605,19 @@ pub fn record_stop() -> std::io::Result<()> {
     send("record stop")
 }
 
+/// Start the replay ring: the display process keeps the newest minute of the
+/// tube in two second pieces under `dir`, with the television's sound.
+pub fn replay_start(dir: &str, sink: Option<&str>) -> std::io::Result<()> {
+    match sink {
+        Some(s) => send(&format!("replay start {dir} {s}")),
+        None => send(&format!("replay start {dir}")),
+    }
+}
+
+pub fn replay_stop() -> std::io::Result<()> {
+    send("replay stop")
+}
+
 #[cfg(test)]
 mod resolve_tests {
     use super::{BINARY, resolve};

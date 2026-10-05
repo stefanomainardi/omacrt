@@ -360,6 +360,9 @@ pub struct Crt {
     pub host: Option<crate::host::Host>,
     /// Video capture of the tube through ffmpeg, when recording.
     recorder: Option<Recorder>,
+    /// The last half minute of a game, kept as a ring of short pieces on disk
+    /// for the launcher to make a replay out of. Only while a game is on top.
+    replay: Option<Recorder>,
 }
 
 /// ffmpeg fed with raw frames of the tube (scaled to a 4:3 picture, each
@@ -372,6 +375,8 @@ struct Recorder {
     thread: Option<std::thread::JoinHandle<()>>,
     frames: u64,
     path: String,
+    w: usize,
+    h: usize,
 }
 
 /// What one client takes between being told it may draw and committing.
@@ -481,6 +486,12 @@ const FRAME_DEADLINE: Duration = Duration::from_secs(2);
 const REC_W: usize = 1280;
 const REC_H: usize = 960;
 
+/// The ring's picture: the tube's 4:3 frame at three times a 240 line height,
+/// which is the size the replay's frame shows it at, so a 240 line game keeps
+/// whole pixels from the tube to the clip.
+const RING_W: usize = 960;
+const RING_H: usize = 720;
+
 impl Recorder {
     fn start(path: &str, sink: Option<String>) -> Result<Recorder, String> {
         // Same reasoning as the screenshot: the recording goes to a film, and
@@ -524,9 +535,62 @@ impl Recorder {
         // `--` first: the output is the last argument, and without it a path
         // beginning with a dash is an ffmpeg option. `player.rs` does the same
         // for mpv's target.
-        cmd.arg("--")
-            .arg(path)
-            .stdin(std::process::Stdio::piped())
+        cmd.arg("--").arg(path);
+        Self::spawn(cmd, path, REC_W, REC_H)
+    }
+
+    /// The replay ring: two second pieces of the game, numbered round a ring
+    /// of thirty, in a folder the launcher named. A minute of the newest play
+    /// is always on disk, and a replay is cut from its last half.
+    ///
+    /// Every piece starts on a key frame so that any run of them joins
+    /// without decoding across the seam; the segmenter can only cut there.
+    fn ring(dir: &str, sink: Option<String>) -> Result<Recorder, String> {
+        let dir = std::path::Path::new(dir);
+        if !dir.is_absolute() || !dir.is_dir() {
+            return Err(format!(
+                "{}: the replay ring needs an existing absolute folder",
+                dir.display()
+            ));
+        }
+        let pattern = dir.join("seg%02d.ts");
+        let mut cmd = std::process::Command::new("ffmpeg");
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y"])
+            .args(["-f", "rawvideo", "-pix_fmt", "bgra"])
+            .args(["-use_wallclock_as_timestamps", "1"])
+            .args([
+                "-s",
+                &format!("{RING_W}x{RING_H}"),
+                "-r",
+                "30",
+                "-i",
+                "pipe:0",
+            ]);
+        if let Some(sink) = &sink {
+            cmd.args(["-f", "pulse", "-i", &format!("{sink}.monitor")]);
+        }
+        cmd.args([
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        ])
+        .args(["-force_key_frames", "expr:gte(t,n_forced*2)"])
+        .args(["-fps_mode", "cfr", "-r", "30"]);
+        if sink.is_some() {
+            cmd.args(["-c:a", "aac", "-b:a", "160k"]);
+        }
+        cmd.args(["-f", "segment", "-segment_time", "2", "-segment_wrap", "30"])
+            .args(["-reset_timestamps", "1", "-segment_format", "mpegts"])
+            .arg("--")
+            .arg(&pattern);
+        Self::spawn(cmd, &dir.to_string_lossy(), RING_W, RING_H)
+    }
+
+    fn spawn(
+        mut cmd: std::process::Command,
+        path: &str,
+        w: usize,
+        h: usize,
+    ) -> Result<Recorder, String> {
+        cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::inherit());
         let mut child = cmd.spawn().map_err(|e| format!("ffmpeg: {e}"))?;
@@ -555,6 +619,8 @@ impl Recorder {
             thread: Some(thread),
             frames: 0,
             path: path.to_string(),
+            w,
+            h,
         })
     }
 
@@ -563,7 +629,7 @@ impl Recorder {
     fn buffer(&mut self) -> Vec<u8> {
         let mut buf = self.spent.try_recv().unwrap_or_default();
         buf.clear();
-        buf.resize(REC_W * REC_H * 4, 0);
+        buf.resize(self.w * self.h * 4, 0);
         buf
     }
 
@@ -582,6 +648,30 @@ impl Recorder {
         }
         let _ = self.child.wait();
         format!("{} frames to {}", self.frames, self.path)
+    }
+}
+
+/// Scale the tube's frame into a smaller 4:3 picture by picking the nearest
+/// source pixel, the way the tube's own lines are whole and sharp.
+fn scale_into(
+    bytes: &[u8],
+    flipped: bool,
+    w: usize,
+    h: usize,
+    frame: &mut [u8],
+    out_w: usize,
+    out_h: usize,
+) {
+    for y in 0..out_h {
+        let sy = y * h / out_h;
+        // GL reads bottom-up unless the mapping says otherwise.
+        let src_y = if flipped { sy } else { h - 1 - sy };
+        let src_row = &bytes[src_y * w * 4..(src_y + 1) * w * 4];
+        let dst_row = &mut frame[y * out_w * 4..(y + 1) * out_w * 4];
+        for x in 0..out_w {
+            let sx = x * w / out_w;
+            dst_row[x * 4..x * 4 + 4].copy_from_slice(&src_row[sx * 4..sx * 4 + 4]);
+        }
     }
 }
 
@@ -1024,6 +1114,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         commits: Default::default(),
         host: None,
         recorder: None,
+        replay: None,
     };
     crt.handle
         .insert_source(
@@ -1468,6 +1559,35 @@ impl Crt {
                         }
                     }
                     _ => eprintln!("record: use `record start <file.mp4>` or `record stop`"),
+                }
+            }
+            // `replay start <dir> [sink]` and `replay stop`: the launcher
+            // keeps the ring going while a game is on top. Stopping waits for
+            // ffmpeg to finish its last piece, which is done off the event
+            // loop so the picture does not hold still for it.
+            "replay" => {
+                let (what, rest) = arg.trim().split_once(' ').unwrap_or((arg.trim(), ""));
+                let (dir, sink) = match rest.trim().split_once(' ') {
+                    Some((d, s)) if !s.trim().is_empty() => (d.trim(), Some(s.trim().to_string())),
+                    _ => (rest.trim(), None),
+                };
+                if let Some(r) = self.replay.take() {
+                    std::thread::spawn(move || {
+                        r.stop();
+                    });
+                }
+                match what {
+                    "start" if !dir.is_empty() => {
+                        let sink = sink.or_else(|| {
+                            std::env::var("OMACRT_SINK").ok().filter(|s| !s.is_empty())
+                        });
+                        match Recorder::ring(dir, sink) {
+                            Ok(r) => self.replay = Some(r),
+                            Err(e) => eprintln!("replay: {e}"),
+                        }
+                    }
+                    "stop" => {}
+                    _ => eprintln!("replay: use `replay start <dir> [sink]` or `replay stop`"),
                 }
             }
             // `colour R G B`: the channel gains, from the TV profile's page.
@@ -2865,30 +2985,25 @@ impl Crt {
         self.frame_queued = false;
         self.queued_at = None;
         self.frames += 1;
-        if self.recorder.is_some() && self.frames.is_multiple_of(2) {
-            // Scale straight out of the mapped pixels into a buffer the
-            // writer thread has finished with: no full sized copy of the
-            // frame in between, and no allocation per frame.
-            let mut frame = self
-                .recorder
-                .as_mut()
-                .map(|r| r.buffer())
-                .unwrap_or_default();
+        if (self.recorder.is_some() || self.replay.is_some()) && self.frames.is_multiple_of(2) {
+            // One read of the frame feeds both: the film being recorded and
+            // the replay ring, each scaled straight out of the mapped pixels
+            // into a buffer its writer has finished with. No full sized copy
+            // in between, and no allocation per frame.
+            let mut rec = self.recorder.as_mut().map(|r| (r.buffer(), r.w, r.h));
+            let mut ring = self.replay.as_mut().map(|r| (r.buffer(), r.w, r.h));
             let scaled = self.with_frame(|bytes, flipped, w, h| {
-                for y in 0..REC_H {
-                    let sy = y * h / REC_H;
-                    // GL reads bottom-up unless the mapping says otherwise.
-                    let src_y = if flipped { sy } else { h - 1 - sy };
-                    let src_row = &bytes[src_y * w * 4..(src_y + 1) * w * 4];
-                    let dst_row = &mut frame[y * REC_W * 4..(y + 1) * REC_W * 4];
-                    for x in 0..REC_W {
-                        let sx = x * w / REC_W;
-                        dst_row[x * 4..x * 4 + 4].copy_from_slice(&src_row[sx * 4..sx * 4 + 4]);
-                    }
+                for (frame, out_w, out_h) in [rec.as_mut(), ring.as_mut()].into_iter().flatten() {
+                    scale_into(bytes, flipped, w, h, frame, *out_w, *out_h);
                 }
             });
-            if let (Ok(()), Some(r)) = (scaled, self.recorder.as_mut()) {
-                r.push(frame);
+            if scaled.is_ok() {
+                if let (Some((frame, ..)), Some(r)) = (rec, self.recorder.as_mut()) {
+                    r.push(frame);
+                }
+                if let (Some((frame, ..)), Some(r)) = (ring, self.replay.as_mut()) {
+                    r.push(frame);
+                }
             }
         }
         if self.last_stats.elapsed() >= Duration::from_secs(5) {

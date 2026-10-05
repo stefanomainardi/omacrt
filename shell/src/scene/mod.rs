@@ -473,6 +473,7 @@ pub(super) enum PauseRow {
     Resume,
     Save,
     Load,
+    Replay,
     Rewind,
     FastForward,
     SlowMotion,
@@ -497,10 +498,11 @@ pub(super) struct Centring {
 }
 
 /// Pause menu over a running game.
-const PAUSE_ROWS: [(PauseRow, icons::Icon, &str); 11] = [
+const PAUSE_ROWS: [(PauseRow, icons::Icon, &str); 12] = [
     (PauseRow::Resume, icons::GAMEPAD, "Resume"),
     (PauseRow::Save, icons::SAVE, "Save state"),
     (PauseRow::Load, icons::LOAD, "Load state"),
+    (PauseRow::Replay, icons::FILM, "Save replay"),
     (PauseRow::Rewind, icons::REWIND, "Rewind two seconds"),
     (PauseRow::FastForward, icons::FORWARD, "Fast forward"),
     (PauseRow::SlowMotion, icons::SLOW, "Slow motion"),
@@ -658,6 +660,8 @@ pub struct Scene {
     menu_live: bool,
     sel: usize,
     message: Option<(String, f64)>,
+    /// A replay being made in the background, and the answer when it is done.
+    replay_job: Option<std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>>,
     /// Menu item waiting for a confirming second press, with its deadline.
     armed: Option<(usize, f64)>,
     pending: Vec<Sound>,
@@ -891,6 +895,7 @@ impl Scene {
             menu_live: false,
             sel: 0,
             message: None,
+            replay_job: None,
             armed: None,
             pending: Vec::new(),
             pending_samples: Vec::new(),

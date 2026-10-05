@@ -121,6 +121,10 @@ impl Scene {
                 self.game_cmd(omacrt_shell::game::load_state(), "state loaded");
                 PauseOutcome::None
             }
+            PauseRow::Replay => {
+                self.save_replay(crate::replay::Format::Feed);
+                PauseOutcome::None
+            }
             PauseRow::Rewind => {
                 // Rewind runs only where the system allows it: the launch
                 // override writes rewind_enable from that flag.
@@ -165,6 +169,51 @@ impl Scene {
                 self.pending.push(Sound::Select);
                 PauseOutcome::Quit
             }
+        }
+    }
+
+    /// Make a replay of the last half minute of the running game, in the
+    /// background. The pause menu, the control pipe and `omacrt replay` all
+    /// come here.
+    pub fn save_replay(&mut self, format: crate::replay::Format) {
+        let Some((title, system)) = self.running.clone() else {
+            self.message = Some(("no game is running".into(), self.now + 3.0));
+            return;
+        };
+        if self.replay_job.is_some() {
+            self.message = Some(("a replay is already being made".into(), self.now + 3.0));
+            return;
+        }
+        let card = crate::replay::Card {
+            title,
+            system: system_label(&system),
+        };
+        self.replay_job = Some(crate::replay::save(card, format));
+        self.pending.push(Sound::Select);
+        self.message = Some(("saving the last 30 seconds".into(), self.now + 4.0));
+    }
+
+    /// Say when a replay is done, or why it is not.
+    pub fn poll_replay(&mut self) {
+        let Some(rx) = &self.replay_job else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(Ok(path)) => {
+                self.replay_job = None;
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.message = Some((format!("replay saved: {name}"), self.now + 5.0));
+            }
+            Ok(Err(e)) => {
+                self.replay_job = None;
+                self.pending.push(Sound::Crunch);
+                self.message = Some((format!("no replay: {e}"), self.now + 5.0));
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => self.replay_job = None,
         }
     }
 
@@ -672,6 +721,16 @@ impl Scene {
         let hint_w = self.draw_hint(&mut scratch, 0, 2, keys) - 10;
         self.draw_hint(fb, bx + bw - 6 - hint_w, by + 17, keys);
     }
+}
+
+/// A system's name as a person says it, for the replay's frame: the
+/// catalogue's label without the core in brackets.
+fn system_label(system: &str) -> String {
+    omacrt_shell::index::CATALOG
+        .iter()
+        .find(|(name, ..)| *name == system)
+        .map(|(_, label, ..)| label.split(" (").next().unwrap_or(label).to_string())
+        .unwrap_or_else(|| system.to_string())
 }
 
 fn pause_jump(sel: usize, jump: i32, rows: usize) -> Option<usize> {

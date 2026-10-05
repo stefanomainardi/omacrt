@@ -222,6 +222,10 @@ const VERBS: Verbs = &[
                 "record start <file.mp4>|stop",
                 "capture the tube, picture and sound, into a video",
             ),
+            (
+                "replay [feed|vertical|wide]",
+                "the last 30 seconds of the game, framed, into ~/Videos/OmaCRT",
+            ),
         ],
     ),
     (
@@ -4144,6 +4148,24 @@ fn main() {
                 } else {
                     "off"
                 },
+            );
+        }
+        "replay" => {
+            let format = positional(args)
+                .first()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            if !matches!(
+                format.as_str(),
+                "" | "feed" | "vertical" | "wide" | "4:5" | "9:16" | "16:9"
+            ) {
+                die("replay [feed|vertical|wide]");
+            }
+            crt::control::send(&[format!("replay {format}").trim()])
+                .unwrap_or_else(|e| die(&e.to_string()));
+            term::sheet::step(
+                "replay",
+                "asked of the launcher; the file goes to ~/Videos/OmaCRT in about half a minute",
             );
         }
         "record" => {

@@ -21,6 +21,7 @@ omacrt shell type <text>      # type into the search bar
 omacrt game key <key> [ms]    # press a key inside the running game, held that long
                                    # (enter is start, rshift the coin, or an evdev code)
 omacrt watch <file|url> [--later [TITLE]]   # play on the tube now, or keep it in Videos
+omacrt replay [feed|vertical|wide]   # the last 30 seconds of the game, framed, into ~/Videos/OmaCRT
 omacrt focus
 omacrt audio crt|desktop|all|apps   # our own streams only, unless `all`
 omacrt audio volume N           # TV sink volume, percent up to 150, kept in crt.toml
@@ -385,6 +386,32 @@ Names: `home`, `games`, `videos`, `youtube`, `music`, `favorites`, `recent`, `pl
 `pads`, `diagnostics`, `about`, `power`. Nothing happens while a game or a film is on:
 a menu entry pressed by accident must not take the television away from what
 it is doing.
+
+## Instant replay
+
+While a game is on the tube, the display process keeps its newest minute as a
+ring of two second pieces with the television's sound, in the session's
+runtime folder (`$XDG_RUNTIME_DIR/omacrt-replay`), which is memory: the ring
+writes about a megabyte a second, and never holds more than about seventy. The ring stops while the pause menu is up, so a replay
+saved from there ends on the play rather than on the menu, and picks up again
+when the game resumes.
+
+**Save replay** in the pause menu, or `omacrt replay` from anywhere, makes a
+video of the last 30 seconds: a short opening with the mark, the game in a
+frame with its title and system and a bar for the time, and a closing card
+with the address. The launcher draws the frame with its own font and makes
+the video in the background with ffmpeg, at the lowest priority, in about half
+a minute. The pause menu says when the file is written.
+
+```
+omacrt replay              # 1080 by 1350, the size a phone's feed shows largest
+omacrt replay vertical     # 1080 by 1920, for Reels, TikTok and Shorts
+omacrt replay wide         # 1920 by 1080
+```
+
+Files go to `$XDG_VIDEOS_DIR/OmaCRT`, else `~/Videos/OmaCRT`, named after the
+game and the time. The picture is the frame the television is given, at 960
+by 720: three times a 240 line frame, so a 240 line game keeps whole pixels.
 
 ## Clearing up after itself
 

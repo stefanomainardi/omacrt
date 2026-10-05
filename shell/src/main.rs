@@ -26,6 +26,7 @@ mod pad;
 mod paint;
 mod people;
 mod photos;
+mod replay;
 mod scene;
 mod sky;
 mod stage;
@@ -699,6 +700,7 @@ fn run(args: &Args) -> Result<(), String> {
                     }
                     // A crash inside RetroArch's own shutdown is a normal
                     // end of play as far as the launcher is concerned.
+                    replay::stop();
                     scene.game_finished(
                         status.success() || display_gone || library::exited_after_unload(),
                     );
@@ -1280,6 +1282,7 @@ fn run(args: &Args) -> Result<(), String> {
                 }
             }
         }
+        scene.poll_replay();
         if let Some(rx) = &control {
             for line in rx.try_iter() {
                 // The safe area, live. How much of the picture a television
@@ -1294,6 +1297,17 @@ fn run(args: &Args) -> Result<(), String> {
                             println!("safe area: {n}% a side, drawing {} wide", fb.w);
                         }
                         _ => eprintln!("control: safe wants a percentage up to 20, got {rest}"),
+                    }
+                    continue;
+                }
+                // `replay` and `replay vertical`: the same as the pause menu's
+                // row, from the command line.
+                if let Some(rest) = line.trim().strip_prefix("replay") {
+                    match replay::Format::parse(rest.trim()) {
+                        Some(f) => scene.save_replay(f),
+                        None => {
+                            eprintln!("control: replay wants feed, vertical or wide, got {rest}")
+                        }
                     }
                     continue;
                 }
@@ -1557,6 +1571,9 @@ fn run(args: &Args) -> Result<(), String> {
                         });
                     }
                     child = Some(c);
+                    // The last half minute of play is kept from here on, for
+                    // a replay.
+                    replay::start();
                 }
                 Err(e) => {
                     eprintln!("cannot start retroarch: {e}");
@@ -2168,6 +2185,13 @@ fn after_pause(
 ) {
     use omacrt_shell::crt::display;
     use omacrt_shell::crt::output::raise;
+    // The ring stops under the pause menu, so a replay saved from it ends on
+    // the play rather than on the menu, and picks up again on the way back.
+    match outcome {
+        PauseOutcome::Shown => replay::stop(),
+        PauseOutcome::Resumed => replay::start(),
+        PauseOutcome::Quit | PauseOutcome::None => {}
+    }
     let differs = game_lines.is_some_and(|l| l != own_lines);
     if display::on_tube() {
         match outcome {
