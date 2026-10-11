@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // The OmaCRT panel: a little tube inside the bar. The hero is drawn as a
@@ -23,10 +24,10 @@ Panel {
   property bool cursorOn: true
   property string watchUrl: ""
 
-  readonly property color fg: root.bar ? root.bar.foreground : Color.foreground
-  readonly property color bg: root.bar ? root.bar.background : Color.background
-  readonly property color accent: Color.accent
-  readonly property color urgent: root.bar ? root.bar.urgent : Color.urgent
+  readonly property color fg: root.bar ? root.bar.foreground : Commons.Color.foreground
+  readonly property color bg: root.bar ? root.bar.background : Commons.Color.background
+  readonly property color accent: Commons.Color.accent
+  readonly property color urgent: root.bar ? root.bar.urgent : Commons.Color.urgent
   readonly property color muted: Qt.darker(root.fg, 1.6)
   readonly property color phosphor: "#7ee787"
   // Something waiting to be done, which is not the same as something wrong.

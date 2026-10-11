@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // The pads overlay: the four ports a game is given, as sockets, on the
@@ -28,12 +29,12 @@ Item {
   property string helper: ""
   property bool opened: false
 
-  readonly property color fg: Color.menu.text
-  readonly property color bg: Color.menu.background
-  readonly property color accent: Color.accent
-  readonly property color urgent: Color.urgent
+  readonly property color fg: Commons.Color.menu.text
+  readonly property color bg: Commons.Color.menu.background
+  readonly property color accent: Commons.Color.accent
+  readonly property color urgent: Commons.Color.urgent
   readonly property color muted: Qt.darker(root.fg, 1.6)
-  readonly property color line: Color.menu.border
+  readonly property color line: Commons.Color.menu.border
   readonly property string mono: Style.font.menuFamily
 
   property var state: ({})
@@ -300,7 +301,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: Color.menu.scrim
+      color: Commons.Color.menu.scrim
       MouseArea { anchors.fill: parent; onClicked: root.dismiss() }
     }
 
