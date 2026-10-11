@@ -215,6 +215,7 @@ magick /tmp/shot/frame_14.00.ppm -filter point -resize 300% /tmp/shot/a.png
 `systems:snes` with that console selected, `launch:snes` for the launch
 animation, `eject:snes` for the return from a game), `settings`,
 `saver`, `diag`, `about`, `power`, `profile`, `pair`, `style`, `fit`,
+`videosettings`, `pause:N` (the pause menu on row N),
 `monitor`, `processes`, `frame`, `ambient` (or `ambient:golconda` and the
 other moments in `moments.rs`, kept up), `gallery` (or `gallery:1` for a
 given painting), `music`, `pause`. `--size WxH` renders at another

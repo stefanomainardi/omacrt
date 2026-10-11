@@ -391,8 +391,10 @@ it is doing.
 ## Instant replay
 
 Off until it is turned on, in **Settings > Videos > instant replay** or on
-the **Save replay** row of the pause menu (left and right), which are the same
-setting (`[replay] enabled` in `settings.toml`).
+the **Save replay** row of the pause menu. Both are the same setting, and
+left and right walk it through off, 4:5 feed, 16:9 wide and 9:16 vertical:
+the shape is the one Save replay makes (`[replay] enabled` and `format` in
+`settings.toml`).
 
 While it is on and a game is on the tube, the display process keeps the
 game's newest forty seconds as a ring of two second pieces with the
@@ -423,9 +425,10 @@ lowest priority, in about half a minute, and the pause menu says when the
 file is written.
 
 ```
-omacrt replay              # 1080 by 1350, the size a phone's feed shows largest
-omacrt replay vertical     # 1080 by 1920, for Reels, TikTok and Shorts
+omacrt replay              # the shape the setting names
+omacrt replay feed         # 1080 by 1350, the size a phone's feed shows largest
 omacrt replay wide         # 1920 by 1080
+omacrt replay vertical     # 1080 by 1920, for Reels, TikTok and Shorts
 ```
 
 Files go to `$XDG_VIDEOS_DIR/OmaCRT`, else `~/Videos/OmaCRT`, named after the

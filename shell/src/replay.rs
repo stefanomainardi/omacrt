@@ -53,7 +53,7 @@ pub enum Format {
 impl Format {
     pub fn parse(s: &str) -> Option<Format> {
         match s {
-            "" | "feed" | "4:5" => Some(Format::Feed),
+            "feed" | "4:5" => Some(Format::Feed),
             "vertical" | "9:16" => Some(Format::Vertical),
             "wide" | "16:9" => Some(Format::Wide),
             _ => None,
@@ -68,12 +68,54 @@ impl Format {
         }
     }
 
-    fn name(self) -> &'static str {
+    /// What a menu row shows for it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Format::Feed => "4:5 feed",
+            Format::Wide => "16:9 wide",
+            Format::Vertical => "9:16 vertical",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
         match self {
             Format::Feed => "feed",
             Format::Vertical => "vertical",
             Format::Wide => "wide",
         }
+    }
+}
+
+/// The choices of the replay row, in the order left and right walk them:
+/// off, then the three shapes, the feed first and the wide one next to it.
+const CHOICES: [Option<Format>; 4] = [
+    None,
+    Some(Format::Feed),
+    Some(Format::Wide),
+    Some(Format::Vertical),
+];
+
+/// One step along the replay row from where the setting is now: whether the
+/// replay is on, and the shape it makes.
+pub fn step_choice(enabled: bool, format: &str, dir: i32) -> (bool, Format) {
+    let now = if enabled {
+        Format::parse(format).or(Some(Format::Feed))
+    } else {
+        None
+    };
+    let i = CHOICES.iter().position(|c| *c == now).unwrap_or(0) as i32;
+    match CHOICES[(i + dir).rem_euclid(CHOICES.len() as i32) as usize] {
+        Some(f) => (true, f),
+        None => (false, Format::parse(format).unwrap_or(Format::Feed)),
+    }
+}
+
+/// What the replay row shows: off, or the shape it makes.
+pub fn choice_label(enabled: bool, format: &str) -> &'static str {
+    if enabled {
+        Format::parse(format).unwrap_or(Format::Feed).label()
+    } else {
+        "off"
     }
 }
 
@@ -954,8 +996,21 @@ mod tests {
     }
 
     #[test]
+    fn the_replay_row_walks_off_and_the_three_shapes_both_ways() {
+        assert_eq!(step_choice(false, "feed", 1), (true, Format::Feed));
+        assert_eq!(step_choice(true, "feed", 1), (true, Format::Wide));
+        assert_eq!(step_choice(true, "wide", 1), (true, Format::Vertical));
+        assert!(!step_choice(true, "vertical", 1).0);
+        assert_eq!(step_choice(false, "wide", -1), (true, Format::Vertical));
+        // Off keeps the shape it had, so turning it on again finds it.
+        assert_eq!(step_choice(true, "wide", -1), (true, Format::Feed));
+        assert_eq!(choice_label(false, "wide"), "off");
+        assert_eq!(choice_label(true, "wide"), "16:9 wide");
+    }
+
+    #[test]
     fn the_formats_parse_by_name_and_by_shape() {
-        assert_eq!(Format::parse(""), Some(Format::Feed));
+        assert_eq!(Format::parse(""), None);
         assert_eq!(Format::parse("9:16"), Some(Format::Vertical));
         assert_eq!(Format::parse("wide"), Some(Format::Wide));
         assert_eq!(Format::parse("square"), None);

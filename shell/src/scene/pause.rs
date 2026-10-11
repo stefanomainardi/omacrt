@@ -123,7 +123,7 @@ impl Scene {
             }
             PauseRow::Replay => {
                 if self.settings.replay.enabled {
-                    self.save_replay(crate::replay::Format::Feed);
+                    self.save_replay(None);
                 } else {
                     self.pending.push(Sound::Crunch);
                     self.message = Some((
@@ -183,7 +183,12 @@ impl Scene {
     /// Make a replay of the last half minute of the running game, in the
     /// background. The pause menu, the control pipe and `omacrt replay` all
     /// come here.
-    pub fn save_replay(&mut self, format: crate::replay::Format) {
+    /// `format` is a shape asked for by name, from the command line; the
+    /// pause menu passes `None` and the setting decides.
+    pub fn save_replay(&mut self, format: Option<crate::replay::Format>) {
+        let format = format
+            .or_else(|| crate::replay::Format::parse(&self.settings.replay.format))
+            .unwrap_or(crate::replay::Format::Feed);
         let Some((title, system)) = self.running.clone() else {
             self.message = Some(("no game is running".into(), self.now + 3.0));
             return;
@@ -229,20 +234,27 @@ impl Scene {
     /// either direction, and remember it in `systems.toml`.
     fn pause_choice(&mut self, row: PauseRow, dir: i32) {
         if row == PauseRow::Replay {
-            let _ = dir;
-            let on = !self.settings.replay.enabled;
+            let was_on = self.settings.replay.enabled;
+            let (on, format) =
+                crate::replay::step_choice(was_on, &self.settings.replay.format, dir);
             self.settings.replay.enabled = on;
+            self.settings.replay.format = format.name().into();
             self.save_settings();
             self.pending.push(Sound::Move);
-            if on {
-                self.message = Some((
-                    "replay on: it keeps the game from when it resumes".into(),
+            self.message = Some(match (was_on, on) {
+                (false, true) => (
+                    format!(
+                        "replay {}: it keeps the game from when it resumes",
+                        format.label()
+                    ),
                     self.now + 4.0,
-                ));
-            } else {
-                crate::replay::end();
-                self.message = Some(("replay off".into(), self.now + 3.0));
-            }
+                ),
+                (true, false) => {
+                    crate::replay::end();
+                    ("replay off".into(), self.now + 3.0)
+                }
+                _ => (format!("replay {}", format.label()), self.now + 3.0),
+            });
             return;
         }
         let Some((system, _)) = self.running_path.clone() else {
@@ -323,11 +335,10 @@ impl Scene {
                 })
             }
             PauseRow::Replay => Some(
-                if self.settings.replay.enabled {
-                    "on"
-                } else {
-                    "off"
-                }
+                crate::replay::choice_label(
+                    self.settings.replay.enabled,
+                    &self.settings.replay.format,
+                )
                 .into(),
             ),
             PauseRow::Centre => {

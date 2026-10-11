@@ -12,8 +12,8 @@ caveat for a 0.x project: anything may still move.
 - Instant replay: **Save replay** in the pause menu, or `omacrt replay`, makes
   a video of the last 30 seconds of the game at sixty frames a second, framed
   with its title and system for a social feed, in `~/Videos/OmaCRT`.
-  `vertical` and `wide` give the other two shapes. Off by default; turned on
-  in Settings > Videos or on the pause menu's row.
+  Off by default; Settings > Videos and the pause menu's row turn it on and
+  choose its shape: 4:5 feed, 16:9 wide or 9:16 vertical.
 - `interlace` in `crt.toml`'s `[output]` section and in `omacrt config set`.
 
 ### Changed

@@ -1451,6 +1451,11 @@ impl Scene {
                 self.running_path = Some(("snes".into(), std::path::PathBuf::from("ct.sfc")));
                 self.paused = Some(6);
             }
+            Some(name) if name.starts_with("pause:") => {
+                self.running = Some(("Chrono Trigger".into(), "snes".into()));
+                self.running_path = Some(("snes".into(), std::path::PathBuf::from("ct.sfc")));
+                self.paused = Some(name["pause:".len()..].parse().unwrap_or(0));
+            }
             Some("centre") => {
                 self.running = Some(("Chrono Trigger".into(), "snes".into()));
                 self.running_path = Some(("snes".into(), std::path::PathBuf::from("ct.sfc")));
@@ -1489,6 +1494,7 @@ impl Scene {
             }
             Some("style") => self.screen = Screen::Style { sel: 0 },
             Some("fit") => self.screen = Screen::VideoFit { sel: 0 },
+            Some("videosettings") => self.screen = Screen::VideoSettings { sel: 3 },
             // `system:stem` opens a system's list with that game selected.
             Some(n)
                 if n.split_once(':')

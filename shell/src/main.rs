@@ -1303,8 +1303,10 @@ fn run(args: &Args) -> Result<(), String> {
                 // `replay` and `replay vertical`: the same as the pause menu's
                 // row, from the command line.
                 if let Some(rest) = line.trim().strip_prefix("replay") {
-                    match replay::Format::parse(rest.trim()) {
-                        Some(f) => scene.save_replay(f),
+                    let rest = rest.trim();
+                    match replay::Format::parse(rest) {
+                        _ if rest.is_empty() => scene.save_replay(None),
+                        Some(f) => scene.save_replay(Some(f)),
                         None => {
                             eprintln!("control: replay wants feed, vertical or wide, got {rest}")
                         }

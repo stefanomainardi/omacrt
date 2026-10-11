@@ -349,10 +349,27 @@ pub struct Settings {
 /// the pause menu can make a video of it. Off by default: keeping it costs a
 /// small capture on every frame the tube shows and an encoder beside the
 /// game, and that is the player's to choose.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Replay {
     #[serde(default)]
     pub enabled: bool,
+    /// The shape Save replay makes: `feed` (4:5), `wide` (16:9) or
+    /// `vertical` (9:16).
+    #[serde(default = "default_replay_format")]
+    pub format: String,
+}
+
+impl Default for Replay {
+    fn default() -> Self {
+        Replay {
+            enabled: false,
+            format: default_replay_format(),
+        }
+    }
+}
+
+fn default_replay_format() -> String {
+    "feed".into()
 }
 
 /// What an arcade list leaves out. Empty, zero and false each mean "anything",
