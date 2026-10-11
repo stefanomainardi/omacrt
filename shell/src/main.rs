@@ -700,7 +700,7 @@ fn run(args: &Args) -> Result<(), String> {
                     }
                     // A crash inside RetroArch's own shutdown is a normal
                     // end of play as far as the launcher is concerned.
-                    replay::stop();
+                    replay::end();
                     scene.game_finished(
                         status.success() || display_gone || library::exited_after_unload(),
                     );

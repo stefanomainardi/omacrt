@@ -98,8 +98,19 @@ pub fn out_dir() -> PathBuf {
     videos.join("OmaCRT")
 }
 
+/// When the ring started for the game being played. A replay is cut only
+/// from pieces written since then: the ring folder outlives games and keeps
+/// whatever an earlier one left, and a replay of somebody else's game is
+/// worse than none. `None` while no ring runs for the current game.
+static SINCE: std::sync::Mutex<Option<std::time::SystemTime>> = std::sync::Mutex::new(None);
+
+fn since() -> Option<std::time::SystemTime> {
+    SINCE.lock().ok().and_then(|g| *g)
+}
+
 /// Start keeping the ring, with the television's sound when the audio is
-/// routed to it.
+/// routed to it. Called when a game starts and again when it resumes from
+/// the pause menu; only the first call for a game sets where it begins.
 pub fn start() {
     use omacrt_shell::crt::{Config, audio, display, output};
     // Off until the capture is understood: on the first evening with the
@@ -125,14 +136,29 @@ pub fn start() {
     } else {
         None
     };
-    if let Err(e) = display::replay_start(&dir.to_string_lossy(), sink.as_deref()) {
-        eprintln!("replay: {e}");
+    match display::replay_start(&dir.to_string_lossy(), sink.as_deref()) {
+        Ok(()) => {
+            if let Ok(mut g) = SINCE.lock()
+                && g.is_none()
+            {
+                *g = Some(std::time::SystemTime::now());
+            }
+        }
+        Err(e) => eprintln!("replay: {e}"),
     }
 }
 
 pub fn stop() {
     if omacrt_shell::crt::display::running() {
         let _ = omacrt_shell::crt::display::replay_stop();
+    }
+}
+
+/// The game has ended: stop the ring and forget where it began.
+pub fn end() {
+    stop();
+    if let Ok(mut g) = SINCE.lock() {
+        *g = None;
     }
 }
 
@@ -147,14 +173,18 @@ pub struct Card {
 /// stood in the way, in words for the pause menu.
 pub fn save(card: Card, format: Format) -> Receiver<Result<PathBuf, String>> {
     let (tx, rx) = channel();
+    let Some(from) = since() else {
+        let _ = tx.send(Err("the replay ring is not running for this game".into()));
+        return rx;
+    };
     std::thread::spawn(move || {
-        let _ = tx.send(compose(&card, format));
+        let _ = tx.send(compose(&card, format, Some(from)));
     });
     rx
 }
 
 /// The newest pieces of the ring, oldest first.
-fn pieces(dir: &Path) -> Vec<PathBuf> {
+fn pieces(dir: &Path, since: Option<std::time::SystemTime>) -> Vec<PathBuf> {
     let mut found: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()
@@ -166,8 +196,10 @@ fn pieces(dir: &Path) -> Vec<PathBuf> {
                 return None;
             }
             let meta = e.metadata().ok()?;
-            // An empty file is a piece ffmpeg opened and never wrote.
-            (meta.len() > 0).then_some((meta.modified().ok()?, p))
+            // An empty file is a piece ffmpeg opened and never wrote, and a
+            // piece older than this game's ring is another game's.
+            let when = meta.modified().ok()?;
+            (meta.len() > 0 && since.is_none_or(|s| when >= s)).then_some((when, p))
         })
         .collect();
     found.sort();
@@ -175,11 +207,15 @@ fn pieces(dir: &Path) -> Vec<PathBuf> {
     found.into_iter().skip(skip).map(|(_, p)| p).collect()
 }
 
-fn compose(card: &Card, format: Format) -> Result<PathBuf, String> {
+fn compose(
+    card: &Card,
+    format: Format,
+    since: Option<std::time::SystemTime>,
+) -> Result<PathBuf, String> {
     let ring = ring_dir();
-    let pieces = pieces(&ring);
+    let pieces = pieces(&ring, since);
     if pieces.is_empty() {
-        return Err("nothing recorded yet".into());
+        return Err("nothing recorded for this game yet".into());
     }
     let work = ring.join(format!("make-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&work);
@@ -217,8 +253,9 @@ fn compose_in(
     let (w, h) = format.size();
     let layout = Layout::of(format);
     let logo = Logo::decode();
+    let ty = Type::load().ok_or("the typefaces did not load")?;
     let mut fb = Framebuffer::new(w, h);
-    draw_frame(&mut fb, format, &layout, card, logo.as_ref());
+    draw_frame(&mut fb, &ty, format, &layout, card, logo.as_ref());
     let chrome = work.join("frame.png");
     write_png(&fb, &chrome)?;
     let intro = work.join("intro");
@@ -232,7 +269,7 @@ fn compose_in(
         write_png(&fb, &intro.join(format!("f{i:04}.png")))?;
     }
     for i in 0..outro_frames {
-        draw_outro(&mut fb, logo.as_ref(), card, i as f32 / FPS as f32);
+        draw_outro(&mut fb, &ty, logo.as_ref(), card, i as f32 / FPS as f32);
         write_png(&fb, &outro.join(format!("f{i:04}.png")))?;
     }
 
@@ -419,16 +456,15 @@ struct Layout {
 impl Layout {
     fn of(format: Format) -> Layout {
         match format {
-            // The ring is 960 by 720, three times a 240 line frame, so the
-            // feed and the vertical show it at its own size and a 240 line
-            // game keeps whole pixels.
+            // The game as large as each shape allows: the whole width of
+            // the feed and the whole height of the wide frame.
             Format::Feed => Layout {
-                game: [60, 60, 960, 720],
-                bar: [60, 780, 960, 8],
+                game: [0, 0, 1080, 810],
+                bar: [0, 810, 1080, 8],
             },
             Format::Vertical => Layout {
-                game: [60, 300, 960, 720],
-                bar: [60, 1020, 960, 8],
+                game: [40, 340, 1000, 750],
+                bar: [40, 1090, 1000, 8],
             },
             Format::Wide => Layout {
                 game: [0, 0, 1440, 1080],
@@ -449,33 +485,111 @@ fn ground(fb: &mut Framebuffer) {
     }
 }
 
-/// The REPLAY tag: an outline, a play triangle and the word.
-fn tag(fb: &mut Framebuffer, x: i32, y: i32, s: i32) -> i32 {
-    let word = "REPLAY";
-    let pad = 3 * s;
-    let tri = 6 * s;
-    let w = pad + tri + 3 * s + Framebuffer::text_width(word, s) + pad;
-    let h = 8 * s + 2 * pad;
-    let t = s.max(2);
-    fb.rect(x, y, w, t, ACCENT);
-    fb.rect(x, y + h - t, w, t, ACCENT);
-    fb.rect(x, y, t, h, ACCENT);
-    fb.rect(x + w - t, y, t, h, ACCENT);
-    // A right pointing triangle, one column at a time.
-    let tx = x + pad;
-    let cy = y + h / 2;
-    for i in 0..tri {
-        let half = (tri - i) * 4 * s / tri;
-        fb.rect(tx + i, cy - half, 1, half * 2, ACCENT);
-    }
-    fb.text(tx + tri + 3 * s, y + pad, word, ACCENT, s);
-    w
+// ------------------------------------------------------------------ type
+
+/// The site's typefaces, IBM Plex, for the frame: the launcher's own pixel
+/// font reads as a screen of the launcher, and a replay is a picture of the
+/// game with a caption. OFL licensed, carried in the binary.
+const SANS_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/IBMPlexSans-SemiBold.ttf");
+const SANS_REGULAR: &[u8] = include_bytes!("../assets/fonts/IBMPlexSans-Regular.ttf");
+const MONO_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/IBMPlexMono-SemiBold.ttf");
+
+struct Type {
+    title: fontdue::Font,
+    body: fontdue::Font,
+    mono: fontdue::Font,
 }
 
-/// Words broken onto lines no wider than `max` pixels at scale `s`, at most
-/// `lines` of them; a title that needs more ends on an ellipsis.
-fn wrap(text: &str, s: i32, max: i32, lines: usize) -> Vec<String> {
-    let per = (max / (8 * s)).max(1) as usize;
+/// One run of text: a face, a size in pixels and the extra space between
+/// letters that the small capitals of the labels carry.
+#[derive(Clone, Copy)]
+struct Style<'a> {
+    font: &'a fontdue::Font,
+    px: f32,
+    tracking: f32,
+}
+
+impl Type {
+    fn load() -> Option<Type> {
+        let face =
+            |b: &'static [u8]| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).ok();
+        Some(Type {
+            title: face(SANS_SEMIBOLD)?,
+            body: face(SANS_REGULAR)?,
+            mono: face(MONO_SEMIBOLD)?,
+        })
+    }
+
+    fn title(&self, px: f32) -> Style<'_> {
+        Style {
+            font: &self.title,
+            px,
+            tracking: -px * 0.01,
+        }
+    }
+
+    fn body(&self, px: f32) -> Style<'_> {
+        Style {
+            font: &self.body,
+            px,
+            tracking: 0.0,
+        }
+    }
+
+    /// The uppercase labels: monospaced, spaced out.
+    fn label(&self, px: f32, tracking: f32) -> Style<'_> {
+        Style {
+            font: &self.mono,
+            px,
+            tracking,
+        }
+    }
+}
+
+impl Style<'_> {
+    /// How wide a line is set in this style.
+    fn width(&self, text: &str) -> i32 {
+        let mut w = 0.0;
+        for c in text.chars() {
+            w += self.font.metrics(c, self.px).advance_width + self.tracking;
+        }
+        (w - self.tracking).max(0.0).round() as i32
+    }
+
+    /// Set a line with its top at `y`, blending each glyph's coverage over
+    /// what is already drawn. Returns its width.
+    fn draw(&self, fb: &mut Framebuffer, x: i32, y: i32, text: &str, colour: Color) -> i32 {
+        let ascent = self
+            .font
+            .horizontal_line_metrics(self.px)
+            .map(|m| m.ascent)
+            .unwrap_or(self.px * 0.8);
+        let baseline = y as f32 + ascent;
+        let mut pen = x as f32;
+        for c in text.chars() {
+            let (m, coverage) = self.font.rasterize(c, self.px);
+            let gx = pen.round() as i32 + m.xmin;
+            let gy = (baseline - m.height as f32 - m.ymin as f32).round() as i32;
+            for row in 0..m.height {
+                for col in 0..m.width {
+                    let a = coverage[row * m.width + col];
+                    if a == 0 {
+                        continue;
+                    }
+                    let (dx, dy) = (gx + col as i32, gy + row as i32);
+                    let under = fb.at(dx, dy);
+                    fb.put(dx, dy, lerp_color(under, colour, a as f32 / 255.0));
+                }
+            }
+            pen += m.advance_width + self.tracking;
+        }
+        (pen - x as f32 - self.tracking).round() as i32
+    }
+}
+
+/// Words broken onto lines no wider than `max` pixels, at most `lines` of
+/// them; a title that needs more ends on an ellipsis.
+fn wrap(style: &Style, text: &str, max: i32, lines: usize) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut cur = String::new();
     for word in text.split_whitespace() {
@@ -484,13 +598,11 @@ fn wrap(text: &str, s: i32, max: i32, lines: usize) -> Vec<String> {
         } else {
             format!("{cur} {word}")
         };
-        if next.chars().count() <= per {
+        if style.width(&next) <= max || cur.is_empty() {
             cur = next;
         } else {
-            if !cur.is_empty() {
-                out.push(std::mem::take(&mut cur));
-            }
-            cur = word.chars().take(per).collect();
+            out.push(std::mem::take(&mut cur));
+            cur = word.to_string();
         }
     }
     if !cur.is_empty() {
@@ -499,14 +611,52 @@ fn wrap(text: &str, s: i32, max: i32, lines: usize) -> Vec<String> {
     if out.len() > lines {
         out.truncate(lines);
         if let Some(last) = out.last_mut() {
-            let keep: String = last.chars().take(per.saturating_sub(3)).collect();
-            *last = format!("{}...", keep.trim_end());
+            while !last.is_empty() && style.width(&format!("{last}…")) > max {
+                last.pop();
+            }
+            *last = format!("{}…", last.trim_end());
         }
     }
     out
 }
 
-fn draw_frame(fb: &mut Framebuffer, format: Format, l: &Layout, card: &Card, logo: Option<&Logo>) {
+/// The REPLAY tag: an outline in the accent, a play triangle and the word.
+/// Returns its width.
+fn tag(fb: &mut Framebuffer, t: &Type, x: i32, y: i32, px: f32, filled: bool) -> i32 {
+    let label = t.label(px, px * 0.27);
+    let pad_x = (px * 0.65) as i32;
+    let pad_y = (px * 0.35) as i32;
+    let tri = (px * 0.62) as i32;
+    let gap = (px * 0.45) as i32;
+    let text_w = label.width("REPLAY");
+    let w = pad_x + tri + gap + text_w + pad_x;
+    let h = (px * 1.25) as i32 + 2 * pad_y;
+    if filled {
+        fb.rect(x, y, w, h, GROUND_A);
+    } else {
+        let line = (px / 9.0).round().max(2.0) as i32;
+        fb.rect(x, y, w, line, ACCENT);
+        fb.rect(x, y + h - line, w, line, ACCENT);
+        fb.rect(x, y, line, h, ACCENT);
+        fb.rect(x + w - line, y, line, h, ACCENT);
+    }
+    let cy = y + h / 2;
+    for i in 0..tri {
+        let half = (tri - i) * tri / 2 / tri.max(1) + 1;
+        fb.rect(x + pad_x + i, cy - half, 1, half * 2, ACCENT);
+    }
+    label.draw(fb, x + pad_x + tri + gap, y + pad_y, "REPLAY", ACCENT);
+    w
+}
+
+fn draw_frame(
+    fb: &mut Framebuffer,
+    t: &Type,
+    format: Format,
+    l: &Layout,
+    card: &Card,
+    logo: Option<&Logo>,
+) {
     ground(fb);
     let [gx, gy, gw, gh] = l.game;
     fb.rect(gx, gy, gw, gh, 0);
@@ -515,47 +665,59 @@ fn draw_frame(fb: &mut Framebuffer, format: Format, l: &Layout, card: &Card, log
     let system = card.system.to_uppercase();
     let caption = "Played on a 15 kHz CRT television";
     match format {
+        // The game the whole width of the frame, and the caption in the band
+        // under it, where the tag no longer covers the game's own figures.
         Format::Feed => {
-            let w = tag(fb, 60, 836, 3);
-            fb.text(60 + w + 28, 845, &system, AMBER, 3);
-            for (i, line) in wrap(&card.title, 6, 960, 2).iter().enumerate() {
-                fb.text(60, 920 + i as i32 * 62, line, INK, 6);
+            let w = tag(fb, t, 56, 862, 28.0, false);
+            t.label(28.0, 6.0)
+                .draw(fb, 56 + w + 28, 874, &system, AMBER);
+            let title = t.title(84.0);
+            for (i, line) in wrap(&title, &card.title, 968, 2).iter().enumerate() {
+                title.draw(fb, 56, 936 + i as i32 * 88, line, INK);
             }
             if let Some(logo) = logo {
-                logo.draw(fb, 60, 1196, 56);
+                logo.draw(fb, 56, 1188, 60);
             }
-            fb.text(60, 1272, caption, DIM, 2);
-            let url = "omacrt.com";
-            fb.text(1020 - Framebuffer::text_width(url, 3), 1266, url, LINK, 3);
+            t.body(28.0).draw(fb, 56, 1262, caption, DIM);
+            let url = t.label(34.0, 0.0);
+            let uw = url.width("omacrt.com");
+            url.draw(fb, 1024 - uw, 1252, "omacrt.com", LINK);
         }
         Format::Vertical => {
-            tag(fb, 60, 120, 4);
+            tag(fb, t, 40, 96, 34.0, false);
             if let Some(logo) = logo {
-                let lw = logo.width_at(64);
-                logo.draw(fb, 1020 - lw, 116, 64);
+                let lw = logo.width_at(72);
+                logo.draw(fb, 1040 - lw, 98, 72);
             }
-            fb.text(60, 1092, &system, AMBER, 4);
-            for (i, line) in wrap(&card.title, 7, 960, 3).iter().enumerate() {
-                fb.text(60, 1160 + i as i32 * 72, line, INK, 7);
+            t.label(32.0, 6.0).draw(fb, 40, 1150, &system, AMBER);
+            let title = t.title(104.0);
+            for (i, line) in wrap(&title, &card.title, 1000, 3).iter().enumerate() {
+                title.draw(fb, 40, 1206 + i as i32 * 106, line, INK);
             }
-            fb.rect(60, 1720, 960, 2, LINE);
-            fb.text(60, 1756, caption, DIM, 3);
-            fb.text(60, 1812, "omacrt.com", LINK, 4);
+            fb.rect(40, 1726, 1000, 2, LINE);
+            let body = t.body(34.0);
+            body.draw(fb, 40, 1766, "Played on a 15 kHz", DIM);
+            body.draw(fb, 40, 1812, "CRT television", DIM);
+            let url = t.label(40.0, 0.0);
+            let uw = url.width("omacrt.com");
+            url.draw(fb, 1040 - uw, 1800, "omacrt.com", LINK);
         }
         Format::Wide => {
             let x = 1484;
             fb.rect(1440, 0, 4, 1080, LINE);
             if let Some(logo) = logo {
-                logo.draw(fb, x, 64, 72);
+                logo.draw(fb, x, 64, 380 * 448 / 1484);
             }
-            tag(fb, x, 196, 3);
-            fb.text(x, 560, &system, AMBER, 3);
-            for (i, line) in wrap(&card.title, 4, 392, 4).iter().enumerate() {
-                fb.text(x, 610 + i as i32 * 42, line, INK, 4);
+            tag(fb, t, x, 220, 26.0, false);
+            t.label(24.0, 5.0).draw(fb, x, 600, &system, AMBER);
+            let title = t.title(56.0);
+            for (i, line) in wrap(&title, &card.title, 392, 4).iter().enumerate() {
+                title.draw(fb, x, 642 + i as i32 * 60, line, INK);
             }
-            fb.text(x, 940, "Played on a 15 kHz", DIM, 2);
-            fb.text(x, 962, "CRT television", DIM, 2);
-            fb.text(x, 1000, "omacrt.com", LINK, 3);
+            let body = t.body(26.0);
+            body.draw(fb, x, 930, "Played on a 15 kHz", DIM);
+            body.draw(fb, x, 964, "CRT television", DIM);
+            t.label(32.0, 0.0).draw(fb, x, 1010, "omacrt.com", LINK);
         }
     }
 }
@@ -579,41 +741,48 @@ fn draw_intro(fb: &mut Framebuffer, logo: Option<&Logo>, t: f32) {
 
 /// The closing card: the mark, the game and the address, each coming up in
 /// turn and held long enough to read.
-fn draw_outro(fb: &mut Framebuffer, logo: Option<&Logo>, card: &Card, t: f32) {
+fn draw_outro(fb: &mut Framebuffer, ty: &Type, logo: Option<&Logo>, card: &Card, t: f32) {
     ground(fb);
     let w = fb.w as i32;
-    let u = fb.w.min(fb.h) as i32;
-    let lw = u * 62 / 100;
+    let u = fb.w.min(fb.h) as f32;
+    let lw = (u * 0.62) as i32;
     let lh = logo.map(|l| l.height_at_width(lw)).unwrap_or(0);
-    let title_scale = (u / 160).max(3);
-    let title = wrap(&card.title, title_scale, w * 86 / 100, 2);
-    let block = lh + 40 + title.len() as i32 * (10 * title_scale) + 40 + 32 + 40 + 40;
+    let title = ty.title(u * 0.07);
+    let lines = wrap(&title, &card.title, w * 86 / 100, 2);
+    let line_h = (u * 0.078) as i32;
+    let system = ty.label(u * 0.028, u * 0.006);
+    let url = ty.label(u * 0.04, 0.0);
+    let block =
+        lh + 48 + lines.len() as i32 * line_h + 28 + (u * 0.03) as i32 + 44 + (u * 0.045) as i32;
     let mut y = (fb.h as i32 - block) / 2;
     if let Some(logo) = logo {
         logo.draw(fb, (w - lw) / 2, y, lh);
     }
-    y += lh + 40;
+    y += lh + 48;
     let fade = |at: f32| ((t - at) / 0.3).clamp(0.0, 1.0);
-    let ink = lerp_color(GROUND_A, INK, fade(0.3));
-    for line in &title {
-        fb.text_centered(w / 2, y, line, ink, title_scale);
-        y += 10 * title_scale;
+    let centre = |fb: &mut Framebuffer, s: &Style, y: i32, text: &str, c: Color| {
+        let tw = s.width(text);
+        s.draw(fb, (w - tw) / 2, y, text, c);
+    };
+    for line in &lines {
+        centre(fb, &title, y, line, lerp_color(GROUND_A, INK, fade(0.3)));
+        y += line_h;
     }
-    y += 30;
-    fb.text_centered(
-        w / 2,
+    y += 28;
+    centre(
+        fb,
+        &system,
         y,
         &card.system.to_uppercase(),
         lerp_color(GROUND_A, AMBER, fade(0.15)),
-        3,
     );
-    y += 60;
-    fb.text_centered(
-        w / 2,
+    y += (u * 0.03) as i32 + 44;
+    centre(
+        fb,
+        &url,
         y,
         "omacrt.com",
         lerp_color(GROUND_A, LINK, fade(0.5)),
-        4,
     );
 }
 
@@ -711,19 +880,50 @@ mod tests {
 
     #[test]
     fn a_title_wraps_on_words_and_ends_on_an_ellipsis_when_too_long() {
+        let t = Type::load().expect("the typefaces load");
+        let title = t.title(84.0);
         assert_eq!(
-            wrap("Sega Rally Championship", 6, 960, 2),
+            wrap(&title, "Sega Rally Championship", 968, 2),
+            ["Sega Rally Championship"]
+        );
+        assert_eq!(
+            wrap(&title, "Sega Rally Championship", 600, 2),
             ["Sega Rally", "Championship"]
         );
         let long = wrap(
+            &title,
             "The Legend of Zelda A Link to the Past and Four Swords",
-            6,
-            960,
+            968,
             2,
         );
         assert_eq!(long.len(), 2);
-        assert!(long[1].ends_with("..."), "{long:?}");
-        assert!(long.iter().all(|l| l.chars().count() <= 20), "{long:?}");
+        assert!(long[1].ends_with('…'), "{long:?}");
+        assert!(long.iter().all(|l| title.width(l) <= 968), "{long:?}");
+    }
+
+    #[test]
+    fn a_piece_from_before_the_game_is_not_taken() {
+        let dir = std::env::temp_dir().join(format!("omacrt-replay-since-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let at = |name: &str, secs: u64| {
+            std::fs::write(dir.join(name), b"x").unwrap();
+            let f = std::fs::File::options()
+                .write(true)
+                .open(dir.join(name))
+                .unwrap();
+            f.set_modified(
+                std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs),
+            )
+            .unwrap();
+        };
+        at("seg00.ts", 1_000);
+        at("seg01.ts", 2_000);
+        let since = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_500);
+        let got = pieces(&dir, Some(since));
+        assert_eq!(got.len(), 1);
+        assert!(got[0].ends_with("seg01.ts"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -770,7 +970,7 @@ mod tests {
             system: "Sega Model 2".into(),
         };
         for f in [Format::Feed, Format::Vertical, Format::Wide] {
-            let out = compose(&card, f).expect("a replay");
+            let out = compose(&card, f, None).expect("a replay");
             println!("{}", out.display());
         }
     }
@@ -801,7 +1001,7 @@ mod tests {
         }
         std::fs::write(dir.join("seg99.ts"), b"").unwrap();
         std::fs::write(dir.join("notes.txt"), b"x").unwrap();
-        let got = pieces(&dir);
+        let got = pieces(&dir, None);
         assert_eq!(got.len(), PIECES);
         assert!(got[0].ends_with("seg03.ts"), "{got:?}");
         assert!(got.last().unwrap().ends_with("seg19.ts"), "{got:?}");

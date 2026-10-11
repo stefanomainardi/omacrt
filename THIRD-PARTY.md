@@ -40,6 +40,13 @@ piece means carrying their notice with it.
   reconstruction of the IBM PC BIOS face, from
   [font8x8](https://github.com/dhepper/font8x8) (public domain / CC0). The
   table lives in `shell/src/font8x8.rs`.
+- **IBM Plex**, the typeface of the instant replay's frame: IBM Plex Sans
+  SemiBold and Regular and IBM Plex Mono SemiBold, compiled in with
+  `include_bytes!` from `shell/assets/fonts/` and set with
+  [fontdue](https://github.com/mooman219/fontdue) (MIT or Apache 2.0).
+  Copyright (c) IBM Corp., under the SIL Open Font License 1.1, which
+  travels with the files as
+  [`shell/assets/fonts/OFL.txt`](shell/assets/fonts/OFL.txt).
 - **ratatui** and **crossterm**, which draw the terminal side of the project:
   the self test's report, its diagrams and the output picker.
   [ratatui](https://ratatui.rs) (MIT) and

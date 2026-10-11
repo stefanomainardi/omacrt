@@ -8,6 +8,7 @@ calloop-wayland-source = "0.4.1"
 chrono = "0.4"
 drm = "0.14"
 drm-ffi = "0.9"
+fontdue = "0.9.4"
 libc = "0.2"
 png = "0.18"
 # The terminal side of the project: `doctor` and `setup`. Only the crossterm

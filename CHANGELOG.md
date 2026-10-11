@@ -28,6 +28,9 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- The launcher no longer crashes when a game starts, with SDL 3.4.18.
+- A game resumed from where it was left is no longer reset to its start a
+  moment later when RetroAchievements are on.
 - A DisplayPort connector can be handed to the television; it was never
   recognised as offered for leasing.
 - The boot handover works with an EDID that has no CTA-861 extension, as
