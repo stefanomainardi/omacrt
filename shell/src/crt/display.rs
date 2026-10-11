@@ -621,12 +621,14 @@ pub fn record_stop() -> std::io::Result<()> {
     send("record stop")
 }
 
-/// Start the replay ring: the display process keeps the newest minute of the
-/// tube in two second pieces under `dir`, with the television's sound.
-pub fn replay_start(dir: &str, sink: Option<&str>) -> std::io::Result<()> {
+/// Start the replay ring: the display process keeps the newest forty seconds
+/// of the game in two second pieces under `dir`, with the television's
+/// sound. `width` is the game's own picture width, which the display process
+/// samples the tube's line back down to; 0 when it is not known.
+pub fn replay_start(dir: &str, width: u32, sink: Option<&str>) -> std::io::Result<()> {
     match sink {
-        Some(s) => send(&format!("replay start {dir} {s}")),
-        None => send(&format!("replay start {dir}")),
+        Some(s) => send(&format!("replay start {dir} {width} {s}")),
+        None => send(&format!("replay start {dir} {width}")),
     }
 }
 

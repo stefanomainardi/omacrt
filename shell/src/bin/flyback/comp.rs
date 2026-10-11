@@ -83,11 +83,11 @@ use smithay::backend::input::KeyState;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::default_primary_scanout_output_compare;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::gles::GlesRenderbuffer;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::gles::{GlesMapping, GlesRenderbuffer};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::backend::renderer::{
-    Bind, ExportMem, ImportDma, ImportEgl, Offscreen, TextureMapping,
+    Bind, ExportMem, ImportDma, ImportEgl, Offscreen, Renderer, TextureFilter, TextureMapping,
 };
 use smithay::desktop::space::{SpaceRenderElements, space_render_elements};
 use smithay::desktop::utils::{
@@ -184,6 +184,13 @@ pub struct Crt {
     /// and the mode it was made for. Kept between frames.
     capture_target: Option<GlesRenderbuffer>,
     capture_size: Option<(i32, i32)>,
+    /// The replay ring's own small target, and the read of it asked for on
+    /// the frame before, which is handed on a frame later so nothing ever
+    /// waits for the GPU.
+    ring_target: Option<GlesRenderbuffer>,
+    ring_size: Option<(i32, i32)>,
+    ring_pending: Option<GlesMapping>,
+    ring_failed: bool,
     /// Page flips refused in a row. A driver that will not take a frame
     /// takes none of them, so the count only ever runs away.
     flips_failed: u32,
@@ -495,12 +502,6 @@ const FRAME_DEADLINE: Duration = Duration::from_secs(2);
 const REC_W: usize = 1280;
 const REC_H: usize = 960;
 
-/// The ring's picture: the tube's 4:3 frame at three times a 240 line height,
-/// which is the size the replay's frame shows it at, so a 240 line game keeps
-/// whole pixels from the tube to the clip.
-const RING_W: usize = 960;
-const RING_H: usize = 720;
-
 impl Recorder {
     fn start(path: &str, sink: Option<String>) -> Result<Recorder, String> {
         // Same reasoning as the screenshot: the recording goes to a film, and
@@ -554,7 +555,7 @@ impl Recorder {
     ///
     /// Every piece starts on a key frame so that any run of them joins
     /// without decoding across the seam; the segmenter can only cut there.
-    fn ring(dir: &str, sink: Option<String>) -> Result<Recorder, String> {
+    fn ring(dir: &str, sink: Option<String>, w: usize, h: usize) -> Result<Recorder, String> {
         let dir = std::path::Path::new(dir);
         if !dir.is_absolute() || !dir.is_dir() {
             return Err(format!(
@@ -567,33 +568,31 @@ impl Recorder {
         cmd.args(["-hide_banner", "-loglevel", "error", "-y"])
             .args(["-f", "rawvideo", "-pix_fmt", "bgra"])
             .args(["-use_wallclock_as_timestamps", "1"])
-            .args([
-                "-s",
-                &format!("{RING_W}x{RING_H}"),
-                "-r",
-                "30",
-                "-i",
-                "pipe:0",
-            ]);
+            .args(["-s", &format!("{w}x{h}"), "-r", "60", "-i", "pipe:0"]);
         if let Some(sink) = &sink {
             cmd.args(["-f", "pulse", "-i", &format!("{sink}.monitor")]);
         }
+        // The game's own pixels at its own size, kept close to lossless and
+        // in full colour: at 256 by 240 that is about forty megabytes a
+        // minute of a busy 3D game, and much less of a 2D one.
         cmd.args([
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "10", "-pix_fmt", "yuv444p",
         ])
         .args(["-force_key_frames", "expr:gte(t,n_forced*2)"])
-        .args(["-fps_mode", "cfr", "-r", "30"]);
+        .args(["-fps_mode", "cfr", "-r", "60"]);
         // `-shortest`: the sound comes from a monitor that never ends, so
         // without it ffmpeg outlived the pictures and kept recording sound
         // into the ring after every stop, one more process each time.
         if sink.is_some() {
             cmd.args(["-c:a", "aac", "-b:a", "160k", "-shortest"]);
         }
-        cmd.args(["-f", "segment", "-segment_time", "2", "-segment_wrap", "30"])
+        // Twenty pieces of two seconds: the thirty a replay holds and room
+        // for the piece still being written.
+        cmd.args(["-f", "segment", "-segment_time", "2", "-segment_wrap", "20"])
             .args(["-reset_timestamps", "1", "-segment_format", "mpegts"])
             .arg("--")
             .arg(&pattern);
-        Self::spawn(cmd, &dir.to_string_lossy(), RING_W, RING_H)
+        Self::spawn(cmd, &dir.to_string_lossy(), w, h)
     }
 
     fn spawn(
@@ -653,12 +652,28 @@ impl Recorder {
         }
     }
 
+    /// End the writer and the encoder. Closing the pipe is how ffmpeg is
+    /// asked to finish; one that has not done so in a second is killed, so a
+    /// stop can never leave an encoder behind.
     fn stop(mut self) -> String {
         drop(self.tx);
         if let Some(t) = self.thread.take() {
             let _ = t.join();
         }
-        let _ = self.child.wait();
+        let t0 = Instant::now();
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if t0.elapsed() < Duration::from_secs(1) => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                _ => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break;
+                }
+            }
+        }
         format!("{} frames to {}", self.frames, self.path)
     }
 }
@@ -1066,6 +1081,10 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         queued_at: None,
         capture_target: None,
         capture_size: None,
+        ring_target: None,
+        ring_size: None,
+        ring_pending: None,
+        ring_failed: false,
         flips_failed: 0,
         dirty: true,
         pacer_armed: false,
@@ -1582,28 +1601,44 @@ impl Crt {
             // ffmpeg to finish its last piece, which is done off the event
             // loop so the picture does not hold still for it.
             "replay" => {
-                let (what, rest) = arg.trim().split_once(' ').unwrap_or((arg.trim(), ""));
-                let (dir, sink) = match rest.trim().split_once(' ') {
-                    Some((d, s)) if !s.trim().is_empty() => (d.trim(), Some(s.trim().to_string())),
-                    _ => (rest.trim(), None),
-                };
+                // `replay start <dir> <width> [sink]`: the width is the
+                // game's own picture width, 0 when the launcher does not know
+                // it; the height is the tube's line count.
+                let words: Vec<&str> = arg.split_whitespace().collect();
                 if let Some(r) = self.replay.take() {
                     std::thread::spawn(move || {
                         r.stop();
                     });
                 }
-                match what {
-                    "start" if !dir.is_empty() => {
-                        let sink = sink.or_else(|| {
+                self.ring_pending = None;
+                self.ring_failed = false;
+                match words.as_slice() {
+                    ["start", dir, width, rest @ ..] => {
+                        let sink = rest.first().map(|s| s.to_string()).or_else(|| {
                             std::env::var("OMACRT_SINK").ok().filter(|s| !s.is_empty())
                         });
-                        match Recorder::ring(dir, sink) {
-                            Ok(r) => self.replay = Some(r),
+                        let lines = self
+                            .output
+                            .current_mode()
+                            .map(|m| m.size.h.max(1) as usize)
+                            .unwrap_or(240);
+                        let w = width
+                            .parse::<usize>()
+                            .ok()
+                            .filter(|w| (64..=1024).contains(w))
+                            .unwrap_or(1280);
+                        match Recorder::ring(dir, sink, w, lines) {
+                            Ok(r) => {
+                                println!("replay: keeping the game at {w}x{lines}");
+                                self.replay = Some(r);
+                            }
                             Err(e) => eprintln!("replay: {e}"),
                         }
                     }
-                    "stop" => {}
-                    _ => eprintln!("replay: use `replay start <dir> [sink]` or `replay stop`"),
+                    ["stop"] => {}
+                    _ => eprintln!(
+                        "replay: use `replay start <dir> <width> [sink]` or `replay stop`"
+                    ),
                 }
             }
             // `colour R G B`: the channel gains, from the TV profile's page.
@@ -1861,6 +1896,119 @@ impl Crt {
             .map_texture(&mapping)
             .map_err(|e| format!("map: {e}"))?;
         Ok(take(bytes, flipped, w as usize, h as usize))
+    }
+
+    /// One frame of the replay ring, after the flip is queued.
+    ///
+    /// The tube's line is the game's picture stretched to thousands of
+    /// samples by the emulator, without smoothing. Drawing the scene again
+    /// at the game's own width, sampling the nearest pixel, lands on the
+    /// middle of every original pixel and gives the game's frame back as it
+    /// left the console. That is a few hundred kilobytes rather than the
+    /// tube's megabytes, which is what lets the ring keep sixty frames a
+    /// second for the cost of a very small draw.
+    ///
+    /// The read of what was drawn is asked for now and taken on the next
+    /// frame, by when the GPU has long finished it, so this never waits on
+    /// the GPU in the path that decides when the next frame goes out.
+    fn ring_frame(&mut self) {
+        let Some((w, h)) = self.replay.as_ref().map(|r| (r.w, r.h)) else {
+            return;
+        };
+        if let Some(mapping) = self.ring_pending.take() {
+            let flipped = mapping.flipped();
+            let mut frame = self.replay.as_mut().map(|r| r.buffer()).unwrap_or_default();
+            let row = w * 4;
+            let copied = match self.renderer.map_texture(&mapping) {
+                Ok(bytes) if bytes.len() >= row * h && frame.len() >= row * h => {
+                    for y in 0..h {
+                        // GL reads bottom-up unless the mapping says otherwise.
+                        let src = if flipped { y } else { h - 1 - y };
+                        frame[y * row..(y + 1) * row]
+                            .copy_from_slice(&bytes[src * row..(src + 1) * row]);
+                    }
+                    true
+                }
+                _ => false,
+            };
+            if copied && let Some(r) = self.replay.as_mut() {
+                r.push(frame);
+            }
+        }
+        match self.ring_draw(w, h) {
+            Ok(m) => self.ring_pending = Some(m),
+            Err(e) => {
+                if !self.ring_failed {
+                    eprintln!("replay: {e}");
+                    self.ring_failed = true;
+                }
+            }
+        }
+    }
+
+    fn ring_draw(&mut self, w: usize, h: usize) -> Result<GlesMapping, String> {
+        let size = self
+            .output
+            .current_mode()
+            .map(|m| m.size)
+            .ok_or("no mode")?;
+        let (tw, th) = (w as i32, h as i32);
+        if self.ring_size != Some((tw, th)) {
+            self.ring_target = None;
+        }
+        if self.ring_target.is_none() {
+            self.ring_target = Some(
+                self.renderer
+                    .create_buffer(Fourcc::Argb8888, (tw, th).into())
+                    .map_err(|e| format!("ring buffer: {e}"))?,
+            );
+            self.ring_size = Some((tw, th));
+        }
+        let scale = smithay::utils::Scale::<f64>::from((
+            w as f64 / size.w.max(1) as f64,
+            h as f64 / size.h.max(1) as f64,
+        ));
+        let region = Rectangle::<i32, smithay::utils::Logical>::from_size((size.w, size.h).into());
+        let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = self
+            .space
+            .render_elements_for_region(&mut self.renderer, &region, scale, 1.0);
+        // Nearest for this draw only: the tube's own frame is drawn at its
+        // size, where the filter never matters.
+        let _ = self.renderer.downscale_filter(TextureFilter::Nearest);
+        let drawn = self.ring_render(tw, th, scale, &elements);
+        let _ = self.renderer.downscale_filter(TextureFilter::Linear);
+        drawn
+    }
+
+    fn ring_render(
+        &mut self,
+        tw: i32,
+        th: i32,
+        scale: smithay::utils::Scale<f64>,
+        elements: &[WaylandSurfaceRenderElement<GlesRenderer>],
+    ) -> Result<GlesMapping, String> {
+        let target = self.ring_target.as_mut().ok_or("ring buffer went away")?;
+        let mut fb = self
+            .renderer
+            .bind(target)
+            .map_err(|e| format!("bind: {e}"))?;
+        // The tracker works an element's size out again at its own scale,
+        // so it has to be the scale the elements were made at: with 1.0 the
+        // positions came out scaled and the widths did not, and the ring
+        // held the left eleventh of the tube.
+        let mut tracker = OutputDamageTracker::new((tw, th), scale, Transform::Normal);
+        tracker
+            .render_output(
+                &mut self.renderer,
+                &mut fb,
+                0,
+                elements,
+                [0.0, 0.0, 0.0, 1.0],
+            )
+            .map_err(|e| format!("render: {e}"))?;
+        self.renderer
+            .copy_framebuffer(&fb, Rectangle::from_size((tw, th).into()), Fourcc::Argb8888)
+            .map_err(|e| format!("copy: {e}"))
     }
 
     /// The picture the right way up, in a buffer of its own. For a still.
@@ -3001,26 +3149,22 @@ impl Crt {
         self.frame_queued = false;
         self.queued_at = None;
         self.frames += 1;
-        if (self.recorder.is_some() || self.replay.is_some()) && self.frames.is_multiple_of(2) {
-            // One read of the frame feeds both: the film being recorded and
-            // the replay ring, each scaled straight out of the mapped pixels
-            // into a buffer its writer has finished with. No full sized copy
-            // in between, and no allocation per frame.
+        if self.recorder.is_some() && self.frames.is_multiple_of(2) {
+            // Scale straight out of the mapped pixels into a buffer the
+            // writer has finished with: no full sized copy of the frame in
+            // between, and no allocation per frame.
             let mut rec = self.recorder.as_mut().map(|r| (r.buffer(), r.w, r.h));
-            let mut ring = self.replay.as_mut().map(|r| (r.buffer(), r.w, r.h));
             let scaled = self.with_frame(|bytes, flipped, w, h| {
-                for (frame, out_w, out_h) in [rec.as_mut(), ring.as_mut()].into_iter().flatten() {
+                if let Some((frame, out_w, out_h)) = rec.as_mut() {
                     scale_into(bytes, flipped, w, h, frame, *out_w, *out_h);
                 }
             });
-            if scaled.is_ok() {
-                if let (Some((frame, ..)), Some(r)) = (rec, self.recorder.as_mut()) {
-                    r.push(frame);
-                }
-                if let (Some((frame, ..)), Some(r)) = (ring, self.replay.as_mut()) {
-                    r.push(frame);
-                }
+            if let (Ok(()), Some((frame, ..)), Some(r)) = (scaled, rec, self.recorder.as_mut()) {
+                r.push(frame);
             }
+        }
+        if self.replay.is_some() {
+            self.ring_frame();
         }
         if self.last_stats.elapsed() >= Duration::from_secs(5) {
             self.last_stats = Instant::now();

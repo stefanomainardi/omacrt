@@ -341,6 +341,18 @@ pub struct Settings {
     pub sound: Sound,
     #[serde(default)]
     pub arcade: ArcadeFilter,
+    #[serde(default)]
+    pub replay: Replay,
+}
+
+/// The instant replay: whether the last half minute of a game is kept, so
+/// the pause menu can make a video of it. Off by default: keeping it costs a
+/// small capture on every frame the tube shows and an encoder beside the
+/// game, and that is the player's to choose.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Replay {
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 /// What an arcade list leaves out. Empty, zero and false each mean "anything",
@@ -410,6 +422,7 @@ impl Default for Settings {
             ambient: Ambient::default(),
             sound: Sound::default(),
             frame: Frame::default(),
+            replay: Replay::default(),
             arcade: ArcadeFilter::default(),
         }
     }

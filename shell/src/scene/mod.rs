@@ -400,7 +400,7 @@ const SOUND_ROWS: usize = 4;
 /// Rows of the Music settings page before the one per visualizer.
 const MUSIC_ROWS: usize = 7;
 /// Rows of the Videos settings page.
-const VIDEOS_ROWS: usize = 3;
+const VIDEOS_ROWS: usize = 4;
 /// Country codes the radio row cycles through; empty follows the locale.
 const COUNTRIES: [&str; 10] = ["", "IT", "US", "GB", "DE", "FR", "ES", "PT", "JP", "BR"];
 
@@ -1918,6 +1918,23 @@ impl Scene {
         } else {
             s.player.clone()
         })
+    }
+
+    /// The width the replay ring keeps the running game at, when the replay
+    /// is on: the core's own picture width, so the ring holds the game's
+    /// pixels rather than the tube's stretched line, or 0 when that width is
+    /// not known yet and the display process picks a generous one.
+    pub fn replay_ring(&self) -> Option<u32> {
+        if !self.settings.replay.enabled {
+            return None;
+        }
+        let (_, system) = self.running.as_ref()?;
+        Some(
+            crate::library::picture_of(system)
+                .map(|p| p.width)
+                .filter(|w| (64..=1024).contains(w))
+                .unwrap_or(0),
+        )
     }
 
     pub fn running_game_path(&self) -> Option<PathBuf> {

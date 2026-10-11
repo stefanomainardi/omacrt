@@ -1370,7 +1370,7 @@ fn run(args: &Args) -> Result<(), String> {
                 }
                 if inp.menu {
                     let out = scene.toggle_pause();
-                    after_pause(out, following, playing_hz, fb.h as u32);
+                    after_pause(out, following, playing_hz, fb.h as u32, scene.replay_ring());
                     continue;
                 }
                 if scene.is_paused() {
@@ -1379,7 +1379,7 @@ fn run(args: &Args) -> Result<(), String> {
                         if out == PauseOutcome::Quit {
                             stop_game(&child, &mut stop_asked);
                         }
-                        after_pause(out, following, playing_hz, fb.h as u32);
+                        after_pause(out, following, playing_hz, fb.h as u32, scene.replay_ring());
                     }
                     continue;
                 }
@@ -1573,7 +1573,9 @@ fn run(args: &Args) -> Result<(), String> {
                     child = Some(c);
                     // The last half minute of play is kept from here on, for
                     // a replay.
-                    replay::start();
+                    if let Some(width) = scene.replay_ring() {
+                        replay::start(width);
+                    }
                 }
                 Err(e) => {
                     eprintln!("cannot start retroarch: {e}");
@@ -1625,7 +1627,7 @@ fn run(args: &Args) -> Result<(), String> {
                     if out == PauseOutcome::Quit {
                         stop_game(&child, &mut stop_asked);
                     }
-                    after_pause(out, following, playing_hz, fb.h as u32);
+                    after_pause(out, following, playing_hz, fb.h as u32, scene.replay_ring());
                 }
             } else if !scene.is_running() {
                 scene.navigate(n);
@@ -2182,6 +2184,7 @@ fn after_pause(
     game_lines: Option<u32>,
     game_hz: Option<f32>,
     own_lines: u32,
+    ring: Option<u32>,
 ) {
     use omacrt_shell::crt::display;
     use omacrt_shell::crt::output::raise;
@@ -2189,7 +2192,11 @@ fn after_pause(
     // the play rather than on the menu, and picks up again on the way back.
     match outcome {
         PauseOutcome::Shown => replay::stop(),
-        PauseOutcome::Resumed => replay::start(),
+        PauseOutcome::Resumed => {
+            if let Some(width) = ring {
+                replay::start(width);
+            }
+        }
         PauseOutcome::Quit | PauseOutcome::None => {}
     }
     let differs = game_lines.is_some_and(|l| l != own_lines);

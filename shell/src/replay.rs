@@ -23,7 +23,7 @@ use crate::paint::BAYER;
 /// How much play a replay holds.
 const CLIP_SECS: f64 = 30.0;
 /// The ring's frame rate and the replay's.
-const FPS: u32 = 30;
+const FPS: u32 = 60;
 /// Pieces taken from the ring: two seconds each, a little over the clip so a
 /// piece still being written at the newest end does not leave it short.
 const PIECES: usize = 17;
@@ -110,18 +110,16 @@ fn since() -> Option<std::time::SystemTime> {
 
 /// Start keeping the ring, with the television's sound when the audio is
 /// routed to it. Called when a game starts and again when it resumes from
-/// the pause menu; only the first call for a game sets where it begins.
-pub fn start() {
+/// the pause menu; only the first call for a game sets where it begins, and
+/// clears what an earlier game left. `width` is the game's own picture
+/// width, 0 when it is not known.
+pub fn start(width: u32) {
     use omacrt_shell::crt::{Config, audio, display, output};
-    // Off until the capture is understood: on the first evening with the
-    // ring, the launcher crashed inside SDL's Wayland dispatch moments after
-    // every game started it, and the ring's ffmpeg outlived every stop.
-    // `OMACRT_REPLAY_RING=1` turns it on for testing.
-    if std::env::var_os("OMACRT_REPLAY_RING").is_none() {
-        return;
-    }
     if !display::running() {
         return;
+    }
+    if since().is_none() {
+        clear(&ring_dir());
     }
     let dir = ring_dir();
     if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -136,7 +134,7 @@ pub fn start() {
     } else {
         None
     };
-    match display::replay_start(&dir.to_string_lossy(), sink.as_deref()) {
+    match display::replay_start(&dir.to_string_lossy(), width, sink.as_deref()) {
         Ok(()) => {
             if let Ok(mut g) = SINCE.lock()
                 && g.is_none()
@@ -154,11 +152,33 @@ pub fn stop() {
     }
 }
 
-/// The game has ended: stop the ring and forget where it began.
+/// The game has ended: stop the ring, forget where it began, and give the
+/// memory back. The pieces go a moment later, once the encoder has finished
+/// its last one, and only if no new game has started the ring meanwhile.
 pub fn end() {
     stop();
     if let Ok(mut g) = SINCE.lock() {
         *g = None;
+    }
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        if since().is_none() {
+            clear(&ring_dir());
+        }
+    });
+}
+
+/// Remove the ring's pieces. The folder itself stays.
+fn clear(dir: &Path) {
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let p = e.path();
+        let piece = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with("seg") && n.ends_with(".ts"));
+        if piece {
+            let _ = std::fs::remove_file(p);
+        }
     }
 }
 
@@ -293,7 +313,14 @@ fn compose_in(
         format!("[c2]crop={bw}:{bh}:{bx}:{by}[track]"),
         format!("color=c=0x{ACCENT:06x}:s={bw}x{bh}:r={FPS}[fill]"),
         format!("[track][fill]overlay=x='-{bw}+{bw}*t/{len:.3}':y=0:eval=frame[trk]"),
-        format!("[1:v]fps={FPS},scale={gw}:{gh}:flags=neighbor,setsar=1[g]"),
+        // The ring holds the game at its own size. Whole pixels first, to
+        // the smallest whole multiple that covers the frame, then an area
+        // filter down to it: every pixel stays square and sharp, and the
+        // step that is not a whole number is shared out evenly instead of
+        // making every few columns one pixel wider.
+        format!(
+            "[1:v]fps={FPS},scale=w='iw*ceil({gw}/iw)':h='ih*ceil({gh}/ih)':flags=neighbor,scale={gw}:{gh}:flags=area,setsar=1[g]"
+        ),
         format!("[c1][g]overlay={gx}:{gy}:shortest=1[v1]"),
         format!("[v1][trk]overlay={bx}:{by}:shortest=1,format=yuv420p,setsar=1[cv]"),
         clip_audio,

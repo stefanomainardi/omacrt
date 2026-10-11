@@ -13,6 +13,7 @@ impl Scene {
         match row {
             0 => v.yt_quality = step(v.yt_quality, &[360, 480, 720, 1080], dir),
             1 => v.yt_results = step(v.yt_results, &[10, 20, 40], dir),
+            3 => self.settings.replay.enabled = !self.settings.replay.enabled,
             _ => {}
         }
     }
@@ -371,15 +372,22 @@ impl Scene {
 
     pub(super) fn draw_video_settings(&mut self, fb: &mut Framebuffer, sel: usize) {
         let v = self.settings.videos.clone();
+        let replay = if self.settings.replay.enabled {
+            "on"
+        } else {
+            "off"
+        };
         let rows: Vec<(String, String)> = vec![
             ("youtube quality".into(), format!("{}p", v.yt_quality)),
             ("youtube results".into(), format!("{}", v.yt_results)),
             ("video fit".into(), "open".into()),
+            ("instant replay".into(), replay.into()),
         ];
         let notes = [
             "the tube shows 240 lines; 480p decodes cool, 1080p heats the room",
             "hits per search from the tube",
             "standard, pulldown, aspect, overscan, retro 240p",
+            "keeps the last 30 s of a game for Save replay in the pause menu",
         ];
         self.draw_settings_table(fb, "Videos", &rows, &notes, sel, 14, None);
     }

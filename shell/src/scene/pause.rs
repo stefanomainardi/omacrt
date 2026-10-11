@@ -122,7 +122,15 @@ impl Scene {
                 PauseOutcome::None
             }
             PauseRow::Replay => {
-                self.save_replay(crate::replay::Format::Feed);
+                if self.settings.replay.enabled {
+                    self.save_replay(crate::replay::Format::Feed);
+                } else {
+                    self.pending.push(Sound::Crunch);
+                    self.message = Some((
+                        "the replay is off: right turns it on".into(),
+                        self.now + 3.0,
+                    ));
+                }
                 PauseOutcome::None
             }
             PauseRow::Rewind => {
@@ -220,6 +228,23 @@ impl Scene {
     /// Cycle the picture or the shader for the running system, one step in
     /// either direction, and remember it in `systems.toml`.
     fn pause_choice(&mut self, row: PauseRow, dir: i32) {
+        if row == PauseRow::Replay {
+            let _ = dir;
+            let on = !self.settings.replay.enabled;
+            self.settings.replay.enabled = on;
+            self.save_settings();
+            self.pending.push(Sound::Move);
+            if on {
+                self.message = Some((
+                    "replay on: it keeps the game from when it resumes".into(),
+                    self.now + 4.0,
+                ));
+            } else {
+                crate::replay::end();
+                self.message = Some(("replay off".into(), self.now + 3.0));
+            }
+            return;
+        }
         let Some((system, _)) = self.running_path.clone() else {
             return;
         };
@@ -297,6 +322,14 @@ impl Scene {
                     label.to_string()
                 })
             }
+            PauseRow::Replay => Some(
+                if self.settings.replay.enabled {
+                    "on"
+                } else {
+                    "off"
+                }
+                .into(),
+            ),
             PauseRow::Centre => {
                 let path = self.running_path.as_ref().map(|(_, p)| p.clone())?;
                 let (x, y) =

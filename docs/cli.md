@@ -390,19 +390,37 @@ it is doing.
 
 ## Instant replay
 
-While a game is on the tube, the display process keeps its newest minute as a
-ring of two second pieces with the television's sound, in the session's
-runtime folder (`$XDG_RUNTIME_DIR/omacrt-replay`), which is memory: the ring
-writes about a megabyte a second, and never holds more than about seventy. The ring stops while the pause menu is up, so a replay
-saved from there ends on the play rather than on the menu, and picks up again
-when the game resumes.
+Off until it is turned on, in **Settings > Videos > instant replay** or on
+the **Save replay** row of the pause menu (left and right), which are the same
+setting (`[replay] enabled` in `settings.toml`).
+
+While it is on and a game is on the tube, the display process keeps the
+game's newest forty seconds as a ring of two second pieces with the
+television's sound, in the session's runtime folder
+(`$XDG_RUNTIME_DIR/omacrt-replay`), which is memory, never the disk. It keeps
+the game rather than the tube: the emulator stretches the game's picture to
+the tube's line without smoothing, and drawing the scene again at the game's
+own width, nearest pixel, lands on the middle of every original pixel. The
+ring therefore holds 256 by 224 for a Super Nintendo, at sixty frames a
+second, close to lossless and in full colour. That is about 24 megabytes of
+memory for a busy 3D game and much less for a 2D one; a system whose width
+is not known yet is kept at 1280 across. The read of each frame is taken a
+frame after it is asked for, so nothing waits on the GPU, and the latency
+probe reads the same with the ring on as off.
+
+The ring stops while the pause menu is up, so a replay saved from there ends
+on the play rather than on the menu, and picks up again when the game
+resumes. It is emptied when a game ends, and a replay is cut only from
+pieces written for the game being played.
 
 **Save replay** in the pause menu, or `omacrt replay` from anywhere, makes a
 video of the last 30 seconds: a short opening with the mark, the game in a
 frame with its title and system and a bar for the time, and a closing card
-with the address. The launcher draws the frame with its own font and makes
-the video in the background with ffmpeg, at the lowest priority, in about half
-a minute. The pause menu says when the file is written.
+with the address, set in IBM Plex. The game is enlarged by whole pixels and
+then brought to the frame with an area filter, so its pixels stay square and
+sharp. The launcher makes the video in the background with ffmpeg, at the
+lowest priority, in about half a minute, and the pause menu says when the
+file is written.
 
 ```
 omacrt replay              # 1080 by 1350, the size a phone's feed shows largest
@@ -411,8 +429,7 @@ omacrt replay wide         # 1920 by 1080
 ```
 
 Files go to `$XDG_VIDEOS_DIR/OmaCRT`, else `~/Videos/OmaCRT`, named after the
-game and the time. The picture is the frame the television is given, at 960
-by 720: three times a 240 line frame, so a 240 line game keeps whole pixels.
+game and the time, at sixty frames a second.
 
 ## Clearing up after itself
 
