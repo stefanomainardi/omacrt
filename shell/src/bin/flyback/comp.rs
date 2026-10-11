@@ -120,6 +120,10 @@ use smithay::wayland::dmabuf::{
 };
 use smithay::wayland::output::{OutputHandler, OutputManagerState};
 use smithay::wayland::presentation::{PresentationState, Refresh};
+use smithay::wayland::selection::SelectionHandler;
+use smithay::wayland::selection::data_device::{
+    ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
+};
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
     XdgToplevelSurfaceData,
@@ -128,8 +132,8 @@ use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::{
-    delegate_compositor, delegate_dmabuf, delegate_output, delegate_presentation, delegate_seat,
-    delegate_shm, delegate_viewporter, delegate_xdg_shell,
+    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output,
+    delegate_presentation, delegate_seat, delegate_shm, delegate_viewporter, delegate_xdg_shell,
 };
 use std::ffi::OsString;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
@@ -161,6 +165,11 @@ pub struct Crt {
     _output_manager_state: OutputManagerState,
     seat_state: SeatState<Crt>,
     seat: Seat<Crt>,
+    /// The clipboard protocol. Nothing on the tube copies or pastes, but SDL
+    /// 3.4.18 reads the seat's data device on every keyboard leave without
+    /// checking it exists, so a compositor without one crashes every SDL
+    /// client the moment focus moves to a game.
+    data_device_state: DataDeviceState,
     dmabuf_state: DmabufState,
     _dmabuf_global: DmabufGlobal,
     renderer: GlesRenderer,
@@ -574,8 +583,11 @@ impl Recorder {
         ])
         .args(["-force_key_frames", "expr:gte(t,n_forced*2)"])
         .args(["-fps_mode", "cfr", "-r", "30"]);
+        // `-shortest`: the sound comes from a monitor that never ends, so
+        // without it ffmpeg outlived the pictures and kept recording sound
+        // into the ring after every stop, one more process each time.
         if sink.is_some() {
-            cmd.args(["-c:a", "aac", "-b:a", "160k"]);
+            cmd.args(["-c:a", "aac", "-b:a", "160k", "-shortest"]);
         }
         cmd.args(["-f", "segment", "-segment_time", "2", "-segment_wrap", "30"])
             .args(["-reset_timestamps", "1", "-segment_format", "mpegts"])
@@ -829,6 +841,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
     // emulator - can only guess, and both RetroArch and mpv ask for it.
     let _presentation_state = PresentationState::new::<Crt>(&dh, libc::CLOCK_MONOTONIC as u32);
     let output_manager_state = OutputManagerState::new_with_xdg_output::<Crt>(&dh);
+    let data_device_state = DataDeviceState::new::<Crt>(&dh);
     let mut seat_state = SeatState::new();
     let mut seat: Seat<Crt> = seat_state.new_wl_seat(&dh, "crt");
     // A keyboard with no keys behind it yet: clients such as RetroArch only
@@ -1042,6 +1055,7 @@ pub fn run(connector: Option<&str>) -> Result<(), String> {
         shm_state,
         _output_manager_state: output_manager_state,
         seat_state,
+        data_device_state,
         seat,
         dmabuf_state,
         _dmabuf_global: dmabuf_global,
@@ -3302,6 +3316,18 @@ delegate_compositor!(Crt);
 delegate_xdg_shell!(Crt);
 delegate_shm!(Crt);
 delegate_seat!(Crt);
+delegate_data_device!(Crt);
+
+impl SelectionHandler for Crt {
+    type SelectionUserData = ();
+}
+impl DataDeviceHandler for Crt {
+    fn data_device_state(&self) -> &DataDeviceState {
+        &self.data_device_state
+    }
+}
+impl ClientDndGrabHandler for Crt {}
+impl ServerDndGrabHandler for Crt {}
 delegate_output!(Crt);
 delegate_dmabuf!(Crt);
 delegate_viewporter!(Crt);

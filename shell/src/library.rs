@@ -1327,6 +1327,9 @@ input_exit_emulator = "escape"
 input_quit_gamepad_combo = "4"
 savestate_auto_save = "true"
 savestate_auto_load = "true"
+# Hardcore achievements reset the game as soon as they start, which throws
+# away the state a game was just resumed from; RetroArch defaults to it.
+cheevos_hardcore_mode_enable = "false"
 video_smooth = "false"
 video_crop_overscan = "false"
 video_frame_delay_auto = "true"

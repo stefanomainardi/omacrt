@@ -102,6 +102,13 @@ pub fn out_dir() -> PathBuf {
 /// routed to it.
 pub fn start() {
     use omacrt_shell::crt::{Config, audio, display, output};
+    // Off until the capture is understood: on the first evening with the
+    // ring, the launcher crashed inside SDL's Wayland dispatch moments after
+    // every game started it, and the ring's ffmpeg outlived every stop.
+    // `OMACRT_REPLAY_RING=1` turns it on for testing.
+    if std::env::var_os("OMACRT_REPLAY_RING").is_none() {
+        return;
+    }
     if !display::running() {
         return;
     }
