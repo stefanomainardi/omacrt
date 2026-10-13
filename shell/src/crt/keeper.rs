@@ -568,6 +568,23 @@ mod tests {
         (c, reply, fd, release)
     }
 
+    /// Ask again until the answer is not "busy". A subprocess another test
+    /// spawns at that moment inherits a copy of every socket until it execs,
+    /// so a holder dropped here can take a moment to read as gone.
+    fn request_once_free(
+        s: &mut Server,
+        line: &str,
+    ) -> (UnixStream, String, Option<OwnedFd>, bool) {
+        for _ in 0..100 {
+            let r = request(s, line);
+            if !r.1.starts_with("err busy") {
+                return r;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        request(s, line)
+    }
+
     #[test]
     fn the_tube_is_lent_to_one_display_process_at_a_time() {
         let (mut s, mut lease_end) = server();
@@ -583,7 +600,7 @@ mod tests {
         assert!(fd.is_none());
         // The first display process dies: the next one gets the tube.
         drop(first);
-        let (_c, reply, fd, _) = request(&mut s, "take HDMI-A-1");
+        let (_c, reply, fd, _) = request_once_free(&mut s, "take HDMI-A-1");
         assert_eq!(reply, "ok 101 HDMI-A-1");
         assert!(fd.is_some());
     }
@@ -613,7 +630,7 @@ mod tests {
         let (_c, reply, _, release) = request(&mut s, "release");
         assert!(reply.starts_with("err busy") && !release, "{reply}");
         drop(holder);
-        let (_c, reply, _, release) = request(&mut s, "release");
+        let (_c, reply, _, release) = request_once_free(&mut s, "release");
         assert_eq!(reply, "ok");
         assert!(release);
     }
