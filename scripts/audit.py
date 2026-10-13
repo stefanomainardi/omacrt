@@ -33,6 +33,11 @@ ACCEPTED = {
         "same. Same path: smithay's dependency, never called from this code, "
         "and unreachable without calling it."
     ),
+    "RUSTSEC-2026-0192": (
+        "ttf-parser is unmaintained. It arrives through fontdue, which sets the "
+        "replay's captions. Informational; the only fonts it ever parses are the "
+        "IBM Plex files compiled into the binary, never one from outside."
+    ),
 }
 
 OSV = "https://api.osv.dev/v1/querybatch"
