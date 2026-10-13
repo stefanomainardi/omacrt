@@ -2334,6 +2334,41 @@ fn cmd_doctor(cfg: &Config, args: &[String]) -> i32 {
         }
     }));
 
+    // ------------------------------------------------------------ youtube
+    // YouTube gives its streams only to a client that answers a JavaScript
+    // challenge: yt-dlp needs the solver scripts of yt-dlp-ejs, which its
+    // own Python has to be able to load, and Deno to run them in.
+    probes.push(Probe::new(PROGRAMS, "YouTube challenge solver", || {
+        use omacrt_shell::yt;
+        let all = yt::candidates();
+        let Some(first) = all.first() else {
+            return (Level::Warn, "no yt-dlp: YouTube is off".into());
+        };
+        let chosen = yt::binary();
+        if !yt::solves(&chosen) {
+            let pipx = first.to_string_lossy().contains("/.local/bin/")
+                || std::fs::canonicalize(first).is_ok_and(|p| p.to_string_lossy().contains("pipx"));
+            return (
+                Level::Warn,
+                if pipx {
+                    "no yt-dlp can load yt-dlp-ejs: `pipx inject yt-dlp yt-dlp-ejs`".into()
+                } else {
+                    "no yt-dlp can load yt-dlp-ejs: install it (Arch: yt-dlp-ejs)".into()
+                },
+            );
+        }
+        match yt::js_runtime() {
+            Some(rt) => (
+                Level::Ok,
+                format!("{} with yt-dlp-ejs and {rt}", chosen.display()),
+            ),
+            None => (
+                Level::Warn,
+                "no JavaScript runtime for the solver: install deno".into(),
+            ),
+        }
+    }));
+
     // ------------------------------------------------------------ programs
     for (label, cmd) in [
         ("hyprctl", "hyprctl"),

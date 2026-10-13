@@ -29,6 +29,8 @@ caveat for a 0.x project: anything may still move.
 
 ### Fixed
 
+- YouTube videos play again when the first yt-dlp on the PATH cannot answer
+  YouTube's JavaScript challenge; `omacrt doctor` says what is missing.
 - The launcher no longer crashes when a game starts, with SDL 3.4.18.
 - A game resumed from where it was left is no longer reset to its start a
   moment later when RetroAchievements are on.

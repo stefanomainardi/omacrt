@@ -2002,6 +2002,12 @@ impl Scene {
                     lines.push(format!(
                         "--ytdl-format=bestvideo[height<={q}][vcodec^=avc1]+bestaudio/best[height<={q}]/best"
                     ));
+                    // The yt-dlp that can answer YouTube's challenge, which
+                    // is not always the first on the PATH.
+                    lines.push(format!(
+                        "--script-opts-append=ytdl_hook-ytdl_path={}",
+                        omacrt_shell::yt::binary().display()
+                    ));
                 }
             }
             if self.wide_output() {
